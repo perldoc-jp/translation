@@ -1,0 +1,2478 @@
+=head1 NAME
+
+=begin original
+
+perlfaq4 - Data Manipulation ($Revision$, $Date$)
+
+=end original
+
+perlfaq4 - データ操作 ($Revision$, $Date$)
+
+=head1 DESCRIPTION
+
+FAQのこのセクションでは、数値、日付、文字列、配列、ハッシュその他の
+データの取り扱いに関する質問に回答しています。
+
+=head1 Data: Numbers
+
+=head2 Why am I getting long decimals (eg, 19.9499999999999) instead of the numbers I should be getting (eg, 19.95)?
+
+(なぜ19.95のような数字ではなく、19.9499999999999のような長い
+数字が出てきたんでしょうか?)
+
+数学者の考える無限の実数は、
+コンピューターは有限個のビットを使って無限個の数値を
+収めるために、コンピューター上では近似値としてしか表現できません。
+
+内部的には、あなたの使っているコンピューターは浮動小数点数を二進数を
+使って表現しています。浮動小数点数はファイルから読み込まれたり、
+プログラム中にリテラルとして現れて、(19.95のような)十進浮動小数点表記から、
+内部的な二進表現に変換されます。
+
+しかし、19.95は二進の浮動小数点数では適切に表現することができません。
+これは、十進浮動小数点数で1/3を正確に表すことができないのと同じことです。
+
+浮動小数点数が出力されるとき、二進の浮動小数点数は十進へと再度変換されます。
+この十進数は、printf()で指定したフォーマットか、print を使った場合には
+カレントの出力フォーマット(L<perlvar/"$#">を参照)で出力が行われます。
+Perl5 でのC<$#>はPerl4とは違ったデフォルト値を持っています。
+自分でC<$#>を変更することはしないようにしてください。
+
+これはPerlのみに限らず、二進数で十進の浮動小数点数を表すような
+B<すべての>コンピューター言語にあてはまります。
+Perlは任意精度の十進数をMath::BgiFloatモジュールによって
+提供しています(標準Perl配布キットの一部です)が、
+数学的な操作はとても遅いです。
+
+余計な数字を取り除くには、C<printf("%.2f", 19.95)>のように要求する
+精度を取るだけの書式指定を使います。
+L<perlop/"Floating-point Arithmetic">を参照してください。
+
+=head2 Why isn't my octal data interpreted correctly?
+
+(なぜ私の八進データは正しく解釈されないのでしょうか?)
+
+Perlは、プログラムの中にリテラルとして現れたときにだけ八進数や十六進数を
+理解します。
+それらのものがそれ以外の場所からとか代入で読み込まれた場合、
+変換は実行されません。
+値の変換を必要とするのなら、陽にoct()やhex()を使わなければなりません。
+oct()は八進数("0350"や"377"のように先頭の"0"がないものでも)と
+十六進数("0x350")の両方を解釈するのに対して、
+hex()が十六進数("0x255", "3A", "ff", "deadbeef"のように、
+先頭に"0x"がついたりつかなかったりします)のみを変換します。
+
+この問題は、パーミッションを八進数で指定するようなchmod(), 
+mkdir(), umask(), or sysopen()を使おうとしたときによく発生します。
+
+    chmod(644,  $file);	# 間違い -- perl -w はこれを捕捉します
+    chmod(0644, $file);	# 正しい
+
+=head2 Does Perl have a round() function?  What about ceil() and floor()? Trig functions?
+
+(Perlには丸め関数がありますか? ceil()とfloor()とは何ですか? 三角関数は?)
+
+int()は0へ向かって丸めを行うことを思い出してください。
+特定の桁数で丸めを行うには、sprintf()やprintf()を使うことが
+通常はもっとも簡単なやり方です。
+
+    printf("%.3f", 3.1415926535);	# 3.142を出力
+
+(標準Perl配布キットの一部である)POSIXモジュールはceil()、floor()、
+そしてその他の数学的な関数や三角関数の多くを実装しています。
+
+    use POSIX;
+    $ceil   = ceil(3.5);			# 4
+    $floor  = floor(3.5);			# 3
+
+perlの5.000から5.003では、三角関数はMath::Complexモジュールの中で
+実行されていました。
+5.004では、Math::Trigモジュール(標準Perl配布キットの一部です)が
+三角関数を実装しています。
+内部的にはこれはMath::Complexを使っていて、一部の関数は実数値を複素数領域へ
+変化させることができます。
+2の inverse sineがその一例です。
+
+金融に関係するアプリケーションにおいては、丸めはきちんとした実装を
+必要とするかもしれません。そして、丸めの方法は適切に使われるべきものです。
+この場合、Perlが使っているシステムによる丸めを信用すべきではなく、
+自分自身で丸め関数を実装するようにすべきでしょう。
+
+To see why, notice how you'll still have an issue on half-way-point
+alternation:
+
+    for ($i = 0; $i < 1.01; $i += 0.05) { printf "%.1f ",$i}
+
+    0.0 0.1 0.1 0.2 0.2 0.2 0.3 0.3 0.4 0.4 0.5 0.5 0.6 0.7 0.7 
+    0.8 0.8 0.9 0.9 1.0 1.0
+
+Perlを責めないでください。これはCでも同じことなのです。IEEEでは
+このようにすることを述べています。
+Perlでの数値は絶対値で2**31(32ビットマシンの場合)以下の場合の整数値であれば
+数学的な整数と同じように振る舞います。それ以外の数値は恩恵を受けません。
+
+=head2 How do I convert bits into ints?
+
+(ビット列から整数に変換するには?)
+
+=begin original
+
+To turn a string of 1s and 0s like C<10110110> into a scalar containing
+its binary value, use the pack() and unpack() functions (documented in
+L<perlfunc/"pack"> and L<perlfunc/"unpack">):
+
+=end original
+
+C<10110110>のような1と0の並びを、それに対応する二進の値を持った
+スカラーに変換するには、pack()関数と unpack() 関数を使います
+(説明はL<perlfunc/"pack"> と L<perlfunc/"unpack"> にあります)。
+
+
+    $decimal = unpack('c', pack('B8', '10110110'));
+
+This packs the string C<10110110> into an eight bit binary structure.
+This is then unpacked as a character, which returns its ordinal value.
+
+This does the same thing:
+
+    $decimal = ord(pack('B8', '10110110'));
+
+別のやり方の例です:
+
+    $binary_string = unpack('B*', "\x29");
+
+=head2 Why doesn't & work the way I want it to?
+
+(なぜ&は私の思った通りに動作しないのでしょうか?)
+
+=begin original
+
+The behavior of binary arithmetic operators depends on whether they're
+used on numbers or strings.  The operators treat a string as a series
+of bits and work with that (the string C<"3"> is the bit pattern
+C<00110011>).  The operators work with the binary form of a number
+(the number C<3> is treated as the bit pattern C<00000011>).
+
+=end original
+
+バイナリ算術演算子の振る舞いはそれが数値に対して使われているのか
+文字列に対して使われているかということに依存しています。
+その演算子は文字列をビットの並びとして扱います(C<"3">という文字列は
+C<00110011>というビットパターンとなります)。
+この演算子はバイナリ形式に対して働きます
+(C<3>という数値はC<00000011>というビットパターンとして扱われます)。
+
+ですから、C<11 & 3> は数値に対する"and"として働きます(その結果は
+C<1>です)。C<"11" & "3">は文字列に対する"and"として働きます
+(結果はC<"1">です)。
+
+ありがちな問題はC<&>とC<|>を使ったときに、プログラマーは
+オペランドが数値と考えているのに実際は文字列であるようなときに
+起こります。例を挙げましょう:
+
+    if ("\020\020" & "\101\101") {
+	# ...
+    }
+
+この場合の結果は二つのナルバイトを含む文字列となります
+(C<"\020\020">の結果です)が、これはPerlにおけるfalseの値では
+ありません。以下のようにする必要があります:
+
+    if ( ("\020\020" & "\101\101") !~ /[^\000]/) {
+	# ...
+    }
+
+
+=head2 How do I multiply matrices?
+
+(行列の積はどのようにやるのですか?)
+
+Math::Matrixモジュールか、Math::MatrixRealモジュール(CPANで入手できます)か
+PDLエクステンション(これもCPANで入手できます)を使います。
+
+=head2 How do I perform an operation on a series of integers?
+
+(整数値の並びに対してある操作を実行するには?)
+
+配列の各要素に対して関数を呼び出して、結果を集めるにはこうします:
+
+    @results = map { my_func($_) } @array;
+
+=begin original
+
+For example:
+
+=end original
+
+例を挙げましょう:
+
+    @triple = map { 3 * $_ } @single;
+
+配列の各要素に対して関数を呼び出すけれども、結果を無視するという
+場合にはこうします:
+
+    foreach $iterator (@array) {
+        some_func($iterator);
+    }
+
+ある(小さな)範囲にある整数に対して関数を呼び出すには、こうもB<できます>:
+
+    @results = map { some_func($_) } (5 .. 25);
+
+ただし、C<..>演算子がその範囲にあるすべての整数の配列を生成するということに
+注意すべきでしょう。
+これによって大きな範囲を使った場合に大量のメモリを消費することになります。
+代りにこうします:
+
+    @results = ();
+    for ($i=5; $i < 500_005; $i++) {
+        push(@results, some_func($i));
+    }
+
+This situation has been fixed in Perl5.005. Use of C<..> in a C<for>
+loop will iterate over the range, without creating the entire range.
+
+    for my $i (5 .. 500_005) {
+        push(@results, some_func($i));
+    }
+
+will not create a list of 500,000 integers.
+
+=head2 How can I output Roman numerals?
+
+(どうすればローマ数字を出力できますか?)
+
+http://www.perl.com/CPAN/modules/by-module/Roman モジュールを
+入手しましょう。
+
+=head2 Why aren't my random numbers random?
+
+(なぜ私の乱数はランダムでないの?)
+
+5.004より前のバージョンのPerlを使っているなら、C<srand>を
+プログラムの開始時点で一度呼び出してやって、乱数生成器の種を
+セットしてやらなければなりません。5.004以降のものでは開始時点で
+自動的にC<srand>を呼び出します。二度以上C<srand>を呼び出しては
+いけません。乱数の質を落としてしまいます。
+
+=begin original
+
+Computers are good at being predictable and bad at being random
+(despite appearances caused by bugs in your programs :-).
+http://www.perl.com/CPAN/doc/FMTEYEWTK/random , courtesy of Tom
+Phoenix, talks more about this.  John von Neumann said, ``Anyone who
+attempts to generate random numbers by deterministic means is, of
+course, living in a state of sin.''
+
+=end original
+
+コンピューターは予測できる物事に関しては役に立ちますが、ランダムな
+ことに対してはそうではありません(あなたのプログラム自身のバグによって
+引き起こされることですが:-)
+Tom Phoenixはこの問題について
+http://www.perl.com/CPAN/doc/FMTEYEWTK/random で解説しています。
+ジョン・フォン・ノイマン曰く、“決定性のやり方によって
+乱数を作ろうと試みる全ての人は罪にまみれて生きている”
+
+=begin original
+
+You should also check out the Math::TrulyRandom module from CPAN.  It
+uses the imperfections in your system's timer to generate random
+numbers, but this takes quite a while.  If you want a better
+pseudorandom generator than comes with your operating system, look at
+``Numerical Recipes in C'' at http://nr.harvard.edu/nr/bookc.html .
+
+=end original
+
+C<rand>とC<srand>の組み合わせ以上のものよりも大量の乱数を
+必要としているのであれば、CPANにあるMath::TrulyRandomモジュールを
+チェックしてみると良いでしょう。
+これはあなたの使っているシステムのタイマーを乱数を生成するのに
+使っていて不完全な面もありますが、十分なものです。
+あなたの使うオペレーティングシステムでつかえるものよりも
+もっと良質な擬似乱数を必要としているのなら、
+http://www.nr.com にある ``Numerical Recipes in C'' を見るとよいでしょう。
+
+=head1 Data: Dates
+
+=head2 How do I find the week-of-the-year/day-of-the-year?
+
+(その年の第何週であるとか何日目であるかを知るには?)
+
+その年での日数はlocaltime()が返す配列の中にあります
+(L<perlfunc/"localtime">を参照):
+
+    $day_of_year = (localtime(time()))[7];
+
+あるいはもっと読みやすくして(5.004以降の場合):
+
+    use Time::localtime;
+    $day_of_year = localtime(time())->yday;
+
+その年の第何週であるかは、これを7で割れば求められます:
+
+    $week_of_year = int($day_of_year / 7);
+
+もちろん、ここでは数字は0から始まります。
+
+=begin original
+
+The Date::Calc
+module from CPAN has a lot of date calculation functions, including
+day of the year, week of the year, and so on.   Note that not
+all business consider ``week 1'' to be the same; for example,
+American business often consider the first week with a Monday
+in it to be Work Week #1, despite ISO 8601, which consider 
+WW1 to be the frist week with a Thursday in it.
+
+=end original
+
+CPANにあるDate::Calcモジュールは日数、週数などの日付計算に関する関数を
+多く提供しています。
+「第一週」が全てのビジネスで同じではないことに注意してください。
+例えばアメリカのビジネスでは、しばしば
+月曜を含む最初の週を第一週として考えますが、
+ISO 8601では違っていて、木曜日を含む週を第一週とみなします。
+
+=head2 How do I find the current century or millennium?
+
+(現在の世紀や千年紀を知るにはどうすればいいですか?)
+
+=begin original
+
+Use the following simple functions:
+
+=end original
+
+以下の単純な関数を使ってください:
+
+    sub get_century    { 
+	return int((((localtime(shift || time))[5] + 1999))/100);
+    } 
+    sub get_millennium { 
+	return 1+int((((localtime(shift || time))[5] + 1899))/1000);
+    } 
+
+On some systems, you'll find that the POSIX module's strftime() function
+has been extended in a non-standard way to use a C<%C> format, which they
+sometimes claim is the "century".  It isn't, because on most such systems,
+this is only the first two digits of the four-digit year, and thus cannot
+be used to reliably determine the current century or millennium.
+
+=head2 How can I compare two date strings?
+
+(どうやれば二つの日付文字列を比較できますか?)
+
+=begin original
+
+If you're storing your dates as epoch seconds then simply subtract one
+from the other.  If you've got a structured date (distinct year, day,
+month, hour, minute, seconds values), then for reasons of accessibility,
+simplicity, and efficiency, merely use either timelocal or timegm (from
+the Time::Local module in the standard distribution) to reduce structured
+dates to epoch seconds.  However, if you don't know the precise format of
+your dates, then you should probably use either of the Date::Manip and
+Date::Calc modules from CPAN before you go hacking up your own parsing
+routine to handle arbitrary date formats.
+
+=end original
+
+もしシステム開始時点からの経過秒数で日付を格納しているのであれば、
+片方からもう一方を引いてやれば求められます。
+もしあなたが構造を持った日付(年、日、月、時間、分、秒を区別する)のであれば、
+アクセシビリティ、単純性、効率の点から、単に timelocal か timegm
+(標準配布パッケージの Time::Local モジュールにあります) を使って
+構造を持った日付を紀元からの秒数に変換してください。
+しかし、日付の形式がわからない場合は、
+自力でパーズルーチンを書く前に
+CPANにあるDate::ManipかDate::Calcのどちらかを使いましょう。
+
+=head2 How can I take a string and turn it into epoch seconds?
+
+(どうやれば、文字列を受け取って、それをある時点からの経過秒数に変換できますか?)
+
+もしそれが常に同じ書式である十分に標準的な文字列であれば、
+それを分割して、その部分部分を標準のTime::LocalモジュールのC<timelocal>に
+渡せます。
+さもなければ、CPANにあるDate::Calcモジュールと
+Date::Manipモジュールを見るべきでしょう。
+
+=head2 How can I find the Julian Day?
+
+(どうやればユリウス日 (またはユリウス積日、Julian Day) を求められますか?)
+
+Time::JulianDay (CPAN で利用可能な Time モジュールの一部です)
+を使ってください。
+
+Before you immerse yourself too deeply in this, be sure to verify that it
+is the I<Julian> Day you really want.  Are you really just interested in
+a way of getting serial days so that they can do date arithmetic?  If you
+are interested in performing date arithmetic, this can be done using
+either Date::Manip or Date::Calc, without converting to Julian Day first.
+
+There is too much confusion on this issue to cover in this FAQ, but the
+term is applied (correctly) to a calendar now supplanted by the Gregorian
+Calendar, with the Julian Calendar failing to adjust properly for leap
+years on centennial years (among other annoyances).  The term is also used
+(incorrectly) to mean: [1] days in the Gregorian Calendar; and [2] days
+since a particular starting time or `epoch', usually 1970 in the Unix
+world and 1980 in the MS-DOS/Windows world.  If you find that it is not
+the first meaning that you really want, then check out the Date::Manip
+and Date::Calc modules.  (Thanks to David Cassell for most of this text.)
+
+=head2 How do I find yesterday's date?
+
+(昨日の日付を得るには?)
+
+C<time()>関数はある時点からの経過時間を秒で返します。
+24 時間分を取りのぞくには
+
+    $yesterday = time() - ( 24 * 60 * 60 );
+
+のようにします。そして、これをC<localtime()>に渡してやれば年、
+月、日、時間、分、秒を得ることが可能です。
+
+=begin original
+
+Note very carefully that the code above assumes that your days are
+twenty-four hours each.  For most people, there are two days a year
+when they aren't: the switch to and from summer time throws this off.
+A solution to this issue is offered by Russ Allbery.
+
+=end original
+
+このコードは 1 日 24 時間であるという仮定を置いています。
+ほとんどの人にとって、そうでない日が年に 2 日あります:
+夏時間になる日と夏時間でなくなる日です。
+この問題の解法は Russ Allbery によって提供されました:
+
+    sub yesterday {
+	my $now  = defined $_[0] ? $_[0] : time;
+	my $then = $now - 60 * 60 * 24;
+	my $ndst = (localtime $now)[8] > 0;
+	my $tdst = (localtime $then)[8] > 0;
+	$then - ($tdst - $ndst) * 60 * 60;
+    }
+    # Should give you "this time yesterday" in seconds since epoch relative to
+    # the first argument or the current time if no argument is given and
+    # suitable for passing to localtime or whatever else you need to do with
+    # it.  $ndst is whether we're currently in daylight savings time; $tdst is
+    # whether the point 24 hours ago was in daylight savings time.  If $tdst
+    # and $ndst are the same, a boundary wasn't crossed, and the correction
+    # will subtract 0.  If $tdst is 1 and $ndst is 0, subtract an hour more
+    # from yesterday's time since we gained an extra hour while going off
+    # daylight savings time.  If $tdst is 0 and $ndst is 1, subtract a
+    # negative hour (add an hour) to yesterday's time since we lost an hour.
+    #
+    # All of this is because during those days when one switches off or onto
+    # DST, a "day" isn't 24 hours long; it's either 23 or 25.
+    #
+    # The explicit settings of $ndst and $tdst are necessary because localtime
+    # only says it returns the system tm struct, and the system tm struct at
+    # least on Solaris doesn't guarantee any particular positive value (like,
+    # say, 1) for isdst, just a positive value.  And that value can
+    # potentially be negative, if DST information isn't available (this sub
+    # just treats those cases like no DST).
+    #
+    # Note that between 2am and 3am on the day after the time zone switches
+    # off daylight savings time, the exact hour of "yesterday" corresponding
+    # to the current hour is not clearly defined.  Note also that if used
+    # between 2am and 3am the day after the change to daylight savings time,
+    # the result will be between 3am and 4am of the previous day; it's
+    # arguable whether this is correct.
+    #
+    # This sub does not attempt to deal with leap seconds (most things don't).
+    #
+    # Copyright relinquished 1999 by Russ Allbery <rra@stanford.edu>
+    # This code is in the public domain
+
+=head2 Does Perl have a Year 2000 problem?  Is Perl Y2K compliant?
+
+(Perlには2000年問題があるのですか? Perl は 2000 年対応ですか?)
+
+短い答: いいえ。Perlには2000年問題はありません。
+ただし、あなたの雇っているプログラマーがそうでないように
+使っているなら2000年問題はあります。
+
+=begin original
+
+Long answer: The question belies a true understanding of the issue.
+Perl is just as Y2K compliant as your pencil--no more, and no less.
+Can you use your pencil to write a non-Y2K-compliant memo?  Of course
+you can.  Is that the pencil's fault?  Of course it isn't.
+
+=end original
+
+長い答: この質問は物事の理解を誤っています。
+Perl はあなたの鉛筆と同じぐらいに Y2K 対応です。
+それ以上でもそれ以下でもありません。
+あなたの鉛筆を使って Y2K 対応でないメモを書けますか?もちろん書けます。
+それは鉛筆のせいですか?もちろん違います。
+
+Perlに組み込みの日付・時刻関数(gmtimeとlocaltime)は
+2000年を越えた年も区別するために必要な情報を提供しています
+(32ビットマシンをトラブルが直撃するのは2038年です)。
+これらの関数がリストコンテキストで使われたときに返す年数は
+実際の年から1900を引いた値です。1910年から1999年は
+このやり方ではB<たまたま>二桁の数値となります。
+2000年問題を避けるには、年を二桁で扱わないようにします。
+
+gmtime()やlocaltime()は、スカラーコンテキストで呼び出された場合には
+完全な年を含んでいるタイムスタンプ文字列を返します。
+たとえば、
+C<$timestamp = gmtime(1005613200)は
+$timestamp に "Tue Nov 13 01:00:00 2001"
+をセットします。ここには2000年問題はありません。
+
+=begin original
+
+That doesn't mean that Perl can't be used to create non-Y2K compliant
+programs.  It can.  But so can your pencil.  It's the fault of the user,
+not the language.  At the risk of inflaming the NRA: ``Perl doesn't
+break Y2K, people do.''  See http://language.perl.com/news/y2k.html for
+a longer exposition.
+
+=end original
+
+このことは、Perlで2000年問題を起こすようなプログラムを作るのに
+使えないということではありません。あなたの使う鉛筆も
+そうであるように。つまり、言語にまつわるミスではなく、使う人の
+間違いであるということです。
+NRAを刺激するかもしれませんが、
+``Perlは2000年問題を打ち破らない。人が打ち破るのだ''
+ということです。
+詳しい説明はhttp://language.perl.com/news/y2k.htmlを参照してください。
+
+=head1 Data: Strings
+
+=head2 How do I validate input?
+
+(入力を検査するには?)
+
+この問題に対する回答は、通常は補助的なロジックを伴った正規表現でしょう。
+詳しくはより限定した質問(数値、電子メールアドレス、などなど)を
+あたってください。
+
+=head2 How do I unescape a string?
+
+(文字列のアンエスケープ (unescape)をするには?)
+
+それはあなたのいう“エスケープ”がなんであるかによります。URLの
+エスケープはL<perlfaq9>で扱っています。バックスラッシュによる
+シェルエスケープは以下のようにして取り除きます:
+
+    s/\\(.)/$1/g;
+
+これは\nだとか\t、あるいはその他の特殊なエスケープを展開しません。
+
+=head2 How do I remove consecutive pairs of characters?
+
+(キャラクタの連続した組を取り除くには?)
+
+C<"abbcccd"> を C<"abccd">に変換するには:
+
+    s/(.)\1/$1/g;	# add /s to include newlines
+
+Here's a solution that turns "abbcccd" to "abcd":
+
+    y///cs;	# y == tr, but shorter :-)
+
+=head2 How do I expand function calls in a string?
+
+(文字列中にある関数呼び出しを展開するには?)
+
+これは L<perlref>で説明されています。一般的には、これはクォーティングと
+読みやすさの問題に絡むことですが、可能ではあります。
+文字列へ(リストコンテキストで)サブルーチン呼び出しを展開するには:
+
+    print "My sub returned @{[mysub(1,2,3)]} that time.\n";
+
+スカラーコンテキストの方がよいのなら、同様なごまかしがやっぱり便利です。
+
+    print "That yields ${\($n + 5)} widgets\n";
+
+Perl 5.004にはC<{...}>の中の式にリストコンテキストを与えてしまうという
+バグがありますが、これは5.005では修整されていいます。
+
+FAQのこのセクションにある
+“How can I expand variables in text strings?”
+も参照してください。
+
+=head2 How do I find matching/nesting anything?
+
+(何かがマッチしている/ネストしているということを検出するには?)
+
+これは一つの正規表現で解決できないほどの複雑な問題なのです。
+単一のキャラクター二つに囲まれた何かを見つけだすには、 
+C</x([^x]*)x/>といったパターンを使えば$1に検査の結果が得られるでしょう。
+複数キャラクターに囲まれたものの場合は、
+C</alpha(.*?)omega/>のようなパターンが必要となるでしょう。
+しかし、ネストしたパターンを扱うようなものはありませんし、できません。
+これに対処するにはパーザを書く必要があります。
+
+=begin original
+
+If you are serious about writing a parser, there are a number of
+modules or oddities that will make your life a lot easier.  There are
+the CPAN modules Parse::RecDescent, Parse::Yapp, and Text::Balanced;
+and the byacc program.
+
+=end original
+
+もしまじめにパーザを作ろうと考えているのなら、
+それを手助けしてくれるようなモジュールやその他のプログラムがあります。
+CPANにはParse::RecDescent Parse::Yapp, and Text::Balanced
+がありますし、byaccプログラムもあります。
+
+=begin original
+
+One simple destructive, inside-out approach that you might try is to
+pull out the smallest nesting parts one at a time:
+
+=end original
+
+単純で破壊的なinside-outアプローチもあります。
+これは以下のようにして一度に最小のネスト部分を取り出そうというものです。
+
+    while (s/BEGIN((?:(?!BEGIN)(?!END).)*)END//gs) {
+	# $1に対する操作を行う
+    } 
+
+=begin original
+
+A more complicated and sneaky approach is to make Perl's regular
+expression engine do it for you.  This is courtesy Dean Inada, and
+rather has the nature of an Obfuscated Perl Contest entry, but it
+really does work:
+
+=end original
+
+より複雑で巧妙なやり方にPerlの正規表現エンジンを使うというものがあります。
+これはDean InadaによるものでObfuscated Perl コンテストに
+エントリされるような代物ですが、正しく働きます:
+
+    # $_ には解析対象の文字列があります
+    # BEGINとENDはネストしたテキストの開始と終了とを行います。 
+
+    @( = ('(','');
+    @) = (')','');
+    ($re=$_)=~s/((BEGIN)|(END)|.)/$)[!$3]\Q$1\E$([!$2]/gs;
+    @$ = (eval{/$re/},$@!~/unmatched/);
+    print join("\n",@$[0..$#$]) if( $$[-1] );
+
+=head2 How do I reverse a string?
+
+(文字列をひっくり返すには?)
+
+L<perlfunc/reverse>で説明されているように、スカラーコンテキストで
+reverse()を使います。
+
+    $reversed = reverse $string;
+
+=head2 How do I expand tabs in a string?
+
+(文字列中にあるタブを展開するには?)
+
+以下のようにしてできます:
+
+    1 while $string =~ s/\t+/' ' x (length($&) * 8 - length($`) % 8)/e;
+
+あるいは、ただ単にText::Tabsモジュール(標準Perl配布キットの一部です)を
+使ってもできます。
+
+    use Text::Tabs;
+    @expanded_lines = expand(@lines_with_tabs);
+
+=head2 How do I reformat a paragraph?
+
+(パラグラフを整形するには?)
+
+Text::Wrap(標準Perl配布キットの一部です)を使います。
+
+    use Text::Wrap;
+    print wrap("\t", '  ', @paragraphs);
+
+Text::Wrapに与えるパラグラフには埋め込みの改行があってはいけません。
+Text::Wrapは行をジャスティファイしません(左寄せします)。
+
+=head2 How can I access/change the first N letters of a string?
+
+(文字列の最初のN文字にアクセスしたり、それを変更するには?)
+
+たくさんのやり方があります。コピーを取りたいのなら、substr()を使います:
+
+    $first_byte = substr($a, 0, 1);
+
+文字列の一部を変更したいというのであれば、lvalueとしてsubstr()を使うのが、
+よく使われている最も単純な方法です。
+
+    substr($a, 0, 3) = "Tom";
+
+しかしこういった操作は、パターンマッチングを使った処理が好ましいでしょう。
+
+    $a =~ s/^.../Tom/;
+
+=head2 How do I change the Nth occurrence of something?
+
+(何かのN番目のものを変更するには?)
+
+=begin original
+
+You have to keep track of N yourself.  For example, let's say you want
+to change the fifth occurrence of C<"whoever"> or C<"whomever"> into
+C<"whosoever"> or C<"whomsoever">, case insensitively.  These
+all assume that $_ contains the string to be altered.
+
+=end original
+
+自分でN番目の記録を取る必要があります。
+例えば、(大小文字の違いを無視して) 5 番目に現れた
+C<"whoever"> か C<"whomever">を C<"whosoever"> か
+C<"whomsoever"> に変更したいと考えているとしましょう。
+以下は全て $_ に変更したい文字列が入っているものとします。
+
+    $count = 0;
+    s{((whom?)ever)}{
+	++$count == 5   	# 五番目か?
+	    ? "${2}soever"	# そうなら交換
+	    : $1		# 元に戻してなにもしない
+    }ige;
+
+=begin original
+
+In the more general case, you can use the C</g> modifier in a C<while>
+loop, keeping count of matches.
+
+=end original
+
+もっと一般的なケースでは、C<while>ループの中で
+C</g>修飾子を使ってマッチの数を数えることもできます。
+
+    $WANT = 3;
+    $count = 0;
+    $_ = "One fish two fish red fish blue fish";
+    while (/(\w+)\s+fish\b/gi) {
+        if (++$count == $WANT) {
+            print "The third fish is a $1 one.\n";
+        }
+    }
+
+これは C<"The third fish is a red one.">のように出力します。
+以下のようにパターンの繰り返し回数を指定するやり方もあります:
+
+    /(?:\w+\s+fish\s+){2}(\w+)\s+fish/i;
+
+
+=head2 How can I count the number of occurrences of a substring within a string?
+
+(ある文字列の中に存在する部分文字列が何個あるのかを
+数えるのはどうやればできますか?)
+
+様々な効率を持った、いろいろなやり方があります。
+文字列中に存在しているある単一キャラクター(X)の数を数えたいのであれば、
+C<tr///> 関数を使って次のようにできます:
+
+    $string = "ThisXlineXhasXsomeXx'sXinXit";
+    $count = ($string =~ tr/X//);
+    print "There are $count X characters in the string";
+
+これは単一キャラクターを対象にするのであればちょうどいいものですが、
+大きな文字列中の、複数キャラクターから構成される部分文字列の数を
+数えようとしても、C<tr///>はうまく動作しません。
+ここで可能なのは、グローバルなパターンマッチをwhile()で囲んでしまうという
+ものです。たとえば、負の数を数えるのならこうします:
+
+    $string = "-9 55 48 -2 23 -76 4 14 -44";
+    while ($string =~ /-\d+/g) { $count++ }
+    print "There are $count negative numbers in the string";
+
+=head2 How do I capitalize all the words on one line?
+
+(一行にあるすべての単語をキャピタライズするには?)
+
+各単語の最初の文字を大文字にするにはこうします:
+
+        $line =~ s/\b(\w)/\U$1/g;
+
+=begin original
+
+This has the strange effect of turning "C<don't do it>" into "C<Don'T
+Do It>".  Sometimes you might want this.  Other times you might need a
+more thorough solution (Suggested by brian d.  foy):
+
+=end original
+
+これには、"C<don't do it>"を "C<Don'T Do It>"にしてしまうような
+妙な効果があります。あなたがしたいのはこれでいいのかもしれません。
+そうでないときには、以下のようにする必要があります(Brian Foyの提案によります):
+
+    $string =~ s/ (
+                 (^\w)    #行の先頭である
+                   |      # もしくは
+                 (\s\w)   #空白が先行している
+                   )
+                /\U$1/xg;
+    $string =~ /([\w']+)/\u\L$1/g;
+
+行全体を大文字にするにはこうします:
+
+        $line = uc($line);
+
+全ての語を小文字にし、それぞれの語の最初の文字を大文字にするには
+こうやります:
+
+        $line =~ s/(\w+)/\u\L$1/g;
+
+プログラムの中にC<use locale>を置くことによって、
+これらのキャラクターがロカールを意識するようにできます
+(また、そうすべきです)。
+ロカールに関する詳細はL<perllocale>を参照してください。
+
+=begin original
+
+This is sometimes referred to as putting something into "title
+case", but that's not quite accurate.  Consdier the proper
+capitalization of the movie I<Dr. Strangelove or: How I Learned to
+Stop Worrying and Love the Bomb>, for example.
+
+=end original
+
+これは“title case”として扱われることがありますが、
+それは正確なものではありません。例えば映画のタイトルである
+I<Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb>
+(邦題「博士の異常な愛情 または私は如何にして心配するのを止めて水爆を愛するようになったか」)
+を考えてみましょう。
+
+=head2 How can I split a [character] delimited string except when inside
+[character]? (Comma-separated files)
+
+(どうやれば、(とある文字)の内側にある時を除き、(とある文字)で
+終端されている文字列を分割することができるでしょうか?)
+
+=begin original
+
+Take the example case of trying to split a string that is comma-separated
+into its different fields.  (We'll pretend you said comma-separated, not
+comma-delimited, which is different and almost never what you mean.) You
+can't use C<split(/,/)> because you shouldn't split if the comma is inside
+quotes.  For example, take a data line like this:
+
+=end original
+
+カンマで分割された文字列を別々のフィールドに置くような例を
+考えてみましょう(私たちはここで、カンマで分割された(commna-sparated)であり、
+カンマで終端された(comma-delimited)ではないとしています)。
+ここでC<split(/,/)>を使うことはできません。
+なぜなら、クォートの内側にあるカンマで分割すべきではないからです。
+例えば以下のようなデータを考えてみましょう。
+
+    SAR001,"","Cimetrix, Inc","Bob Smith","CAM",N,8,1,0,7,"Error, Core Dumped"
+
+クォートの制約のためにこれは実に複雑な問題です。
+ありがたいことに、私たちには正規表現に関するオススメ本の著者でもあり、
+この問題を私たちのために扱ってくれるJeffrey Friedlがいます。
+彼の提案はこうです(文字列が$textにあると仮定しています):
+
+     @new = ();
+     push(@new, $+) while $text =~ m{
+         "([^\"\\]*(?:\\.[^\"\\]*)*)",?  # グループはおそらくクォートの内側にある
+       | ([^,]+),?
+       | ,
+     }gx;
+     push(@new, undef) if substr($text,-1,1) eq ',';
+
+クォーテーションマークで終端されたフィールドの中で
+クォーテーションマークを表現したいのならば、
+それをバックスラッシュで(C<"like \"this\"">のように)エスケープしてください。
+アンエスケープはこのセクションの最初のほうにあります。
+
+=begin original
+
+Alternatively, the Text::ParseWords module (part of the standard Perl
+distribution) lets you say:
+
+=end original
+
+あるいは、Text::PaserWordsモジュール(標準Perl配布の一部です)を使ってこうします:
+
+    use Text::ParseWords;
+    @new = quotewords(",", 0, $text);
+
+=begin original
+
+There's also a Text::CSV (Comma-Separated Values) module on CPAN.
+
+=end original
+
+CPANにはText::CSV (Comma-Separated Values) モジュールもあります。
+
+=head2 How do I strip blank space from the beginning/end of a string?
+
+(文字列の先頭や末尾にある空白を剥ぎ取るには?)
+
+最も単純なやり方は多分こういったものでしょう:
+
+    $string =~ s/^\s*(.*?)\s*$/$1/;
+
+これは不必要に遅く、破壊的で、かつ文字列に埋め込まれた改行には対処できません。
+以下のように二つのステップに分けた方がより早くできます:
+
+    $string =~ s/^\s+//;
+    $string =~ s/\s+$//;
+
+あるいは以下のようにもっとカッコよく書きます:
+
+    for ($string) {
+	s/^\s+//;
+	s/\s+$//;
+    }
+
+=begin original
+
+This idiom takes advantage of the C<foreach> loop's aliasing
+behavior to factor out common code.  You can do this
+on several strings at once, or arrays, or even the 
+values of a hash if you use a slice:
+
+=end original
+
+このイディオムはC<foreach>ループでのエイリアシングの動作を利用したものです。
+この操作は、複数の文字列に対して一度に行うことができますし、
+配列やハッシュの値に対してさえ使うことができます。
+
+    # スカラー、配列、ハッシュの全ての要素の空白を調整します
+    foreach ($scalar, @array, @hash{keys %hash}) {
+        s/^\s+//;
+        s/\s+$//;
+    }
+
+=head2 How do I pad a string with blanks or pad a number with zeroes?
+
+(文字列に空白をパッディングしたり、数値にゼロをパッディングしたりするには?)
+
+=begin original
+
+(This answer contributed by Uri Guttman, with kibitzing from
+Bart Lateur.) 
+
+=end original
+
+(この回答はUri Guttman と Bart Lateur からの茶々入れによります)
+
+=begin original
+
+In the following examples, C<$pad_len> is the length to which you wish
+to pad the string, C<$text> or C<$num> contains the string to be padded,
+and C<$pad_char> contains the padding character. You can use a single
+character string constant instead of the C<$pad_char> variable if you
+know what it is in advance. And in the same way you can use an integer in
+place of C<$pad_len> if you know the pad length in advance.
+
+=end original
+
+以下に挙げる例で、C<$pad_len>はパッディングしたい文字列の長さです。
+C<$text>やC<$num>は文字列にパッディングの対象となる内容を保持していて、
+C<$pad_char>がパッディングに使いたいキャラクターを保持しています。
+やっていることがわかっているのなら、C<$pad_char>という変数の代わりに一
+文字のキャラクター文字列を使うこともできます。
+そして同様に、パッディングしたい長さが予め分かっているなら、
+C<$pad_len> に整数値を指定することも出来ます。
+
+=begin original
+
+The simplest method uses the C<sprintf> function. It can pad on the left
+or right with blanks and on the left with zeroes and it will not
+truncate the result. The C<pack> function can only pad strings on the
+right with blanks and it will truncate the result to a maximum length of
+C<$pad_len>.
+
+=end original
+
+最も単純なやり方はC<sprintf>関数を使うというものです。
+この関数は文字列の左や右にパッディングを行ったり、0を左に置いたりする
+ことができます。
+C<pack>関数は文字列の右側に空白でパッディングすることと、
+結果の最大長を C<$pad_len> に切り詰めることだけができます。
+
+    # Left padding a string with blanks (no truncation):
+    $padded = sprintf("%${pad_len}s", $text);
+
+    # Right padding a string with blanks (no truncation):
+    $padded = sprintf("%-${pad_len}s", $text);
+
+    # Left padding a number with 0 (no truncation): 
+    $padded = sprintf("%0${pad_len}d", $num);
+
+    # Right padding a string with blanks using pack (will truncate):
+    $padded = pack("A$pad_len",$text);
+
+=begin original
+
+If you need to pad with a character other than blank or zero you can use
+one of the following methods.  They all generate a pad string with the
+C<x> operator and combine that with C<$text>. These methods do
+not truncate C<$text>.
+
+=end original
+
+空白やゼロ以外のキャラクターでパッディングを行いたいのであれば、
+以下に挙げるやり方を使うことができます。これらは全て
+パッディング文字列を C<x> 修飾子で生成して C<$text> と結合します。
+これらのメソッドは C<$text> を切り詰めません。
+
+任意のキャラクターによる左詰めと右詰めを行い、新しい文字列を作ります:
+
+    $padded = $pad_char x ( $pad_len - length( $text ) ) . $text;
+    $padded = $text . $pad_char x ( $pad_len - length( $text ) );
+
+任意のキャラクターによる左詰めと右詰めを行い、C<$text>を直接変更します:
+
+    substr( $text, 0, 0 ) = $pad_char x ( $pad_len - length( $text ) );
+    $text .= $pad_char x ( $pad_len - length( $text ) );
+
+=head2 How do I extract selected columns from a string?
+
+(文字列から選択されたカラムを取り出すには?)
+
+もしあなたが幅ではなくカラムということで考えているのなら、
+以下のようなやり方ができます:
+
+   #Linuxのpsの出力をカラムで分割するのに必要となるunpackのフォーマットを決める
+   my $fmt = cut2fmt(8, 14, 20, 26, 30, 34, 41, 47, 59, 63, 67, 72);
+
+   sub cut2fmt { 
+	my(@positions) = @_;
+	my $template  = '';
+	my $lastpos   = 1;
+	for my $place (@positions) {
+	    $template .= "A" . ($place - $lastpos) . " "; 
+	    $lastpos   = $place;
+	}
+	$template .= "A*";
+	return $template;
+   }
+
+=head2 How do I find the soundex value of a string?
+
+(文字列の soundex値を見つけるには?)
+
+=begin original
+
+Use the standard Text::Soundex module distributed with Perl.
+Before you do so, you may want to determine whether `soundex' is in
+fact what you think it is.  Knuth's soundex algorithm compresses words
+into a small space, and so it does not necessarily distinguish between
+two words which you might want to appear separately.  For example, the
+last names `Knuth' and `Kant' are both mapped to the soundex code K530.
+If Text::Soundex does not do what you are looking for, you might want
+to consider the String::Approx module available at CPAN.
+
+=end original
+
+Perlと一緒に配布されている Text::Soundex モジュールを使います。
+その前に、`soundex' が実際にあなたが考えているものかどうか確認したい
+かもしれません。
+Knuth の soundex アルゴリズムは単語を短く圧縮しますので、
+あなたが別々に扱ってほしいと考える二つの単語を区別する必要はありません。
+例えば、`Knuth' と `Kant' は両方とも soundex コード K530 に割り当てられます。
+Text::Soundex があなたの探しているものでなかった場合、
+CPAN で利用できる String::Approx モジュールを使おうと考えるかもしれません。
+
+=head2 How can I expand variables in text strings?
+
+(テキスト文字列の中にある変数を展開するのはどうやればできますか?)
+
+以下のような文字列があるとしましょう:
+
+    $text = 'this has a $foo in it and a $bar';
+
+変数の両方ともが大域変数であれば、以下のようにしてできます:
+
+    $text =~ s/\$(\w+)/${$1}/g; # /e は不要です
+
+もし変数がレキシカル変数であれば、あるいはその可能性があるのなら
+以下のようにする必要があるいます:
+
+    $text =~ s/(\$\w+)/$1/eeg;
+    die if $@;			# /eではなく/eeが必要
+
+=begin original
+
+It's probably better in the general case to treat those
+variables as entries in some special hash.  For example:
+
+=end original
+
+一般的には、対象となる変数を特別なハッシュのエントリに
+してしまうのが良いかもしれません。例を挙げましょう:
+
+    %user_defs = ( 
+	foo  => 23,
+	bar  => 19,
+    );
+    $text =~ s/\$(\w+)/$user_defs{$1}/g;
+
+FAQのこのセクションにある
+“How do I expand function calls in a string?”
+も参照してください。
+
+=head2 What's wrong with always quoting "$vars"?
+
+(常にクォーティング "$vars" することの何が悪いの?)
+
+=begin original
+
+The problem is that those double-quotes force stringification--
+coercing numbers and references into strings--even when you
+don't want them to be strings.  Think of it this way: double-quote
+expansion is used to produce new strings.  If you already 
+have a string, why do you need more?
+
+=end original
+
+そういったダブルクォートが、強制的に文字列化(stringification)するのが問題で、
+たとえそれを望んでいなくても数値やリファレンスが強制的に
+文字列に変換されてしまうのです。このように考えましょう:
+ダブルクォートは新しい文字列を生成するのに使われる。
+もしあなたがすでに文字列を持っているのであれば、使う必要が
+あるでしょうか?
+
+以下の例のような変な書き方をすると:
+
+    print "$var";   	# だめ
+    $new = "$old";   	# だめ
+    somefunc("$var");	# だめ
+
+あなたはトラブルに巻き込まれることになるでしょう。これらは(99.8%は)、
+より単純、かつより直接的に書くべきなのです。
+
+    print $var;
+    $new = $old;
+    somefunc($var);
+
+さもなければ、プログラムを遅くなることのほかにも、スカラーが実際には文字列でも
+数値でもなくリファレンスであるようなときにあなたのプログラムが
+おかしくなることになります。
+
+    func(\@array);
+    sub func {
+	my $aref = shift;
+	my $oref = "$aref";  # 間違い
+    }
+
+マジカル C<++> オートインクリメント演算子やsyscall()関数のような、
+文字列と数値の間の違いを実際に気にするようなPerlの幾つかの操作において、
+微妙な問題に直面するかもしれません。
+
+文字列化(stringfication)も配列を壊します。
+
+    @lines = `command`;
+    print "@lines";		# 間違い - 余計な空白がつく
+    print @lines;		# 正しい
+
+
+=head2 Why don't my <<HERE documents work?
+
+(なぜ私の<<HEREドキュメントがうまく動かないのでしょう?)
+
+以下の三つの点を確認してください。
+
+=over 4
+
+=item 1. <<パートの後ろに空白があってはいけません。
+
+=item 2. 終端にセミコロンが置かれているかもしれません。
+
+=item 3. タグの前に任意のスペースを置くことはできません。
+
+=back
+
+=begin original
+
+If you want to indent the text in the here document, you 
+can do this:
+
+=end original
+
+ヒアドキュメントのテキストでインデントを使いたいのであれば、
+以下のようにしてできます:
+
+    # all in one
+    ($VAR = <<HERE_TARGET) =~ s/^\s+//gm;
+        your text
+        goes here
+    HERE_TARGET
+
+しかしこの場合もHERE_TARGETは先頭に置かなければなりません。
+もしこれもインデントしたいのなら、インデントをクォートする必要があるでしょう。
+
+    ($quote = <<'    FINIS') =~ s/^\s+//gm;
+            ...we will have peace, when you and all your works have
+            perished--and the works of your dark master to whom you
+            would deliver us. You are a liar, Saruman, and a corrupter
+            of men's hearts.  --Theoden in /usr/src/perl/taint.c
+        FINIS
+    $quote =~ s/\s*--/\n--/;
+
+=begin original
+
+A nice general-purpose fixer-upper function for indented here documents
+follows.  It expects to be called with a here document as its argument.
+It looks to see whether each line begins with a common substring, and
+if so, strips that off.  Otherwise, it takes the amount of leading
+white space found on the first line and removes that much off each
+subsequent line.
+
+=end original
+
+以下はインデントされたヒアドキュメントのための汎用fixer-upper関数です。
+この関数は引数にヒアドキュメントを渡されることを期待しています。
+これは共通の部分文字列で始まる各行について、
+その部分文字列を剥ぎ取るということを行います。
+あるいは、最初の行の先頭にある空白を取り、
+続く行に対しても同じ様に削除を行います。
+
+    sub fix {
+        local $_ = shift;
+        my ($white, $leader);  # common whitespace and common leading string
+        if (/^\s*(?:([^\w\s]+)(\s*).*\n)(?:\s*\1\2?.*\n)+$/) {
+            ($white, $leader) = ($2, quotemeta($1));
+        } else {
+            ($white, $leader) = (/^(\s+)/, '');
+        }
+        s/^\s*?$leader(?:$white)?//gm;
+        return $_;
+    }
+
+この関数は先頭にある特別な、動的に決められる文字列に対しても使えます:
+
+    $remember_the_main = fix<<'    MAIN_INTERPRETER_LOOP';
+	@@@ int
+	@@@ runops() {
+	@@@     SAVEI32(runlevel);
+	@@@     runlevel++;
+	@@@     while ( op = (*op->op_ppaddr)() );
+	@@@     TAINT_NOT;
+	@@@     return 0;
+	@@@ }
+    MAIN_INTERPRETER_LOOP
+
+また、先頭にある特定の個数の空白を取り除いて、インデントを
+正しく残すようなこともできます:
+
+    $poem = fix<<EVER_ON_AND_ON;
+       Now far ahead the Road has gone,
+	  And I must follow, if I can,
+       Pursuing it with eager feet,
+	  Until it joins some larger way
+       Where many paths and errands meet.
+	  And whither then? I cannot say.
+		--Bilbo in /usr/src/perl/pp_ctl.c
+    EVER_ON_AND_ON
+
+
+=head1 Data: Arrays
+
++=head2 What is the difference between a list and an array?
+
+(リストと配列の差とはなんですか?)
+
+=begin original
+
+An array has a changeable length.  A list does not.  An array is something
+you can push or pop, while a list is a set of values.  Some people make
+the distinction that a list is a value while an array is a variable.
+Subroutines are passed and return lists, you put things into list
+context, you initialize arrays with lists, and you foreach() across
+a list.  C<@> variables are arrays, anonymous arrays are arrays, arrays
+in scalar context behave like the number of elements in them, subroutines
+access their arguments through the array C<@_>, push/pop/shift only work
+on arrays.
+
+=end original
+
+配列は長さを変えることができます。リストはできません。
+ある配列に対してpushやpopができますが、
+リストに対しては値のセットしかできません。
+一部には配列が変数であるのに対してリストは値であると
+区別して考えている人達もいます。
+リストを受け取ったり返したりするサブルーチンはリストコンテキストに
+あなたを導き、リストで配列を初期化したり、foreach()でリストを辿ったりできます。
+C<@>変数は配列であり、無名配列も配列です。スカラーコンテキストの配列は
+その要素数のように振る舞います。
+サブルーチンはその引数をC<@_>という配列を通してアクセスし、
+push/pop/shiftは配列に対してのみ働きます。
+
+スカラーコンテキストでリストとして振る舞うものはないということに
+注意してください。たとえば
+
+    $scalar = (2, 5, 7, 9);
+
+=begin original
+
+you're using the comma operator in scalar context, so it uses the scalar
+comma operator.  There never was a list there at all!  This causes the
+last value to be returned: 9.
+
+=end original
+
+というものは、スカラーコンテキストでカンマ演算子を使ったものであり、
+スカラーカンマ演算子を使います。これはリストでもなんでもありません!
+この結果は最後の値である9となります。
+
+=head2 What is the difference between $array[1] and @array[1]?
+
+($array[1]と@array[1]との間の違いはなんですか?)
+
+前者はスカラー値であり、後者は一つのスカラー値を持ったリストを構成する
+配列のスライスです。スカラー値を必要とするならば(ほとんど
+の場合がこうでしょう)$を使うべきで、@は一つのスカラー値を持った
+リストを必要とするとき(実際のところ、この状況は非常に希でしょう)
+に使うべきものです。
+
+これらはあるときには違いがありませんが、違いがでる場合もあります。
+例えば:
+
+    $good[0] = `some program that outputs several lines`;
+
+と
+
+    @bad[0]  = `same program that outputs several lines`;
+
+を比較したときがそうです。
+
+=begin original
+
+The C<use warnings> pragma and the B<-w> flag will warn you about these 
+matters.
+
+=end original
+
+C<use warnings> プラグマと B<-w> フラグはこのことに関する警告を行います。
+
+=head2 How can I remove duplicate elements from a list or array?
+
+(配列やリストにある重複した要素を削除するのはどうやればできますか?)
+
+幾つかの方法が可能です。あなたが決まった順序で取り出したいのかどうか、
+配列に格納されている順序がどうであるのかによります。
+
+=over 4
+
+=item a)
+
+=begin original
+
+If @in is sorted, and you want @out to be sorted:
+(this assumes all true values in the array)
+
+=end original
+
+@inがソートされていて、@outがソートされているようにしたいのなら:
+(配列の中の値が全てtrueであると仮定しています)
+
+    $prev = "not equal to $in[0]";
+    @out = grep($_ ne $prev && ($prev = $_, 1), @in);
+
+=begin original
+
+This is nice in that it doesn't use much extra memory, simulating
+uniq(1)'s behavior of removing only adjacent duplicates.  The ", 1"
+guarantees that the expression is true (so that grep picks it up)
+even if the $_ is 0, "", or undef.
+
+=end original
+
+これはとてもよく、余計なメモリも使いません。重複のみを取り除くのに
+uniq(1)の振る舞いをシミュレートします。
+", 1" の部分が、例え $_ が 0, "", undef でも式が true である
+(sort が対象とする)ことを保証します。
+
+=item b)
+
+=begin original
+
+If you don't know whether @in is sorted:
+
+=end original
+
+@inがソートされているかどうかわからなければ:
+
+    undef %saw;
+    @out = grep(!$saw{$_}++, @in);
+
+=item c)
+
+=begin original
+
+Like (b), but @in contains only small integers:
+
+=end original
+
+(b)に似ているが、@inが小さな整数からのみ構成される場合:
+
+    @out = grep(!$saw[$_]++, @in);
+
+=item d)
+
+=begin original
+
+A way to do (b) without any loops or greps:
+
+=end original
+
+ループやgrepを使わずに(b)と同じことをするには:
+
+    undef %saw;
+    @saw{@in} = ();
+    @out = sort keys %saw;  # 必要なければsortを取り除く
+
+=item e)
+
+=begin original
+
+Like (d), but @in contains only small positive integers:
+
+=end original
+
+(d)と同様だが、@inが小さな正の整数のみで構成されている場合:
+
+    undef @ary;
+    @ary[@in] = @in;
+    @out = grep {defined} @ary;
+
+=back
+
+=begin original
+
+But perhaps you should have been using a hash all along, eh?
+
+=end original
+
+しかしおそらくは、あなたはハッシュを使った方が良かったでしょう?
+
+=head2 How can I tell whether an list or array contains a certain element?
+
+(リストや配列の内容にある特定の要素があるかどうかを確かめるには?)
+
+ハッシュはこの質問に対する速くて効率の良い解答のために
+デザインされています。配列はそうではありません。
+
+幾つかのやり方がありますが、この問い合わせを多くのアイテムに対して
+行いたいとか、値が任意の文字列である場合には最も速いやり方は元の
+配列の逆のものを作って元の配列の値をキーとするような連想配列を
+保持するというものです。
+
+    @blues = qw/azure cerulean teal turquoise lapis-lazuli/;
+    undef %is_blue;
+    for (@blues) { $is_blue{$_} = 1 }
+
+こうすれば、$is_blue{$some_color}がどうであるかでチェックすることができます。
+最初の場所で bulesにハッシュのすべてを保持させるのはよい考えでしょう。
+
+値のすべてが小さな整数であれば、単純な添え字付き配列を使うことができます。
+この種の配列はより少ない場所しか使いません。
+
+    @primes = (2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31);
+    undef @is_tiny_prime;
+    for (@primes) { $is_tiny_prime[$_] = 1 }
+    # or simply  @istiny_prime[@primes] = (1) x @primes;
+
+これで $is_tiny_prime[$some_number]の内容がどうであるかで
+チェックすることができます。
+
+問い合わせる値が文字列ではなく整数であるのならば、ビットストリングを
+使うことによって大幅に空間を節約することができます。
+
+    @articles = ( 1..10, 150..2000, 2017 );
+    undef $read;
+    for (@articles) { vec($read,$_,1) = 1 }
+
+これで C<vec($read,$n,1)>が真かどうかでC<$n>の検査ができます。
+
+    ($is_there) = grep $_ eq $whatever, @array;
+
+だとか
+
+    ($is_there) = grep /$whatever/, @array;
+
+のようなやり方はしないでください。
+
+これらのやり方は遅く(最初に対象が見つかったとしてもすべての要素を
+検査していしまいます)、非効率(同じ理由です)で、バグの可能性を
+含んでいます($whatheverに正規表現キャラクターがあったりしたら?)。
+もし一度だけしかテストしないなら、以下のものを使いましょう:
+
+    $is_there = 0;
+    foreach $elt (@array) {
+	if ($elt eq $elt_to_find) {
+	    $is_there = 1;
+	    last;
+	}
+    }
+    if ($is_there) { ... }
+
+=head2 How do I compute the difference of two arrays?  How do I compute the intersection of two arrays?
+
+(二つの配列の差(difference)を求めるには?
+二つの配列の共通要素(inter section)を求めるには?)
+
+ハッシュを使います。以下のプログラム片は質問の両方を行います。
+与えられた配列の要素には重複がないと仮定しています。
+
+    @union = @intersection = @difference = ();
+    %count = ();
+    foreach $element (@array1, @array2) { $count{$element}++ }
+    foreach $element (keys %count) {
+	push @union, $element;
+	push @{ $count{$element} > 1 ? \@intersection : \@difference }, $element;
+    }
+
+=begin original
+
+Note that this is the I<symmetric difference>, that is, all elements in
+either A or in B but not in both.  Think of it as an xor operation.
+
+=end original
+
+これは I<対称的差分>、つまり、A か B のどちらかにあって、
+両方にあることはない全ての要素である、ということに注意してください。
+これは xor 操作のようなものと考えてください。
+
+=head2 How do I test whether two arrays or hashes are equal?
+
+(二つの配列や二つのハッシュが等しいかどうかを検査するには?)
+
+以下に挙げる例は一レベルの配列に対して有効です。これは文字列としての
+比較を使い、definedと未定義の空文字列を区別しません。必要に応じて
+修正してください。
+
+    $are_equal = compare_arrays(\@frogs, \@toads);
+
+    sub compare_arrays {
+	my ($first, $second) = @_;
+	no warnings;  # silence spurious -w undef complaints
+	return 0 unless @$first == @$second;
+	for (my $i = 0; $i < @$first; $i++) {
+	    return 0 if $first->[$i] ne $second->[$i];
+	}
+	return 1;
+    }
+
+多重レベル構造に対応するために、あなたは以下のような手段を使いたいと
+考えるかもしれません。ここではCPANモジュールのFreezeThawを使っています:
+
+    use FreezeThaw qw(cmpStr);
+    @a = @b = ( "this", "that", [ "more", "stuff" ] );
+
+    printf "a and b contain %s arrays\n",
+        cmpStr(\@a, \@b) == 0 
+	    ? "the same" 
+	    : "different";
+
+=begin original
+
+This approach also works for comparing hashes.  Here
+we'll demonstrate two different answers:
+
+=end original
+
+このアプローチはハッシュの比較にも使えます。
+以下に二種類の回答をお見せしましょう:
+
+    use FreezeThaw qw(cmpStr cmpStrHard);
+
+    %a = %b = ( "this" => "that", "extra" => [ "more", "stuff" ] );
+    $a{EXTRA} = \%b;
+    $b{EXTRA} = \%a;                    
+
+    printf "a and b contain %s hashes\n",
+	cmpStr(\%a, \%b) == 0 ? "the same" : "different";
+
+    printf "a and b contain %s hashes\n",
+	cmpStrHard(\%a, \%b) == 0 ? "the same" : "different";
+
+最初のものは二つのハッシュが同じ内容であると報告しますが、二番目の
+ものは違うと報告します。
+
+=head2 How do I find the first array element for which a condition is true?
+
+(ある条件が真となる最初の配列要素を見つけだすには?)
+
+添え字に注意しているのなら以下のようにしてできます:
+
+    for ($i= 0; $i < @array; $i++) {
+        if ($array[$i] eq "Waldo") {
+	    $found_index = $i;
+            last;
+        }
+    }
+
+これでC<$found_index>にあなたの求めるものが入っています。
+
+=head2 How do I handle linked lists?
+
+(リンク付きリストを扱うには?)
+
+一般的には、Perlではリンク付きリストを扱う必要はありません。
+なぜなら、通常の配列を使ってpushやpop、shiftやunsiftを使って両端で
+操作できたり、spliceを使って任意の場所にある任意個の要素を加えたり
+削除したりすることができるからです。
+popとshiftは両方ともが、Perlの動的配列に対するO(1)の操作です。
+shiftやpopがなかった場合、pushは一般的にはlog(N)回毎のオーダーで再割り当てが
+必要になります。
+そしてunshiftは呼ばれる毎にポインターのコピーが必要になるでしょう。
+
+もし、本当に、本当にリンク付きリストを使いたいのなら、L<perldsc> や
+L<perltoot>で説明されているようなデータ構造を使うことができ、
+アルゴリズムの教科書にあるようなことができます。
+例えば以下のようなリストノードをを考えてみましょう:
+
+    $node = {
+        VALUE => 42,
+        LINK  => undef,
+    };
+
+リストを渡り歩くには以下のようにします:
+
+    print "List: ";
+    for ($node = $head;  $node; $node = $node->{LINK}) {
+        print $node->{VALUE}, " ";
+    }
+    print "\n";
+
+=begin original
+
+You could add to the list this way:
+
+=end original
+
+以下のやり方でリストに追加できます:
+
+    my ($head, $tail);
+    $tail = append($head, 1);       # grow a new head
+    for $value ( 2 .. 10 ) {
+        $tail = append($tail, $value);
+    }
+
+    sub append {
+        my($list, $value) = @_;
+        my $node = { VALUE => $value };
+        if ($list) {
+            $node->{LINK} = $list->{LINK};
+            $list->{LINK} = $node;
+        } else {
+            $_[0] = $node;      # replace caller's version
+        }
+        return $node;
+    }
+
+しかし繰り返しますが、Perlの組み込み型は事実上常に
+充分なものなのです。
+
+=head2 How do I handle circular lists?
+
+循環リスト(circular list)を扱うには?
+
+循環リストはリンク付きリストを使って伝統的なやり方で扱うことができます。
+あるいは以下のように配列を使って行うこともできます:
+
+    unshift(@array, pop(@array));  # 最後を先頭に
+    push(@array, shift(@array));   # その反対
+
+=head2 How do I shuffle an array randomly?
+
+(配列をランダムにかき混ぜるには?)
+
+こうします:
+
+    # fisher_yates_shuffle( \@array ) : 
+    # generate a random permutation of @array in place
+    sub fisher_yates_shuffle {
+        my $array = shift;
+        my $i;
+        for ($i = @$array; --$i; ) {
+            my $j = int rand ($i+1);
+            @$array[$i,$j] = @$array[$j,$i];
+        }
+    }
+
+    fisher_yates_shuffle( \@array );    # @array そのものを入れ替える
+
+spliceを使ったシャッフルアルゴリズムを見たことがあるかもしれません。
+カレントの要素をランダムに取り出した別の要素と交換します:
+
+    srand;
+    @new = ();
+    @old = 1 .. 10;  # 単なるデモ
+    while (@old) {
+	push(@new, splice(@old, rand @old, 1));
+    }
+
+=begin original
+
+This is bad because splice is already O(N), and since you do it N times,
+you just invented a quadratic algorithm; that is, O(N**2).  This does
+not scale, although Perl is so efficient that you probably won't notice
+this until you have rather largish arrays.
+
+=end original
+
+これはspliceがO(N)であり、さらにそれをN回呼んでいるのですから
+良くありません。つまりこれはO(N**2)のアルゴリズムです。
+これは大きな配列に使わなければあなたはその効率の悪さに気がつかないでしょう。
+
+=head2 How do I process/modify each element of an array?
+
+(配列の各要素に対する処理や、変更を行うには?)
+
+C<for>/C<foreach>を使います:
+
+    for (@lines) {
+	s/foo/bar/;	# 単語を変換
+	y/XZ/ZX/;	# 文字の入れ替え
+    }
+
+別の方法です。球の体積を求めます:
+
+    for (@volumes = @radii) {   # @volumes has changed parts
+	$_ **= 3;
+	$_ *= (4/3) * 3.14159;  # これは定数畳み込みが行われるでしょう
+    }
+
+=begin original
+
+If you want to do the same thing to modify the values of the hash,
+you may not use the C<values> function, oddly enough.  You need a slice:
+
+=end original
+
+同じことをハッシュの値に対して行いたいのであれば、
+C<values>を使うことはできません。スライスを使う必要があります:
+
+    for $orbit ( @orbits{keys %orbits} ) {
+	($orbit **= 3) *= (4/3) * 3.14159; 
+    }
+
+=head2 How do I select a random element from an array?
+
+(ある配列からランダムに要素を選択するには?)
+
+rand()関数を使います(L<perlfunc/rand>を参照):
+
+    # プログラムの先頭で:
+    srand;			# 5.004以降では不要
+
+    # その後で
+    $index   = rand @array;
+    $element = $array[$index];
+
+B<プログラム毎に一度だけsrandを呼ぶ>ようにしてください。
+もし二度以上呼び出すことがあると(先の例のrandの直前で
+呼び出すなど)、ほとんどの場合間違ったことを行うことになるでしょう。
+
+=head2 How do I permute N elements of a list?
+
+(N要素を持つリストの順列(permute)を求めるには?)
+
+以下の小さなプログラムは入力された行にある各単語の順列をすべて生成します。
+関数 permute() で使われているアルゴリズムは任意のリストで動作するはずです:
+
+    #!/usr/bin/perl -n
+    # tsc-permute: 入力にある語を入れ替える
+    permute([split], []);
+    sub permute {
+        my @items = @{ $_[0] };
+        my @perms = @{ $_[1] };
+        unless (@items) {
+            print "@perms\n";
+	} else {
+            my(@newitems,@newperms,$i);
+            foreach $i (0 .. $#items) {
+                @newitems = @items;
+                @newperms = @perms;
+                unshift(@newperms, splice(@newitems, $i, 1));
+                permute([@newitems], [@newperms]);
+	    }
+	}
+    }
+
+=head2 How do I sort an array by (anything)?
+
+((なにか)で配列をソートするには?)
+
+sort() (L<perlfunc/sort>に説明があります)のための比較関数を作ります:
+
+    @list = sort { $a <=> $b } @list;
+
+デフォルトのソート関数は文字列比較であるcmpで、C<(1, 2, 10)>を 
+C<(1, 10, 2)>に並び変えます．上の例では、数値比較演算子である 
+C<< <=> >> を使っています．
+
+ソートするものの一部を取り出す必要があるような複雑な関数を使うのなら、
+ソート関数の内側でそれを使ってはいけません。
+最初にその関数で使う部分を取り出します．
+なぜなら、sort BLOCKは同じ要素に対して何度も何度も呼び出される
+可能性があるからです。
+以下の例は、各アイテムの最初の番号の後にある最初の単語を取り出し、
+その後でそれらの単語を大小文字を無視してソートします．
+
+    @idx = ();
+    for (@data) {
+	($item) = /\d+\s*(\S+)/;
+	push @idx, uc($item);
+    }
+    @sorted = @data[ sort { $idx[$a] cmp $idx[$b] } 0 .. $#idx ];
+
+これは Schwartzian Transformと呼ばれるトリックを使って以下のように
+書くこともできます:
+
+    @sorted = map  { $_->[0] }
+	      sort { $a->[1] cmp $b->[1] }
+	      map  { [ $_, uc( (/\d+\s*(\S+)/)[0]) ] } @data;
+
+幾つかのフィールドを使ってソートする必要があるのなら、
+以下のやり方が便利でしょう。
+
+    @sorted = sort { field1($a) <=> field1($b) ||
+                     field2($a) cmp field2($b) ||
+                     field3($a) cmp field3($b)
+                   }     @data;
+
+これは先の例にあったキーの precalculationと組み合わせることも
+できます。
+
+このやり方に関するより詳しい情報は
+http://www.perl.com/CPAN/doc/FMTEYEWTK/sort.html 
+を参照してください。
+
+後ででてくるハッシュのソートに関する質問も参照してください。
+
+=head2 How do I manipulate arrays of bits?
+
+(ビット配列を扱うには?)
+
+pack() と unpack()か、vec()とビット演算を使います。
+
+以下の例は、$ints[N]がセットされていれば $vecのbit Nをセットします。
+
+    $vec = '';
+    foreach(@ints) { vec($vec,$_,1) = 1 }
+
+そして次に挙げる例は、$vecで与えられるベクターのビットを配列 @ints に
+取り出すものです:
+
+    sub bitvec_to_list {
+	my $vec = shift;
+	my @ints;
+	# ナルバイトの量を検査してから最善のアルゴリズムを選択します
+	if ($vec =~ tr/\0// / length $vec > 0.95) {
+	    use integer;
+	    my $i;
+	    # この方法はほとんどがナルバイトのときに高速です
+	    while($vec =~ /[^\0]/g ) {
+		$i = -9 + 8 * pos $vec;
+		push @ints, $i if vec($vec, ++$i, 1);
+		push @ints, $i if vec($vec, ++$i, 1);
+		push @ints, $i if vec($vec, ++$i, 1);
+		push @ints, $i if vec($vec, ++$i, 1);
+		push @ints, $i if vec($vec, ++$i, 1);
+		push @ints, $i if vec($vec, ++$i, 1);
+		push @ints, $i if vec($vec, ++$i, 1);
+		push @ints, $i if vec($vec, ++$i, 1);
+	    }
+	} else {
+	    # この方法は一般的に高速なものです
+	    use integer;
+	    my $bits = unpack "b*", $vec;
+	    push @ints, 0 if $bits =~ s/^(\d)// && $1;
+	    push @ints, pos $bits while($bits =~ /1/g);
+	}
+	return \@ints;
+    }
+
+この方法はビットベクターが疎であるときにさらに高速になります
+(Tim Bunce と Winfried Koenigによるものです)。
+
+vec()を使ったデモです:
+
+    # vec demo
+    $vector = "\xff\x0f\xef\xfe";
+    print "Ilya's string \\xff\\x0f\\xef\\xfe represents the number ", 
+	unpack("N", $vector), "\n";
+    $is_set = vec($vector, 23, 1);
+    print "Its 23rd bit is ", $is_set ? "set" : "clear", ".\n";
+    pvec($vector);
+
+    set_vec(1,1,1);
+    set_vec(3,1,1);
+    set_vec(23,1,1);
+
+    set_vec(3,1,3);
+    set_vec(3,2,3);
+    set_vec(3,4,3);
+    set_vec(3,4,7);
+    set_vec(3,8,3);
+    set_vec(3,8,7);
+
+    set_vec(0,32,17);
+    set_vec(1,32,17);
+
+    sub set_vec { 
+	my ($offset, $width, $value) = @_;
+	my $vector = '';
+	vec($vector, $offset, $width) = $value;
+	print "offset=$offset width=$width value=$value\n";
+	pvec($vector);
+    }
+
+    sub pvec {
+	my $vector = shift;
+	my $bits = unpack("b*", $vector);
+	my $i = 0;
+	my $BASE = 8;
+
+	print "vector length in bytes: ", length($vector), "\n";
+	@bytes = unpack("A8" x length($vector), $bits);
+	print "bits are: @bytes\n\n";
+    } 
+
+
+=head2 Why does defined() return true on empty arrays and hashes?
+
+(なぜ空の配列やハッシュにdefined()を使ったときに真が返ってくるのでしょう?)
+
+簡単にいえば、スカラーや関数に対してのみdefinedを使うべきで、
+集成体(aggregates, 配列やハッシュ)に対して使うべきではないのです。
+詳しくは5.004以降のL<perlfunc/defined>を参照してください。
+
+=head1 Data: Hashes (Associative Arrays)
+
+=head2 How do I process an entire hash?
+
+(ハッシュ全体を処理するには?)
+
+ハッシュがソートされているかどうかを気にしないのであれば、
+each()関数(L<perlfunc/each>参照)を使います:
+
+    while ( ($key,$value) = each %hash) {
+	print "$key = $value\n";
+    }
+
+ソートされていることを望むのなら、前の質問にあったようにキーをソートした
+結果に対してforeach()を使う必要があるでしょう。
+
+=head2 What happens if I add or remove keys from a hash while iterating over it?
+
+(ハッシュに対して反復操作(iterrating)を行っているときにキーの追加や
+削除をすると何が起きますか?)
+
+=begin original
+
+Don't do that. :-)
+
+=end original
+
+そんなことをしてはいけません。:-)
+
+[lwall] In Perl 4, you were not allowed to modify a hash at all while
+iterating over it.  In Perl 5 you can delete from it, but you still
+can't add to it, because that might cause a doubling of the hash table,
+in which half the entries get copied up to the new top half of the
+table, at which point you've totally bamboozled the iterator code.
+Even if the table doesn't double, there's no telling whether your new
+entry will be inserted before or after the current iterator position.
+
+Either treasure up your changes and make them after the iterator finishes
+or use keys to fetch all the old keys at once, and iterate over the list
+of keys.
+
+=head2 How do I look up a hash element by value?
+
+(ハッシュの要素をその値で検索するには?)
+
+リバースハッシュを作成します:
+
+    %by_value = reverse %by_key;
+    $key = $by_value{$value};
+
+これは特に効率がよいものではありません。空間を効率よく使うにはこうします:
+
+    while (($key, $value) = each %by_key) {
+	$by_value{$value} = $key;
+    }
+
+=begin original
+
+If your hash could have repeated values, the methods above will only find
+one of the associated keys.   This may or may not worry you.  If it does
+worry you, you can always reverse the hash into a hash of arrays instead:
+
+=end original
+
+ハッシュに同じ値がある場合には、このメソッドは最初に見つかったキ
+ーだけを見つけだします。あなたはこれを気にするかも知れませんし、
+気にしないかもしれません。
+もし気にするのなら、いつでもハッシュの代わりに配列のハッシュを
+使うことができます:
+
+     while (($key, $value) = each %by_key) {
+	 push @{$key_list_by_value{$value}}, $key;
+     }
+
+=head2 How can I know how many entries are in a hash?
+
+ハッシュにどれくらいの要素があるのかはどうすればわかりますか?
+
+どのくらいのキーがあるのかという事なら、keys()関数をスカラーコンテキストで
+使います:
+
+    $num_keys = scalar keys %hash;
+
+The keys() function also resets the iterator, which in void context is
+faster for tied hashes than would be iterating through the whole 
+hash, one key-value pair at a time.
+
+=head2 How do I sort a hash (optionally by value instead of key)?
+
+ハッシュを(キーではなく値で)ソートするには?
+
+内部的には、ハッシュはキーと値のペアを特定の順番で取り出すことを
+妨げるような方法で格納されています。このため、キーか値のリストを
+ソートする必要があります．
+
+    @keys = sort keys %hash;	# キーによるソート
+    @keys = sort {
+		    $hash{$a} cmp $hash{$b}
+	    } keys %hash; 	# 値によるソート
+
+以下の例は、値を数値の降順でソートし、二つのキーが同値であれば
+それをキーの長さでソートし、それが失敗したならキーの直接的なASCII
+比較を行うものです(そう、あなたの使うロカールで代る可能性があります。
+L<perllocale>を参照してください)。
+
+    @keys = sort {
+		$hash{$b} <=> $hash{$a}
+			  ||
+		length($b) <=> length($a)
+			  ||
+		      $a cmp $b
+    } keys %hash;
+
+=head2 How can I always keep my hash sorted?
+
+(私のハッシュを常にソートされた状態にしておくには?)
+
+=begin original
+
+You can look into using the DB_File module and tie() using the
+$DB_BTREE hash bindings as documented in L<DB_File/"In Memory Databases">.
+The Tie::IxHash module from CPAN might also be instructive.
+
+=end original
+
+L<DB_File/"In Memory Databases">にあるように、DB_Fileモジュールと
+tie()を使った、$DB_BTREE ハッシュ束縛を使うことができます。
+CPAN の Tie::IxHash モジュールも有益かもしれません。
+
+=head2 What's the difference between "delete" and "undef" with hashes?
+
+(ハッシュに対する "delete" と "undef"との間の違いはなんですか?)
+
+ハッシュはスカラーのペアです: 最初のスカラーがキーで、二番目のスカラーが値です。
+キーは文字列、数値、リファレンスのいずれの種類のスカラーであっても
+強制的に文字列にされます。配列の中にC<$key>というキーが既にあれば、
+C<exists($key)>は真を返します。
+与えられたキーに対する値はC<undef>とすることができます。
+これは C<$array{$key}> を C<undef>にして、C<$exists{$key}>が真を
+返すという状態です。こ
+れは (C<$key>, C<undef>)がハッシュに存在しているということを示しています。
+
+図が助けになるでしょう。以下はC<%ary>のテーブルです:
+
+	  キー  値
+	+------+------+
+	|  a   |  3   |
+	|  x   |  7   |
+	|  d   |  0   |
+	|  e   |  2   |
+	+------+------+
+
+そしてこれらが保持している状態はこうです
+
+	$ary{'a'}                       is true
+	$ary{'d'}                       is false
+	defined $ary{'d'}               is true
+	defined $ary{'a'}               is true
+	exists $ary{'a'}                is true (Perl5 のみ)
+	grep ($_ eq 'a', keys %ary)     is true
+
+ここで
+	undef $ary{'a'}
+
+とすると、テーブルはこうなります:
+
+
+	  キー  値
+	+------+------+
+	|  a   | undef|
+	|  x   |  7   |
+	|  d   |  0   |
+	|  e   |  2   |
+	+------+------+
+
+そしてその状態は以下のようになります。大文字になっているのが
+変った場所です。
+
+	$ary{'a'}                       is FALSE
+	$ary{'d'}                       is false
+	defined $ary{'d'}               is true
+	defined $ary{'a'}               is FALSE
+	exists $ary{'a'}                is true (Perl5 のみ)
+	grep ($_ eq 'a', keys %ary)     is true
+
+最後の二つに注目してください:あなたはundef値を保持していますが、
+キーはdefineされているのです!
+
+さて、こんどは以下の例を考えてみましょう:
+
+	delete $ary{'a'}
+
+テーブルはこうなります:
+
+	  キー  値
+	+------+------+
+	|  x   |  7   |
+	|  d   |  0   |
+	|  e   |  2   |
+	+------+------+
+
+and these conditions now hold; changes in caps:
+そしてその状態はこうです。大文字の部分が変ったところです。
+
+	$ary{'a'}                       is false
+	$ary{'d'}                       is false
+	defined $ary{'d'}               is true
+	defined $ary{'a'}               is false
+	exists $ary{'a'}                is FALSE (Perl5 only)
+	grep ($_ eq 'a', keys %ary)     is FALSE
+
+=begin original
+
+See, the whole entry is gone!
+
+=end original
+
+ほら、エントリが丸ごとなくなっていまいました!
+
+=head2 Why don't my tied hashes make the defined/exists distinction?
+
+(なぜわたしのtieされたハッシュは
+definedとexistsを区別しないのでしょうか?)
+
+=begin original
+
+They may or may not implement the EXISTS() and DEFINED() methods
+differently.  For example, there isn't the concept of undef with hashes
+that are tied to DBM* files. This means the true/false tables above
+will give different results when used on such a hash.  It also means
+that exists and defined do the same thing with a DBM* file, and what
+they end up doing is not what they do with ordinary hashes.
+
+=end original
+
+EXISTS()メソッド と DEFINED()メソッドとが違うものとして
+実装されていないのかもしれません。
+たとえば、DBM*ファイルにtieされたハッシュにはundefという考え方はありません。
+これはつまり、上にあったtrue/falseのテーブルがそういったハッシュを
+使った場合は違ったものになるだろうということです。
+これはまたDBM* fileにとってはexitsとdefineとは同じことであり、
+そういったものに対して行っていることは
+通常のハッシュに対して行っていることとは違うのだということなのです。
+
+=head2 How do I reset an each() operation part-way through?
+
+(each() 操作の途中でリセットしてしまうには?)
+
+=begin original
+
+Using C<keys %hash> in a scalar context returns the number of keys in
+the hash I<and> resets the iterator associated with the hash.  You may
+need to do this if you use C<last> to exit a loop early so that when you
+re-enter it, the hash iterator has been reset.
+
+=end original
+
+スカラーコンテキストでC<keys %hash>を使うと、ハッシュにあるキーの数を返し、
+B<そして>そのハッシュに結び付けられたイテレーター
+(iterator)をリセットします。
+ループの途中でC<last>を使って脱出していて、後でそのループに再度
+入るようなときには、ハッシュイテレーターをリセットしておくために
+これを行う必要があるでしょう。
+
+=head2 How can I get the unique keys from two hashes?
+
+(どうすれば二つのハッシュからユニークなキーを取りだせますか?)
+
+まず最初にハッシュからキーを取りだして、それをリストに格納します。
+そして、先に説明した「重複の削除」問題の解決を行います。例:
+
+    %seen = ();
+    for $element (keys(%foo), keys(%bar)) {
+	$seen{$element}++;
+    }
+    @uniq = keys %seen;
+
+あるいはもっと簡潔に:
+
+    @uniq = keys %{{%foo,%bar}};
+
+もし本当にメモリ空間を節約したいのなら:
+
+    %seen = ();
+    while (defined ($key = each %foo)) {
+        $seen{$key}++;
+    }
+    while (defined ($key = each %bar)) {
+        $seen{$key}++;
+    }
+    @uniq = keys %seen;
+
+=head2 How can I store a multidimensional array in a DBM file?
+
+(どうやればDBMファイルに多次元配列を格納できますか?)
+
+自分自身で構造を文字列化するか、MLDBMモジュール(Data::Dumperを使います)を
+CPANから取ってきて、DB_FileかGDBM_Fileのいずれかのトップレイヤーにします。
+
+=head2 How can I make my hash remember the order I put elements into it?
+
+(どうすれば、わたしのハッシュが格納した順番を覚えておくようにできますか?)
+
+CPANにあるTie::IxHashを使います。
+
+    use Tie::IxHash;
+    tie(%myhash, Tie::IxHash);
+    for ($i=0; $i<20; $i++) {
+        $myhash{$i} = 2*$i;
+    }
+    @keys = keys %myhash;
+    # @keys = (0,1,2,3,...)
+
+=head2 Why does passing a subroutine an undefined element in a hash create it?
+
+(なぜあるハッシュの未定義要素をサブルーチンに渡すとそれを作成するのでしょうか?)
+
+If you say something like:
+
+    somefunc($hash{"nonesuch key here"});
+
+このようにした場合、この要素は新たに生みだされます("autovivifies")。
+これはつまり、あなたがそこに何かを格納するため(実際に格納することがなくても)に
+作り出されるのです。
+これは関数が渡されたスカラーをリファレンスで受け取るからです。
+somefunc()がC<$_[0]>を変更するのなら、
+呼び出し元にそれを反映させるために書き込みができるように
+なっていなければなりません。
+
+これはPerl5.004で修正されました。
+
+通常は、存在していないキーに対するアクセスは、そのキーを生成する
+ようなことはB<ありません>。これはawkの振る舞いとは異なります．
+
+=head2 How can I make the Perl equivalent of a C structure/C++ class/hash or array of hashes or arrays?
+
+(どうすればCの構造体/C++のクラス のハッシュ、配列のハッシュ、配列
+と等価なものをPerlで作成できますか?)
+
+通常はハッシュのリファレンスを使います。多分以下のようになるでしょう:
+
+    $record = {
+        NAME   => "Jason",
+        EMPNO  => 132,
+        TITLE  => "deputy peon",
+        AGE    => 23,
+        SALARY => 37_000,
+        PALS   => [ "Norbert", "Rhys", "Phineas"],
+    };
+
+リファレンスはL<perlref>とL<perlreftut>に説明があります。
+複雑なデータ構造の例がL<perldesc>とL<perllol>にあります。
+構造体とオブジェクト指向クラスの例がL<perltoot>にあります。
+
+=head2 How can I use a reference as a hash key?
+
+(どうすればハッシュのキーとしてリファレンスを使えますか?)
+
+これは直接に行うことはできませんが、Perlと一緒に配布されている標準の
+Tie::Rehashモジュールを使うことができます。
+
+=head1 Data: Misc
+
+=head2 How do I handle binary data correctly?
+
+(バイナリデータを正しく扱うには?)
+
+Perlはバイナリクリーンです。ですから、問題はどこにもないはずです。
+たとえば、次の例は正しく動作します(ファイルが見つかることを仮定しています):
+
+    if (`cat /vmunix` =~ /gzip/) {
+	print "Your kernel is GNU-zip enabled!\n";
+    }
+
+=begin original
+
+On less elegant (read: Byzantine) systems, however, you have
+to play tedious games with "text" versus "binary" files.  See
+L<perlfunc/"binmode"> or L<perlopentut>.  Most of these ancient-thinking
+systems are curses out of Microsoft, who seem to be committed to putting
+the backward into backward compatibility.
+
+=end original
+
+しかしながらあまりエレガントでないシステムでは、“テキスト”ファイルと“バイナリ”
+ファイルとの間の飽き飽きするようなゲームをする必要があるでしょう。
+L<perlfunc/"binmode">とL<perlopentut>を参照してください。
+これらの古臭い考え方のシステムのほとんどはマイクロソフトの呪いを受けています。
+過去との互換性をずっとひきずっているからです。
+
+もし8ビットASCIIデータについて考えているのであれば、L<perllocale>を
+参照してください。
+
+ただしマルチバイトキャラクターを扱いたいと考えているなら、幾つかの
+罠(gotchas)があります。正規表現のセクションを参照してください。
+
+=head2 How do I determine whether a scalar is a number/whole/integer/float?
+
+(あるスカラーが数値/whole/整数/浮動小数点数のいずれであることを決定するには?)
+
+“NaN”とか“Infinity”のようなIEEE表記については気にしないと仮定すると、
+正規表現を使って行うことができます。
+
+   if (/\D/)            { print "has nondigits\n" }
+   if (/^\d+$/)         { print "is a whole number\n" }
+   if (/^-?\d+$/)       { print "is an integer\n" }
+   if (/^[+-]?\d+$/)    { print "is a +/- integer\n" }
+   if (/^-?\d+\.?\d*$/) { print "is a real number\n" }
+   if (/^-?(?:\d+(?:\.\d*)?|\.\d+)$/) { print "is a decimal number" }
+   if (/^([+-]?)(?=\d|\.\d)\d*(\.\d*)?([Ee]([+-]?\d+))?$/)
+			{ print "a C float" }
+
+POSIXシステムを使っているのなら、PerlはC<POSIX::strtod>
+関数をサポートしています。
+そのセマンティックは扱いにくいもので、もっと便利にアクセスするための
+C<getnum>関数を以下に例示します。
+この関数は文字列を引数に取り、その文字列中で見つかった数字列に対応する
+数値を返し、入力がCの小数点表記にあわないものであればC<undef>を返します。
+C<is_numeric>関数は“これは数値か?”ということを知りたい場合に
+C<getnum>のフロントエンドとなります。
+
+    sub getnum {
+        use POSIX qw(strtod);
+        my $str = shift;
+        $str =~ s/^\s+//;
+        $str =~ s/\s+$//;
+        $! = 0;
+        my($num, $unparsed) = strtod($str);
+        if (($str eq '') || ($unparsed != 0) || $!) {
+            return undef;
+        } else {
+            return $num;
+        } 
+    } 
+
+    sub is_numeric { defined getnum($_[0]) } 
+
+=begin original
+
+Or you could check out the String::Scanf module on CPAN instead.  The
+POSIX module (part of the standard Perl distribution) provides the
+C<strtod> and C<strtol> for converting strings to double and longs,
+respectively.
+
+=end original
+
+あるいは、 CPAN にあるString::Scanf モジュールををチェックしてみてください。
+POSIXモジュール(標準Perl配布キットの一部です)は文字列から倍精度浮動小数点数や
+長整数への変換を適切に行うC<strtod> と C<strtol> を提供しています。
+
+=head2 How do I keep persistent data across program calls?
+
+(プログラムの呼び出しの間に、データ構造を永続的に保持するには?)
+
+一部の特定のアプリケーションでは、DBMモジュールの一つを使うことができます。
+L<AnyDBM_File>を参照してください。より一般的には、
+CPANにあるFreezeThaw, Storable,  Class::Eroot といったモジュールを
+あたってみるべきでしょう。以下にStorableの
+C<store>とC<retrieve>を使った例を挙げます:
+
+    use Storable; 
+    store(\%hash, "filename");
+
+    # later on...  
+    $href = retrieve("filename");        # by ref
+    %hash = %{ retrieve("filename") };   # direct to hash
+
+=head2 How do I print out or copy a recursive data structure?
+
+(再帰的なデータ構造を出力したりコピーするには?)
+
+CPANにある Data::Dumperモジュール(5.005以降ではPerlのリリースに
+含まれています)はデータ構造を出力するのに向いています。
+CPANにあるStorableモジュールはその引数を再帰的にコピーする
+C<dclone>という関数を提供しています。
+
+    use Storable qw(dclone); 
+    $r2 = dclone($r1);
+
+ここで$r1にはあなたの望むデータ構造のリファレンスを置くことができます。
+これは深くコピー(deeply copied)されます。C<dclone>はリファレンスを取り
+リファレンスを返すので、コピーしたいものが配列のハッシュであったりした
+場合には余計なpunctuationが必要となるでしょう。
+
+    %newhash = %{ dclone(\%oldhash) };
+
+=head2 How do I define methods for every class/object?
+
+(すべてのクラス/オブジェクトのためのメソッドを定義するには?)
+
+=begin original
+
+Use the UNIVERSAL class (see L<UNIVERSAL>).
+
+=end original
+
+UNIVERSAL クラス (L<UNIVERSAL>)を参照)を使います。
+
+=head2 How do I verify a credit card checksum?
+
+(クレジットカードのチェックサムを検査するには?)
+
+CPANから Business::CreditCard モジュールを入手してください。
+
+=head2 How do I pack arrays of doubles or floats for XS code?
+
+(XSプログラムのために倍精度実数や単精度実数の配列をパックするには?)
+
+CPANにあるPGPLOTモジュールにあるkgbpack.cというものがそれをします。
+倍精度実数や単精度実数を大量に扱うのであれば、CPANにある
+PDLモジュールを使うことを考えてみるとよいでしょう。これは
+number-crunchingを簡単にしてくれます。
+
+=head1 AUTHOR AND COPYRIGHT
+
+Copyright (c) 1997-1999 Tom Christiansen and Nathan Torkington.
+All rights reserved.
+
+When included as part of the Standard Version of Perl, or as part of
+its complete documentation whether printed or otherwise, this work
+may be distributed only under the terms of Perl's Artistic License.
+Any distribution of this file or derivatives thereof I<outside>
+of that package require that special arrangements be made with
+copyright holder.
+
+Irrespective of its distribution, all code examples in this file
+are hereby placed into the public domain.  You are permitted and
+encouraged to use this code in your own programs for fun
+or for profit as you see fit.  A simple comment in the code giving
+credit would be courteous but is not required.

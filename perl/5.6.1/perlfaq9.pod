@@ -1,0 +1,942 @@
+=head1 NAME
+
+=begin original
+
+perlfaq9 - Networking ($Revision$, $Date$)
+
+=end original
+
+perlfaq9 - ネットワーク ($Revision$, $Date$)
+
+=head1 DESCRIPTION
+
+このセクションでは、ネットワーク、インターネット、web に関する
+質問を扱っています。
+
+=head2 My CGI script runs from the command line but not the browser.  (500 Server Error)
+
+(私のCGIスクリプトはコマンドラインでは動くのだけど、ブラウザー上では動きません
+(500 Server Errorになります))
+
+=begin original
+
+If you can demonstrate that you've read the following FAQs and that
+your problem isn't something simple that can be easily answered, you'll
+probably receive a courteous and useful reply to your question if you
+post it on comp.infosystems.www.authoring.cgi (if it's something to do
+with HTTP, HTML, or the CGI protocols).  Questions that appear to be Perl
+questions but are really CGI ones that are posted to comp.lang.perl.misc
+may not be so well received.
+
+=end original
+
+FAQの以下の部分を読んで、あなたの問題が簡単に答られるものではないと
+わかったのなら、(HTTP、HTMLやCGIプロトコルに関するものなら)
+comp.infosystems.www.authoring.cgiにポストすれば
+有用なリプライが得られるでしょう。
+Perlに関する質問のように見えていても、実はCGIに関するものだというものが
+comp.lang.perl.miscに投稿されることがありますが、回答はついていません。
+
+便利なFAQや関連するドキュメントを以下に挙げます:
+
+    CGI FAQ
+        http://www.webthing.com/tutorials/cgifaq.html
+
+    Web FAQ
+        http://www.boutell.com/faq/
+
+    WWW Security FAQ
+        http://www.w3.org/Security/Faq/
+
+    HTTP Spec
+        http://www.w3.org/pub/WWW/Protocols/HTTP/
+
+    HTML Spec
+        http://www.w3.org/TR/REC-html40/
+        http://www.w3.org/pub/WWW/MarkUp/
+
+    CGI Spec
+        http://www.w3.org/CGI/
+
+    CGI Security FAQ
+        http://www.go2net.com/people/paulp/cgi-security/safe-cgi.txt
+
+=head2 How can I get better error messages from a CGI program?
+
+(CGIプログラムから、もっとまともなエラーメッセージを得るには?)
+
+=begin original
+
+Use the CGI::Carp module.  It replaces C<warn> and C<die>, plus the
+normal Carp modules C<carp>, C<croak>, and C<confess> functions with
+more verbose and safer versions.  It still sends them to the normal
+server error log.
+
+=end original
+
+CGI::Carpモジュールを使いましょう。このモジュールはC<warn>とC<die>の
+置き換えを行い、さらに通常のCarpモジュールのC<carp>、C<croak>、
+C<confess>といった関数をより饒舌で安全なものに置き換えます。
+その出力は、サーバーの通常のエラーログに送られます。
+
+    use CGI::Carp;
+    warn "This is a complaint";
+    die "But this one is serious";
+
+以下のCGI::Carpの使用例では、エラーをあなたの選択したファイルへリダイレクトし、
+コンパイル時の警告も同様に補足するためにBEGINブロックに
+置いています:
+
+    BEGIN {
+        use CGI::Carp qw(carpout);
+        open(LOG, ">>/var/local/cgi-logs/mycgi-log")
+            or die "Unable to append to mycgi-log: $!\n";
+        carpout(*LOG);
+    }
+
+深刻なエラーをクライアントのブラウザーに戻すように変更することもできます。
+これはあなたがデバッグするには良いでしょうが、エンドユーザーを
+混乱させてしまうかもしれません。
+
+    use CGI::Carp qw(fatalsToBrowser);
+    die "Bad error here";
+
+=begin original
+
+Even if the error happens before you get the HTTP header out, the module
+will try to take care of this to avoid the dreaded server 500 errors.
+Normal warnings still go out to the server error log (or wherever
+you've sent them with C<carpout>) with the application name and date
+stamp prepended.
+
+=end original
+
+あなたがHTTPヘッダーを受け取るよりも前にエラーが起こったとしても、
+モジュールはサーバーの500エラーを避けるためにそのエラーを取り扱おうと
+するでしょう。
+通常の警告はサーバーのエラーログ(もしくはあなたがC<carpout>で指定した場所)に
+アプリケーションの名前と日付を伴って送られます。
+
+=head2 How do I remove HTML from a string?
+
+(ある文字列からHTMLを取り除くには?)
+
+=begin original
+
+The most correct way (albeit not the fastest) is to use HTML::Parser
+from CPAN.  Another mostly correct
+way is to use HTML::FormatText which not only removes HTML but also
+attempts to do a little simple formatting of the resulting plain text.
+
+=end original
+
+(最速ではありませんが)最も正しい方法は、CPANにあるHTML::Parserを
+使うというものです。
+もう一つのまず正しい方法は、HTML::FormatText を使って HTML を
+取り除くだけでなく、結果のプレーンテキストを簡単に整形することです。
+
+多くの人が、C<< s/<.*?>//g >>のような単純な(simple-minded)正規表現を
+使ったアプローチを行おうとするのですが、これは多くの場合
+失敗していまいます。なぜなら、タグは行をまたがって継続する可能性があり、
+クォートされたアングルブラケットを含む可能性があり、
+HTML のコメントがあるかもしれないからです。
+さらに、人々はC<&lt;>のようなエンティティを変換することを忘れてしまうのです。
+
+以下の例は “単純な”アプローチで、ほとんどのファイルに対しては
+うまくいきます:
+
+    #!/usr/bin/perl -p0777
+    s/<(?:[^>'"]*|(['"]).*?\1)*>//gs
+
+もし、より完璧な解決策を求めているのなら、
+http://www.perl.com/CPAN/authors/Tom_Christiansen/scripts/striphtml.gz
+にある 3-stage striphtml プログラムを参照してみてください。
+
+=begin original
+
+Here are some tricky cases that you should think about when picking
+a solution:
+
+=end original
+
+以下に挙げたのは、あなたが自分でやろうとしたときに
+考慮すべきであろうトリッキーな例です:
+
+    <IMG SRC = "foo.gif" ALT = "A > B">
+
+    <IMG SRC = "foo.gif"
+	 ALT = "A > B">
+
+    <!-- <A comment> -->
+
+    <script>if (a<b && a>c)</script>
+
+    <# Just data #>
+
+    <![INCLUDE CDATA [ >>>>>>>>>>>> ]]>
+
+=begin original
+
+If HTML comments include other tags, those solutions would also break
+on text like this:
+
+=end original
+
+以下のテキストのようにHTMLのコメントが他のタグを含んでいた場合には、
+せっかくの対応策もダメにしてしまうかもしれません:
+
+    <!-- This section commented out.
+        <B>You can't see me!</B>
+    -->
+
+=head2 How do I extract URLs?
+
+URLの展開を行うには?
+
+素早いけど完璧ではないやり方はこうです
+
+    #!/usr/bin/perl -n00
+    # qxurl - tchrist@perl.com
+    print "$2\n" while m{
+	< \s*
+	  A \s+ HREF \s* = \s* (["']) (.*?) \1
+	\s* >
+    }gsix;
+
+=begin original
+
+This version does not adjust relative URLs, understand alternate
+bases, deal with HTML comments, deal with HREF and NAME attributes
+in the same tag, understand extra qualifiers like TARGET, or accept
+URLs themselves as arguments.  It also runs about 100x faster than a
+more "complete" solution using the LWP suite of modules, such as the
+http://www.perl.com/CPAN/authors/Tom_Christiansen/scripts/xurl.gz program.
+
+=end original
+
+これは相対URLを扱うことができず、alternate baseを理解できず、HTML のコメント、
+同じタグにあるHREFやNAMEといったアトリビュートを扱うことができませんし、
+TARGET のような追加の修飾子を理解せず、
+URL自身を引数として受け取ることができません。
+これは
+http://www.perl.com/CPAN/authors/Tom_Christiansen/scripts/xurl.gz
+のような、LWPスイートにあるモジュールを使っている、より“完全な”
+解決策よりも百倍の早さで実行されます。
+
+=head2 How do I download a file from the user's machine?  How do I open a file on another machine?
+
+(ユーザーのマシンからファイルをダウンロードするには?
+別のマシンにあるファイルをオープンするには?)
+
+HTMLフォームのコンテキストにあるのならば、B<multipart/form-data>
+エンコーディングとして知られているものを使うことができるでしょう。
+CGI.pmモジュール(CPANで入手可能です)はこれを start_multipart_form()
+というstarform()メソッドとは異なるメソッドでサポートしています。
+
+=head2 How do I make a pop-up menu in HTML?
+
+(HTMLでポップアップメニューを作るには?)
+
+=begin original
+
+Use the B<< <SELECT> >> and B<< <OPTION> >> tags.  The CGI.pm
+module (available from CPAN) supports this widget, as well as many
+others, including some that it cleverly synthesizes on its own.
+
+=end original
+
+B<< <SELECT> >> タグと B<< <OPTION> >> タグを使います。
+CGI.pmモジュール(CPANから入手可能です)はこのウィジェットを他の多くのものと同様、
+独自のメニューを器用に統合しているものを含めてサポートしています。
+
+
+=head2 How do I fetch an HTML file?
+
+(HTMLファイルをフェッチするには?)
+
+一つのやり方は、あなたがlynxというテキストベースのHTMLブラウザーを
+インストールしているとすれば、次のようなものです:
+
+    $html_code = `lynx -source $url`;
+    $text_data = `lynx -dump $url`;
+
+=begin original
+
+The libwww-perl (LWP) modules from CPAN provide a more powerful way
+to do this.  They don't require lynx, but like lynx, can still work
+through proxies:
+
+=end original
+
+CPANで入手できる libwww-perl (LWP)モジュールはこれを行う、
+よりパワフルな方法を提供します。
+これは lynx を必要とせず、プロキシ越しでも使えます:
+
+    # 最も単純なバージョン
+    use LWP::Simple;
+    $content = get($URL);
+
+    # もしくはURLからHTMLを出力する
+    use LWP::Simple;
+    getprint "http://www.linpro.no/lwp/";
+
+    # もしくはあるURLのHTMLからASCIIを印字する
+    # HTML-Treeパッケージも必要です。
+    use LWP::Simple;
+    use HTML::Parser;
+    use HTML::FormatText;
+    my ($html, $ascii);
+    $html = get("http://www.perl.com/");
+    defined $html
+        or die "Can't fetch HTML from http://www.perl.com/";
+    $ascii = HTML::FormatText->new->format(parse_html($html));
+    print $ascii;
+
+=head2 How do I automate an HTML form submission?
+
+(HTMLフォームの処理を自動化するには?)
+
+GETメソッドを使って値を処理しているのであれば、URLを作って、
+さらにC<query_form>メソッドを使ってフォームをエンコードします:
+
+    use LWP::Simple;
+    use URI::URL;
+
+    my $url = url('http://www.perl.com/cgi-bin/cpan_mod');
+    $url->query_form(module => 'DB_File', readme => 1);
+    $content = get($url);
+
+POSTメソッドを使っているのであれば、自分用のエージェントを作成して
+コンテンツを適切にエンコードしてやります。
+
+    use HTTP::Request::Common qw(POST);
+    use LWP::UserAgent;
+
+    $ua = LWP::UserAgent->new();
+    my $req = POST 'http://www.perl.com/cgi-bin/cpan_mod',
+                   [ module => 'DB_File', readme => 1 ];
+    $content = $ua->request($req)->as_string;
+
+=head2 how do I decode or create those %-encodings on the web?
+
+(web上で %-encodings をデコードしたり生成したりするには?)
+
+If you are writing a CGI script, you should be using the CGI.pm module
+that comes with perl, or some other equivalent module.  The CGI module
+automatically decodes queries for you, and provides an escape()
+function to handle encoding.
+ 
+The best source of detailed information on URI encoding is RFC 2396.
+Basically, the following substitutions do it:
+
+    s/([^\w()'*~!.-])/sprintf '%%%02x', $1/eg;   # encode
+
+    s/%([A-Fa-f\d]{2})/chr hex $1/eg;            # decode
+
+However, you should only apply them to individual URI components, not
+the entire URI, otherwise you'll lose information and generally mess
+things up.  If that didn't explain it, don't worry.  Just go read
+section 2 of the RFC, it's probably the best explanation there is.
+
+RFC 2396 also contains a lot of other useful information, including a
+regexp for breaking any arbitrary URI into components (Appendix B).
+
+=head2 How do I redirect to another page?
+
+(別のページにリダイレクトするには?)
+
+According to RFC 2616, "Hypertext Transfer Protocol -- HTTP/1.1", the
+preferred method is to send a C<Location:> header instead of a
+C<Content-Type:> header:
+
+    Location: http://www.domain.com/newpage
+
+=begin original
+
+Note that relative URLs in these headers can cause strange effects
+because of "optimizations" that servers do.
+
+=end original
+
+これらのヘッダーに相対 URL を指定すると、サーバーが行う“最適化”のために
+奇妙な効果を引き起こす可能性があることに注意してください。
+ 
+    $url = "http://www.perl.com/CPAN/";
+    print "Location: $url\n\n";
+    exit;
+
+=begin original
+
+To target a particular frame in a frameset, include the "Window-target:"
+in the header.
+
+=end original
+
+フレームセットの特定のフレームを指定するには、
+ヘッダーに "Window-target:" を含めます。
+
+    print <<EOF;
+    Location: http://www.domain.com/newpage
+    Window-target: <FrameName>
+
+    EOF
+
+=begin original
+
+To be correct to the spec, each of those virtual newlines should
+really be physical C<"\015\012"> sequences by the time your message is
+received by the client browser.  Except for NPH scripts, though, that
+local newline should get translated by your server into standard form,
+so you shouldn't have a problem here, even if you are stuck on MacOS.
+Everybody else probably won't even notice.
+
+=end original
+
+仕様を正確に達成するには、クライアントブラウザからメッセージを受け取った時点で
+全ての仮想的な改行についてC<"\015\012">に置き換えるべきです。
+しかし、NPH スクリプトを除いて、このようなローカルな改行は
+サーバーによって標準的な形式に変換されることが多いので、
+MacOS ではまっていた場合でも問題にはならないことが多いでしょう。
+それ以外ではおそらく誰も気付きすらしないでしょう。
+
+=head2 How do I put a password on my web pages?
+
+(私のwebぺージでパスワードを入力するには?)
+
+状況によります。あなたの使っているwebサーバーのドキュメントを読む
+必要があるでしょうし、先に例示した他のFAQの幾つかをチェックする
+必要もあるでしょう。
+
+=head2 How do I edit my .htpasswd and .htgroup files with Perl?
+
+(Perlを使って.htpasswdや.htgroupといったファイルを編集するには?)
+
+HTTPD::UserAdmin モジュールと HTTPD::GroupAdminモジュールは、
+ファイルがどのように格納されているかに関係なくこれらのファイルに対する
+首尾一貫したオブジェクト指向インターフェースを提供します。
+HTTPD::UserAdmin は`Basic' および `Digest' 認証スキームで
+使われるファイルをサポートします。以下に例を挙げます:
+
+    use HTTPD::UserAdmin ();
+    HTTPD::UserAdmin
+	  ->new(DB => "/foo/.htpasswd")
+	  ->add($username => $password);
+
+=head2 How do I make sure users can't enter values into a form that cause my CGI script to do bad things?
+
+(私のCGIスクリプトに悪影響をもたらすようなものを、ユーザーが
+フォームに入力できないようにするにはどうするのでしょうか?)
+
+http://www-genome.wi.mit.edu/WWW/faqs/www-security-faq.html, 
+にある CGI セキュリティ FAQを読んでください。そして
+http://www.perl.com/CPAN/doc/FAQs/cgi/perl-cgi-faq.html.
+にあるPerl/CGI FAQを読んでください。
+
+まとめ: スクリプトの外側(たとえばCGIパラメーター)からやってくる
+データを使ってC<eval>やC<system>を使わないようにさせる汚染検査
+(tainting、L<perlsec>を参照してください)を使います。汚染検査に加え、
+一引数形式のsystem()やexec()を決して使わないようにします。
+その代わりに、シェルのグロビングが行われないように、
+リストとしてコマンドと引数とを与えるようにします。
+
+=head2 How do I parse an mail header?
+
+(メールのヘッダーを解析するには?)
+
+quick-and-dirty な解決策なら、L<perlfunc/split> から派生した
+以下のやり方を試してみてください。
+
+    $/ = '';
+    $header = <MSG>;
+    $header =~ s/\n\s+/ /g;	 # 継続行を連結する
+    %head = ( UNIX_FROM_LINE, split /^([-\w]+):\s*/m, $header );
+
+このやり方は、たとえば受信した行すべてを保守しようとするときには
+うまくありません。より完璧なアプローチはCPANにあるMail::Header 
+モジュールを使うというものです(このモジュールはMailToolsパッケージの
+一部です)。
+
+=head2 How do I decode a CGI form?
+
+(CGIフォームをデコードするには?)
+
+=begin original
+
+You use a standard module, probably CGI.pm.  Under no circumstances
+should you attempt to do so by hand!
+
+=end original
+
+標準のモジュール、多分CGI.pmを使うとよいでしょう。
+あなたが手作業で行うことは多分ありません!
+
+=begin original
+
+You'll see a lot of CGI programs that blindly read from STDIN the number
+of bytes equal to CONTENT_LENGTH for POSTs, or grab QUERY_STRING for
+decoding GETs.  These programs are very poorly written.  They only work
+sometimes.  They typically forget to check the return value of the read()
+system call, which is a cardinal sin.  They don't handle HEAD requests.
+They don't handle multipart forms used for file uploads.  They don't deal
+with GET/POST combinations where query fields are in more than one place.
+They don't deal with keywords in the query string.
+
+=end original
+
+あなたはPOSTに対するCONTENT_LENGTHと同じだけのバイトを標準入力から
+闇雲に読み込んだり、GETをデコードするためにQUERY_STRINGを取り込んでいるような
+CGIプログラムを見ることになるでしょう。
+これらのプログラムは非常にまずい書き方をされていて、
+部分的にしか動作しません。これらのプログラムで典型的なものは、
+read()システムコールの戻り値をチェックするのを忘れていたりします。
+それは大きな罪なのです。また、HEADリクエストを
+取り扱っていなかったりする場合もありますし、
+ファイルのアップロードに使われる
+マルチパート形式を扱ってないこともあります。
+あるいは二ヶ所以上で
+問い合わせフィールドがある場合のGET/POSTの組み合わせに対応していません。
+さらに問い合わせ文字列中にあるキーワードの扱いもしていません。
+
+=begin original
+
+In short, they're bad hacks.  Resist them at all costs.  Please do not be
+tempted to reinvent the wheel.  Instead, use the CGI.pm or CGI_Lite.pm
+(available from CPAN), or if you're trapped in the module-free land
+of perl1 .. perl4, you might look into cgi-lib.pl (available from
+http://www.bio.cam.ac.uk/web/form.html).
+
+=end original
+
+端的にいって、それらは良くない hack です。行わないようにしましょう。
+どうか車輪を再発明するようなことはしないでください。
+代わりに、CGI.pm か CGI_Lite.pm (CPAN で入手できます)を使ってください。
+あなたが(モジュールを使うことのできない)perl1 〜 perl4 を使っているのなら、
+cgi-lib.pl を調べてみてください
+(http://cgi-lib.stanford.edu/cgi-lib/で入手可能です)
+
+=begin original
+
+Make sure you know whether to use a GET or a POST in your form.
+GETs should only be used for something that doesn't update the server.
+Otherwise you can get mangled databases and repeated feedback mail
+messages.  The fancy word for this is ``idempotency''.  This simply
+means that there should be no difference between making a GET request
+for a particular URL once or multiple times.  This is because the
+HTTP protocol definition says that a GET request may be cached by the
+browser, or server, or an intervening proxy.  POST requests cannot be
+cached, because each request is independent and matters.  Typically,
+POST requests change or depend on state on the server (query or update
+a database, send mail, or purchase a computer).
+
+=end original
+
+あなたのフォームで GET や POST をどのように使うかを良く知っておいてください。
+GET はサーバーを更新しないようなものに対してのみ使うべきです。
+あるいは、データベースをいじったりメールメッセージによるフィードバックを
+繰り返し行うようなこともできます。このことを表わすのにぴったりな
+単語は“idempotency”です。その意味は、GET リクエストを作り出したものと
+特定の URL とに違いがないということです。
+これはつまり、HTTP プロトコルは GET リクエストがブラウザーや
+サーバー、あるいは途中にあるプロクシーによってキャッシングしている
+可能性があることを定義しています。POST リクエストは
+キャッシュすることはできません。なぜなら呼び出しのそれぞれは
+独立したものであるからなのです。
+典型的な例では、POST リクエストはサーバーの状態を変更したり、
+状態に依存しています(データベースに対する問い合わせや更新、メールの送信、
+コンピューターの購入など)。
+
+=head2 How do I check a valid mail address?
+
+(メールアドレスが正しいかチェックするには?)
+
+=begin original
+
+You can't, at least, not in real time.  Bummer, eh?
+
+=end original
+
+できません。少なくともリアルタイムでは。がっかりしたでしょう?
+
+=begin original
+
+Without sending mail to the address and seeing whether it bounces (and
+even then you face the halting problem), you cannot determine whether
+an email address is valid.  Even if you apply the email header
+standard, you can have problems, because there are deliverable
+addresses that aren't RFC-822 (the mail header standard) compliant,
+and addresses that aren't deliverable which are compliant.
+
+=end original
+
+そのアドレスにメールを送ってそれが届いたかどうかを確認しなければ
+(そしてあなたがそのhalting problemに直面したあとでさえも)、
+そのアドレスが正しいものかどうかを決めることはできません。
+あなたが電子メールヘッダーの標準を適用したとしても、
+問題が起こる可能性があります。
+なぜなら、配達可能なアドレスには RFC-822(電子メールヘッダーの標準)に
+適合していないものがあり、適合していても配達できないアドレスも
+あるからです。
+
+=begin original
+
+Many are tempted to try to eliminate many frequently-invalid
+mail addresses with a simple regex, such as
+C</^[\w.-]+\@(?:[\w-]+\.)+\w+$/>.  It's a very bad idea.  However,
+this also throws out many valid ones, and says nothing about
+potential deliverability, so it is not suggested.  Instead, see
+http://www.perl.com/CPAN/authors/Tom_Christiansen/scripts/ckaddr.gz,
+which actually checks against the full RFC spec (except for nested
+comments), looks for addresses you may not wish to accept mail to
+(say, Bill Clinton or your postmaster), and then makes sure that the
+hostname given can be looked up in the DNS MX records.  It's not fast,
+but it works for what it tries to do.
+
+=end original
+
+多くの人が 不正メールアドレスを C</^[\w.-]+\@(?:[\w-]+\.)+\w+$/>
+のように単純な正規表現で削除しようとしています。しかしながら、
+これは正当なアドレスも一緒に取り除いてしまい、
+潜在的な到達性についてなにも言いません。ですからこれはお薦めしません。
+代わりに、完全な RFC 仕様に突き合わせてチェックを行い
+(ネストしたコメントを除く)、
+あなたが受け取りたくないメールアドレスを探し出し、
+さらにホスト名が DNS で引けるかどうかを確かめる
+http://www.perl.com/CPAN/authors/Tom_Christiansen/scripts/ckaddr.gz
+を参照してください。これは速くはありませんが、しかしきちんと動きます。
+
+=begin original
+
+Our best advice for verifying a person's mail address is to have them
+enter their address twice, just as you normally do to change a password.
+This usually weeds out typos.  If both versions match, send
+mail to that address with a personal message that looks somewhat like:
+
+=end original
+
+私たちができる最善のアドバイスは、個人のメールアドレスをチェックするのに
+パスワードを変更するときと同じように
+ユーザーにアドレスを二回入力させるというものです。
+これによって通常は打ち間違いを防ぐことができます。
+二回の入力がマッチしたなら、以下のような内容のメッセージをメールとして
+そのアドレスへ送ります:
+
+    Dear someuser@host.com,
+
+=begin original
+
+    Please confirm the mail address you gave us Wed May  6 09:38:41
+    MDT 1998 by replying to this message.  Include the string
+    "Rumpelstiltskin" in that reply, but spelled in reverse; that is,
+    start with "Nik...".  Once this is done, your confirmed address will
+    be entered into our records.
+
+=end original
+
+    [あなたがMDTの1998年5月6日(水)9時38分41秒に私たちに送ったメ
+    イルアドレスの確認をして、このメッセージにリプライしてくださ
+    い。リプライには"Rumpelstiltskin" という文字列を、"Nik..."の
+    ように逆順にして含めてください。それが済めば、あなたのアドレ
+    スの確認は終了し、私たちのレコードに入力されます。]
+
+あなたがメッセージの返事を受け取り、そのメールの発信者があなたの
+指示に従っていれば、そのアドレスが本物であると信じることができるでしょう。
+
+=begin original
+
+A related strategy that's less open to forgery is to give them a PIN
+(personal ID number).  Record the address and PIN (best that it be a
+random one) for later processing.  In the mail you send, ask them to
+include the PIN in their reply.  But if it bounces, or the message is
+included via a ``vacation'' script, it'll be there anyway.  So it's
+best to ask them to mail back a slight alteration of the PIN, such as
+with the characters reversed, one added or subtracted to each digit, etc.
+
+=end original
+
+より偽造のやりにくい別のやり方に、チェックに対象者に対してPIN
+(Personal ID Number)を与えるというものがあります。
+後の処理のためにアドレスとPIN(ランダムであることが望ましい)を記録しておくのです。
+あなたがメールを送るときに、宛て先人に対して彼らの出すリプライに
+PINを含めるように依頼するのです。
+しかしそれがそのまま返ってきたり、
+あるいは返ってきたメッセージが``vacation'' スクリプトを通じての
+ものであっても、そのまま PIN が含まれてしまいます。
+ですから、最善なやり方はメールを送るときに返事には
+文字を逆順にするとか、各桁に対して足し算や引き算を行うなどして
+PINを変形したものを含めて返すように依頼するという方法です。
+
+=head2 How do I decode a MIME/BASE64 string?
+
+(MIME/BASE64 文字列のデコードを行うには?)
+
+=begin original
+
+The MIME-Base64 package (available from CPAN) handles this as well as
+the MIME/QP encoding.  Decoding BASE64 becomes as simple as:
+
+=end original
+
+MIME-Base64 パッケージ(CPANで入手可能です)はこの問題と、
+MIME/QP エンコーディングを取り扱います。
+BASE64のデコードは以下のように単純です:
+
+    use MIME::Base64;
+    $decoded = decode_base64($encoded);
+
+The MIME-Tools package (available from CPAN) supports extraction with
+decoding of BASE64 encoded attachments and content directly from email
+messages.
+
+もしデコードしたい文字列が短い(84 文字以下)の場合、
+より直接的なやり方は、ちょっとした変換をした後でunpack()関数の
+“u”フォーマットを使うというものです:
+
+    tr#A-Za-z0-9+/##cd;                   # base64でないキャラクターを取り除く
+    tr#A-Za-z0-9+/# -_#;                  # uuencodeフォーマットに変換
+    $len = pack("c", 32 + 0.75*length);   # 長さを計算する
+    print unpack("u", $len . $_);         # uudecodeして出力
+
+=head2 How do I return the user's email address?
+
+(ユーザーのメールアドレスを返すには?)
+
+getpwuidをサポートしているシステムであれば、$< という変数と
+Sys::Hostname モジュール(標準のperl配布キットの一部です)を使って
+以下のようなことが試せるでしょう。
+
+    use Sys::Hostname;
+    $address = sprintf('%s@%s', getpwuid($<), hostname);
+
+=begin original
+
+Company policies on email address can mean that this generates addresses
+that the company's email system will not accept, so you should ask for
+users' email addresses when this matters.  Furthermore, not all systems
+on which Perl runs are so forthcoming with this information as is Unix.
+
+=end original
+
+会社のメールアドレスに関するポリシーが、これが生成するアドレスは
+その会社のメールシステムが受け付けないものである可能性があります。
+ですから、ユーザーに、そのユーザーのメールアドレスを尋ねるべきでしょう。
+それに加え、Perlが動作する全てのシステムで
+この情報が(UNIXと同じように)得られるわけではありません。
+
+CPANにある Mail::Utilモジュール (MailToolsパッケージの一部です)は
+メールアドレスがそのユーザーのものであるかどうかを確かめようとする
+mailaddress()という関数を提供しています。
+これは上で例示したやり方よりも賢く、
+モジュールがインストールされたときの情報を使いますが、
+それでも正しくない可能性があります。
+くり返しますが、最善の方法はユーザーに尋ねること、というのがほとんどです。
+
+=head2 How do I send mail?
+
+(メールを送るには?)
+
+C<sendmail>プログラムを直接使います:
+
+    open(SENDMAIL, "|/usr/lib/sendmail -oi -t -odq")
+                        or die "Can't fork for sendmail: $!\n";
+    print SENDMAIL <<"EOF";
+    From: メールの発信者 <me\@host>
+    To: 宛て先 <you\@otherhost>
+    Subject: 適切なサブジェクト
+
+    空行に続けてメッセージの本体を書きます。好きな行数書けます。
+    EOF
+    close(SENDMAIL)     or warn "sendmail didn't close nicely";
+
+=begin original
+
+The B<-oi> option prevents sendmail from interpreting a line consisting
+of a single dot as "end of message".  The B<-t> option says to use the
+headers to decide who to send the message to, and B<-odq> says to put
+the message into the queue.  This last option means your message won't
+be immediately delivered, so leave it out if you want immediate
+delivery.
+
+=end original
+
+B<-oi>オプションはsendmailがドットだけの行を“メッセージの終わり”と
+みなさないようにするためのオプションです。B<-t>オプションは
+メッセージを誰に贈るかを決めるかのためにヘッダーを使うことを指示し、
+B<-odq>オプションメッセージをキューに入れることを指示します。
+最後のオプションの意味は、あなたのメッセージがすぐには配送されないことを
+意味します。ですから、すぐに配送させたいのであれば
+このオプションを取り除いてください。
+
+Alternate, less convenient approaches include calling mail (sometimes
+called mailx) directly or simply opening up port 25 have having an
+intimate conversation between just you and the remote SMTP daemon,
+probably sendmail.
+
+あるいはCPANにあるモジュールMail::Mailerが使えるかもしれません:
+
+    use Mail::Mailer;
+
+    $mailer = Mail::Mailer->new();
+    $mailer->open({ From    => $from_address,
+                    To      => $to_address,
+                    Subject => $subject,
+                  })
+        or die "Can't open: $!\n";
+    print $mailer $body;
+    $mailer->close();
+
+Mail::InternetモジュールはMail::MailerよりUNIX的ではない
+Net::SMTPを使っていますが、信頼性も低いです。
+生のSMTPコマンドを無視します。
+sendmailのようなmail transport agentを使う理由はたくさんあります。
+その中にはキューイングも含まれますし、MXレコードやセキュリティと
+いったものが含まれます。
+
+=head2 How do I use MIME to make an attachment to a mail message?
+
+This answer is extracted directly from the MIME::Lite documentation.
+Create a multipart message (i.e., one with attachments).
+
+    use MIME::Lite;
+
+    ### Create a new multipart message:
+    $msg = MIME::Lite->new(
+                 From    =>'me@myhost.com',
+                 To      =>'you@yourhost.com',
+                 Cc      =>'some@other.com, some@more.com',
+                 Subject =>'A message with 2 parts...',
+                 Type    =>'multipart/mixed'
+                 );
+
+    ### Add parts (each "attach" has same arguments as "new"):
+    $msg->attach(Type     =>'TEXT',
+                 Data     =>"Here's the GIF file you wanted"
+                 );
+    $msg->attach(Type     =>'image/gif',
+                 Path     =>'aaa000123.gif',
+                 Filename =>'logo.gif'
+                 );
+
+    $text = $msg->as_string;
+
+MIME::Lite also includes a method for sending these things.
+
+    $msg->send;
+
+This defaults to using L<sendmail(1)> but can be customized to use
+SMTP via L<Net::SMTP>.
+
+=head2 How do I read mail?
+
+(メールを読み出すには?)
+
+CPAN にある Mail::Folder モジュール(MailFolder パッケージの一部です)や
+Mail::Internet モジュール(これも MailTools パッケージの一部です)が
+使えますが、モジュールを使うのはやりすぎかもしれません。
+以下にメールをソートする方法を示します。
+
+    #!/usr/bin/perl
+    # bysub1 - サブジェクトによる単純なソート
+    my(@msgs, @sub);
+    my $msgno = -1;
+    $/ = '';                    # パラグラフ読み出し
+    while (<>) {
+        if (/^From/m) {
+            /^Subject:\s*(?:Re:\s*)*(.*)/mi;
+            $sub[++$msgno] = lc($1) || '';
+        }
+        $msgs[$msgno] .= $_;
+    }
+    for my $i (sort { $sub[$a] cmp $sub[$b] || $a <=> $b } (0 .. $#msgs)) {
+        print $msgs[$i];
+    }
+
+あるいはもっと簡潔に
+
+    #!/usr/bin/perl -n00
+    # bysub2 - awki的な、サブジェクトによるソート
+    BEGIN { $msgno = -1 }
+    $sub[++$msgno] = (/^Subject:\s*(?:Re:\s*)*(.*)/mi)[0] if /^From/m;
+    $msg[$msgno] .= $_;
+    END { print @msg[ sort { $sub[$a] cmp $sub[$b] || $a <=> $b } (0 .. $#msg) ] }
+
+=head2 How do I find out my hostname/domainname/IP address?
+
+(私の ホスト名/ドメイン名/IPアドレス を見つけるには?)
+
+多くのプログラムが C<`hostname`> プログラムを呼び出しています。
+これは便利なときもありますが、高い移植性があるというわけではありません。
+これは、便利さと移植性とのトレードオフの一例です。
+
+Sys::Hostname モジュール(標準Perl配布キットの一部です)は 
+gethostbyename()を使って(DNSが動作していることを仮定しています)
+IPアドレスを取得できたあとで、ホスト名を返します。
+
+    use Socket;
+    use Sys::Hostname;
+    my $host = hostname();
+    my $addr = inet_ntoa(scalar gethostbyname($host || 'localhost'));
+
+=begin original
+
+Probably the simplest way to learn your DNS domain name is to grok
+it out of /etc/resolv.conf, at least under Unix.  Of course, this
+assumes several things about your resolv.conf configuration, including
+that it exists.
+
+=end original
+
+少なくとも UNIX では、おそらくあなたの使っている DNS
+ドメイン名を知る最も単純な方法は
+/etc/resolev.conf を解析することでしょう。
+もちろん、これはファイルが存在していることを含め、
+resolv.confの設定に関して幾つかの仮定を行っています。
+
+(非 UNIX システムの為には、私たちはまだ良い DNS domain name-learnig 
+mehtodを必要としています)
+
+=head2 How do I fetch a news article or the active newsgroups?
+
+(ニュースのアーティクルやアクティブなニュースグループをフェッチするには?)
+
+Net::NNTP モジュールか News::NNTPClient モジュールのいずれかを使います。
+これらは両方ともCPANから入手可能です。これらは以下のように
+簡単にニュースグループのリストをフェッチするような仕事ができます。
+
+    perl -MNews::NNTPClient
+      -e 'print News::NNTPClient->new->list("newsgroups")'
+
+=head2 How do I fetch/put an FTP file?
+
+(FTPファイルをフェッチしたりプットしたりするには?)
+
+LWP::Simple (CPANで入手可能)はフェッチができますがプットはできません。
+Net::FTP(これもCPANで入手可能です)はこれよりも複雑ですが、
+フェッチとプットの両方ができます。
+
+=head2 How can I do RPC in Perl?
+
+(Perl で RPC を行うにはどうすればよいのですか?)
+
+DCE::RPCが開発可能です(ただし、まだ入手可能にはなっていません)。
+これはDCE-Perlパッケージ(CPANから入手可能です)の一部として
+リリースされるようになるでしょう。
+rpcgenスイートがCAPN/authors/id/JAKE/から入手可能です。
+これはRPCスタブのジェネレーターであり、RPC::ONCモジュールを含んでいます。
+
+=head1 AUTHOR AND COPYRIGHT
+
+Copyright (c) 1997-1999 Tom Christiansen and Nathan Torkington.
+All rights reserved.
+
+When included as part of the Standard Version of Perl, or as part of
+its complete documentation whether printed or otherwise, this work
+may be distributed only under the terms of Perl's Artistic License.
+Any distribution of this file or derivatives thereof I<outside>
+of that package require that special arrangements be made with
+copyright holder.
+
+Irrespective of its distribution, all code examples in this file
+are hereby placed into the public domain.  You are permitted and
+encouraged to use this code in your own programs for fun
+or for profit as you see fit.  A simple comment in the code giving
+credit would be courteous but is not required.
