@@ -1,0 +1,335 @@
+=head1 名前
+
+Inline-API - Inline.pmを使って、あるプログラミング言語をPerlに結びつける方法
+
+=head1 概要
+
+    #!/usr/bin/perl
+    
+    use Inline Foo;
+    say_it('foo');  # Use Foo to print "Hello, Foo"
+    
+    __Foo__ 
+    foo-sub say_it {
+        foo-my $foo = foo-shift;
+        foo-print "Hello, $foo\n";
+    }
+
+=head1 説明
+
+Inline Cをめちゃクールと思っても、実際には新しいプログラミング言語"Foo"と一緒にPerlを機能させる必要があるとします。あなたは幸運です。C<Inline.pm>はあなたの独自のC<Inline::Foo>のような、Inline言語サポート・モジュール（B<ILSM>)を追加することをサポートします。
+
+Inlineは常に違うプログラミング言語と一緒に機能するように意図してきました。処理の細かい部分は実装をまたがって共有することができます。そのためC<Inline::Java>はC<Inline::ASM>によく似たインターフェースを持っています。全てに共通のコードはC<Inline.pm>に入っています。
+
+C<Inline::Python>のような特定言語のモジュールはC<Inline.pm>のサブクラスです。共通の動きを好きなだけ多く継承し、独自の動きを提供することが出来ます。これは通常構成設定オプションと言語特有のコンパイルの形式を取ります。
+
+InlineのCのサポートが、おそらくはコピーするには一番よい雛型でしょう。バージョン0.30から、全てのCのサポートはモジュールC<Inline::C>に分離され、さらに文法の解析はC<Inline::C::grammar>に分けられています。これらの構成要素はInlineディストリビューションの中に入っています。
+
+このPODはILSMを実装するために必要な詳細のすべてを提供します。さらなる支援については inline@perl.org にコンタクトをとってください。下記のL<"参考資料">をご覧下さい。
+
+私たちは、Inlineと一緒に配布される仮の言語Inline::Fooを吟味していきます。これは実際には完全に機能するILSMです。私はInlineの基本的な機能をテストするため、Inlineのテスト・ハーネスで使っています。それは非常に短く、Inline APIについて理解することを助けることが出来ます。
+
+=head1 スケルトン
+
+このチュートリアルの残りの部分のために、想像上の言語C<Foo>のためのILSMを書くものと想定しましょう。それをC<Inline::Foo>と呼びます。完全な（機能する）実装を以下に示します。
+
+    package Inline::Foo;
+    use strict;
+    $Inline::Foo::VERSION = '0.01';
+    @Inline::Foo::ISA = qw(Inline);
+    require Inline;
+    use Carp;
+    
+    #===========================================================
+    # Register Foo as an Inline Language Support Module (ILSM)
+    #===========================================================
+    sub register {
+        return {
+            language => 'Foo',
+            aliases => ['foo'],
+            type => 'interpreted',
+            suffix => 'foo',
+           };
+    }
+    
+    #===========================================================
+    # Error messages
+    #===========================================================
+    sub usage_config { 
+        my ($key) = @_;
+        "'$key' is not a valid config option for Inline::Foo\n";
+    }
+    
+    sub usage_config_bar { 
+        "Invalid value for Inline::Foo config option BAR";
+    }
+    
+    #===========================================================
+    # Validate the Foo Config Options
+    #===========================================================
+    sub validate {
+        my $o = shift;
+        $o->{ILSM}{PATTERN} ||= 'foo-';
+        $o->{ILSM}{BAR} ||= 0;
+        while (@_) {
+        my ($key, $value) = splice @_, 0, 2;
+        if ($key eq 'PATTERN') {
+            $o->{ILSM}{PATTERN} = $value;
+            next;
+        }
+        if ($key eq 'BAR') {
+            croak usage_config_bar
+              unless $value =~ /^[01]$/;
+            $o->{ILSM}{BAR} = $value;
+            next;
+        }
+        croak usage_config($key);
+        }
+    }
+    
+    #===========================================================
+    # Parse and compile Foo code
+    #===========================================================
+    sub build {
+        my $o = shift;
+        my $code = $o->{API}{code};
+        my $pattern = $o->{ILSM}{PATTERN};
+        $code =~ s/$pattern//g;
+        $code =~ s/bar-//g if $o->{ILSM}{BAR};
+        sleep 1;             # imitate compile delay
+        {
+            package Foo::Tester;
+            eval $code;
+        }
+        croak "Foo build failed:\n$@" if $@;
+        my $path = "$o->{API}{install_lib}/auto/$o->{API}{modpname}";
+        my $obj = $o->{API}{location};
+        $o->mkpath($path) unless -d $path;
+        open FOO_OBJ, "> $obj"
+          or croak "Can't open $obj for output\n$!";
+        print FOO_OBJ $code;
+        close \*FOO_OBJ;
+    }
+    
+    #===========================================================
+    # Only needed for interpreted languages
+    #===========================================================
+    sub load {
+        my $o = shift;
+        my $obj = $o->{API}{location};
+        open FOO_OBJ, "< $obj"
+          or croak "Can't open $obj for output\n$!";
+        my $code = join '', <FOO_OBJ>;
+        close \*FOO_OBJ;
+        eval "package $o->{API}{pkg};\n$code";
+        croak "Unable to load Foo module $obj:\n$@" if $@;
+    }
+    
+    #===========================================================
+    # Return a small report about the Foo code.
+    #===========================================================
+    sub info {
+        my $o = shift;
+        my $text = <<'END';
+    This is a small report about the Foo code. Perhaps it contains
+    information about the functions the parser found which will be
+    bound to Perl. It will get included in the text produced by the
+    Inline 'INFO' command.
+    END
+        return $text;
+    }
+    
+    1;
+
+C<load()>を除いて、このコードでのサブルーチンはILSMでは必須です。それらが何をしているのかは、これから説明します。いくつかの点に注意してください：
+
+=over 4
+
+=item 1
+
+C<Inline::Foo> はInlineのサブクラスでなければなりません。これは以下の行により実現できます：
+
+    @Inline::Foo::ISA = qw(Inline);
+
+=item 2
+
+'C<require Inline;>'という行は必須ではありません。しかし'C<use Inline;>'と呼び出さないことを忘れないようにさせるため、そこにあります。これは機能しません。
+
+=item 3
+
+利用者が以下のように言うことは適切ではないということを忘れないで下さい：
+
+    use Inline::Foo;
+
+C<Inline.pm>は、そのC<import>メソッドでそのような利用方法を検知します。C<Inline::Foo>がサブクラスであるので、それは自動的に継承されます。
+
+=item 4
+
+build関数では、通常あなたのソースコードを解析する必要があります。Inline::CはこれをするためにParse::RecDescentを使っています。Inline::Fooは単にevalを使っています。（'foo-'の並びの全てを取り出した後に）。
+
+（JavaやPythonのような）多くのILSMのために機能する、代わりの解析方法は、あなたに代わって解析するため、その言語のコンパイラそのものを使うことです。これはコンパイラが解析情報を返すことが出来る限り、うまくいきます。
+
+=back
+
+=head1 Inline API
+
+このセクションは、ILMSを実装するために提供する必要がある機能の、より形式的な仕様になります。
+
+Inlineが、なんらかのC<Foo>コードがコンパイルされる必要があると判断するとき、それは自動的にあなたのILSMモジュールをロードします。そして、それは適用する必要のある様々なサブルーチンを呼び出します。これらのサブルーチンを"コールバック"と呼びます。
+
+以下の5つのコールバック・サブルーチンを提供する必要があります。
+
+=head2 register() コールバック
+
+このサブルーチンは何も引数を受け取りません。それはILSMメタデータのハッシュへのリファレンスを返します。Inlineはシステムにインストールされている新しいILSMを検出しようとするときにだけ、このサブルーチンを呼び出します。Fooのために返すハッシュ・リファレンスの例を以下に示します:
+
+    {
+     language => 'Foo',
+     aliases => ['foo'],
+     type => 'interpreted',
+     suffix => 'foo',
+    };
+
+メタデータの要素には以下の意味があります：
+
+=over 4
+
+=item language
+
+これはその言語の適切な名前です。通常、ある言語'X'のためには、C<Inline::X>として実装されます。
+
+=item aliases
+
+これは言語名のエイリアスの配列へのリファレンスです。ある言語の適切な名前には単語の文字[A-Za-z0-9_]しか入れることが出来ません。エイリアスには空白やクォートを除く任意の文字を入れることが出来ます。これは'C++'や'C#'のような名前には便利です。
+
+=item type
+
+'compiled'（=コンパイル言語） あるいは'interpreted'(=インタープリタ言語）に設定されなければなりません。言語のカテゴリを示します。
+
+=item suffix
+
+これは作成されるオブジェクトのキャッシュのためのファイルの拡張子です。'compiled'(=コンパイル言語)では、おそらく'so'や'dll'になるでしょう。適切な値がC<Config.pm>に入っています。
+
+インタープリタ言語では、、この値はあなたの好きなようにすることができます。PythonはC<pydat>を使います。FooはC<foo>を使います。
+
+=back
+
+=head2 validate()コールバック
+
+このルーチンは、基本のInlineモジュールによって既に扱われていない、渡された全ての構成設定オプションを取得します。オプションはキー/値の組み合わせで渡されます。各オプションの評価とその値のInlineオブジェクト（これも渡されます）での格納は、あなたに掛かっています。もしあるオプションが適切でなければ、適切なエラメッセージでcroakするべきです。
+
+=head2 build()コールバック
+
+このサブルーチンはFooソースコードの解析とコンパイルを行うことに責任を持ちます。Inlineオブジェクトが唯一の引数として渡されます。全ての関連する情報は、このオブジェクトに格納されます。特定の名前のキャッシュ・オブジェクトを作成したり、適切なエラーメッセージでcroakするために、C<build()>が必要です。
+
+これがILSMの肝です。それが非常にわかりにくいものになりがちなので、C<Inline::C>のような既存のILSMを学習するのがおそらく一番よいでしょう。
+
+=head2 load()コールバック
+
+このメソッドはインタープリタ言語に提供されるためだけに必要です。これはインタープリタを起動することに責任を持ちます。
+
+コンパイル言語では、共有オブジェクトやDLLをロードするためにC<DynaLoader>を使っている、C<Inline.pm>のloadルーチンが呼び出されます。
+
+=head2 info() コールバック
+
+このメソッドはユーザがC<INFO>という短縮形を使うときに呼び出されます。Inlineコードについての短いレポートが入った文字列を返さなければなりません。
+
+=head1 Inlineオブジェクト
+
+C<Inline.pm>は、それが受け取ったInlineされたソースコードのセクション毎にハッシュをベースとしたPerlオブジェクトを生成します。このオブジェクトはコード、環境、使用された構成設定オプションについての多くの情報を持っています。
+
+このオブジェクトは、さらにさいくつかのサブハッシュに分けられるハッシュです。ILSMは使わなければならないのは、$o->{API}と$o->{ILSM}という２つのサブハッシュだけです。前者には、Inlineがあなたの設計したキャッシュされたオブジェクトの作成/ロードするためにInlineが集めてきたすべての情報が入っています。後者はあなたのILSMが後で必要になりそうなデータを自由に格納できる貯蔵庫です。
+
+このセクションはInlineオブジェクトの"API"属性の全てを説明します。
+
+=head2 code属性
+
+これは利用者によって渡された実際のソースコードです。これは1つの長い文字列で格納されます。
+
+=head2 language属性
+
+使用されている言語の適切な名前
+
+=head2 language_id属性
+
+利用者によって指定された言語名。'CPP'の代わりに'C++'かもしれません。
+
+=head2 module属性
+
+共有オブジェクトのファイル名。
+
+=head2 modfname属性
+
+共有オブジェクトのファイル名
+
+=head2 modpname属性
+
+共有オブジェクトのインストール・パスの拡張子
+
+=head2 version属性
+
+利用されているC<Inline.pm>のバージョン
+
+=head2 pkg属性
+
+Inlineを呼び出したPerlパッケージ
+
+=head2 install_lib属性
+
+共有オブジェクトを出力するディレクトリ
+
+=head2 build_dir属性
+
+その下に構築に関連するファイルを出力するべきディレクトリ
+
+=head2 script属性
+
+Inlineを呼び出したスクリプトの名前
+
+=head2 location属性
+
+問題になっている実行可能なオブジェクトのフル・パス名
+
+=head2 suffix属性
+
+共有ライブラリの拡張子（通常は'so' か 'dll')
+
+=over 4
+
+=back
+
+=head1 Inline名前空間
+
+C<Inline.pm>は、だれもが独自の言語サポート・モジュールを作成することが出来るように設定されています。それは例えばCのような既存のInline言語の別の実装を、さらにだれもが作成することも可能にしています。あなたはそれをCPANで配布することが出来ます。
+
+Inlineモジュールを実装し配布することを計画しているのであれば、Inlineコミュニティで一緒にやってみる気はありませんか。Inlineメーリングリストで連絡を取ることが出来ます: inline@perl.org （参加するためには inline-subscribe@perl.org にメールしてください）。あなたのモジュールを成功させるために必要なアドバイスと支援をうけることができるでしょう。
+
+Inlineコミュニティは、もしあなたのCOBOLの実装を公式なC<Inline::COBOL>として配布するか、他の名前空間を使うべきかを判定するでしょう。その点では、私(Brian Ingerson) が最終的な権限を保有しています。（そして私はそれを使う必要がないことを望んでいます :-) 実際には modules@perl.org がB<最終的な>権限を保有しています。
+
+たとえ一人で仕事したいと思っていても、それは自由ですし、Inline言語サポートモジュールを作成し、CPANで配布することは喜ばれます。それらを異なるパッケージ名で配布することだけが必要です。
+
+=head1 参考資料
+
+Inlineについての一般的な情報については、L<Inline>をご覧ください。
+
+CでInlineを使うことについての情報についてはL<Inline::C>をご覧ください。
+
+サポートされている言語とプラットホームについての情報はL<Inline-Support>をご覧ください。
+
+Inlineのメーリングリストはinline@perl.orgです。
+
+参加するためには、inline-subscribe@perl.orgにメールしてください。
+
+=head1 作者(=AUTHOR)
+
+Brian Ingerson <INGY@cpan.org>
+
+=head1 著作権(=COPYRIGHT)
+
+Copyright (c) 2000, 2001. Brian Ingerson. All rights reserved.
+
+This program is free software; you can redistribute it and/or modify it under the same terms as Perl itself.
+
+See http://www.perl.com/perl/misc/Artistic.html
+
+=cut
