@@ -1,0 +1,362 @@
+=head1 名前
+
+  Crypt::SSLeay - LWP httpsサポートを提供するOpenSSLとのつなぎ部分
+
+
+=head1 概要
+
+  lwp-request https://www.nodeworks.com
+
+  use LWP::UserAgent;
+  my $ua = new LWP::UserAgent;
+  my $req = new HTTP::Request('GET', 'https://www.nodeworks.com');
+  my $res = $ua->request($req);
+  print $res->code."\n";
+
+  # PROXYのサポート
+  $ENV{HTTPS_PROXY} = 'http://proxy_hostname_or_ip:port';
+
+  # PROXY_BASIC_AUTH
+  $ENV{HTTPS_PROXY_USERNAME} = 'username';
+  $ENV{HTTPS_PROXY_PASSWORD} = 'password';  
+
+  # デフォルトのSSLバージョン
+  $ENV{HTTPS_VERSION} = '3';
+
+  # クライアント側の証明書サポート
+  $ENV{HTTPS_CERT_FILE} = 'certs/notacacert.pem';
+  $ENV{HTTPS_KEY_FILE}  = 'certs/notacakeynopass.pem';
+
+  # 認証局証明書の相手側認証 (CA CERT PEER VERIFICATION)
+  $ENV{HTTPS_CA_FILE}   = 'certs/ca-bundle.crt';
+  $ENV{HTTPS_CA_DIR}    = 'certs/';
+
+  # クライアントPKCS12形式証明書サポート
+  $ENV{HTTPS_PKCS12_FILE}     = 'certs/pkcs12.pkcs12';
+  $ENV{HTTPS_PKCS12_PASSWORD} = 'PKCS12_PASSWORD';
+
+=head1 説明
+
+このperlモジュールはLWPの下でhttpsプロトコルのサポートを提供します。
+これによりLWP::UserAgentがhttps GETとHEADリクエストを行うことができます。
+POSTリクエストについてのさらなる情報についてはperldoc LWPを
+ご覧ください。
+
+Crypt::SSLeayパッケージにはNet::SSLが入っています。
+これはhttpsリクエストへのLWP::Protocol::httpsにより自動的にロードされ、
+以下の廃れてしまったモジュールを介して機能する代りに必要なSSLとの
+つなぎを提供します：
+
+   Crypt::SSLeay::CTX
+   Crypt::SSLeay::Conn
+   Crypt::SSLeay::X509
+
+Crypt::SSLeayでの機能はLWP-libwww perl ライブラリへのhttpsサポートを
+提供することのみを続けます。perlからOpenSS LAPIにアクセスしたければ、
+Sampo氏のNet::SSLeayをチェックしてください。
+
+=head1 インストール
+
+=head2 OpenSSL
+
+このモジュールをコンパイルする前にOpenSSLまたはSSLeayをインストール
+しておく必要があります。最新のOpenSSLパッケージは以下から取得できます：
+
+  http://www.openssl.org
+
+opensslをインストールするとき、以下のようなconfigを確実に行ってください：
+
+  > ./config --openssldir=/usr/local/openssl
+ あるいは
+  > ./config --openssldir=/usr/local/ssl
+
+ そして
+  > make
+  > make test
+  > make install
+
+こうして、Crypt::SSLeayはインクルードとライブラリを自動的に取り出します。
+もしインクルードが/usr/local/includeのように別のディレクトリにいって
+しまったら、/usr/local/includeへのシンボリック・リンク /usr/local/openssl/includeが
+必要になります。
+
+=head2 Crypt::SSLeay
+
+最新のCrypt::SSLeay は近くのCPANまたは以下のサイトにあります：
+
+  http://www.perl.com/CPAN-local/modules/by-module/Crypt/
+
+一度ダウンロードしてしまえば、Crypt::SSLeay は以下のようなmakeやnmakeコマンドを
+使うことによって簡単にインストールします：
+
+  > perl Makefile.PL
+  > make
+  > make test
+  > make install
+
+  * use nmake for win32
+
+  !!! Win32ユーザへの注意、ほとんどの人がそのプラットホームで
+  W  Crypt::SSLeayをビルドできないようです。ActiveStateがあなたの
+  I  代わりにコンパイルしてくれているので、build618と522でppm
+  N  でインストールするために利用することができます。
+  3  最新のビルドでもつかうことができるでしょう。
+  2  キーワード: WinNT, Win95, Win98, 95, 98, NT, 2000
+  !!!          http://www.activestate.com/ をご覧ください。
+
+=head1 PROXYサポート
+
+LWP::UserAgentとCrypt::SSLeayはそれぞれ独自にプロキシーを
+サポートしています。あなたに合ったセクションを読んでください。
+
+=head2 LWP::UserAgentのサポート
+
+LWP::UserAgentはあなたのために機能するかもしれないプロキシーを
+行う、独自のメソッドを持っています。そしてCrypt::SSLeayの
+プロキシー・サポートとは互換性があまりありません。
+LWP::UserAgentのプロキシー・サポートを使うためには、以下のように
+試してみてください:
+
+  my $ua = new LWP::UserAgent;
+  $ua->proxy([qw( https http )], "$proxy_ip:$proxy_port");
+
+これを書いている辞典では、libwww v5.6はApache mod_proxyサーバーで
+うまくhttpsリクエストをプロキシーしているようです。それは
+以下のような行をプロキシーサーバーに送信します:
+
+  GET https://www.nodeworks.com HTTP/1.1
+
+これはいくつかのプロキシーが予測しているCONNECTリクエストでは
+ありません。そのためmod_proxy以外の別のproxyサーバーでは
+動かないかもしれません。CONNECTメソッドはCrypt::SSLeayの内部の
+proxyサポートにより使われます。
+
+=head2 Crypt::SSLeayのProxyサポート
+
+httpsリクエストのネイティブなCrypt::SSLeay proxのProxyサポートの
+ために、環境変数HTTPS_PROXYを、あなたのproxyサーバーとポートに
+設定する必要があります。以下のようにしてください:
+
+  # PROXY SUPPORT
+  $ENV{HTTPS_PROXY} = 'http://proxy_hostname_or_ip:port';
+  $ENV{HTTPS_PROXY} = '127.0.0.1:8080';
+
+このようにしてHTTPS_PROXY環境変数を使うことは、
+LWP::UserAgent->env_proxy()の利用方法に似ています。しかし
+そのメソッドを呼び出すことは、Crypt::SSLeayのサポートを
+オーバーライドしたり、壊したりしかねません。両方を
+一緒にしないでください。
+
+PROXYサーバーへの基本認証の信用情報(=credential)は以下のようにして
+提供されます:
+
+  # PROXY_BASIC_AUTH
+  $ENV{HTTPS_PROXY_USERNAME} = 'username';
+  $ENV{HTTPS_PROXY_PASSWORD} = 'password';  
+
+Crypt::SSLeayのネイティブなPROXYサポートが入ったLWPのスクリプトの
+例については、Crypt::SSLeayディストリビューションの中の./lwp-ssl-test
+スクリプトのソースをご覧ください。
+
+=head1 クライアント証明書のサポート
+
+Tobias Mantheyからのパッチによって、証明書のサポート新しく提供されています。
+.25ではALPHAですが、.29では非常に安定しているようです。
+
+PEM形式の証明書と秘密鍵ファイルは以下のように使うことができます:
+
+  $ENV{HTTPS_CERT_FILE} = 'certs/notacacert.pem';
+  $ENV{HTTPS_KEY_FILE}  = 'certs/notacakeynopass.pem';
+
+以下のようなコマンドによって./net_ssl_testプログラムで
+あなたのファイルをテストすることができます:
+
+  ./net_ssl_test -cert=certs/notacacert.pem -key=certs/notacakeynopass.pem -d GET $HOST_NAME
+
+さらに、クライアントにどこにCAファイルがあるかを教えたければ、
+これらを設定することができます。これらの*CA*の設定は
+バージョン0.29ではALPHAです。
+
+  $ENV{HTTPS_CA_FILE} = "some_file";
+  $ENV{HTTPS_CA_DIR}  = "some_dir";
+
+現時点ではテストのための、CA証明書ファイルについては何も
+サンプルはありません。しかし-CAファイル オプションで、あなたの
+CA証明書を使うように./net_ssl_testを設定することができます。
+
+=head2 テスト証明書の作成
+
+opensslで簡単なテスト照明を作成するためには、以下のようにすることができます:
+
+     /usr/local/openssl/bin/openssl req -config /usr/local/openssl/openssl.cnf -new -days 365 -newkey rsa:1024 -x509 -keyout notacakey.pem -out notacacert.pem 
+
+鍵ファイルからパスフレーズを削除するためには、以下のように実行してください:
+     /usr/local/openssl/bin/openssl rsa -in notacakey.pem -out notacakeynopass.pem
+
+=head2 PKCS12
+
+バージョン0.45では新たにPKCS12証明書をサポートしています。
+Daisuke Kurodaに感謝します。これらの証明書を使えるようにするための
+命令は以下の通りです:
+
+  $ENV{HTTPS_PKCS12_FILE}     = 'certs/pkcs12.pkcs12';
+  $ENV{HTTPS_PKCS12_PASSWORD} = 'PKCS12_PASSWORD';
+
+このタイプの証明書を使うためことは、説明した前の証明書設定よりも
+優先されます。
+
+=head1 SSLのバージョン
+
+Crypt::SSLeayは、バグが多い、古い、あるいは単に標準に合っていない
+サーバーも面倒見ることにより、全てのSSL Webサーバーに接続しようと
+努力しています。その結果、このモジュールはSSLの接続を以下の順番で
+試みます:
+
+  SSL v23  - 一番よいタイプを選ぶためv2とv3のサーバーを許可するはずです
+  SSL v3   - 一番よい接続タイプ
+  SSL v2   - 古い接続タイプ
+
+残念ながら、SSL v23で試してみて接続が失敗するとSSL v3での再接続を
+扱わないものもあるようです。そこで最初にSSL v3接続が試されるよう
+LWPやNet::SSLを使う前に以下のように設定することができます:
+
+  $ENV{HTTPS_VERSION} = 3;
+
+この時点では、試す順序は、この設定によって変更されないので、
+この後はSSL v2接続だけが試されます。
+
+=head1 互換性
+
+このモジュールは以下のプラットフォームでコンパイルされています：
+
+ PLATFORM   CPU     SSL     PERL     VER    DATE        WHO
+ --------   ---     ---     ----     ---    ----        ---
+ WinNT SP6  x86 OpenSSL 0.9.6a  5.00601  .45    2002-08-01  Joshua Chamas
+ Linux 2.4.7    x86 OpenSSL 0.9.6d  5.00800  .45    2002-08-01  Joshua Chamas
+ Linux 2.4.7    x86 OpenSSL 0.9.6   5.00601  .39    2002-06-23  Joshua Chamas
+ Solaris 2.8    Sparc   ?       5.00503  .37    2002-05-31  Christopher Biow
+ OpenBSD 2.8    Sparc   ?       5.00600  .25    2001-04-11  Tim Ayers
+ Linux 2.2.14   x86 OpenSSL 0.9.6   5.00503  .25    2001-04-10  Joshua Chamas
+ WinNT SP6  x86 OpenSSL 0.9.4   5.00404  .25    2001-04-10  Joshua Chamas
+ Solaris 2.7    Sparc   OpenSSL 0.9.6   5.00503  .22    2001-03-01      Dave Paris
+ AIX 4.3.2  RS/6000 OpenSSL 0.9.6   5.6.0    .19    2001-01-08  Peter Heimann
+ Solaris 2.6    x86 OpenSSL 0.9.5a  5.00501  .17    2000-09-04  Joshua Chamas
+ Linux 2.2.12   x86     OpenSSL 0.9.5a  5.00503  .16    2000-07-13      David Harris
+ FreeBSD 3.2    ?x86    OpenSSL 0.9.2b  5.00503  ?      1999-09-29  Rip Toren
+ Solaris 2.6    ?Sparc  OpenSSL 0.9.4   5.00404  ?      1999-08-24  Patrick Killelea
+ FreeBSD 2.2.5  x86 OpenSSL 0.9.3   5.00404  ?      1999-08-19  Andy Lee
+ Solaris 2.5.1  USparc  OpenSSL 0.9.4   5.00503  ?      1999-08-18  Marek Rouchal
+ Solaris 2.6    x86 SSLeay 0.8.0    5.00501  ?      1999-08-12  Joshua Chamas
+ Linux 2.2.10   x86     OpenSSL 0.9.4   5.00503  ?      1999-08-11  John Barrett
+ WinNT SP4  x86 SSLeay 0.9.2    5.00404  ?      1999-08-10  Joshua Chamas
+
+=head1 ビルド時の注意
+
+=head2 Win32, WinNT, Win2000, ビルドできない
+
+Windowsマシンでビルドすることができなければ、
+ActiveState perlを試してみてください。少なくとも
+Build522と618は利用できるCrypt::SSLeayのppmインストールを
+持っています。さらに詳細な情報については、
+http://www.activestate.com をご覧ください。
+
+=head2 AIX 4.3.2 - Symbol Error: __umoddi3 : referenced symbol not found
+
+gccでコンパイルときには、__umoddi3 問題が、ここでも当てはまります。
+
+代わりの解決法:
+Makefile.PLの中で、C<-L>/usr/local/<path to your gcc lib>/<version>を
+$LIBSの値に入れてください。82行目の後に以下の行を追加してください:
+
+ $LIBS = '-L' . dirname(`gcc -print-libgcc-file-name`) . ' ' . $LIBS;
+
+=head2 Solaris x86 - Symbol Error: __umoddi3 : referenced symbol not found
+
+ 問題:
+
+Solaris x86では、デフォルトのPERL構成設定と、perferrredはgccではなくOSに
+ついてくるldリンカを使います。残念なことにOpenSSLのビルド処理の中で、
+gccはbn_word.cからlibcrypto.aに未定義のシンボル_umoddi3を生成します。
+これはgccによりlibgcc.aから後から解決されるように考えられています。
+
+システムldリンカはデフォルトではlibgcc.aについて知りません。
+そのためCrypt::SSLeayを構築すると、_umoddi3についてのリンカーエラーが
+起こります。
+
+ 解決法：
+
+この解決法はシステム・リンカー ldがCrypt::SSLeayをビルドするときに
+見つけられるように、/usr/local/libのような標準ディレクトリへlibgcc.aを
+シンボリック・リンクすることです。
+
+=head2 FreeBSD 2.x.x / Solaris - ... des.h:96 #error _ is defined ...
+
+"...des.h:96: #error _ is defined, but some strange definition the 
+DES library cannot handle that...,"というエラーに出会ったら、des.hファイルを
+編集し、"#error"行をコメント・アウトする必要があります。
+
+他のオペレーティング・システムにも共通であるかのように見えます。
+そしてそれはOpenSSL 0.9.3で発生します。0.9.4にアップグレードすると、
+この問題は修正されるようです。
+
+
+=head2 SunOS 4.1.4, Perl 5.004_04 - ld.so: Undefined symbol: _CRYPT_mem_ctrl
+
+問題: (最初のビルドは問題ないけれども、Perlスクリプトの実行に問題があります)
+"ld.so: Undefined symbol: _CRYPT_mem_ctrl"というメッセージが出ます。
+
+解決方法:Makefileで、"-fpic"が入っている業をコメントアウト
+してください（"-fPIC"に変更してもみてください。これも
+動きます。どちらがいいのかよくわかりません）。
+
+=head1 メモ(NOTES)
+
+このモジュールを最初に、そしてperlのためのlibwwwも含めて
+たくさんのものを書いたことをGisle Aasに感謝します。
+Webは今までと同じではなくなるでしょう :)
+
+Ben Laurieは素晴らしいエラー処理、SSL情報の検査、
+そして乱数の種についての、彼の素晴らしいパッチに
+よって賞賛されるに値します。
+
+James Woodyattは、多くのCrypt::SSLeayユーザを苦しめてきた
+馬鹿げたメモリー・リークを見つけるチャンピオンです。
+
+pryxyサポートを追加するパッチについて、Bryan Hartに感謝します。
+そして別のアプローチを提供してくれたTobias Mantheyに感謝します。
+
+Alpha linux ccc パッチについてAlex Rhombergに感謝します。
+
+クライアント証明書サポートのパッチについてTobias Mantheyに
+感謝します。
+
+CA証明書サポートとエラー・メッセージのへの洞察について
+Gamid Isayevに感謝します。
+
+CA証明書 SSLClientVerify問題について働いてくれたJeff Longに
+感謝します。
+
+perl 5.8.0でのビルドのためのパッチに対してChip Turnerに感謝します。
+
+=head1 サポート
+
+OpenSSLとCrypt::SSLeayのサポートはopensslユーザ･メーリングリストに
+メールしてください：openssl-users@openssl.org
+
+そのリストへ少なくとも件名の行にCrypt::SSLeayが入っている
+メールは、私自身によってより早く応答されるでしょう。
+件名は以下のように情報が多くしてください:
+
+  Subject: [Crypt::SSLeay] compile problems on Solaris
+
+このモジュールは始めGisle Aasによって書かれました。
+そして今は私が管理しています。
+
+=head1 著作権(COPYRIGHT)
+
+ Copyright (c) 1999-2002 Joshua Chamas.
+ Copyright (c) 1998 Gisle Aas.
+
+This program is free software; you can redistribute 
+it and/or modify it under the same terms as Perl itself. 
+
