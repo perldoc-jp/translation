@@ -1,0 +1,509 @@
+=pod
+
+=head1 名前
+
+CGI::Session - CGIアプリケーションにおける持続的なデータのセッション
+
+=head1 概要
+
+    # オブジェクトの初期化:
+    use CGI::Session;
+
+    my $session = new CGI::Session("driver:File", undef, {Directory=>'/tmp'});
+
+    # 有効なセッションIDを取得
+    my $CGISESSID = $session->id();
+
+    # セッションにデータを格納
+    $session->param('f_name', 'Sherzod');
+    # or
+    $session->param(-name=>'l_name', -value=>'Ruzmetov');
+
+    # データの回収
+    my $f_name = $session->param('f_name');
+    # または
+    my $l_name = $session->param(-name=>'l_name');
+
+    # 特定セッションパラメータのクリア
+    $session->clear(["_IS_LOGGED_IN"]);
+
+    # '_IS_LOGGED_IN'フラグは10分間アイドルした後期限切れになります
+    $session->expire(_IS_LOGGED_IN => '+10m')
+
+    # セッションそのものが1時間アイドルした後期限切れになります
+    $session->expire('+1h');
+
+    # セッションを削除したほうが良いでしょう
+    $session->delete();
+
+=head1 説明
+
+CGI-SessionはHTTPリクエストを介した簡潔で、信頼性のあるモジュール方式の
+セッション管理システムを提供するPerl5のライブラリです。
+持続性はショッピングカートや、ログイン/認証ルーチン、
+HTTPリクエストを介してデータを持ち運ぶ操作が必要なアプリケーション
+と言ったものについての未来を左右します。CGI::Sessionではそれを行うと共に、
+それ以上の多くのことも行います。
+
+=head1 より深く学ぶには
+
+現在のマニュアルはクイックリファレンスとして活用されています。
+セッション管理の背後にあるロジックとCGI::Sessionのプログラミングスタイルに
+の両方についてより深く学ぶためには以下を参考にして下さい:
+
+=over 4
+
+=item *
+
+L<CGI::Session::Tutorial|CGI::Session::Tutorial> - CGI::Sessionに関して広範囲に記述されたマニュアルです。ライブラリの構成やドライバの特性についての説明を含んでいます。
+
+=item *
+
+L<CGI::Session::CookBook|CGI::Session::CookBook> - 実生活での問題に対する実用的な解決法
+
+=item *
+
+我々はCGI::Session usersのためのメーリングリストも提供しています。メーリングリストを購読する、あるいはアーカイブを閲覧するためには https://lists.sourceforge.net/lists/listinfo/cgi-session-user を訪れて下さい。
+
+=item *
+
+B<RFC 2965> - "HTTP State Management Mechanism"は ftp://ftp.isi.edu/in-notes/rfc2965.txt で見付かります。
+
+=item *
+
+L<CGI|CGI> - 標準CGIライブラリ
+
+=item *
+
+L<Apache::Session|Apache::Session> - CGI::Sessionに対するもう一つの素晴らしい選択肢
+
+=back
+
+=head1 メソッド
+
+以下はCGI::Sessionオブジェクト経由で使用可能な全メソッドの概要です。
+
+=over 4
+
+=item C<new( DSN, SID, HASHREF )>
+
+３つの引数を要求します。１つ目がデータソースの名前、２つ目が初期化されるため
+のセッションid、あるいは'param()'か'cookie()'メソッドのいずれかを提供する
+オブジェクトでなくてはなりません。もしデータソースの名前がundefであれば、
+デフォルト値である"driver:File;serializer:Default;id:MD5"となります。
+
+セッションidが空の場合、強制的にライブラリに新しいセッションidを
+生成させるのですが、おそらくアクセス可能なC<id()>メソッドが用いられる
+ことでしょう。
+
+例:
+
+    $session = new CGI::Session(undef, undef, {Directory=>'/tmp'});
+    $session = new CGI::Session("driver:File;serializer:Storable", undef,  {Directory=>'/tmp'})
+    $session = new CGI::Session("driver:MySQL;id:Incr", undef, {Handle=>$dbh});
+
+以下のデータソース変数がサポートされています。
+
+=over 4
+
+=item *
+
+C<driver> - CGI::Session のドライバです。使用可能なドライバは"File", 
+"DB_File"及び"MySQL"です。デフォルトは"File"です。 
+
+=item *
+
+C<serializer> - シリアライザはデータをディスクに保存する前に、データ構造を
+エンコードするために用いられます。使用可能なシリアライザは"Storable"、
+"FreezeThaw"及び"Default"です。デフォルトは"Default"なのですが、
+標準のL<Data::Dumper|Data::Dumper>を用います。
+
+=item *
+
+C<id> - 新しいセッションが作成される際に用いられるIDジェネレータです。
+IDジェネレータは"MD5"と"Incr"です。デフォルトは"MD5"となっています。
+
+=back
+
+Note: DSNのパラメータの明瞭な省略記法を用いることも可能です。例:
+
+    new CGI::Session("dr:File;ser:Storable", undef, {Diretory=>'/tmp'});
+
+
+=item C<id()>
+
+セッションのための有効なIDを返します。有効なIDと要求されたIDが異なる
+可能性もあるため、有効なセッションidはこのメソッドを用いることで
+いつも解決すべきです。
+
+=item C<param($name)>
+
+=item C<param(-name=E<gt>$name)>
+
+このメソッドはC<$name>にセットしたセッションパラメータを
+返すために上記におけるいずれかの文法で用いられます。
+
+=item C<param( $name, $value)>
+
+=item C<param(-name=E<gt>$name, -value=E<gt>$value)>
+
+$nameパラメータに対して新しい値を割り当るために上記の文法のいずれかで
+用いられるメソッドで、先程紹介したparam()の文法によって後から値を取得
+することが可能です。
+
+=item C<param_hashref()>
+
+全セッションパラメータをハッシュへのリファレンスとして返します。
+
+=item C<save_param($cgi)>
+
+=item C<save_param($cgi, $arrayref)>
+
+CGIパラメータをセッションオブジェクトに保存します。言い替えれば、
+C<param($name, $value)>を単一のCGIパラメータ全てに対して呼び出すことと
+言えます。１つ目の引数はCGIオブジェクトであるか、又はparam()メソッドを
+提供することのできるオブジェクトならばどんなものでも構いません。もし２つ目の
+引数が与えられ、それが配列へのリファレンスであるならば、配列中の中で見付けた
+CGIパラメータのみがセッション中に格納されるでしょう。
+
+=item C<load_param($cgi)>
+
+=item C<load_param($cgi, $arrayref)>
+
+CGIオブジェクトにパラメータをロードします。最初の引数はCGI.pmオブジェクトが
+入るか、あるいはparam()メソッドを提供できるオブジェクトであれば
+どんなものでも構いません。もし２つ目の引数が与えられ、それが配列への
+リファレンスであれば、その配列中で見付かったパラメータのみをCGIオブジェクトへ
+ロードします。
+
+=item C<sync_param($cgi)>
+
+=item C<sync_param($cgi, $arrayref)>
+
+試験的な形式です。CGIオブジェクトとsessionオブジェクトを同期させます。
+言い替えればsave_param()及びload_param()のそれぞれの文法を呼び出すことと
+同じです。
+
+=item C<clear()>
+
+=item C<clear([@list])>
+
+セッションオブジェクトからパラメータをクリアします。もし配列の
+リファレンスとして引数が渡された場合、リスト内に見付かった
+パラメータのみをクリアします。
+
+=item C<flush()>
+
+バッファ内のデータをディスク内のそのコピーに同期させます。通常は
+プログラムが終了する直前にあなたが呼び出し、sessionオブジェクトは
+スコープから外れるか、あるいはclose()が呼び出されることになるでしょう。
+
+=item C<close()>
+
+同じセッションで次ぎにnew()が呼び出されるまでsessionを一時的にクローズし、
+flush()及びDESTROY()を呼び出しますが、とても遅いです。
+通常であれば、けしてclose()を呼び出すべきないでしょう。
+
+=item C<atime()>
+
+セッションが最後にアクセスされた時間を新紀元からの秒数の形式で返します。
+この時間は自動的に期限切れになるセッション又はセッションのパラメータあるいは
+その両方で内部的に使用されます。
+
+=item C<ctime()>
+
+最初に生成された際の時刻を返します。
+
+=item C<expire()>
+
+=item C<expire($time)>
+
+=item C<expire($param, $time)>
+
+atime()に関連する有効期限を表す日付をセットします。もし全く引数が使われていない
+場合、既に有効期限を表す日付がセットされている場合はその日付を返します。
+もしまだ有効期限が設定されていない場合は、undefを返します。
+
+２つ目は時刻で有効期限を設定する形式です。この値は以前に格納されたセッションが
+データを取得するために尋ねられ、もし有効期限の日付を過ぎていた場合ディスクから
+直ちに消去され、それに応じて新しいセッションが作られます。0を渡すことで
+有効期限の日付をキャンセルすることができるでしょう。
+
+３つ目の文法を用いることによっても"~logged-in"と言った適切なセッション
+パラメータを渡すことで有効期限を設定することが可能です。これによって
+ライブラリはタイムアップになった際にパラメータに対してclear()を呼び出すように
+なります。
+
+全ての時間に関する値は秒数の形式で与えられるべきです。しかし、以下の時間に
+関する別名もあなたの利便性のためにサポートされています:
+
+    +===========+===============+
+    |   別名    |     意味      |
+    +===========+===============+
+    |     s     |      秒       |
+    |     m     |      分       |
+    |     h     |      時       |
+    |     w     |      週       |
+    |     M     |      月       |
+    |     y     |      年       |
+    +-----------+---------------+
+
+
+例:
+
+    $session->expire("+1y");   # １年を有効期限とします
+    $session->expire(0);       # 有効期限をキャンセルします
+    $session->expire("~logged-in", "+10m");# ~logged-inフラグを10分有効にします
+
+
+Note: 全ての有効期限はセッションの最終アクセス時間に関するものであって、作成された時間ではありません。ただちにセッションを期限切れにするにはC<delete()>を呼び出して下さい。特定のセッションパラメータをすぐに期限切れにするにはそのパラメータに対してC<clear()>を呼び出して下さい。
+
+=item C<remote_addr()>
+
+最初にセッションを作成したユーザーのリモートアドレスを返します。
+セッション作成時に環境変数REMOTE_ADDRが提供されなかった場合は
+undefを返します。
+
+=item C<delete()>
+
+ディスクからセッションを削除します。言い替えれば、直ちに期限切れにして
+後からアクアスできないようにすると言うことです。
+
+=item C<error()>
+
+ライブラリからの最後のエラーメッセージを返します。$CGI::Session::errstrの
+値と同じです。例:
+
+    $session->flush() or die $session->error();
+
+=item C<dump()>
+
+=item C<dump("file.txt")>
+
+=item C<dump("file.txt", 1)>
+
+=item C<dump("file.txt", 1, 2)>
+
+セッションオブジェクトのダンプを作成します。１つ目の引数ですが、
+渡された場合、ダンプが書き出されるべきファイル名として解釈されます。
+２つ目の引数ですが、もしtrueであれば、B<_DATA>テーブルにのみダンプを
+作成します。このテーブルはファイルに格納されたセッションデータのみを
+含んでいます。言い替えれば、dump()はランタイム属性、言い加えるとB<_DATA>を
+含むオブジェクト全体のダンプを返します。
+
+３つ目の引数に渡せるのは0から3までの間です。ダンプのインデントを表示するのに
+用います。デフォルトは2です。
+
+=item C<header()>
+
+header() is simply a replacement for L<CGI.pm|CGI>'s header() method. Without this method, you usually need to create a CGI::Cookie object and send it as part of the HTTP header:
+
+header()は単にL<CGI.pm|CGI>のheader()に代るメソッドです。このメソッドを
+用いない場合、あなたはCGI::Cookieオブジェクトを作成し、HTTP headerの一部に
+送信する必要があります:
+
+    $cookie = new CGI::Cookie(-name=>'CGISESSID', -value=>$session->id);
+    print $cgi->header(-cookie=>$cookie);
+
+上記を最小限にまとめることが可能です:
+
+    $session->header()
+
+$CGI::Session::NAME変数からセッションのクッキー名を取得し、
+CGI::Session->name()メソッド経由でもアクセスすることが可能になるでしょう。
+もしセッションのクッキーに異なる名前を使用したい場合は、sessionオブジェクトを
+次のように作成して下さい:
+
+    CGI::Session->name("MY_SID");
+    $session = new CGI::Session(undef, $cgi, \%attrs);
+
+すると、$session->header()は"MY_SID"をセッションのクッキー名として扱います。
+
+=back
+
+=head1 データテーブル
+
+セッションデータはハッシュテーブル、つまりキー/値のペアの形式で格納されて
+います。あなたがparam()メソッドを通して割り当てたパラメーター名は
+テーブル内のキーとなり、あなたが割り当てた値はどれでもそのキーによって
+連想されるのです。全てのキー/値のペアはレコードとも呼ばれます。
+
+param()メソッドを通して保存した全てのデータは公開レコードと呼ばれます。
+同様に読み込み専用の非公開レコードも存在します。通常、あなたは
+ライブラリを使用するにあたってそれらについて何も知らなくても構いません。
+かと言って、知ることで傷つくと言うこともありません。ここにあるのはプライベート
+レコードのリスト及び所有している内容に関する説明です。
+
+=over 4
+
+=item _SESSION_ID
+
+そのデータに対するセッションidです。id()メソッドを通してアクセスできます。
+
+=item _SESSION_CTIME
+
+セッション作成時刻です。ctime()メソッドを通してアクセスできます。
+
+=item _SESSION_ATIME
+
+セッションの最終アクセス時刻です。atime()メソッドを通すことでアクセスできます。
+
+=item _SESSION_ETIME
+
+もしあれば、セッションの有効期限を示します。expire()メソッドを通してアクセスできます。
+
+=item _SESSION_REMOTE_ADDR
+
+そのセッションを作成したユーザーのIPアドレスです。remote_addr()メソッドを通して
+アクセスできます。
+
+=item _SESSION_EXPIRE_LIST 
+
+もしあれば、それぞれの有効期限付き公開レコードに関する有効期限の情報を入れた
+もう一つの内部的なハッシュテーブルとなります。このテーブルは２つの引数を持つ
+方のexpires()メソッドの文法を用いることによって更新されます。
+
+=back
+
+これらのプライベートメソッドはライブラリがセッションデータを抱えて稼働中、
+適切な操作を行うために欠かせないものです。この原則のため、CGI::Sessionは
+これらのメソッドのどれもがparam()メソッド経由で上書きすることを
+許していません。言い加えると、将来名前が衝突するのを阻止するためにB<_SESSION_>
+と言う文字列で始まるパラメータ名は許されていないのです。
+
+よって以下の試みはいかなるセッションデータにも影響を与えることはないでしょう。
+
+    $session->param(_SESSION_XYZ => 'xyz');
+
+プライベートメソッドが書き込み可能でないのに対して、ライブラリはparam()メソッド
+を用いることによってそれらを読み出すことを許しています:
+
+    my $sid = $session->param(_SESSION_ID);
+
+上記と同じものとして:
+
+    my $sid = $session->id();
+
+しかし我々はparam()メソッドを用いてプライベートレコードにアクセスできない
+からと言って嘆くことはありません。将来我々は名前の衝突を回避し、
+セッションパラメータ名の制約を取り除くためにプライベートレコードを
+自身の名前空間に格納する計画をたてています。
+
+=head1 ディストリビューション
+
+CGI::SessionはいくつかのL<dirvers|"ドライバ">、L<serializers|"シリアライザ">及びL<id generators|"IDジェネレータ">のようなモジュール方式のコンポーネントから構成されます。このセクションでは使用可能なものについてリストしています。
+
+=head2 ドライバ
+
+以下は標準ディストリビューションに含まれるドライバです:
+
+=over 4
+
+=item *
+
+L<File|CGI::Session::File> - セッションデータをファイルにそのまま格納するデフォルトのドライバです。フルネーム: B<CGI::Session::File>
+
+=item *
+
+L<DB_File|CGI::Session::DB_File> - BerkelyDBにセッションデータを格納するためのドライバです。L<DB_File>を必要とします。フルネーム: B<CGI::Session::DB_File>
+
+=item *
+
+L<MySQL|CGI::Session::MySQL> - MySQLのテーブルにセッションデータを格納するためのドライバです。L<DBI|DBI>及びL<DBD::mysql|DBD::mysql>を必要とします。フルネーム: B<CGI::Session::MySQL>
+
+=back
+
+=head2 シリアライザ
+
+=over 4
+
+=item *
+
+L<Default|CGI::Session::Serialize::Default> - デフォルトのデータシリアライザです。標準のL<Data:Dumper|Data::Dumper>を使用します。フルネーム: B<CGI::Session::Serialize::Default>。
+
+=item *
+
+L<Storable|CGI::Session::Serialize::Storable> - L<Storable>を使いデータをシリアライズ化します。L<Storable>を必要とします。フルネーム: B<CGI::Session::Serialize::Storable>
+
+=item *
+
+L<FreezeThaw|CGI::Session::Serialize::FreezeThaw> - L<FreezeThaw>を使って
+データをシリアライズ化します。L<FreezeThaw>を必要とします。フルネーム: B<CGI::Session::Serialize::FreezeThaw>
+
+=back
+
+=head2 IDジェネレータ
+
+以下は使用可能なIDジェネレータです:
+
+=over 4
+
+=item *
+
+L<MD5|CGI::Session::ID::MD5> - 32文字の長さの16進数の文字列を生成します。
+L<Digest::MD5|Digest::MD5>を必要とします。フルネーム: B<CGI::Session::ID::MD5>
+
+=item *
+
+L<Incr|CGI::Session::ID::Inct> - 自動的にインクリメントされるidを生成します。フルネーム: B<CGI::Session::ID::Incr>
+
+=item *
+
+L<Static|CGO::Session::ID::Static> - 静的にセッションidを生成します。 B<CGI::Session::ID::Static>
+
+=back
+
+=head1 クレジット
+
+以下はCGI::Sessionの開発に対してpatcheを提供したり、提案出したりして
+貢献してくれた方々です。貢献して頂いた時期の順に並べています:
+
+=over 4
+
+=item Andy Lester E<lt>alester@flr.follett.comE<gt>
+
+=item Brian King E<lt>mrbbking@mac.comE<gt>
+
+=item Olivier Dragon E<lt>dragon@shadnet.shad.caE<gt>
+
+=item Adam Jacob E<lt>adam@sysadminsith.orgE<gt>
+
+=back
+
+=head1 著作権
+
+Copyright (C) 2001, 2002 Sherzod Ruzmetov E<lt>sherzodr@cpan.orgE<gt>. All rights reserved.
+
+This library is free software. You can modify and or distribute it under the same terms as Perl itself.
+
+=head1 作者
+
+Sherzod Ruzmetov E<lt>sherzodr@cpan.orgE<gt>. 感想や意見を歓迎します。
+
+=head1 参考文献
+
+=over 4
+
+=item *
+
+L<CGI::Session::Tutorial|CGI::Session::Tutorial> - さらに幅広く記述されたCGI::Sessionのマニュアル
+
+=item *
+
+L<CGI::Session::CookBook|CGI::Session::CookBook> - 実生活のための実用的な解決方法
+
+=item *
+
+B<RFC 2965> - "HTTP State Management Mechanism"は ftp://ftp.isi.edu/in-notes/rfc2965.txt で見付かります。
+
+=item *
+
+L<CGI|CGI> - 標準CGIライブラリ
+
+=item *
+
+L<Apache::Session|Apache::Session> - CGI::Sessionに対するもう一つの素晴らしい選択肢
+
+=back
+
+=cut
