@@ -1,0 +1,191 @@
+=head1 名前
+
+Test::Inline::Tutorial - Test::Inline のためのチュートリアル
+
+=head1 概要
+
+Test::Inline は、テストを、分割したファイルではなく、ソースコードと同じファイルの中に埋め込む方法です。
+この考えにより、テストコードをコードやドキュメントはより密接になり、テストを更新するのをより容易になります。
+
+=head2 どのようにするか?
+
+=over 4
+
+=item B<1>
+
+Test::Inlineをインストールします。ですが、おそらく、既にインストール済でしょう。
+Test::Inline は、Test::More と、Test::Simpleもインストールします。
+
+=item B<2>
+
+テストしたいコードを見付けます。 Test::Inline は、コードにインラインスタイルのキュメントがあるときにもっとも
+役に立ちます。それぞれのサブルーチンには、それぞれのドキュメントがあります。次のように：
+
+    =item B<is_pirate>
+
+        my @pirates = is_pirate(@arrrrgs);
+
+    Go through the @arrrgs and return a list of those who are
+    pirates.
+
+    =cut
+
+    sub is_pirate {
+        ...you didn't think I was going to implement this?...
+    }
+
+=item B<3>
+
+まだ、Test::Simpleと、Test::More のドキュメントを読んでいないなら、読んで下さい。
+C<ok()> や C<is()> 関数を使いますので。
+
+=item B<4>
+
+オーケー、テストを書くときです。非常に簡単なことで、単純に、テストブロックを、PODに、加えて下さい。
+C<=for testing>を用いて、テストを書きます。次のようにします：
+
+    =for testing
+    is( 2 + 2,  4,         'I can add!' );
+
+or a C<=begin testing/=end testing> block.
+
+    =begin testing
+
+    my $hell = Geo::Weather->new('Hell');
+    ok( $hell->temp > 0,       'Hell not yet frozen over' );
+    ok( $hell->elevation  < 0, '  and still safely underground' );
+
+    =end testing
+
+どちらを使うのか?  C<=for>  は、単一のテストに、一番良く、 C<=begin/=end> は、一連のテストに向いています。
+良いと思うものをどちらでも、たいした問題ではありません。
+
+ドキュメントのすぐ隣に、そのテストを置くのが、もっとも良いです。
+
+    =item B<is_pirate>
+
+        my @pirates = is_pirate(@arrrrgs);
+
+    Go through the @arrrgs and return a list of those who are
+    pirates.
+
+    =for testing
+    my @p = is_pirate('Roberts', 'Wesley', 'Capt. Hampton');
+    is( @p,    1,                'Found our scurvy dog' );
+    is( $p[0], 'Roberts',     '  The Dread Pirate Roberts!' );
+
+    =cut
+
+    sub is_pirate {
+        ...still not gonna do it...
+    }
+
+=item B<5>
+
+テストを書いてから、テストをどうやって動かすのでしょうか?
+pod2test を使って、テストを抽出し、テストをファイルにします。
+
+    pod2test lib/Pirate.pm t/Pirate-embedded.t
+
+pirate-embedded.t は、他のテストファイルと同じように動きます。
+
+=item B<6> *オプション*
+
+モジュールを書いているなら、新しいテストファイルを、MANIFEST に、加えましょう。
+また、pod2testを使うことになるので、Makefile.pl に、Test::More を、PREREQ_PM として、加える必要があります。
+
+=item B<7> *オプション*
+
+次の方法で、自動的に、テストを生み出すことができます。
+もっとも簡単な方法には、Makefile.PLに、次のようなものをいれることです。
+
+    system('pod2test lib/Pirate.pm t/Pirate-embedded.t');
+
+しかし、ファイルを変更する度に、Makefile.PLを再実行する必要があります。
+``make test''の一部として、再実行をするためには、次のようにしなければなりません:
+
+    {
+        package MY;
+        sub top_targets {
+            my($self) = @_;
+            my $out = "POD2TEST_EXE = pod2test\n";
+
+            $out .= $self->SUPER::top_targets(@_);
+            $out =~ s/^(pure_all\b.*)/$1 testifypods/m;
+
+            $out .= "\n\ntestifypods : \n";
+
+            foreach my $pod (keys %{$self->{MAN1PODS}},
+                             keys %{$self->{MAN3PODS}})
+            {
+                (my $test = $pod) =~ s/\.(pm|pod)$//;
+                $test =~ s|/|-|g;
+                $test =~ s/^lib\W//;
+                $test =~ s/\W/-/;
+                $test = "embedded-$test.t";
+                $out .= "\t$self->{NOECHO}\$(POD2TEST_EXE) ".
+                        "$pod t/$test\n";
+            }
+
+            return $out;
+        }
+    }
+
+6番目と、7番目を、よりシームレスにしようとしていますが、作業中です。
+
+=back
+
+これは基本です。テストのコードサンプルのように、これ以上の特徴があります:
+
+    =also begin example
+
+    print "Hello, World!\n";
+    warn  "Beware the Ides of March!";
+
+    =also end example
+
+    =for example_testing
+    is(   $_STDOUT_, "Hello, World!\n",               'print' );
+    like( $_STDERR_, qr/^Beware the Ides of March!/,  'warn'  );
+
+If you want to read more, see L<Test::Inline>.
+もし、もっと読みたいなら、L<Test::Inline> の man ページを見て下さい。
+
+=head2 FAQ
+
+=over 4
+
+=item Test::Inlineは、プログラムを遅くするか、多くのメモリを消費するでしょうか？
+
+いいえ。Perl は、このテストをPODとして、理解します。そのため、Perlは、これらを、完全に無視します。
+(インラインのPODは、プログラムのコンパイルを遅くしません)。
+
+=item 普通のテストをまだ、書く必要がありますか？
+
+おそらく。埋め込んだテストは、簡単で、直接な、短いテストに、もっとも有益なようです。
+例えば、テストが、ドキュメント内に、それぞれの特徴が見込まれたテストなどです。
+大きなテストには、向きません。多くのセットアップを必要としていたり、多くの双方向の特徴をテストするには、
+向いていません。これらは、おそらく別のファイルにすべきです。     
+
+=item もし、モジュールにテストを埋め込んで書いたら、Test::Inlineが必要なのでしょうか？
+
+奇妙なことですが、必要ありません。テストを埋め込んだプログラムを書き、Test::Inlineを必要とせずに、配布することができます。
+単純に、.t ファイルをpod2testで、生成して、ふつうに、他のものと同じように、そのテストファイルを、コードといっしょに配布できます。
+
+ですが、Test::Moreを必要とし、最新の、Test::Harnessも必要とします。
+幸いにも、5.8.0 には(訳注：標準で)あります。ただ、不運なことに、
+おそらく、みんながそれを使うまで、3年待たなければならないでしょう。
+
+=back
+
+=head1 著者
+
+Michael G Schwern <schwern@pobox.com>
+
+=head1 SEE ALSO
+
+L<Test::Inline>, L<Pod::Tests>, L<pod2test>
+
+Short set of slides on Test::Inline
+http://www.pobox.com/~schwern/talks/Embedded_Testing/
+
