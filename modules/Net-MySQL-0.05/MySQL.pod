@@ -1,0 +1,245 @@
+=head1 NAME
+
+Net::MySQL - Perlだけで書かれたMySQLネットワークプロトコルへのインターフェイス
+
+=head1 SYNOPSIS
+
+  use Net::MySQL;
+  
+  my $mysql = Net::MySQL->new(
+      hostname => 'mysql.example.jp',
+      database => 'your_database_name',
+      user     => 'user',
+      password => 'password'
+  );
+
+  # INSERT の例
+  $mysql->query(q{
+      INSERT INTO tablename (first, next) VALUES ('Hello', 'World')
+  });
+  printf "Affected row: %d\n", $mysql->get_affected_rows_length;
+
+  # SLECT の例
+  $mysql->query(q{SELECT * FROM tablename});
+  my $record_set = $mysql->create_record_iterator;
+  while (my $record = $record_set->each) {
+      printf "First column: %s Next column: %s\n",
+          $record->[0], $record->[1];
+  }
+  $mysql->close;
+
+=head1 DESCRIPTION
+
+Net::MySQLはPerlだけで記述されたMySQLデータベースへのクライアントインターフェイスです。MySQLのサーバとクライアント間で利用されているネットワークプロトコルを独自に実装しており、libmysqlclientなどMySQLのライブラリが無くても動作します。つまりMySQLが移植されていないOSからでもMySQLサーバに接続することができるのです。イカスッ！
+このモジュールは最終的にDBD::mysqlを置き換えられる物を目指しており、APIはDBIに似せています。
+
+
+次のステートメントでインターフェイスを有効にします:
+
+    use Net::MySQL;
+
+
+この後シンプルなオブジェクト指向のインターフェイスを使用して、複数のMySQL daemonに接続したり複数の問い合せを行うことができます。
+
+Net::MySQLとNet::MySQL::RecordIteratorという2つのオブジェクトが利用できます。
+
+    $mysql = Net::MySQL->new(
+        hostname => $host,
+        database => $database,
+        user     => $user,
+        password => $password,
+    );
+
+
+デーモンに接続したら、次のような記述でSQLを実行することができます:
+
+    $mysql->query(q{
+        INSERT INTO foo (id, message) VALUES (1, 'Hello World')
+    });
+
+検索結果を受け取りたい場合は、DBIで言うところのステートメントハンドルを次のような記述で生成します:
+
+    $mysql->query(q{
+        SELECT id, message FROM foo
+    });
+    if ($mysql->has_selected_record) {
+        my $a_record_iterator = $mysql->create_record_iterator;
+        # ...
+    }
+
+このNet::MySQL::RecordIteratorオブジェクトは幾つかの目的で使用できます。とりあえず行のデータを受け取ることが出来ます:
+
+    my $record = $a_record_iterator->each;
+
+each()メソッドは結果から1行分の情報を取り出します。戻り値はARRAYのリファレンスです。
+
+
+=head2 Net::MySQL API
+
+=over 4
+
+=item new(HASH)
+
+    use Net::MySQL;
+    use strict;
+
+    my $mysql = Net::MySQL->new(
+        hostname => $host,
+        database => $database,
+        user     => $user,
+        password => $password,
+    );
+
+Net::MySQLのコンストラクタ。MySQL daemonに接続してオブジェクトを返します。次のパラメータをハッシュで渡します。
+
+=over 8
+
+=item hostname
+
+MySQL daemonを実行しているホスト名。
+
+=item port
+
+MySQL daemonがlistenしているポート番号。デフォルトは3306。
+
+=item database
+
+接続するデータベース名。
+
+=item user / password
+
+認証に使用するユーザ名とパスワード。
+
+=item timeout
+
+接続に時間がかかる場合、タイムアウトするまでの待ち時間。
+
+=item debug
+
+真の値を設定すると、やり取りされているパケットを表示。
+
+=back
+
+
+=item create_database(DB_NAME)
+
+create_database()メソッドは指定した名前でデータベースを新たに作成します。
+
+    $mysql->create_database('example_db');
+    die $mysql->get_error_message if $mysql->is_error;
+
+=item drop_database(DB_NAME)
+
+drop_database()メソッドは指定した名前のデータベースを削除します。
+
+    $mysql->drop_database('example_db');
+    die $mysql->get_error_message if $mysql->is_error;
+
+=item query(SQL_STRING)
+
+query()メソッドは指定したSQLをMySQLデータベースに送信し応答を得ます。
+
+=item create_record_iterator()
+
+SQLでSELECTした場合、検索結果を表すNet::MySQL::RecordIteratorオブジェクトを返します。
+
+    $mysql->query(q{SELECT * FROM table});
+    my $a_record_iterator = $mysql->create_recrod_iterator();
+
+Net::MySQL::RecordIteratorオブジェクトは検索結果の取得に利用します。詳しくは L<"/Net::MySQL::RecordIterator API">を参照してください。
+
+=item get_affected_rows_length()
+
+最後に実行したSQLの影響を受けたレコード数を返します。
+
+    my $affected_rows = $mysql->get_affected_rows_length;
+
+=item get_insert_id()
+
+MySQLはユーニークなキー値を自動的に生成する機能を持っています。この機能が利用された時、その新しいIDはこの属性に格納されています。
+
+=item is_error()
+
+エラーがあった場合、真を返す。
+
+=item has_selected_record()
+
+SELECT文による検索結果がある場合、真を返す。
+
+=item get_field_length()
+
+カラム数を返す。
+
+=item get_fiend_names()
+
+カラムの名前を配列で返す。
+
+=item close()
+
+MySQL daemonに終了メッセージを送り、Socketを閉じます。
+
+=back
+
+=head2 Net::MySQL::RecordIterator API
+
+Net::MySQL::RecordIteratorオブジェクトは、Net::MySQLオブジェクトのquery()メソッドで生成されます。公開されているコンストラクタメソッドはありません。
+
+
+=over 4
+
+=item each()
+
+each()メソッドは検索結果から順番に1行だけ取り出し、それをARRAYのリファレンスで返します。全ての行を取り出したならば C<undef>を返します。
+
+    while (my $record = $a_record_iterator->each) {
+        printf "Column 1: %s Column 2: %s Collumn 3: %s\n",
+            $record->[0], $record->[1], $record->[2];
+    }
+
+=back
+
+=head1 SUPPORT OPERATING SYSTEM
+
+このモジュールは次のOSでテストされました。
+
+=over 4
+
+=item * MacOS 9.x
+
+with MacPerl5.6.1r.
+
+=item * MacOS X
+
+with perl5.6.0 build for darwin.
+
+=item * Windows2000
+
+with ActivePerl5.6.1 build631.
+
+=item * FreeBSD 3.4 and 4.x
+
+with perl5.6.1 build for i386-freebsd.
+
+with perl5.005_03 build for i386-freebsd.
+
+=back
+
+私はperlと B<IO::Socket::INET>モジュールがあれば動作すると信じています。マイナーなOSでの動作報告をもらえるたらすごく嬉しいでしょう。
+
+
+=head1 SEE ALSO
+
+L<libmysql>, L<IO::Socket::INET>
+
+=head1 AUTHOR
+
+Hiroyuki OYAMA E<lt>oyama@crayfish.co.jpE<gt>
+
+=head1 COPYRIGHT AND LICENCE
+
+Copyright (C) 2002 Hiroyuki OYAMA. Japan. All rights reserved.
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself. 
+
+=cut
