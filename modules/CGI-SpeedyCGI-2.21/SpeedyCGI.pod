@@ -1,0 +1,927 @@
+=head1 名前
+
+SpeedyCGI - CGIスクリプトを常駐させて実行することによりスピードアップさせます
+
+=head1 概要
+
+ #!/usr/bin/speedy
+
+ ### ここにあなたのスクリプト
+ print "Content-type: text/html\n\nHello World!\n";
+
+ ##
+ ## オプションとして、いくつかの目的のためCGI::SpeedyCGIモジュールを利用
+ ##
+
+ # SpeedyCGI オブジェクトの作成
+ use CGI::SpeedyCGI;
+ my $sp = CGI::SpeedyCGI->new;
+
+ # SpeedyCGIの下で実行されているかどうかを調べる
+ print "Running under speedy=", $sp->i_am_speedy ? 'yes' : 'no', "\n";
+
+ # shutdownハンドラの登録
+ $sp->add_shutdown_handler(sub { do something here });
+
+ # クリーンアップ・ハンドラの登録
+ $sp->register_cleanup(sub { do something here });
+
+ # いくつかのSpeedyCGIオプションの設定／取得
+ $sp->setopt('timeout', 30);
+ print "maxruns=", $sp->getopt('maxruns'), "\n";
+
+
+=head1 説明
+
+SpeedyCGI はCGI perlスクリプトを常駐させて実行する方法です。
+通常それらのスクリプトをより速く実行させます。スクリプトを
+SpeedyCGIを使うように変換するためには、ほとんどの場合、スクリプトの先頭に
+あるインタープリタの行を以下のものから:
+
+    #!/usr/bin/perl
+
+以下のように変更します
+
+    #!/usr/bin/speedy
+
+スクリプトが初めて動いた後、終了する代わりに、perlインタープリタをメモリ上で
+実行したままです。後のからの実行では、それぞれの実行のために新しいperl
+インタープリタを開始する代わりに、新しい要求を扱うため、このインタープリタが
+使われます。Cで書かれた、非常に速いフロントエンド・プログラムが各要求のために
+実行されます。この高速のフロントエンドは常駐しているPerlプロセスに接触します。
+それは通常既にメモリ上にあり、作業を行い、結果を返します。
+
+デフォルトでは各perlスクリプトは独自のUnixプロセスで実行されます。そのため
+1つのperlスクリプトが他のものに影響を与えることはありえません。メモリがリーク
+したり、その他の常駐して実行することを邪魔するような障害を持っている
+プログラムを扱うために、コマンドライン・オプションを使うことも出来ます。
+
+SpeedyCGIはperl CGIスクリプトをスピードアップさせるために使うことが出来ます。
+CGIの仕様に従い、webサーバーの内部でperlコードを実行しません。
+perlインタープリタがwebサーバーの外側で実行されるために、webサーバーそのものに
+障害を起こすことはありえません。
+
+SpeedyCGIは、Apache webサーバーで各リクエストのためのfork/execを行う
+オーバーヘッドをなく、スクリプトが実行できるよう、Apacheモジュールも
+提供しています。このモジュールでは、少量のフロントエンドのコードが
+webサーバーの中で実行されます - この場合でもperlインタープリタはサーバの
+外側で走ります。
+
+SpeedyCGI と PersistentPerlは現在、両方とも同じコードのための名前です。
+SpeedyCGIが元の名前ですが、人々がそれがやっていることを信じなかったので、
+PersistentPerlが別名として使われました。どこかの時点で、常に2つの
+ディストリビューションを持っていることを避けるため、おそらくSpeedyCGIが
+PersistentPerlに置き換えられるか、PersistentPerlのサブクラスになるでしょう。
+
+
+=head1 オプション
+
+=head2 オプション値の設定
+
+SpeedyCGI オプションはいくつかの方法で設定することができます:
+
+=over
+
+=item コマンドライン
+
+speedyコマンドラインは通常のperlと同じです。例外としてSpeedyCGI特有のオプションは
+"--"の後で渡すことができます。
+
+例えば:
+
+    #!/usr/bin/speedy -w -- -t300
+
+がスクリプトの先頭にあると、SpeedyCGIをperlオプション "C<-w>"で呼び出し、
+speedyに要求を受け取ってから300秒後に新しい要求がなければ終了しなさいと
+いう"C<-t>"を渡します。
+
+=back
+
+=over
+
+=item 環境変数
+
+環境変数を使ってオプションに値を渡すことが出来ます。これは最初に実行される前にのみ
+おこなわれ、つまり、スクリプトの中ではありません。
+環境変数の名前は、前に大文字のオプション名の前にSPEEDY_　が付いたものです。
+例えば、speedyのTimeoutオプションを設定するためには、SPEEDY_TIMEOUTという環境変数を
+使ってください。
+
+=back
+
+=over
+
+=item モジュール
+
+CGI::SpeedyCGIモジュールは、実行時にperlスクリプトの中からオプションを
+設定するためにsetoptメソッドを提供しています。現在のオプションを取り出すための
+getoptメソッドもあります。 下記のL<"メソッド">をご覧ください。
+
+=back
+
+=over
+
+=item Apache
+
+オプションのApacheモジュールを使っているのであれば、SpeedyCGIのオプションを
+C<httpd.conf>ファイルで設定することが出来ます。 apacheディレクティブの
+名前は常にオプション名の前にSpeedyが付いたものになります。例えば
+Timeoutオプションを設定するためには、SpeedyTimeoutというapacheディレクティブを
+使ってください。
+
+=back
+
+=head2 コンテキスト
+
+全てのコンテキストで以下の全てのオプションが使えるわけではありません。
+各オプションのためのコンテキストは下記のセクションでの"コンテキスト"の
+行であげています。3つのコンテキストがあります:
+
+=over
+
+=item speedy
+
+コマンドライン"speedy"プログラム。通常はあなたのスクリプトの先頭にある#!で、
+あるいはシェルプロンプトから使われます。
+
+=back
+
+=over
+
+=item mod_speedycgi
+
+オプションのmod_speedycgiモジュール
+
+=back
+
+=over
+
+=item module
+
+perl実行中でのCGI::SpeedyCGIモジュールのメソッドgetopt/setoptを通して。
+
+=back
+
+=head2 利用できるオプション
+
+=over
+
+=item BackendProg
+
+    コマンドライン  : -p<string>
+    デフォルト値    : "/usr/bin/speedy_backend"
+    コンテキスト    : mod_speedycgi, speedy
+
+    説明:
+
+    speedyバックエンド・プログラムへのパス
+
+=item BufsizGet
+
+    コマンドライン  : -B<number>
+    デフォルト値    : 131072
+    コンテキスト    : speedy
+
+    説明:
+
+    perlバックエンドからデータ受け取るバッファのための
+    最大サイズとして<number>バイト使います。
+
+=item BufsizPost
+
+    コマンドライン  : -b<number>
+    デフォルト値    : 131072
+    コンテキスト    : speedy
+
+    説明:
+
+    perlバックエンドにデータ送るバッファのための
+    最大サイズとして<number>バイト使います。
+
+=item Group
+
+    コマンドライン  : -g<string>
+    デフォルト値    : "none"
+    コンテキスト    : mod_speedycgi, speedy
+
+    説明:
+
+    1つのperlインタープリタが複数のスクリプトを実行することを許します。
+    同じグループ名で、同じユーザ実行される全てのスクリプトは、同じperl
+    インタープリタで実行されます。もしグループ名が"none"であれば、
+    グループ化は無効になり、核インタープリタは1つのスクリプトを実行します。
+    グループ名が違えば、スクリプトは別のグループに分けられます。
+    名前は大文字/小文字が区別され、先頭12文字だけが有効です。空のグループ名を
+    指定することは、グループ名"default"を指定したのと同じです - これにより
+    グループ化を有効にするため、コマンドラインで単に"-g"を指定することが
+    可能になります。
+
+=item MaxBackends
+
+    コマンドライン  : -M<number>
+    デフォルト値    : 0 (上限なし)
+    コンテキスト    : mod_speedycgi, speedy
+
+    説明:
+
+    0でなければ、このperlスクリプトのために実行するspeedyバックエンドの
+    数を<number>に制限します。
+
+=item MaxRuns
+
+    コマンドライン  : -r<number>
+    デフォルト値    : 500
+    コンテキスト    : mod_speedycgi, module, speedy
+
+    説明:
+
+    perlインタープリタが<number>回実行したら、バックエンド・プロセスを
+    再びexecします。0は無制限を示します。このオプションは長時間にわたって
+    リソースを消費する傾向があるプロセスには、このオプションが有効です。
+
+=item PerlArgs
+
+    コマンドライン  : N/A
+    デフォルト値    : ""
+    コンテキスト    : mod_speedycgi
+
+    説明:
+
+    perlインタープリタに渡すコマンドライン・オプション
+
+=item Timeout
+
+    コマンドライン  : -t<number>
+    デフォルト値    : 3600 (1時間)
+    コンテキスト    : mod_speedycgi, module, speedy
+
+    説明:
+
+    <number>たって、何も新しいリクエストを受け取らなければ、
+    常駐perlインタープリタを終了します。0はタイムアウトなしを
+    示します。
+
+=item TmpBase
+
+    コマンドライン  : -T<string>
+    デフォルト値    : "/tmp/speedy"
+    コンテキスト    : mod_speedycgi, speedy
+
+    説明:
+
+    テンポラリ・ファイルを作成するとき、与えられた文字を頭に
+    つけます。これはディレクトリ名ではなく、ファイル名の頭に
+    ならなければなりません。
+
+=item Version
+
+    コマンドライン  : -v
+    コンテキスト    : speedy
+
+    説明:
+
+    SpeedyCGIのバージョンを出力し、終了します。
+
+
+=back
+
+=head1 メソッド
+
+以下のメソッドをCGI::SpeedyCGIモジュールで利用することができます。
+
+=over
+
+=item new
+
+新しいCGI::SpeedyCGI オブジェクトを作成します。
+
+    my $sp = CGI::SpeedyCGI->new;
+
+=item register_cleanup($function_ref)
+
+各リクエストの最後、あなたのスクリプトの実行が終了した後、STDOUTとSTDERRが
+閉じられる前に呼ばれる関数を登録します。メソッドを1度以上呼び出すことにより、
+複数の関数を追加することができます。リクエストの最後に、各関数は登録された
+順番に呼ばれます。
+
+    $sp->register_cleanup(\&cleanup_func);
+
+=item add_shutdown_handler($function_ref)
+
+perlインタープリタが終了する直前に呼ばれる関数のリストに関数を追加します。
+これは各リクエストの最後ではB<ありません>。perlインタープリタがTimeoutや
+MaxRunsに到達したために、完全に終了すると決めたときです。
+
+    $sp->add_shutdown_handler(sub {$dbh->logout});
+
+=item set_shutdown_handler($function_ref)
+
+もう使わないでください(Deprecated)。C<add_shutdown_handler>と似ていますが、
+1つの関数しか登録できません。
+
+    $sp->set_shutdown_handler(sub {$dbh->logout});
+
+=item i_am_speedy
+
+このスクリプトがSpeedyCGIで動いているのか、そうでないかを示すブール値を
+返します。CGIスクリプトは通常のperlでもSpeedyCGIでも動くことが出来ます。
+このメソッドはそのスクリプトがどちらの環境で動いてるのかが分かるようにします。
+
+    $sp->i_am_speedy;
+
+あなたのスクリプトをできるだけ移植可能にするため、以下のテストを使って
+SpeedyCGIモジュールが使えること、SpeedyCGIで実行していることを確認する
+ことができます。
+
+    if (eval {require CGI::SpeedyCGI} && CGI::SpeedyCGI->i_am_speedy) {
+    何かSpeedyCGI特有のことをここでします...
+
+このチェックのスピードを上げるため、オブジェクト・インターフェースを通す
+代わりに以下の変数が定義されているかをチェックすることもできます:
+
+    $CGI::SpeedyCGI::i_am_speedy
+
+=item setopt($optname, $value)
+
+L<"利用できるオプション">で説明したSpeedyCGIオプションの1つを設定します。
+そのオプションが持っていた前の値を返します。$optnameは大文字/小文字を区別しません。
+
+    $sp->setopt('TIMEOUT', 300);
+
+=item getopt($optname)
+
+1つのSpeedyCGIオプションの現在の値を返します。$optnameは大文字/小文字を
+区別しません。
+
+    $sp->getopt('TIMEOUT');
+
+=item shutdown_now
+
+perlインタープリタを即座にシャットダウンします。この関数は戻ってきません。
+
+    $sp->shutdown_now
+
+=item shutdown_next_time
+
+perlインタープリタを、このリクエストが終了したらすぐにシャットダウンします。
+
+    $sp->shutdown_next_time
+
+=back
+
+=head1 インストール方法
+
+SpeedyCGIをインストールするためには、あなたのOS用のバイナリ・パッケージを
+ダウンロードするかソースコードからSpeedyCGIをコンパイルする必要があります。
+ソースコードやバイナリを取得する場所についての情報はL<"ダウンロード">を
+ご覧ください。
+
+=head2 バイナリのインストール
+
+あなたのOS用のバイナリ・パッケージをダウンロードｓるのであれば、
+あなたのOS用の通常のパッケージ・ツールを使って、それをインストールする
+必要があります。それを行うコマンドは以下の通りです:
+
+=over
+
+=item Linux
+
+ rpm -i <filename>
+
+=item Solaris
+
+ gunzip <filename>.gz
+ pkgadd -d <filename>
+
+=item BSD
+
+ pkg_add <filename>
+
+=back
+
+apacheモジュールもインストールするのであれば、Apacheを
+L<"Apache構成設定">に書かれているようにApacheを設定する必要があります。
+
+=head2 ソースコードのインストール
+
+SpeedyCGIをコンパイルするためには、perl 5.004以降とCコンパイラ、
+おそらくはあなたのperlディストリビューションがコンパイルされたのと
+同じコンパイラが必要です。SpeedyCGIはSolaris、Redhat Linux、
+FreeBSDそしてOpenBSDで動くことがわかっています。他のOSや以前のバージョンの
+Perlでは問題があるかもしれません。SpeedyCGIはスレッド対応の(threaded)
+perlでは動かないかもしれません -- リリース2.10では、LinuxとSolarisでは
+スレッド対応のperlでうまく動くようですが、FreeBSDではそうではありません。
+
+=head2 標準のインストール
+
+ソースコードからの標準のインストールをするためには、以下のように実行してください:
+
+    perl Makefile.PL
+    make
+    make test
+    make install
+
+これはspeedyとspeedy_backendバイナリをperlがインストールされているのと
+同じディレクトリに、SpeedyCGI.pmモジュールを標準のperl libディレクトリに
+インストールします。またB<apxs>があなたのパスにあれば、mod_speedycgiモジュールを
+インストールしようともします。
+
+=head2 他のディレクトリへのインストール
+
+標準のperlディレクトリにインストールする権限を持っていない、あるいは他の場所に
+インストールしたいのであれば、一番簡単な方法はperlの独自のコピーを他の場所に
+コンパイルし、インストールし、それから"perl Makefile.PL"を実行するときに
+そのあなたの新しいバージョンのperlを使うことです。そうすれば
+SpeedyCGIバイナリとモジュールは、新しいバージョンのperlと同じ場所に
+インストールされます。
+
+独自のperlをインストールできなければ、以下の手順を取ることが出来ます:
+
+=over
+
+=item *
+
+src/optdefsを編集し、BackendProgのデフォルト値をspeedy_backendがインストール
+される場所に変更します。
+
+=back
+
+=over
+
+=item *
+
+上記のようにコンパイルします。それから手動でspeedyとspeedy_backendのバイナリを
+あなたがインストールしたい場所にコピーしてください。
+
+=back
+
+=over
+
+=item *
+
+あなたのコードの中でCGI::SpeedyCGIモジュールを使いたければ（これは
+必須ではありません）、それが取得できるように"use lib"を使わなければならないでしょう。
+
+=back
+
+=head2 Apacheのインストール
+
+オプションのapache mod_speedycgiモジュールをコンパイルするためには、B<apxs>
+コマンドがあなたのパスになければなりません。Redhatは"apache-devel" RPMに
+含めています。しかしインストールでは適切に機能しないかもしれません。
+
+もしapacheのインストールが失敗したら:
+
+=over
+
+=item *
+
+mod_speedycgi.soをmod_speedycgiディレクトリあるいはmod_speedycgi2/.libs
+ディレクトリから、あなたのapacheモジュールが格納されている場所にコピー
+してください（F</usr/lib/apache>を試してみてください）
+
+=back
+
+=over
+
+=item *
+
+F<httpd.conf>（F</etc/httpd/conf/httpd.conf>を試してみてください）を編集し、
+以下の行を追加してください。LoadModuleディレクティブの最後のパスは、あなたの
+インストールでは違うかもしれません -- 違いを見るために他のLoadModuleを
+見てください。
+
+    LoadModule speedycgi_module modules/mod_speedycgi.so
+
+Apache-1を使っているのであれば、これも追加してください:
+
+    AddModule mod_speedycgi.c
+
+=back
+
+=head2 Apache構成設定
+
+mod_speedycgiがインストールされたら、あなたのperlスクリプトのために
+使われるように構成設定する必要があります。それには2つの方法があります。
+
+警告!以下の手順はあなたのwebサイトのセキュリティを危うくさせるかも
+しれません。SpeedyCGIに関連するセキュリティの危険性は、通常のCGIの
+ものに似ています。以下の変更のセキュリティとの関連がわかならければ、
+それを行わないようにしてください。
+
+=over
+
+=item 1. パスによる設定
+
+これはF</cgi-bin>を動かす方法に似ています - このパスにある全てのものは
+SpeedyCGIにより扱われます。以下の行をあなたのhttpd.confの一番上の
+ほうに追加してください - これによりあなたのcgi-binディレクトリにある
+全てのスクリプトが、F</speedy/script-name>としてアクセスされると
+SpeedyCGIにより扱われるようになります。
+
+    Alias /speedy/ /home/httpd/cgi-bin/
+    <Location /speedy>
+    SetHandler speedycgi-script
+    Options ExecCGI
+    allow from all
+    </Location>
+
+=item 2. ファイル拡張子による設定
+
+これは、.cgiファイルが動く方法と同じように、ある拡張子を持っている全ての
+ファイルをSpeedyCGIに扱わせるようにします。以下の行をあなたのhttpd.confの
+一番上のほうに追加してください - これは拡張子".speedy"であるファイルが
+SpeedyCGIにより扱われるようにします。
+
+    AddHandler speedycgi-script .speedy
+    <Location />
+    Options ExecCGI
+    </Location>
+
+=back
+
+
+=head1 よくある質問
+
+=over
+
+=item speedyフロントエンドは、どのようにしてバックエンド・プロセスに接続するのですか？
+
+F</tmp>のUnixソケットを経由します。キュー(queue)がF</tmp>の各プロセスのための
+エントリを保持する共有ファイルに保持されます。そのキューでは
+接続を待っているperlプロセスのpidが入っています。フロントエンドは、この
+キューからプロセスを取り出し、そのソケットに接続し、環境変数とargvを送信します。
+そしてこのソケットをperlプロセスへのstdin/stdouのために使います。
+
+=back
+
+=over
+
+=item SpeedyCGIスクリプトの実行中に他のリクエストが来たら、クライナトは待たなければ
+いけないのでしょうか、それとも他のプロセスが開始されるのでしょうか？開始されるプロセスの
+数の上限を設定する方法はありますか？
+
+全てのperlプロセスが忙しいときに他のリクエストが来たならば、別のperlプロセスが
+開始されます。通常のperlの場合と同じように、通常はいくつのプロセスが開始されるかに
+ついての上限はありません。しかしプロセスは負荷が非常に高く、それが必要なときにだけ
+開始されます。もし負荷が下がれば、あなたがタイムアウトを無効にしていない限り、
+プロセスは活動しないために死んでいきます。
+
+バージョン1.8.3から、perlバックエンドの実行の数を制限するためにオプションが
+追加されました。上記のL<"利用できるオプション">のB<MaxBackends>をご覧ください。
+
+=back
+
+=over
+
+=item speedyが他のリクエストを開始したとき、どのくらいの量のperlの状態が保持されますか？
+グローバルはその値を保持していますか？リクエストの後にデストラクタが走りますか？
+
+グローバルはその値を保持します。リクエストの後は何も破壊されません。
+STDIN/STDOUT/STDERRはクローズされます -- 他のファイルはそうではありません。
+C<%ENV> と C<@ARGV>だけがリクエストの間で変更されるグローバルになります。
+
+=back
+
+=over
+
+=item CGIにより使われるperlライブラリを編集するとき、確実にspeedyを
+再起動させるためにはどうすればいいですか？
+
+実行されるメインのcgiファイルをtouchしてください。
+フロントエンドが実行するたびに、メインファイルのmtimeがチェックされます。
+
+=back
+
+=over
+
+=item SpeedyCGIをインストールし/あるいは実行するためにはrootになる必要がありますか？
+
+いいえ、rootは必須ではありません。
+
+=back
+
+=over
+
+=item 私のperlアプリケーションがspeedyで動くためには変更する必要があるかは、
+どうすれば判断することができますか？あるいは何も変更は必要ないのでしょうか？
+
+変更する必要があるかもしれません。
+
+グローバルが実行の間で保持されます。例えば永続的なデータベース・ハンドルを
+保つということではいいことかもしれませんが、あなたのコードがそれらが未定義
+であることを想定していればよくありません。
+
+また、グローバル変数を"my"で作成するならば、サブルーチンの中からそれらの
+変数を参照しようとするべきではありません - その代わりにそれらをサブルーチンに
+渡すべきです。あるいは完全に問題をさけるために、単にmyの代わりに"use vars"で
+グローバル変数を宣言したほうが、まだましです。
+
+ここに、この問題についての素晴らしい説明があります - これはmod_perlについて
+ですが同じことがspeedycgiにも当てはまります:
+
+    http://perl.apache.org/faq/mod_perl_cgi.html#Variables_retain_their_value_fro
+
+全てが失敗するのであれば、MaxRunsを1に設定することにより常駐を無効に
+することができます。これが通常のperlに比較しての唯一の利点は、speedyが
+スクリプトを事前にコンパイルすることにあります。
+
+=back
+
+=over
+
+=item データベースへの接続を持続させたままにするにはどうすればよいですか？
+
+グローバルの値は実行をまたがって保持されるので、これを行う一番よい方法は
+接続をグローバル変数に格納し、実行のたびにその変数が既に定義されているかを
+チェックすることです。
+
+例えば、あなたのコードがデータベース接続ハンドルを返す"open_db_connection"
+サブルーチンを持っているのであれば、持続的な接続を保つために以下のコードを
+使うことが出来ます:
+
+    use vars qw($dbh);
+    unless (defined($dbh)) {
+        $dbh = &open_db_connection;
+    }
+
+このコードは持続的なデータベース接続ハンドルをグローバル変数"$dbh"に格納し、
+そのコードが実行された最初のときにだけそれを初期化します。後の実行では
+既存の接続が再利用されます。
+
+何らかの理由でそれがうまく動かない場合には、それを使う前に、毎回その接続を
+チェックしたいとも思うかもしれません。そこでDB接続が機能していればtrueを返す
+"db_connection_ok"という名前のサブルーチンを持っているとすれば、このような
+コードを使うことが出来ます:
+
+    use vars qw($dbh);
+    unless (defined($dbh) && &db_connection_ok($dbh)) {
+    $dbh = &open_db_connection;
+    }
+
+=back
+
+=over
+
+=item Oracleデータベース接続を持続させたスクリプトがハングするのはなぜ？
+
+OracleへのIPC接続を使うと、oracleプロセスがforkされexecされ、stdout接続を
+オープンしたままにします。そのためwebサーバーがEOFを受け取りません。
+この障害を修正するためには、データベースへTCP接続を利用するか、以下の
+perlコードをDBI->connectステートメントの前のどこかに追加してください:
+
+    use Fcntl;
+    fcntl(STDOUT, F_SETFD, FD_CLOEXEC);
+
+これは、標準出力に実行時クローズ(close-on-exec)フラグを設定します。
+そのためoracleがexecされたらクローズされます。
+
+=back
+
+=head1 グループの使い方
+
+SpeedyCGIのグループ機能はperlインタープリタにより使用されるメモリ量を
+減らすのを助けるために利用することができます。グループが使われないと
+（つまりグループ名が"none"であれば）、各perlスクリプトは、それ自身の
+perlインンタプリタの集合を与えられ、他のスクリプトのために使われる
+perlインタープリタからは分離されます。SpeedyCGIでは各perlインタープリタは
+別のシステム・プロセスになります。
+
+グループ化が使われるとき、perlインタープリタはグループに入れられます。
+そのグループでの全てのperlインタプリタは、同じグループのperlスクリプトを
+実行することが出来ます。全てのスクリプトを同じグループに入れておけば、
+1つのperlインタープリタがあなたのシステム上の全てのperlスクリプトを実行する
+ということを意味します。多くの異なるperlスクリプトを実行するときに
+必要とするメモリを大幅に減少せることができます。
+
+SpeedyCGIグループ名はそれ自身へのエンティティです。それは
+UnixグループやApacheでのGroupディレクティブとは関係ありません。
+グループ名は彼らの必要を基にしてSpeedyCGIを実行する人によって作成
+されます。2つの特別なグループ名"none"と"default"があります。
+その他の全てのグループ名はL<"オプション">で説明したGroupを使って
+SpeedyCGIのユーザによって作成されます。
+
+可能な限りグループ化の量を最大限に使いたければ（つまり同じインタープリタで
+全てのスクリプト）、常にグループ名"default"を使わなければなりません、
+こうすると、出来る限り最小限のperlインタープリタを取得することになります。
+各perlインタープリタは、あなたのperlスクリプトをどれでも実行することができます。
+
+全てのスクリプトにグループ"default"を使うことがリソースの使用を最も効率的に
+するとしても、これが常に可能あるいは望ましいことではありません。あなたは
+以下の理由で他のグループ名を使いたいと思うかもしれません:
+
+=over
+
+=item * うまく動かないスクリプトやグループでは動かないスクリプトを分離させる。
+
+スクリプトにはグループでは動かないものもあります。一緒にperlスクリプトがグループ化
+されると、それらはそれぞれに独自の一意なパッケージ名を与えられます - 通常そうである
+ように"main"パッケージでは実行されません。そのため、例えば、コードの中のどこかで
+サブルーチンや変数を探すため、明示的に"main"を使うスクリプトはグループの中では
+動かないでしょう。この場合、コンパイルされ、パッケージmainで実行され、
+常に独自のインタープリタを与えられるようにグループ"none"でそのような
+スクリプトを走らせるのが、おそらく一番いいでしょう。
+
+その他のスクリプトが入っているパッケージに変更を与え、同じインタープリタで
+走る他のスクリプトを破壊するかもしれません。この場合、そのようなスクリプトには
+両立しない他のスクリプトから分離させておくために、独自のグループ名
+（グループ名"pariah"のような）を与えることができます。残りのあなたのスクリプト
+グループ"default"で実行させることができます。これにより"pariah"スクリプトが
+他のスクリプトと同じインタープリタで実行されないことを確実にします。
+
+=back
+
+=over
+
+=item * 異なるスクリプトに異なるperlやSpeedyCGIパラメータを渡すため。
+
+異なるスクリプトのために別のポリシーを作成するために別のグループを
+使いたいかもしれません。
+
+10個のperlスクリプトが含まれるemailアプリケーションを持っているとします。
+そしてこのアプリケーションで使われている共通のperlコードがひどいメモリ・リークを
+抱えているとします。あなたはこれらのスクリプトの全てにMaxRunsの設定を5にしたいと
+思っています。そして他の全てのスクリプトは通常のMaxRunsポリシーとし別のグループで
+実行させたいと思っています。あなたが出来ることは10個のemailスクリプトを編集し、
+先頭に以下の行を入れることです:
+
+    #!/usr/bin/speedy -- -gmail -r5
+
+残りのperlスクリプトには以下のものが使えます:
+
+    #!/usr/bin/speedy -- -g
+
+これは、10個のemailスクリプトを("mail"という）独自のグループに入れ、
+それらの全てにデフォルトのMaxRunsの値5を与えます。それ以外の全ての
+スクリプトは"default"という名前のグループに入れられ、そしてこのグループは
+通常のMaxRuns設定を持ちます。
+
+=back
+
+=head1 ダウンロード
+
+=head2 バイナリ
+
+各種OSのためのバイナリが以下の場所にあります:
+
+    http://daemoninc.com/SpeedyCGI/download.html
+
+=head2 ソースコード
+
+標準のソースコード・ディストリビューションはCPANミラーのいずれか、あるいは
+下記の場所から取得することができます:
+
+    http://daemoninc.com/SpeedyCGI/download.html
+    http://www.cpan.org/modules/by-authors/id/H/HO/HORROCKS/
+
+
+最新の開発コードはSourceForge CVSリポジトリから以下のコマンドを使って
+取得することができます:
+
+ cvs -d:pserver:anonymous@cvs.SpeedyCGI.sourceforge.net:/cvsroot/speedycgi login 
+ cvs -z3 -d:pserver:anonymous@cvs.SpeedyCGI.sourceforge.net:/cvsroot/speedycgi co 2.x
+
+パスワードのためのプロンプトにはEnterを押してください。
+
+
+=head1 作者
+
+    Sam Horrocks
+    http://daemoninc.com
+    sam@daemoninc.com
+
+=head2 貢献者
+
+多くの人々がコード、パッチ、アイデア、リソースなどで助けてくれました。
+ここでだれか抜けているかもしれません - もしそうであれば私にメールをください。
+
+=over 
+
+=item *
+
+Gunther Birznieks
+
+=item *
+
+Diana Eichert
+
+=item *
+
+Takanori Kawai
+
+=item *
+
+Robert Klep
+
+=item *
+
+Marc Lehmann
+
+=item *
+
+James McGregor
+
+=item *
+
+Josh Rabinowitz
+
+=item *
+
+Dave Parker
+
+=item *
+
+Craig Sanders
+
+=item *
+
+Joseph Wang
+
+=back
+
+=head1 参考資料
+
+perl(1), httpd(8), apxs(8).
+
+=head1 さらなる情報
+
+=head2 SpeedyCGI ホームページ
+
+http://daemoninc.com/SpeedyCGI/
+
+=head2 メーリングリスト
+
+=over
+
+=item *
+
+SpeedyCGI users mailing list - speedycgi-users@lists.sourceforge.net.
+アーカイブと参加方法については http://lists.sourceforge.net/lists/listinfo/speedycgi-users
+
+=back
+
+=over
+
+=item *
+
+SpeedyCGI announcements mailing list - speedycgi-announce@lists.sourceforge.net.
+アーカイブトと参加方法については http://lists.sourceforge.net/lists/listinfo/speedycgi-announce
+
+=back
+
+=head2 バグとTodoリスト
+
+バグや変更リクエストについてはメーリングリストに報告してください。
+
+現在のバグ/todoリストは以下の場所にあります
+http://www.sourceforge.net/projects/speedycgi/.
+Bug Trackingメニューに行き、バグについてはGroupで"bug"を
+todoリストについてはGroupで"rfe"を選択してください。
+
+=head2 日本語翻訳
+
+http://member.nifty.ne.jp/hippo2000/perltips/CGI/SpeedyCGI.htm
+
+（訳者注：現在移動中ってわけです）
+
+=head2 ベンチマーク
+
+http://daemoninc.com/SpeedyCGI/benchmarks/
+
+=head2 成功事例
+
+http://daemoninc.com/SpeedyCGI/success_stories/
+
+=head2 修正履歴
+
+http://daemoninc.com/SpeedyCGI/CGI-SpeedyCGI/Changes
+
+=head2 YAPC 2001 でのプレゼンテーション
+
+YAPC2001でSpeedyCGIの紹介を話してきました。それは下記の場所にあります
+http://daemoninc.com/SpeedyCGI/yapc_2001/
+
+
+
+=head1 著作権(COPYRIGHT)
+
+Copyright (C) 2002  Sam Horrocks
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+
+This product includes software developed by the
+Apache Software Foundation (http://www.apache.org/).
+
+
