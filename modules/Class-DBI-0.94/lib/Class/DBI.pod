@@ -1,0 +1,1453 @@
+=head1 NAME
+
+	Class::DBI - Simple Database Abstraction
+
+=head1 SYNOPSIS
+
+	package Music::DBI;
+	use base 'Class::DBI';
+	Music::DBI->set_db('Main', 'dbi:mysql:dbname', 'username', 'password');
+
+	package Music::Artist;
+	use base 'Music::DBI';
+	Music::Artist->table('artist');
+	Music::Artist->columns(All => qw/artistid name/);
+	Music::Artist->has_many(cds => 'Music::CD');
+
+	package Music::CD;
+	use base 'Music::DBI';
+	Music::CD->table('cd');
+	Music::CD->columns(All => qw/cdid artist title year/);
+	Music::CD->has_many(tracks => 'Music::Track');
+	Music::CD->has_a(artist => 'Music::Artist');
+	Music::CD->has_a(reldate => 'Time::Piece',
+		inflate => sub { Time::Piece->strptime(shift, "%Y-%m-%d") },
+		deflate => 'ymd',
+	}
+
+	Music::CD->might_have(liner_notes => LinerNotes => qw/notes/);
+
+	package Music::Track;
+	use base 'Music::DBI';
+	Music::Track->table('track');
+	Music::Track->columns(All => qw/trackid cd position title/); 
+
+	#-- Meanwhile, in a nearby piece of code! --#
+
+	my $artist = Music::Artist->create({ artistid => 1, name => 'U2' });
+
+	my $cd = $artist->add_to_cds({ 
+		cdid   => 1,
+		title  => 'October',
+		year   => 1980,
+	});
+
+	# Oops, got it wrong.
+	$cd->year(1981);
+	$cd->update;
+
+	# etc.
+
+	foreach my $track ($cd->tracks) {
+		print $track->position, $track->title
+	}
+
+	$cd->delete; # also deletes the tracks
+
+	my $cd  = Music::CD->retrieve(1);
+	my @cds = Music::CD->retrieve_all;
+	my @cds = Music::CD->search(year => 1980);
+	my @cds = Music::CD->search_like(title => 'October%');
+
+=head1 INTRODUCTION
+
+Class::DBI provides a convenient abstraction layer to a database.
+
+It not only provides a simple database to object mapping layer, but can
+be used to implement several higher order database functions (triggers,
+referential integrity, cascading delete etc.), at the application level,
+rather than at the database.
+
+This is particularly useful when using a database which doesn't support
+these (such as MySQL), or when you would like your code to be portable
+across multiple databases which might implement these things in different
+ways.
+
+In short, Class::DBI aims to make it simple to introduce 'best
+practice' when dealing with data stored in a relational database.
+
+=head2 How to set it up
+
+=over 4
+
+=item I<Set up a database.>
+
+You must have an existing database set up, have DBI.pm installed and
+the necessary DBD:: driver module for that database.  See L<DBI> and
+the documentation of your particular database and driver for details.
+
+=item I<Set up a table for your objects to be stored in.>
+
+Class::DBI works on a simple one class/one table model.  It is your
+responsibility to have your database tables already set up. Automating that
+process is outside the scope of Class::DBI.
+
+Using our CD example, you might declare a table something like this:
+
+	CREATE TABLE cd (
+		cdid   INTEGER   PRIMARY KEY,
+		artist INTEGER, # references 'artist'
+		title  VARCHAR(255),
+		year   CHAR(4),
+	);
+
+=item I<Set up an application base class>
+
+It's usually wise to set up a "top level" class for your entire
+application to inherit from, rather than have each class inherit
+directly from Class::DBI.  This gives you a convenient point to
+place system-wide overrides and enhancements to Class::DBI's behavior.
+
+	package Music::DBI;
+	use base 'Class::DBI';
+
+=item I<Give it a database connection>
+
+Class::DBI needs to know how to access the database.  It does this
+through a DBI connection which you set up by calling the set_db()
+method.
+
+	Music::DBI->set_db('Main', 'dbi:mysql:dbname', 'user', 'password');
+
+By setting the connection up in your application base class all the
+table classes that inherit from it will share the same connection.
+
+The first parameter is the name for this database connection and
+it must be 'Main' for Class::DBI to function.  See L</set_db> below
+and L<Ima::DBI> for more details on set_db().
+
+=item I<Set up each Class>
+
+	package Music::CD;
+	use base 'Music::DBI';
+
+Each class will inherit from your application base class, so you don't
+need to repeat the information on how to connect to the database.
+
+=item I<Declare the name of your table>
+
+Inform Class::DBI what table you are using for this class:
+
+	Music::CD->table('cd');
+
+=item I<Declare your columns.>
+
+This is done using the columns() method. In the simplest form, you tell
+it the name of all your columns (with the single primary key first):
+
+	Music::CD->columns(All => qw/cdid artist title year/);
+
+If the primary key of your table spans multiple columns then
+declare them using a separate call to columns() like this:
+
+	Music::CD->columns(Primary => qw/pk1 pk2/);
+	Music::CD->columns(Others => qw/foo bar baz/);
+
+For more information about how you can more efficiently use subsets of
+your columns, L<"Lazy Population">
+
+=item I<Done.>
+
+That's it! You now have a class with methods to create(), retrieve(),
+search() for, update() and delete() objects from your table, as well as
+accessors and mutators for each of the columns in that object (row).
+
+=back
+
+Let's look at all that in more detail:
+
+=head1 CLASS METHODS
+
+=head2 set_db
+
+	__PACKAGE__->set_db('Main', $data_source, $user, $password, \%attr);
+
+For details on this method, L<Ima::DBI>.
+
+The special connection named 'Main' must always be set.  Connections
+are inherited so it's usual to call set_db() just in your application
+base class.
+
+	package Music::DBI;
+	use base 'Class::DBI';
+
+	Music::DBI->set_db('Main', 'dbi:foo:dbname', 'user', 'password');
+
+	package My::Other::Table;
+	use base 'Music::DBI';
+
+Class::DBI helps you along a bit to set up the database connection.
+set_db() provides its own default attributes depending on the driver name
+in the data_source parameter. The set_db() method provides defaults for
+these attributes:
+
+	FetchHashKeyName	=> 'NAME_lc',
+	ShowErrorStatement	=> 1,
+	ChopBlanks		=> 1,
+	AutoCommit		=> 1,
+
+(Except for Oracle and Pg, where AutoCommit is set to 0, placing the
+database in transactional mode).
+
+The defaults can always be overridden or extended by supplying your own
+\%attr parameter. For example:
+
+	Music::DBI->set_db('Main','dbi:foo:dbname','user','pass',{ChopBlanks=>0});
+
+=head3 Dynamic Database Connections
+
+It is sometimes desirable to generate your database connection information
+dynamically, for example, to allow multiple databases with the same
+schema to not have to duplicate an entire class hierarchy.
+
+The preferred method for doing this is to supply your own db_Main()
+method rather than calling set_db(). This method should return a valid
+database handle. 
+
+Note however that this is class data, and that changing it may have
+unexpected behaviour for instances of the class already in existence.
+
+=head2 table
+
+	__PACKAGE__->table($table);
+
+	$table = Class->table;
+	$table = $obj->table;
+
+An accessor to get/set the name of the database table in which this
+class is stored.  It -must- be set.
+
+Table information is inherited by subclasses, but can be overridden.
+
+=head2 table_alias
+
+	package Shop::Order;
+	__PACKAGE__->table('orders');
+	__PACKAGE__->table_alias('orders');
+
+When Class::DBI constructs SQL, it aliases your table name to a name
+representing your class. However, if your class's name is an SQL reserved
+word (such as 'Order') this will cause SQL errors. In such cases you
+should supply your own alias for your table name (which can, of course,
+be the same as the actual table name).
+
+This can also be passed as a second argument to 'table':
+
+	__PACKAGE-->table('orders', 'orders');
+
+As with table, this is inherited but can be overriden.
+
+=head2 sequence / auto_increment
+
+	__PACKAGE__->sequence($sequence_name);
+
+	$sequence_name = Class->sequence;
+	$sequence_name = $obj->sequence;
+
+If you are using a database which supports sequences and you want to use
+a sequence to automatically supply values for the primary key of a table,
+then you should declare this using the sequence() method:
+
+	__PACKAGE__->columns(Primary => 'id');
+	__PACKAGE__->sequence('class_id_seq');
+
+Class::DBI will use the sequence to generate a primary key value when
+objects are created without one.
+
+*NOTE* This method does not work for Oracle. However, Class::DBI::Oracle
+(which can be downloaded separately from CPAN) provides a suitable
+replacement sequence() method.
+
+If you are using a database with AUTO_INCREMENT (e.g. MySQL) then you do
+not need this, and any call to create() without a primary key specified
+will fill this in automagically.
+
+Sequence and auto-increment mechanisms only apply to tables that have
+a single column primary key. For tables with multi-column primary keys
+you need to supply the key values manually.
+
+=head1 CONSTRUCTORS and DESTRUCTORS
+
+The following are methods provided for convenience to create, retrieve
+and delete stored objects.  It's not entirely one-size fits all and you
+might find it necessary to override them.
+
+=head2 create
+
+	my $obj = Class->create(\%data);
+
+This is a constructor to create a new object and store it in the database.
+
+%data consists of the initial information to place in your object and
+the database.  The keys of %data match up with the columns of your
+objects and the values are the initial settings of those fields.
+
+	my $cd = Music::CD->create({ 
+		cdid   => 1,
+		artist => $artist,
+		title  => 'October',
+		year   => 1980,
+	});
+
+If the table has a single primary key column and that column value
+is not defined in %data, create() will assume it is to be generated.
+If a sequence() has been specified for this Class, it will use that.
+Otherwise, it will assume the primary key can be generated by
+AUTO_INCREMENT and attempt to use that.
+
+The C<before_create>($data) trigger is invoked directly after storing the
+supplied values into the new object and before inserting the record into
+the database. The object stored in $self is a dummy for the final object,
+and will not support many of the normal operations. In particular, adding
+default values for columns etc should be done by treating $data purely as
+a data hash, rather than a fully fledged object (i.e. you should assign
+$data->{column} = $value, rather than calling $data->column($value).
+
+For tables with multi-column primary keys you need to supply all
+the key values, either in the arguments to the create() method, or
+by setting the values in a C<before_create> trigger.
+
+If the class has declared relationships with foreign classes via
+has_a(), you can pass an object to create() for the value of that key.
+Class::DBI will Do The Right Thing.
+
+After the new record has been inserted into the database the data
+for non-primary key columns is discarded from the object. If those
+columns are accessed again they'll simply be fetched as needed.
+This ensures that the data in the application is consistant with
+what the database I<actually> stored.
+
+The C<after_create> trigger is invoked after the database insert
+has executed.
+
+=head2 find_or_create
+
+	my $cd = Music::CD->find_or_create({ artist => 'U2', title => 'Boy' });
+
+This checks if a CD can be found to match the information passed, and
+if not creates it. 
+
+=head2 delete
+
+	$obj->delete;
+	Music::CD->delete(year => 1980, title => 'Greatest %');
+
+Deletes this object from the database and from memory. If you have set up
+any relationships using has_many, this will delete the foreign elements
+also, recursively (cascading delete).  $obj is no longer usable after
+this call.
+
+If called as a class method, deletes all objects matching the search
+criteria given.  Each object found will be deleted in turn, so cascading
+delete and other triggers will be honoured.
+
+The C<before_delete> trigger is when an object instance is about to be
+deleted. It is invoked before any cascaded deletes.  The C<after_delete>
+trigger is invoked after the record has been deleted from the database
+and just before the contents in memory are discarded.
+
+=head1 RETRIEVING OBJECTS
+
+We provide a few simple search methods, more to show the potential of
+the class than to be serious search methods.
+
+=head2 retrieve
+
+	$obj = Class->retrieve( $id );
+	$obj = Class->retrieve( %key_values );
+
+Given key values it will retrieve the object with that key from the
+database.  For tables with a single column primary key a single
+parameter can be used, otherwise a hash of key-name key-value pairs
+must be given.
+
+	my $cd = Music::CD->retrieve(1) or die "No such cd";
+
+=head2 retrieve_all
+
+	my @objs = Class->retrieve_all;
+	my $iterator = Class->retrieve_all;
+
+Retrieves objects for all rows in the database. This is probably a
+bad idea if your table is big, unless you use the iterator version.
+
+=head2 search
+
+	@objs = Class->search(column1 => $value, column2 => $value ...);
+
+This is a simple search for all objects where the columns specified are
+equal to the values specified e.g.:
+
+	@cds = Music::CD->search(year => 1990);
+	@cds = Music::CD->search(title => "Greatest Hits", year => 1990);
+
+You may also specify the sort order of the results by adding a final
+hash of arguments with the key 'order_by':
+
+	@cds = Music::CD->search(year => 1990, { order_by=>'artist' });
+
+=head2 search_like
+
+	@objs = Class->search_like(column1 => $like_pattern, ....);
+
+This is a simple search for all objects where the columns specified are
+like the values specified.  $like_pattern is a pattern given in SQL LIKE
+predicate syntax.  '%' means "any one or more characters", '_' means
+"any single character".
+
+	@cds = Music::CD->search_like(title => 'October%');
+	@cds = Music::CD->search_like(title => 'Hits%', artist => 'Various%');
+
+You can also use 'order_by' with these, as with search().
+
+=head1 ITERATORS
+
+	my $it = Music::CD->search_like(title => 'October%');
+	while (my $cd = $it->next) {
+		print $cd->title;
+	}
+
+Any of the above searches (as well as those defined by has_many) can also
+be used as an iterator.  Rather than creating a list of objects matching
+your criteria, this will return a Class::DBI::Iterator instance, which
+can return the objects required one at a time.
+
+Currently the iterator initially fetches all the matching row data into
+memory, and defers only the creation of the objects from that data until
+the iterator is asked for the next object. So using an iterator will
+only save significant memory if your objects will inflate substantially
+when used.
+
+In the case of has_many relationships with a mapping method, the mapping
+method is not called until each time you call 'next'. This means that
+if your mapping is not a one-to-one, the results will probably not be
+what you expect.
+
+=head2 Subclassing the Iterator
+
+	Music::CD->iterator_class('Music::CD::Iterator');
+
+You can also subclass the default iterator class to override its
+functionality.  This is done via class data, and so is inherited into
+your subclasses.
+
+=head2 QUICK RETRIEVAL
+
+	my $obj = Class->construct(\%data);
+
+This is a B<protected> method and can only be called by subclasses of
+Class::DBI. It is used to turn data from the database into objects,
+and should thus only be used when writing constructors.
+
+This is very handy for cheaply setting up lots of objects from data for
+without going back to the database.
+
+For example, instead of doing one SELECT to get a bunch of IDs and then
+feeding those individually to retrieve() (and thus doing more SELECT
+calls), you can do one SELECT to get the essential data of many objects
+and feed that data to construct():
+
+	 return map $class->construct($_), $sth->fetchall_hash;
+
+The construct() method creates a new empty object, loads in the column
+values, and then invokes the C<select> trigger.
+
+=head1 COPY AND MOVE
+
+=head2 copy
+
+	$new_obj = $obj->copy;
+	$new_obj = $obj->copy($new_id);
+	$new_obj = $obj->copy({ title => 'new_title', rating => 18 });
+
+This creates a copy of the given $obj, removes the primary key,
+sets any supplied column values and called create() to insert a new
+record in the database.
+
+For tables with a single column primary key, copy() can be called
+with no parameters and the new object will be assigned a key
+automatically.  Or a single parameter can be supplied and will be
+used as the new key.
+
+For tables with a multi-olumn primary key, copy() must be called with
+parameters which supply new values for all primary key columns, unless
+a C<before_create> trigger will supply them. The create() method will
+fail if any primary key columns are not defined.
+
+	my $blrunner_dc = $blrunner->copy("Bladerunner: Director's Cut");
+	my $blrunner_unrated = $blrunner->copy({
+		Title => "Bladerunner: Director's Cut",
+		Rating => 'Unrated',
+	});
+
+=head2 move
+
+	my $new_obj = Sub::Class->move($old_obj);
+	my $new_obj = Sub::Class->move($old_obj, $new_id);
+	my $new_obj = Sub::Class->move($old_obj, \%changes);
+
+For transfering objects from one class to another. Similar to copy(), an
+instance of Sub::Class is created using the data in $old_obj (Sub::Class
+is a subclass of $old_obj's subclass). Like copy(), you can supply
+$new_id as the primary key of $new_obj (otherwise the usual sequence or
+autoincrement is used), or a hashref of multiple new values.
+
+=head1 TRIGGERS
+
+	__PACKAGE__->add_trigger(trigger_point_name => \&code_to_execute);
+
+	# e.g.
+
+	__PACKAGE__->add_trigger(after_create  => \&call_after_create);
+
+It is possible to set up triggers that will be called at various
+points in the life of an object. Valid trigger points are:
+
+	before_create       (also used for deflation)
+	after_create
+	before_set_$column  (also used by add_constraint)
+	after_set_$column   (also used for inflation and by has_a)
+	before_update       (also used for deflation and by might_have)
+	after_update
+	before_delete
+	after_delete
+	select              (also used for inflation and by construct and _flesh)
+
+You can create any number of triggers for each point, but you cannot
+specify the order in which they will be run. Each will be passed the
+object being dealt with (whose values you may change if required),
+and return values will be ignored.
+
+All triggers are passed the object they are being fired for.
+Some triggers are also passed extra parameters as name-value pairs.
+The individual triggers are documented with the methods that trigger them.
+
+=head1 CONSTRAINTS
+
+	__PACKAGE__->add_constraint('name', column => \&check_sub);
+
+	# e.g.
+
+	__PACKAGE__->add_constraint('over18', age => \&check_age);
+
+	# Simple version
+	sub check_age { 
+		my ($value) = @_;
+		return $value >= 18;
+	}
+
+	# Cross-field checking - must have SSN if age < 18
+	sub check_age { 
+		my ($value, $self, $column_name, $changing) = @_;
+		return 1 if $value >= 18;     # We're old enough. 
+		return 1 if $changing->{SSN}; # We're also being given an SSN
+		return 0 if !ref($self);      # This is a create, so we can't have an SSN
+		return 1 if $self->ssn;       # We already have one in the database
+		return 0;                     # We can't find an SSN anywhere
+	}
+
+It is also possible to set up constraints on the values that can be set
+on a column. The constraint on a column is triggered whenever an object
+is created and whenever the value in that column is being changed.
+
+The constraint code is called with four parameters:
+
+	- The new value to be assigned
+	- The object it will be assigned to
+	(or class name when initially creating an object)
+	- The name of the column
+	(useful if many constraints share the same code)
+	- A hash ref of all new column values being assigned
+	(useful for cross-field validation)
+
+The constraints are applied to all the columns being set before the
+object data is changed. Attempting to create or modify an object
+where one or more constraint fail results in an exception and the object
+remains unchanged.
+
+Note 1: Constraints are implemented using before_set_$column triggers.
+This will only prevent you from setting these values through a
+the provided create() or set() methods. It will always be possible to
+bypass this if you try hard enough.
+
+Note 2: When an object is created constraints are currently only
+checked for column names included in the parameters to create().
+This is probably a bug and is likely to change in future.
+
+=head1 DATA NORMALIZATION
+
+Before an object is assigned data from the application (via create or
+a set accessor) the normalize_column_values() method is called with
+a reference to a hash containing the column names and the new values
+which are to be assigned (after any validation and constraint checking,
+as described below).
+
+Currently Class::DBI does not offer any per-column mechanism here.
+The default method is empty.  You can override it in your own classes
+to normalize (edit) the data in any way you need. For example the values
+in the hash for certain columns could be made lowercase.
+
+The method is called as an instance method when the values of an existing
+object are being changed, and as a class method when a new object is
+being created.
+
+=head1 DATA VALIDATION
+
+Before an object is assigned data from the application (via create or
+a set accessor) the validate_column_values() method is called with a
+reference to a hash containing the column names and the new values which
+are to be assigned.
+
+The method is called as an instance method when the values of an existing
+object are being changed, and as a class method when a new object is
+being created.
+
+The default method calls the before_set_$column trigger for each column
+name in the hash. Each trigger is called inside an eval.  Any failures
+result in an exception after all have been checked.  The exception data
+is a reference to a hash which holds the column name and error text for
+each trigger error.
+
+When using this mechanism for form data validation, for example,
+this exception data can be stored in an exception object, via a
+custom _croak() method, and then caught and used to redisplay the
+form with error messages next to each field which failed validation.
+
+=head1 EXCEPTIONS
+
+All errors that are generated, or caught and propagated, by Class::DBI
+are handled by calling the _croak() method (as an instance method
+if possible, or else as a class method).
+
+The _croak() method is passed an error message and in some cases
+some extra information as described below. The default behaviour
+is simply to call Carp::croak($message).
+
+Applications that require custom behaviour should override the
+_croak() method in their application base class (or table classes
+for table-specific behaviour). For example:
+
+	use Error;
+
+	sub _croak {
+		my ($self, $message, %info) = @_;
+		# convert errors into exception objects
+		# except for duplicate insert errors which we'll ignore
+		Error->throw(-text => $message, %info)
+			unless $message =~ /^Can't insert .* duplicate/;
+		return;
+	}
+
+The _croak() method is expected to trigger an exception and not
+return. If it does return then it should use C<return;> so that an
+undef or empty list is returned as required depending on the calling
+context. You should only return other values if you are prepared to
+deal with the (unsupported) consequences. 
+
+For exceptions that are caught and propagated by Class::DBI, $message
+includes the text of $@ and the original $@ value is available in $info{err}.
+That allows you to correctly propagate exception objects that may have
+been thrown 'below' Class::DBI (using Exception::Class::DBI for example). 
+
+Exceptions generated by some methods may provide additional data in
+$info{data} and, if so, also store the method name in $info{method}.
+For example, the validate_column_values() method stores details of
+failed validations in $info{data}. See individual method documentation
+for what additional data they may store, if any.
+
+=head1 WARNINGS
+
+All warnings are handled by calling the _carp() method (as
+an instance method if possible, or else as a class method).
+The default behaviour is simply to call Carp::carp().
+
+=head1 INSTANCE METHODS
+
+=head2 accessors
+
+Class::DBI inherits from Class::Accessor and thus provides individual
+accessor methods for every column in your subclass.  It also overrides
+the get() and set() methods provided by Accessor to automagically handle
+database reading and writing. (Note that as it doesn't make sense to
+store a list of values in a column, set() takes a hash of column =>
+value pairs, rather than the single key => values of Class::Accessor).
+
+=head2 the fundamental set() and get() methods
+
+	$value = $obj->get($column_name);
+	@values = $obj->get(@column_names);
+
+	$obj->set($column_name => $value);
+	$obj->set($col1 => $value1, $col2 => $value2 ... );
+
+These methods are the fundamental entry points for getting and seting
+column values.  The extra accessor methods automatically generated for
+each column of your table are simple wrappers that call these get()
+and set() methods.
+
+The set() method calls normalize_column_values() then
+validate_column_values() before storing the values.  The
+C<before_set_$column> trigger is invoked by validate_column_values(),
+checking any constraints that may have been set up. The
+C<after_set_$column> trigger is invoked after the new value has been
+stored.
+
+It is possible for an object to not have all its column data in memory
+(due to lazy inflation).  If the get() method is called for such a column
+then it will select the corresponding group of columns and then invoke
+the C<select> trigger.
+
+=head2 changing your column accessor method names
+
+If you want to change the name of your accessors, you need to provide an
+accessor_name() method, which will convert a column name to a method name.
+
+e.g: if your local naming convention was to prepend the word 'customer'
+to each column in the 'customer' table, so that you had the columns
+'customerid', 'customername' and 'customerage', you would end up with
+code filled with calls to $customer->customerid, $customer->customername,
+$customer->customerage etc. By creating an accessor_name method like:
+
+	sub accessor_name {
+		my ($class, $column) = @_;
+		$column =~ s/^customer//;
+		return $column;
+	}
+
+Your methods would now be the simpler $customer->id, $customer->name and
+$customer->age etc.
+
+Similarly, if you want to have distinct accessor and mutator methods,
+you would provide a mutator_name() method which would return the name
+of the method to change the value:
+
+	sub mutator_name {
+		my ($class, $column) = @_;
+		return "set_$column";
+	}
+
+If you override the mutator_name, then the accessor method will be
+enforced as read-only, and the mutator as write-only.
+
+=head2 update vs auto update
+
+There are two modes for the accessors to work in: manual update and
+autoupdate. When in autoupdate mode, every time one calls an accessor
+to make a change an UPDATE will immediately be sent to the database.
+Otherwise, if autoupdate is off, no changes will be written until update()
+is explicitly called.
+
+This is an example of manual updating:
+
+	# The calls to NumExplodingSheep() and Rating() will only make the
+	# changes in memory, not in the database.  Once update() is called
+	# it writes to the database in one swell foop.
+	$gone->NumExplodingSheep(5);
+	$gone->Rating('NC-17');
+	$gone->update;
+
+And of autoupdating:
+
+	# Turn autoupdating on for this object.
+	$gone->autoupdate(1);
+
+	# Each accessor call causes the new value to immediately be written.
+	$gone->NumExplodingSheep(5);
+	$gone->Rating('NC-17');
+
+Manual updating is probably more efficient than autoupdating and
+it provides the extra safety of a discard_changes() option to clear out all
+unsaved changes.  Autoupdating can be more convient for the programmer.
+Autoupdating is I<off> by default.
+
+If changes are left un-updated or not rolledback when the object is
+destroyed (falls out of scope or the program ends) then Class::DBI's
+DESTROY method will print a warning about unsaved changes.
+
+=head2 autoupdate
+
+	__PACKAGE__->autoupdate($on_or_off);
+	$update_style = Class->autoupdate;
+
+	$obj->autoupdate($on_or_off);
+	$update_style = $obj->autoupdate;
+
+This is an accessor to the current style of auto-updating.  When called
+with no arguments it returns the current auto-updating state, true for on,
+false for off.  When given an argument it turns auto-updating on and off:
+a true value turns it on, a false one off.
+
+When called as a class method it will control the updating style for
+every instance of the class.  When called on an individual object it
+will control updating for just that object, overriding the choice for
+the class.
+
+	__PACKAGE__->autoupdate(1);     # Autoupdate is now on for the class.
+
+	$obj = Class->retrieve('Aliens Cut My Hair');
+	$obj->autoupdate(0);      # Shut off autoupdating for this object.
+
+The update setting for an object is not stored in the database.
+
+=head2 update
+
+	$obj->update;
+
+If L<autoupdate> is not enabled then changes you make to your object are
+not reflected in the database until you call update().  It is harmless
+to call update() if there are no changes to be saved.  (If autoupdate
+is on there'll never be anything to save.)
+
+Note: If you have transactions turned on for your database (but see
+L<"TRANSACTIONS"> below) you will also need to call dbi_commit(), as
+update() merely issues the UPDATE to the database).
+
+After the database update has been executed, the data for columns
+that have been updated are deleted from the object. If those columns
+are accessed again they'll simply be fetched as needed. This ensures
+that the data in the application is consistant with what the database
+I<actually> stored.
+
+When update() is called the C<before_update>($self) trigger is
+always invoked immediately.
+
+If any columns have been updated then the C<after_update> trigger
+is invoked after the database update has executed and is passed:
+	($self, discard_columns => \@discard_columns, rows => $rows)
+
+(where rows is the return value from the DBI execute() method).
+
+The trigger code can modify the discard_columns array to affect
+which columns are discarded.
+
+For example:
+
+	Class->add_trigger(after_update => sub {
+		my ($self, %args) = @_;
+		my $discard_columns = $args{discard_columns};
+		# discard the md5_hash column if any field starting with 'foo'
+		# has been updated - because the md5_hash will have been changed
+		# by a trigger.
+		push @$discard_columns, 'md5_hash' if grep { /^foo/ } @$discard_columns;
+	});
+
+Take care to not delete a primary key column unless you know what
+you're doing.
+
+The update() method returns the number of rows updated, which should
+always be 1, or else -1 if no update was needed. If the record in the
+database has been deleted, or its primary key value changed, then the
+update will not affect any records and so the update() method will
+return 0.
+
+=head2 discard_changes
+
+	$obj->discard_changes;
+
+Removes any changes you've made to this object since the last update.
+Currently this simply discards the column values from the object.
+
+If you're using autoupdate this method will throw an exception.
+
+=head2 is_changed
+
+	my $changed = $obj->is_changed;
+	my @changed_keys = $obj->is_changed;
+
+Indicates if the given $obj has changes since the last update.  Returns a
+list of keys which have changed.
+
+=head2 id
+
+	$id = $obj->id;
+
+Returns a unique identifier for this object.  It's the equivalent of
+$obj->get($self->columns('Primary'));  A warning will be generated
+if this method is used on a table with a multi-column primary key.
+
+=head2 OVERLOADED OPERATORS
+
+Class::DBI and its subclasses overload the perl builtin I<stringify>
+and I<bool> operators. This is a significant convienience.
+
+The perl builtin I<bool> operator is overloaded so that a Class::DBI
+object reference is true so long as all its key columns have defined
+values.  (This means an object with an id() of zero is not considered
+false.)
+
+When a Class::DBI object reference is used in a string context it will,
+by default, return the value of the primary key. (Composite primary key
+values will be separated by a slash).
+
+You can also specify the column(s) to be used for stringification via
+the special 'Stringify' column group. So, for example, if you're using
+an auto-incremented primary key, you could use this to provide a more
+meaningful display string:
+
+	Widget->columns(Stringify => qw/name/);
+
+If you need to do anything more complex, you can provide an stringify_self()
+method which stringification will call:
+
+	sub stringify_self { 
+		my $self = shift;
+		return join ":", $self->id, $self->name;
+	}
+
+This overloading behaviour can be useful for columns that have has_a()
+relationships.  For example, consider a table that has price and currency
+fields:
+
+	package Widget;
+	use base 'My::Class::DBI';
+	Widget->table('widget');
+	Widget->columns(All => qw/widgetid name price currency_code/);
+
+	$obj = Widget->retrieve($id);
+	print $obj->price . " " . $obj->currency_code;
+
+The would print something like "C<42.07 USD>".  If the currency_code
+field is later changed to be a foreign key to a new currency table then
+$obj->currency_code will return an object reference instead of a plain
+string. Without overloading the stringify operator the example would now
+print something like "C<42.07 Widget=HASH(0x1275}>" and the fix would
+be to change the code to add a call to id():
+
+	print $obj->price . " " . $obj->currency_code->id;
+
+However, with overloaded stringification, the original code continues
+to work as before, with no code changes needed.
+
+This makes it much simpler and safer to add relationships to exisiting
+applications, or remove them later.
+
+=head1 TABLE RELATIONSHIPS
+
+Databases are all about relationships. And thus Class::DBI needs a way
+for you to set up descriptions of your relationhips.
+
+Currently we provide three such methods: 'has_a', 'has_many', and
+'might_have'.
+
+=head2 has_a
+
+	Music::CD->has_a(artist => 'Music::Artist');
+	print $cd->artist->name;
+
+We generally use 'has_a' to supply lookup information for a foreign
+key, i.e. we declare that the value we have stored in the column is
+the primary key of another table.  Thus, when we access the 'artist'
+method we don't just want that ID returned, but instead we inflate it
+to this other object.
+
+However, we can also use has_a to inflate the data value to any
+other object.  A common usage would be to inflate a date field to a
+Time::Piece object:
+
+	Music::CD->has_a(reldate => 'Date::Simple');
+	print $cd->reldate->format("%d %b, %Y");
+
+	Music::CD->has_a(reldate => 'Time::Piece',
+		inflate => sub { Time::Piece->strptime(shift, "%Y-%m-%d") },
+		deflate => 'ymd',
+	);
+	print $cd->reldate->strftime("%d %b, %Y");
+
+If the foreign class is another Class::DBI representation we will
+call retrieve() on that class with our value. Any other object will be
+instantiated either by calling new($value) or using the given 'inflate'
+method. If the inflate method name is a subref, it will be executed,
+and will be passed the value as an argument.
+
+When the object is being written to the database the object
+will be deflated either by calling the 'deflate' method (if given),
+or by attempting to stringify the object. 
+
+*NOTE* You should not attempt to make your primary key column inflate
+using has_a() as bad things will happen. If you have two tables which
+share a primary key, consider using might_have() instead.
+
+=head2 has_many
+
+	Music::CD->has_many(tracks => 'Music::Track', 'cd');
+	my @tracks = $cd->tracks;
+
+	my $track6 = $cd->add_to_tracks({ 
+		position => 6,
+		title    => 'Tomorrow',
+	});
+
+We use 'has_many' to declare that someone else is storing our primary
+key in their table, and create a method which returns a list of all the
+associated objects, and another method to create a new associated object.
+
+In the above example we say that the table of the Music::Track class
+contains our primary key in its 'cd' column, and that we wish to access
+all the occasions of that (i.e. the tracks on this cd) through the
+'tracks' method. [Because the 'cd' is the moniker of the CD class,
+this argument is optional]
+
+We also create an 'add_to_tracks' method that adds a track to a given CD.
+In this example this call is exactly equivalent to calling:
+
+	my $track6 = Music::Track->create({
+		cd       => $cd->id,
+		position => 6,
+		title    => 'Tomorrow',
+	});
+
+=head3 Limiting
+
+	Music::Artist->has_many(cds => 'Music::CD');
+	my @cds = $artist->cds(year => 1980);
+
+When calling the has_many method, you can also supply any additional
+key/value pairs for restricting the search. The above example will only
+return the CDs with a year of 1980.
+
+=head3 Ordering
+
+	Music::CD->has_many(tracks => 'Music::Track', { sort => 'playorder' });
+
+Often you wish to order the values returned from has_many. This can be
+done by passing a hash ref containing a 'sort' value of the column by
+wish you want to order.
+
+=head3 Mapping
+
+	Music::CD->has_many(styles => [ 'Music::StyleRef' => 'style' ]);
+
+For many-to-many relationships, where we have a lookup table, we can avoid
+having to set up a helper method to convert our list of cross-references
+into the objects we really want, by adding the mapping method to our
+foreign class declaration.
+
+The above is exactly equivalent to:
+
+	Music::CD->has_many(_style_refs => 'Music::StyleRef');
+	sub styles { 
+		my $self = shift;
+		return map $_->style, $self->_style_refs;
+	}
+
+=head2 might_have
+
+	Music::CD->might_have(method_name => Class => (@fields_to_import));
+
+	Music::CD->might_have(liner_notes => LinerNotes => qw/notes/);
+
+	my $liner_notes_object = $cd->liner_notes;
+	my $notes = $cd->notes; # equivalent to $cd->liner_notes->notes;
+
+might_have() is similar to has_many() for relationships that can have
+at most one associated objects. For example, if you have a CD database
+to which you want to add liner notes information, you might not want
+to add a 'liner_notes' column to your main CD table even though there
+is no multiplicity of relationship involved (each CD has at most one
+'liner notes' field). So, we create another table with the same primary
+key as this one, with which we can cross-reference.
+
+But you don't want to have to keep writing methods to turn the the
+'list' of liner_notes objects you'd get back from has_many into the
+single object you'd need. So, might_have() does this work for you. It
+creates you an accessor to fetch the single object back if it exists,
+and it also allows you import any of its methods into your namespace. So,
+in the example above, the LinerNotes class can be mostly invisible -
+you can just call $cd->notes and it will call the notes method on the
+correct LinerNotes object transparently for you.
+
+Making sure you don't have namespace clashes is up to you, as is correctly
+creating the objects, but I may make these simpler in later versions.
+(Particularly if someone asks for them!)
+
+=head2 Notes
+
+has_a(), might_have() and has_many() check that the relevant class has
+already been loaded. If it hasn't then they try to load the module of
+the same name using require.  If the require fails because it can't
+find the module then it will assume it's not a simple require (i.e.,
+Foreign::Class isn't in Foreign/Class.pm) and that you will take care
+of it and ignore the warning. Any other error, such as a syntax error,
+triggers an exception.
+
+NOTE: The two classes in a relationship do not have to be in the same
+database, on the same machine, or even in the same type of database! It
+is quite acceptable for a table in a MySQL database to be connected to
+a different table in an Oracle database, and for cascading delete etc
+to work across these. This should assist greatly if you need to migrate
+a database gradually.
+
+=head1 DEFINING SQL STATEMENTS
+
+There are several main approaches to setting up your own SQL queries:
+
+For queries which could be used to create a list of matching objects
+you can create a constructor method associated with this SQL and let
+Class::DBI do the work for you, or just inline the entire query.
+
+For more complex queries you need to fall back on the underlying Ima::DBI
+query mechanism.
+
+=head2 add_constructor
+
+	__PACKAGE__->add_constructor(method_name => 'SQL_where_clause');
+
+The SQL can be of arbitrary complexity and will be turned into:
+	SELECT (essential columns)
+	  FROM (table name)
+	 WHERE <your SQL>
+
+This will then create a method of the name you specify, which returns
+a list of objects as with any built in query.
+
+For example:
+
+	Music::CD->add_constructor(new_music => 'year > 2000');
+	my @recent = Music::CD->new_music;
+
+You can also supply placeholders in your SQL, which must then be
+specified at query time:
+
+	Music::CD->add_constructor(new_music => 'year > ?');
+	my @recent = Music::CD->new_music(2000);
+
+=head2 retrieve_from_sql
+
+On occassions where you want to execute arbitrary SQL, but don't want
+to go to the trouble of setting up a constructor method, you can inline
+the entire WHERE clause, and just get the objects back directly:
+
+	my @cds = Music::CD->retrieve_from_sql(qq{
+		artist = 'Ozzy Osbourne' AND
+		title like "%Crazy"      AND
+		year <= 1986
+		ORDER BY year
+		LIMIT 2,3
+	});
+
+=head2 Ima::DBI queries
+
+When you can't use 'add_constructor', e.g. when using aggregate functions,
+you can fall back on the fact that Class::DBI inherits from Ima::DBI
+and prefers to use its style of dealing with statemtents, via set_sql().
+
+To assist with writing SQL that is inheritable into subclasses, several
+additional substitutions are available here: __TABLE__, __ESSENTIAL__
+and __INDENTIFIER__.  These represent the table name associated with the
+class, its essential columns, and the primary key of the current object,
+in the case of an instance method on it.
+
+For example, the SQL for the internal 'update' method is implemented as:
+
+	__PACKAGE__->set_sql('update', <<"");
+		UPDATE __TABLE__
+		SET    %s
+		WHERE  __IDENTIFIER__
+
+
+The 'longhand' version of the new_music constructor shown above would similarly be:
+
+	Music::CD->set_sql(new_music => qq{
+		SELECT __ESSENTIAL__
+		  FROM __TABLE__
+		 WHERE year > ?
+	};
+
+This approach automatically sets up the method
+Music::CD->search_new_music(), which will execute this search and
+return the relevant objects or Iterator.  (If you have placeholders
+in your query, you must pass the relevant arguments when calling your
+search method.)
+
+This does the equivalent of:
+
+	sub search_new_music {
+		my ($class, @args) = shift;
+		my $sth = $class->sql_new_music;
+		$sth->execute(@args);
+		return $class->sth_to_objects($sth);
+	}
+
+The $sth which we use to return the objects here is a normal DBI-style
+statement handle, so if your results can't even be turned into objects
+easily, you can still call $sth->fetchrow_array etc and return whatever
+data you choose.
+
+Of course, any query can be added via set_sql, including joins.  So,
+to add a query that returns the 10 Artists with the most CDs, you could
+write (with MySQL):
+
+	Music::Artist->set_sql(most_cds => qq{
+		SELECT artist.id, COUNT(cd.id) AS cds
+		  FROM artist, cd
+		 WHERE artist.id = cd.artist
+		 GROUP BY artist.id
+		 ORDER BY cds DESC
+		 LIMIT 10
+	});
+
+	my @artists = Music::Artist->search_most_cds();
+
+=head2 Class::DBI::AbstractSearch
+
+	my @music = Music::CD->search_where(
+		artist => [ 'Ozzy', 'Kelly' ],
+		status => { '!=', 'outdated' },
+	);
+
+The L<Class::DBI::AbstractSearch> module, available from CPAN, is a
+plugin for Class::DBI that allows you to write arbitrarily complex
+searches using perl data structures, rather than SQL.
+
+=head1 LAZY POPULATION
+
+In the tradition of Perl, Class::DBI is lazy about how it loads your
+objects.  Often, you find yourself using only a small number of the
+available columns and it would be a waste of memory to load all of them
+just to get at two, especially if you're dealing with large numbers of
+objects simultaneously.
+
+You should therefore group together your columns by typical usage, as
+fetching one value from a group can also pre-fetch all the others in
+that group for you, for more efficient access.
+
+So for example, if we usually fetch the artist and title, but don't use
+the 'year' so much, then we could say the following:
+
+	Music::CD->columns(Primary   => qw/cdid/);
+	Music::CD->columns(Essential => qw/artist title/);
+	Music::CD->columns(Others    => qw/year runlength/);
+
+Now when you fetch back a CD it will come pre-loaded with the 'cdid',
+'artist' and 'title' fields. Fetching the 'year' will mean another visit
+to the database, but will bring back the 'runlength' whilst it's there.
+
+This can potentially increase performance.
+
+If you don't like this behavior, then just add all your non-primary key
+columns to the one group, and Class::DBI will load everything at once.
+
+=head2 columns
+
+	my @all_columns  = $class->columns;
+	my @columns      = $class->columns($group);
+
+	my @primary      = $class->primary_columns;
+	my $primary      = $class->primary_column;
+	my @essential    = $class->_essential;
+
+There are four 'reserved' groups.  'All', 'Essential', 'Primary' and
+'TEMP'.
+
+B<'All'> are all columns used by the class.  If not set it will be
+created from all the other groups.
+
+B<'Primary'> is the primary key columns for this class.  It I<must>
+be set before objects can be used.
+
+If 'All' is given but not 'Primary' it will assume the first column in
+'All' is the primary key.
+
+B<'Essential'> are the minimal set of columns needed to load and use
+the object.  Only the columns in this group will be loaded when an object
+is retrieve()'d.  It is typically used to save memory on a class that has
+a lot of columns but where we mostly only use a few of them.  It will
+automatically be set to B<'All'> if you don't set it yourself.
+The 'Primary' column is always part of your 'Essential' group and
+Class::DBI will put it there if you don't.
+
+For simplicity we provide primary_columns(), primary_column(), and
+_essential() methods which return these. The primary_column() method
+should only be used for tables that have a single primary key column.
+
+=head2 Non-Persistent Fields
+
+	Music::CD->columns(TEMP => qw/nonpersistent/);
+
+If you wish to have fields that act like columns in every other way, but
+that don't actually exist in the database (and thus will not persist),
+you can declare them as part of a column group of 'TEMP'.
+
+=head2 find_column
+
+	Class->find_column($column);
+	$obj->find_column($column);
+
+The columns of a class are stored as Class::DBI::Column objects. This
+method will return you the object for the given column, if it exists.
+This is most useful either in a boolean context to discover if the column
+exists, or to 'normalize' a user-entered column name to an actual Column.
+
+The interface of the Column object itself is still under development,
+so you shouldn't really rely on anything internal to it.
+
+=head1 TRANSACTIONS
+
+Class::DBI suffers from the usual problems when dealing with transactions.
+In particular, you should be very wary when committing your changes that
+you may actually be in a wider scope than expected and that your caller
+may not be expecting you to commit.
+
+However, as long as you are aware of this, and try to keep the scope
+of your transactions small, ideally always within the scope of a single
+method, you should be able to work with transactions with few problems.
+
+=head2 dbi_commit / dbi_rollback
+
+	$obj->dbi_commit();
+	$obj->dbi_rollback();
+
+We provide these thin aliases through to the DBI's commit() and rollback()
+commands to commit or rollback all changes to this object. 
+
+=head2 Localised Transactions
+
+A nice idiom for turning on a transaction locally (with AutoCommit turned
+on globally) (courtesy of Dominic Mitchell) is:
+
+	sub do_transaction {
+		my $class = shift;
+		my ( $code ) = @_;
+		# Turn off AutoCommit for this scope.
+		# A commit will occur at the exit of this block automatically,
+		# when the local AutoCommit goes out of scope.
+		local $class->db_Main->{ AutoCommit };
+
+		# Execute the required code inside the transaction.
+		eval { $code->() };
+		if ( $@ ) {
+			my $commit_error = $@;
+			eval { $class->dbi_rollback }; # might also die!
+			die $commit_error;
+		}
+	}
+
+	And then you just call:
+
+	Music::DBI->do_transaction( sub {
+		my $artist = Music::Artist->create({ name => 'Pink Floyd' });
+		my $cd = $artist->add_to_cds({ 
+			title => 'Dark Side Of The Moon', 
+			year => 1974,
+		});
+	});
+
+Now either both will get added, or the entire transaction will be
+rolled back.
+
+=head1 SUBCLASSING
+
+The preferred method of interacting with Class::DBI is for you to write
+a subclass for your database connection, with each table-class inheriting
+in turn from it. 
+
+As well as encapsulating the connection information in one place,
+this also allows you to override default behaviour or add additional
+functionality across all of your classes.
+
+As the innards of Class::DBI are still in flux, you must exercise extreme
+caution in overriding private methods of Class::DBI (those starting with
+an underscore), unless they are explicitly mentioned in this documentation
+as being safe to override. If you find yourself needing to do this,
+then I would suggest that you ask on the mailing list about it, and
+we'll see if we can either come up with a better approach, or provide
+a new means to do whatever you need to do.
+
+=head1 CAVEATS
+
+=head2 Multi-Column Foreign Keys are not supported
+
+=head2 Don't change or inflate the value of your primary columns
+
+Altering your primary key column currently causes Bad Things to happen.
+I should really protect against this.
+
+=head1 COOKBOOK
+
+I plan to include a 'Cookbook' of typical tricks and tips. Please send
+me your suggestions.
+
+=head1 SUPPORTED DATABASES
+
+Theoretically Class::DBI should work with almost any standard RDBMS. Of
+course, in the real world, we know that that's not true. We know that
+it works with MySQL, PostgrSQL, Oracle and SQLite, each of which have
+their own additional subclass on CPAN that you should explore if you're
+using them.
+
+	L<Class::DBI::mysql>, L<Class::DBI::Pg>, L<Class::DBI::Oracle>,
+	L<Class::DBI::SQLite>
+
+For the most part it's been reported to work with Sybase. Beyond that
+lies The Great Unknown(tm). If you have access to other databases,
+please give this a test run, and let me know the results.
+
+This is known not to work with DBD::RAM. As a minimum it requires a
+database that supports table aliasing, and a DBI driver that supports
+placeholders.
+
+=head1 CURRENT AUTHOR
+
+Tony Bowden <classdbi@tmtm.com>
+
+=head1 AUTHOR EMERITUS
+
+Michael G Schwern <schwern@pobox.com>
+
+=head1 THANKS TO
+
+Tim Bunce, Tatsuhiko Miyagawa, Damian Conway, Uri Gutman, Mike Lambert
+and the POOP group.
+
+=head1 SUPPORT
+
+Support for Class::DBI is via the mailing list. The list is used for
+general queries on the use of Class::DBI, bug reports, patches, and
+suggestions for improvements or new features.
+
+To join the list visit http://groups.kasei.com/mail/info/cdbi-talk
+
+The interface to Class::DBI is fairly stable, but there are still
+occassions when we need to break backwards compatability. Such issues
+will be raised on the list before release, so if you use Class::DBI in
+a production environment, it's probably a good idea to keep a watch on
+the list.
+
+=head1 LICENSE
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=head1 SEE ALSO
+
+An article on Class::DBI was published on Perl.com recently. It's slightly
+out of date already, but it's a good introduction:
+  http://www.perl.com/pub/a/2002/11/27/classdbi.html
+
+http://poop.sourceforge.net/ provides a document comparing a variety
+of different approaches to database persistence, such as Class::DBI,
+Alazabo, Tangram, SPOPS etc.
+
+CPAN contains a variety of other modules that can be used with Class::DBI:
+L<Class::DBI::FromCGI>, L<Class::DBI::AbstractSearch>,
+L<Class::DBI::View>, L<Class::DBI::Loader> etc.
+
+L<Class::DBI::SAK>, the Swiss Army Knife for Class::DBI attempts to
+bring many of these together into one interface.
+
+For a full list see:
+	http://search.cpan.org/search?query=Class%3A%3ADBI&mode=module
+
+Class::DBI is built on top of L<Ima::DBI>, L<Class::Accessor> and
+L<Class::Data::Inheritable>.
+
