@@ -1,0 +1,360 @@
+=head1 名前
+
+File::Transaction::Atomic - ファイルのグループへのアトミックな(=atomic)変更
+
+=head1 概要
+
+  #
+  # この例では、複数のファイルにある'foo'という単語を'bar'で
+  # 置き換えようとしています。そしていくつかのファイルで置換が
+  # おこなわれ、他のものでは行われないまま終わらせてしまう
+  # 危険性を最小限にしたいと思っています。
+  #
+
+  use File::Transaction::Atomic;
+
+  my $ft = File::Transaction::Atomic->new;
+
+  eval {
+      foreach my $file (@list_of_file_names) {
+          $ft->linewise_rewrite($file, sub {
+               s#\bfoo\b#bar#g;
+          });
+      }
+  };
+
+  if ($@) {
+      $ft->revert;
+      die "update aborted: $@";
+  }
+  else {
+      $ft->commit;
+  }
+
+
+=head1 説明
+
+このクラスは、大きなオーバーヘッドとC<UNIX>ファイル・システムの
+やり方に依存するという犠牲をはらいながら、本当にアトミックな
+コミット操作を与えるようcommit()メソッドを再実装した
+L<File::Transaction>の子供です。
+
+コミットの準備の間、各ファイルは他の名前になっている同じファイルを
+さしているシンボリック・リンクに自動的に置き換えられます。
+それらの操作が変更を成立させない場合にのみ、コミットは本当に
+アトミックです。
+
+このモジュールのcommit()メソッドは、L<File::Transaction>の
+ほぼ10倍多くのファイルとディレクトリ操作を行います。そして
+ここでのコードはL<File::Transaction>のものよりも、大幅により
+複雑になっています(そのために重大なバグが含まれている可能性が
+高いといえます)。
+
+L<File::Transaction>で記述された部分的なコミットの危険性が、
+あなたのアプリケーションでは受け入れられないという場合にのみ、
+このモジュールを使うべきです。
+
+=head1 メソッド
+
+=over
+
+=item commit ( [WORKDIR] [,OLDEXT] [,TMPLNKEXT] )
+
+アトミックなコミットを実行します。
+
+commit()メソッドは一時的な作業ディレクトリを必要とし、そこに
+サブディレクトリとシンボリック・リンクを作成します。そしてWORKDIRは
+使用するディレクトリの名前を与えます。WORKDIRディレクトリがあれば、
+commit()メソッドは、途中で失敗した前のC<File::Transaction::Atomic>の
+commit()メソッドの呼び出しが残したものだとものと考えます。
+そのために片付けてしまいます。
+デフォルトのworkdirは現在のディレクトリでのF<.ftawork>です。
+
+OLDEXTパラメータは、それぞれの古いバージョンへの一時的な追加の
+ハードリンクの名前を生成するため各ファイルの名前に追加する
+文字列を設定します。その名前の既存のファイルは全て削除されます。
+デフォルトのOLDEXTはそのオブジェクトのコンストラクタに渡された
+TMPEXTにC<.old>をつけたものになります。
+
+TMPLNKEXTパラメータはコミットの準備の間、本物のファイルを
+置き換えるシンボリック・リンクのための一時的な名前を生成するため、
+それぞれのファイルの名前に追加される文字列を設定します。
+その名前の既存のファイルは全て削除されます。デフォルトのTMPLNKEXTは
+オブジェクトのコンストラクタに渡されたTMPEXTの値にC<.lnk>をつけた
+ものになります。
+
+=back
+
+=head1 セキュリティ関連
+
+もしcommit()メソッドがWORKDIRが既にあることを見つけると、
+WORKDIRの内容が悪意のあるWORKDIRが他のファイルでシステム上の
+ファイルを置き換えようとするcommit()を引き起こすものと考えます。
+そのため以下のようなことをするのは非常に悪い考えです:
+
+   $fta->commit('/tmp/ftawork');
+
+というのも、すべてのローカルなユーザが偽のF</tmp/ftawork>を
+作成し、commit()を失敗させてしまうからです。
+
+デフォルトのWORKDIRであるF<.ftawork>は、信頼されない人が
+だれも、現在あなたの作業ディレクトリでファイルの作成を
+制御できないという場合にのみ安全です。
+
+=head1 どのように機能するか
+
+アトミックなコミットはまず各本物のファイルを古いバージョンへの
+シンボリックリンクへのシンボリックリンクで置き換え、
+他のシンボリックリンクの対象をrename()システム
+コールでアトミックに変更し、そうすることにより全ての本当の
+ファイルが突然、新しいバージョンのシンボリックリンクへの
+シンボリックリンクになることにより機能します。
+
+これは例を使って説明するのが一番です:WORKDIRがF</workdir>で、
+更新されるファイルがF</one/one>とF</two/two>にあり、
+新しいバージョンはそれぞれF</one/one.tmp>、F</two/two.tmp>だ
+とします。
+
+  /one/one       # /one/oneの古いバージョン
+  /one/one.tmp   # /one/oneの新しいバージョン
+  /two/two       # /two/twoの古いバージョン
+  /two/two.tmp   # /two/twoの新しいバージョン
+
+最初にファイルを何も変更することなく、たくさんの準備をします。
+私たちはF<old>とF<new>というサブディレクトリを持ったF</workdir>
+ディレクトリを作成します。F<old>へのシンボリック・リンクである
+F</workdir/live>を作成し、F<new>へのシンボリックリンクである
+F</workdir/tobe>お作成します。F<new>ディレクトリにファイルの
+新しいバージョンへのシンボリックファイルをF<new>ディレクトリに
+入れます。それぞれのファイルの古いバージョンへの追加の
+ハードリンクを作成します。そしてF<old>にそれらの古いバージョンへの
+シンボリック・リンクを作成します。F</workdir/live>への
+いくつかのシンボリックリンクも生成します。
+
+それらが終了すると以下のようになります:
+
+  /one/one           # one/oneの古いバージョン
+  /one/one.tmp.old   # one/oneの古いバージョン
+  /one/one.tmp       # one/oneの新しいバージョン
+  /one/one.tmp.lnk -> /workdir/live/1
+
+  /two/two           # /two/twoの古いバージョン
+  /two/two.tmp.old   # /two/twoの古いバージョン
+  /two/two.tmp       # /two/twoの新しいバージョン
+  /two/two.tmp.lnk -> /workdir/live/2
+
+  /workdir
+  /workdir/new
+  /workdir/new/1 -> /one/one.tmp
+  /workdir/new/2 -> /two/two.tmp
+  /workdir/old
+  /workdir/old/1 -> /one/one.tmp.old
+  /workdir/old/2 -> /two/two.tmp.old
+  /workdir/tobe -> new
+  /workdir/live -> old
+
+それではファイルを変更してみましょう。以下のようにしてみます:
+
+  rename('/one/one.tmp.lnk', '/one/one');
+
+そうなると以下のようになります:
+
+  /one/one -> /workdir/live/1
+  /one/one.tmp.old   # old version of /one/one
+  /one/one.tmp       # new version of /one/one
+
+  /two/two           # old version of /two/two
+  /two/two.tmp.old   # old version of /two/two
+  /two/two.tmp       # new version of /two/two
+  /two/two.tmp.lnk -> /workdir/live/2
+
+  /workdir
+  /workdir/new
+  /workdir/new/1 -> /one/one.tmp
+  /workdir/new/2 -> /two/two.tmp
+  /workdir/old
+  /workdir/old/1 -> /one/one.tmp.old
+  /workdir/old/2 -> /two/two.tmp.old
+  /workdir/tobe -> new
+  /workdir/live -> old
+
+今はシンボリック・リンクがF</one/one.tmp.old>を間接的なルートで
+指しているために、ファイルF</one/one>は、このrenameの前後で
+同じ内容を持っています。もしPerlプロセスがこの時点で死んだとしても、
+両方のファイルをその場所にまだ持っています。そのためトランザクションは
+破綻していません。
+
+次に他のファイルで同じことをしてみます、以下のようだとします:
+
+  /one/one -> /workdir/live/1
+  /one/one.tmp.old   # /one/oneの古いバージョン
+  /one/one.tmp       # /one/oneの新しいバージョン
+
+  /two/two -> /workdir/live/2
+  /two/two.tmp.old   # old version of /two/two
+  /two/two.tmp       # new version of /two/two
+
+  /workdir
+  /workdir/new
+  /workdir/new/1 -> /one/one.tmp
+  /workdir/new/2 -> /two/two.tmp
+  /workdir/old
+  /workdir/old/1 -> /one/one.tmp.old
+  /workdir/old/2 -> /two/two.tmp.old
+  /workdir/tobe -> new
+  /workdir/live -> old
+
+まだ何もファイルを変更していません。そこでcommit操作のために:
+
+  rename('/workdir/tobe', '/workdir/live');
+
+このrenameが成功したときには以下のようになります:
+
+  /one/one -> /workdir/live/1
+  /one/one.tmp.old   # /one/oneの古いバージョン
+  /one/one.tmp       # /one/oneの新しいバージョン
+
+  /two/two -> /workdir/live/2
+  /two/two.tmp.old   # /two/twoの古いバージョン
+  /two/two.tmp       # /two/twoの新しいバージョン
+
+  /workdir
+  /workdir/new
+  /workdir/new/1 -> /one/one.tmp
+  /workdir/new/2 -> /two/two.tmp
+  /workdir/old
+  /workdir/old/1 -> /one/one.tmp.old
+  /workdir/old/2 -> /two/two.tmp.old
+  /workdir/live -> new
+
+... そこで今度はF</one/one>がF</one/one.tmp>への間接的な
+シンボリック・リンクに、F</two/two>がF</two/two.tmp>への間接的な
+シンボリック・リンクになり、トランザクションがコミットされます。もしPerl
+プロセスがこの時点で死んだとしても、両方のファイルの新しいバージョンを
+その場所に持っているので、トランザクションは破綻していません。
+
+残っていることは、それらのシンボリック・リンクの連結を削除し、きれいに
+片付けることです:
+
+  rename('/one/one.tmp', '/one/one');
+  rename('/two/two.tmp', '/two/two');
+
+そしてF<.tmp.old>のファイルとF</workdir>を削除し、完了です。
+
+=head1 厄介な問題
+
+もしPerlプロセスがkillされたり、F</workdir>へのシンボリック・リンク
+であるF</one/one>とF</two/two>のどちらかをrename()が失敗したならば、
+F</workdir>は削除できなくなるか、シンボリック・リンクの連鎖を
+破ることなくrenameすることはできません。
+
+もしF</workdir>が既にあることを見つけたら、commit()メソッドは
+F</workdir>を削除する前に、そうした連鎖を削除する必要があります。
+そのコードは以下の_render_workdir_unused()プライベート・メソッドで
+実装されています。
+
+_render_workdir_unused()にとって、これをより簡単にするために、commit()
+メソッドはファイルの古いバージョンへのフルパスをF<old> と F<new>の
+ディレクトリでのシンボリック・リンクの名前にエンコードします。
+スラッシュ文字はC<-s>に置換され、マイナス文字はC<-m>で置き換えられます。
+そのため上記の例でのF</workdir>の内容は実際には以下のようになります:
+
+  /workdir
+  /workdir/new
+  /workdir/new/-sone-sone -> /one/one.tmp
+  /workdir/new/-stwo-stwo -> /two/two.tmp
+  /workdir/old
+  /workdir/old/-sone-sone -> /one/one.tmp.old
+  /workdir/old/-stwo-stwo -> /two/two.tmp.old
+  /workdir/tobe -> new
+  /workdir/live -> old
+
+addfile()メソッドに渡されるファイル名は、WORKDIRパスがそうであるように
+絶対パスでも相対パスでも構いません。相対のシンボリック・リンクは
+プロセスがアクセスする作業ディレクトリではなく、シンボリック・リンクを
+持っているディレクトリへの相対的に解釈されます。これにより厄介なことに
+なるかもしれません。単純にするため、このモジュールは、それが作成する
+全てのシンボリック・リンクの対象として、F<live>やF<tobe>シンボリック・
+リンクではなく絶対パスを使っています。
+
+ファイルの古いバージョンは存在しないかもしれません。この場合、
+commit()メソッドはコミットする前の本物のバージョンとして壊れた
+シンボリック・リンクをインストールします。そしてこれは
+コミット時での新しいバージョンへのシンボリック・リンクとして機能する
+シンボリック・リンクになります。
+
+=head1 プライベートなメソッド
+
+これらのメソッドはこのモジュールの中からしかアクセスできません。
+
+=over
+
+=item _render_workdir_unused ( WORKDIR )
+
+作業ディレクトリWORKDIRを指し、再び外に出ているている全ての
+シンボリック・リンクを見極め、除去します。そのためWORKDIRは安全に
+削除することができます。
+
+=item _delete_workdir ( WORKDIR )
+
+既に利用されなくなったworkdirを削除します。
+
+=item _encode_filename ( FILENAME )
+
+をシンボリック・リンクの名前として使うことができる文字列へ
+ファイルへのフルパスをエンコードします。
+
+=item _decode_linkname ( LINKNAME )
+
+_encode_filename()によって行われるエンコードの逆を行います。
+
+=item _rename ( FROM, TO )
+
+rename()システム・コールを実行します。
+エラーのときはdieします。
+
+=item _link ( FROM, TO )
+
+link()システム・コールを実行します。
+エラーのときはdieします。
+
+=item _symlink ( FROM, TO )
+
+symlink()システム・コールを実行します。
+エラーのときはdieします。
+
+=item _mkdir ( DIRNAME )
+
+ディレクトリDIRNAMEをモードC<0700>で作成します。
+エラーのときはdieします。
+
+=item _abs_path ( FILENAME )
+
+ファイルFILENAMEへの絶対パスを返します。それは存在する必要は
+ありません。戻り値はFILENAMEが汚染されている場合にのみ
+汚染されます。
+
+=back
+
+=head1 参考資料
+
+厳密にアトミックではなけれど、無駄が少なく、より移植可能な実装な実装に
+ついてはL<File::Transaction>。
+
+ファイルシステムが裏にあるデータに対するアトミックなトランザクションを
+持ったへの完全に異なるアプローチについてはL<DBD::SQLite>
+
+=head1 作者(=AUTHOR)
+
+Nick Cleaton E<lt>nick@cleaton.netE<gt>
+
+=head1 COPYRIGHT
+
+Copyright (C) 2002-2003 Nick Cleaton.  All Rights Reserved.
+
+This module is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
+
+=head1 翻訳者
+
+川合 孝典(GCD00051@nifty.ne.jp)
