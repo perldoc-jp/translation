@@ -1,0 +1,242 @@
+=head1 名前
+
+CGI::Cookie - Netscape クッキーへのインターフェース
+
+=head1 概要
+
+    use CGI qw/:standard/;
+    use CGI::Cookie;
+
+    # 新しいクッキーを作成し、それを送信します
+    $cookie1 = new CGI::Cookie(-name=>'ID',-value=>123456);
+    $cookie2 = new CGI::Cookie(-name=>'preferences',
+                               -value=>{ font => Helvetica,
+                                         size => 12 } 
+                               );
+    print header(-cookie=>[$cookie1,$cookie2]);
+
+    # 既にあるクッキーを取り出します
+    %cookies = fetch CGI::Cookie;
+    $id = $cookies{'ID'}->value;
+
+    # 外部ソースから返されたクッキーを作成します
+    %cookies = parse CGI::Cookie($ENV{COOKIE});
+
+=head1 説明
+
+CGI::Cookieは、Webサーバに、接続についての永続的な情報をブラウザ側に
+格納させることを可能にする新機能である、Netscape(HTTP/1.1)クッキーへの
+インターフェースです。CGI::CookieはCGI.pmと一緒に使うよう意図されています
+（そして事実、内部的にはそれによって使われています）が、このモジュールだけを
+独立で使うことも出来ます。
+
+クッキーについての完全な情報はこちらをご覧下さい
+
+    http://www.ics.uci.edu/pub/ietf/http/rfc2109.txt
+
+=head1 CGI::Cookieの使い方
+
+CGI::Cookieはオブジェクト指向です。各クッキーオブジェクトは名前と値を
+持ちます。名前にはスカラー値が指定できます。値はスカラー、配列の値が
+指定できます（連想配列も許されます）。クッキーは以下のものを含めて、
+多くの属性も持っています:
+
+=over 4
+
+=item B<1. 有効期限(expiration date)>
+
+有効期限はブラウザにいつまでクッキーを保持するかを伝えます。
+もしクッキーが将来の日付を指定すれば、ブラウザはクッキーの情報を
+ディスク・ファイルに格納し、（有効期限になるまで）ユーザが再接続
+するたびにサーバーに、それを返します。もしクッキーが過去の日付を
+指定していたら、ブラウザはディスク・ファイルからクッキーを削除します。
+もし有効期限が指定されなければ、クッキーはユーザがブラウザを終わら
+せるまで有効です。
+
+=item B<2. ドメイン(domain)>
+
+これはクッキーが有効であるドメイン名の全体あるいは一部になります。
+ブラウザはドメイン名の一部がマッチする、全てのホストにクッキーを
+返します。例えばドメイン名に".capricorn.com"を指定すれば、
+ブラウザは"www.capricorn.com", "www2.capricorn.com", 
+"feckless.capricorn.com"などのマシンで実行されている全ての
+Webサーバにクッキーを返します。".edu"のように最上位のドメインに
+マッチさせようとすることを防ぐため、ドメイン名は少なくとも2つの
+ピリオドが入っていなければなりません。もしドメインが指定されなければ、
+ブラウザはクッキーが作成されたホストのサーバにだけクッキーを返します。
+
+=item B<3. パス(path)>
+
+クッキーのpath属性を与えると、ブラウザはクッキーを返す前にスクリプトの
+URLをチェックします。例えばパスを"/cgi-bin"と指定すれば、
+"/cgi-bin/tally.pl", "/cgi-bin/order.pl", そして
+"/cgi-bin/customer_service/complain.pl"の、各スクリプトには返されますが、
+"/cgi-private/site_admin.pl'"には返されません。デフォルトではパスは"/"で、
+あなたのサイトのすべてのCGIスクリプトが、そのクッキーを受信します。
+
+=item B<4. 安全フラグ(secure flag)>
+
+もし"secure"属性が設定されると、クッキーはCGIリクエストがSSLのような
+セキュアなチャンネルで発行された場合にのみ送信されます。
+
+=back
+
+=head2 新しいクッキーの作成
+
+    $c = new CGI::Cookie(-name    =>  'foo',
+                             -value   =>  'bar',
+                             -expires =>  '+3M',
+                             -domain  =>  '.capricorn.com',
+                             -path    =>  '/cgi-bin/database',
+                             -secure  =>  1
+                        );
+
+B<new>メソッドでクッキーを作成してください。 B<-name>とB<-value>パラメータは
+必須です。名前(name)はスカラー値でなけばなりません。値(value)はスカラー、
+配列リファレンス、またはハッシュ・リファレンスにすることができます。
+（将来のどこかの時点で、クッキーは完全に一般的な
+Perlオブジェクト・シライアライゼーション・プロトコルの１つをサポートするでしょう）
+
+B<-expires>はCGI.pmで理解されるフォーマットの相対あるいは絶対日付を
+受取ります。例えば"+3M"は３ヶ月先です。詳細はCGI.pmのドキュメントを
+ごらんください。
+
+B<-domain>はドメイン名または完全に修飾されたホスト名を示します。
+もし指定されなければ、クッキーはそれが作成されたWebサーバーにしか
+返されません。
+
+B<-path>は現在のサーバーでのURLの一部を返します。クッキーは指定された
+パスで始まるすべてのURLへ返されます。指定されなければ、デフォルトは"/"になります。
+これはあなたのサイトのすべてのページにクッキーを返します。
+
+B<-secure>true値に設定すると暗号プロトコルが使われているときにだけ
+クッキーを返すようブラウザに指示します。
+
+=head2 ブラウザにクッキーを送信
+
+CGIスクリプトではHTTPヘッダで１つまたは複数のSet-Cookie:フィールドを
+作ることによってブラウザにクッキーを送信することが出来ます。典型的な
+シーケンスは以下の通りです:
+
+  my $c = new CGI::Cookie(-name    =>  'foo',
+                          -value   =>  ['bar','baz'],
+                          -expires =>  '+3M');
+
+  print "Set-Cookie: $c\n";
+  print "Content-Type: text/html\n\n";
+
+複数のクッキーを送信するためには、複数のSet-Cookie:を作ってください。
+そうでなければクッキーを";"でつなげて、それを1つのフィールドで送る
+ことが出来ます。
+
+CGI.pmを使っているならば、header()メソッドに-cookie引数を与える
+ことによりクッキーを送信します：
+
+  print header(-cookie=>$c);
+
+Mod_perl のユーザはrequestオブジェクトのheader_out()メソッドを使って
+設定できます：
+
+  $r->header_out('Set-Cookie',$c);
+
+内部的にはCookieはHTTPヘッダに入れられると、そのas_string()を
+呼びたすための""オペレータをオーバーロードします。as_string()は
+クッキーの内部表現をRFC互換のテキスト表現に変換します。
+もし望むのであれば、as_stringを呼ぶことも出来ます：
+
+  print "Set-Cookie: ",$c->as_string,"\n";
+
+=head2 以前のクッキーの回復
+
+    %cookies = fetch CGI::Cookie;
+
+B<fetch>はブラウザから返されたすべてのクッキーが入った連想配列を
+返します。その配列のキーはクッキーの名前です。クッキー全体を以下
+のようにして繰り返すことが出来ます:
+
+    %cookies = fetch CGI::Cookie;
+    foreach (keys %cookies) {
+       do_something($cookies{$_});
+        }
+
+スカラーコンテキストでは、fetch()はハッシュ・リファンレンスを返します。
+それは複数のクッキーを扱っているならより効率的かもしれません。
+
+CGI.pmは、そのクッキーでの予約文字を保存し、元に戻すためにURLエスケープする
+メソッドを使います。他のサーバによって設定されたクッキーを取り出そう
+としているのであれば、このエスケープするメソッドはあなたをつまずかせる
+かもしれません。代りにraw_fetch()を使ってください。これはfetch()と
+同じ意味ですがアンエスケープはしません。
+
+parse()クラスメソッドを使って、いくつかの外部形式に格納されたクッキーを
+取り出すこともできます:
+
+       $COOKIES = `cat /usr/tmp/Cookie_stash`;
+       %cookies = parse CGI::Cookie($COOKIES);
+
+=head2 クッキーの取り扱い
+
+Cookieオブジェクトはクッキー属性を取得し設定する一連のアクセサー・メソッドを
+持っています。各アクセサーは同じ書式です。引数なしに呼ばれると、アクセサーは
+その属性の現在の値を返します。引数付きで呼ばれると、アクセサーはその属性を
+変更し、その新しい値を返します。
+
+=over 4
+
+=item B<name()>
+
+クッキーの名前を取得または設定します。例：
+
+    $name = $c->name;
+    $new_name = $c->name('fred');
+
+=item B<value()>
+
+クッキーの値を取得または設定します。例：
+
+    $value = $c->value;
+    @new_value = $c->value(['a','b','c','d']);
+
+B<value()>はコンテキストに依存します。配列コンテキストではクッキーの値を
+配列で返します。スカラー・コンテキストでは複数の値を持つクッキーの
+最初の値を返します。 
+
+=item B<domain()>
+
+クッキーのドメインを取得または設定します。 
+
+=item B<path()>
+
+クッキーのパスを取得または設定します。 
+
+=item B<expires()>
+
+クッキーの有効期限を取得または設定します。 
+
+=back
+
+
+=head1 作者情報(AUTHOR INFORMATION)
+
+Copyright 1997-1998, Lincoln D. Stein.  All rights reserved.  
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+バグレポートとコメントはこちらへ: lstein@cshl.org
+
+=head1 バグ
+
+このセクションは最初はブランクのままです。
+
+（訳者注：どうもデフォルトのままのようです）
+
+
+=head1 参考資料
+
+L<CGI::Carp>, L<CGI>
+
+=head1 翻訳者
+
+川合孝典(GCD00051@nifty.ne.jp)
+

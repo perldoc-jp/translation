@@ -1,0 +1,171 @@
+=head1 名前
+
+CGI::Fast - Fast CGIのためのCGIインターフェース
+
+=head1 概要
+
+    use CGI::Fast qw(:standard);
+    $COUNTER = 0;
+    while (new CGI::Fast) {
+    print header;
+    print start_html("Fast CGI Rocks");
+    print
+        h1("Fast CGI Rocks"),
+        "Invocation number ",b($COUNTER++),
+            " PID ",b($$),".",
+        hr;
+        print end_html;
+    }
+
+=head1 説明
+
+CGI::FastはCGI.pmによって作成されるCGIオブジェクトのサブクラスです。
+Open Market FastCGI標準でうまく機能するように特殊化されています。
+それはCGIスクリプトを永続的に実行しているサーバプロセスに変換すること
+によって、そのスピードを大きく向上させます。大きなモジュールを
+ロードしたり、永続的なデータベース接続を開くような時間のかかる初期化を
+行うプロセスのパフォーマンスは大きく向上するでしょう。
+
+=head1 パズルの他のピース
+
+CGI::Fastを使うためにはFastCGIが使えるWebサーバが必要です。 
+Open MarketのサーバはFastCGI-savvyです。NCSA httpd 1.5とApache用にフリーで
+再配布できるFastCGIモジュールもあります。Microsoft Internet Information Serverと
+Netscape Communications ServerのためのFastCGIを可能にするモジュールはアナウンス
+されています。
+
+さらにFastCGI I/OラブラリとリンクされたPerlインタープリタのバージョンが
+必要になります。DEC Alpha, HP-UX そしてSPARC/Solarisを含めて多くの
+プラットフォームのためにコンパイル済みのバイナリが利用できます。あるいは
+FastCGI開発者キットで提供されるパッチをあてたソースからPerlを再作成することが
+できます。FastCGI Perlインタープリタはおかしな結果なしに、通常のPerlの場所で
+使うことが出来ます。
+
+ApacheとNCSA httpdのためのFastCGIモジュール、コンパイル済みのPerlインタープリタ、
+FastCGI開発者キットの全てが以下のURLにあります:
+
+  http://www.fastcgi.com/
+
+=head1 FASTCGI PERLスクリプトの書き方
+
+FastCGIスクリプトは永続的です：サーバが初期化されると、１つまたは
+複数のスクリプトのコピーが起動され、サーバが終了するか、自然死するまで
+残ります。それが必要とするなんらかの1回の初期化を行った後、スクリプトは
+接続が来るのを待ち、リクエストを処理し、さらに待つというループに
+入ります。
+
+典型的なFastCGIスクリプトは以下のようになります:
+
+    #!/usr/local/bin/perl    # FastCGIバージョンのPerlでなければなりません！
+    use CGI::Fast;
+    &do_some_initialization();
+    while ($q = new CGI::Fast) {
+    &process_request($q);
+    }
+
+新しいリクエストがあるたび、CGI::FastはCGIオブジェクトをループに
+返します。残りの時間、スクリプトはnew()の呼び出しで待っています。
+サーバがスクリプトに終了することを要求するとき、new()はundefを
+返します。もちろん、そうしたければもっと早く終了することも出来ます。
+スクリプトの新しいバージョンは、その場所を占めるために再び起動
+されます（長時間実行するスクリプトでのPerlメモリ・リークを
+さけるため、これが必要かもしれません）。
+
+CGI.pmのデフォルトのCGIオブジェクトも同様に機能します。
+（訳者注:関数指向のことを指している）ループを単にこう変更
+してください:
+
+    while (new CGI::Fast) {
+    &process_request;
+    }
+
+header()、start_form()などはすべて、現在のリクエストに影響を
+与えます。
+
+=head1 FASTCGIのインストール
+
+完全な詳細はFastCGI開発者キットドキュメントをご覧下さい。
+Appacheサーバでは、以下の行をsrm.confに追加しなければいけません:
+
+    AddType application/x-httpd-fcgi .fcgi
+
+FastCGI スクリプトは拡張子 .fcgiで終わらなければなりません。
+インストールする各スクリプトについて、以下ようにsrm.confに
+追加しなければなりません:
+
+    FastCgiServer /usr/etc/httpd/fcgi-bin/file_upload.fcgi -processes 2
+
+これは、起動時にfile_upload.fcgi の２つのコピーを起動するようApacheに
+命令しています。
+
+=head1 CGIスクリプトとしてFASTCGIスクリプトを使う
+
+FastCGIスクリプトとして正常に機能するすべてのスクリプトは普通の
+CGIスクリプトとしてインストールされたときにも正常に機能します。
+しかしながら、パフォーマンス的な利点は見られないでしょう。
+
+=head1 外部のFASTCGIサーバーの呼び出し
+
+FastCGIは、FastCGIスクリプトがWebサーバーの外部、おそらくはリモートのマシンで
+実行することを可能にする、TCP/IP転送機構をサポートしてます。Webサーバーが
+外部のFastCGIサーバーに接続するよう設定するためには、以下のものをsrm.confに
+追加します:
+
+    FastCgiExternalServer /usr/etc/httpd/fcgi-bin/file_upload.fcgi -host sputnik:8888
+
+2つの環境変数が、C<CGI::Fast>が外部のFastCGIサーバーとして使われることを
+許しながら、C<CGI::Fast>がどのように作成されるかに影響を与えます。(
+さらなる詳細についてはC<FCGI::OpenSocket>のためのC<FCGI>のドキュメントを
+ご覧ください。)
+
+=over
+
+=item FCGI_SOCKET_PATH
+
+外部FastCGIスクリプトが、Webサーバーからやってくる接続をリスンするために
+バインドする、ソケットのアドレス(TCP/IP)あるいはパス(UNIXドメイン)
+
+=item FCGI_LISTEN_QUEUE
+
+接続を保留する待ち行列の最大長
+
+=back
+
+例:
+
+    #!/usr/local/bin/perl    # FastCGIバージョンのPerlでなければなりません！
+    use CGI::Fast;
+    &do_some_initialization();
+    $ENV{FCGI_SOCKET_PATH} = "sputnik:8888";
+    $ENV{FCGI_LISTEN_QUEUE} = 100;
+    while ($q = new CGI::Fast) {
+    &process_request($q);
+    }
+
+=head1 警告
+
+私はこれをあまりたくさんテストしていません。
+
+=head1 作者情報(=AUTHOR INFORMATION)
+
+Copyright 1996-1998, Lincoln D. Stein.  All rights reserved.  
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+バグレポートとコメントはこちらへ: lstein@cshl.org
+
+=head1 バグ
+
+このセクションは最初はブランクのままです。
+（訳者注：どうもデフォルトのままのようです）
+
+
+=head1 参考資料
+
+L<CGI::Carp>, L<CGI>
+
+=head1 翻訳者
+
+川合孝典(GCD00051@nifty.ne.jp)
+

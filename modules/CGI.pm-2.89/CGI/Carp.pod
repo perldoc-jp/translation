@@ -1,0 +1,263 @@
+=head1 名前
+
+B<CGI::Carp> - HTTPD（またはその他）にエラーログを書込むためのCGIルーチン
+
+=head1 概要
+
+    use CGI::Carp;
+
+    croak "We're outta here!";
+    confess "It was my fault: $!";
+    carp "It was your fault!";   
+    warn "I'm confused";
+    die  "I'm dying.\n";
+
+    use CGI::Carp qw(cluck);
+    cluck "I wouldn't do that if I were you";
+
+    use CGI::Carp qw(fatalsToBrowser);
+    die "Fatal error messages are now sent to browser";
+
+=head1 説明
+
+CGIスクリプトはタイムスタンプもされず完全に識別もされないエラーログに
+警告メッセージを残すという厄介な習性を持っています。エラーをおこした
+スクリプトを追いかけるのは大変です。これはそれを直します。通常の
+
+    use Carp;
+
+を
+
+    use CGI::Carp
+
+で置き換えてください。すると標準のwarn()、die()、croak()、confess()
+そしてcarp()の呼び出しが自動的に魔法のように、きれいにタイムスタンプ
+がついたメッセージをHTTPサーバーエラーログに出力する関数に置き換え
+られます。
+
+例:
+
+   [Fri Nov 17 21:40:43 1995] test.pl: I'm confused at test.pl line 3.
+   [Fri Nov 17 21:40:43 1995] test.pl: Got an error message: Permission denied.
+   [Fri Nov 17 21:40:43 1995] test.pl: I'm dying.
+
+=head1 エラーメッセージのリダイレクト
+
+デフォルトではエラーメッセージはSTDERRに送られます。ほとんどのHTTPDサーバは
+サーバのエラーログにSTDERRを出力させます。アプリケーションによっては、
+サーバのエラーログとは区別して、プライベートなエラーログを保持したいと
+思うかもしれません。あるいはブラウザがそれをうけとるようにSTDOUTに
+エラーメッセージを出力させたいかもしれません。
+
+この目的のためにcarpout()関数が提供されています。carpout()はデフォルトでは
+エクポートされないので、以下のように明示的にインポートしなければいけません
+
+   use CGI::Carp qw(carpout);
+
+carpout()関数は１つの引数を必要とします。エラーを出力したい、オープン
+されているファイルハンドルへのリファレンスでなければなりません。
+コンパイラー・エラーも捕まえるよう、CGIアプリケーションの一番上で
+BEGINブロックで呼ばれなければなりません。例：
+
+   BEGIN {
+     use CGI::Carp qw(carpout);
+     open(LOG, ">>/usr/local/cgi-logs/mycgi-log") or
+       die("Unable to open mycgi-log: $!\n");
+     carpout(LOG);
+   }
+
+現時点では、あなたに代わってcarpout()がログに対するファイルのロックを
+扱うことはしません。
+
+本当のSTDERRはクローズされません--それはCGI::Carp::SAVEERRに移ります。
+CGIスクリプトを取り扱うとき、いくつかのサーバではスクリプトがSTDOUTと
+STDERRを閉じるとブラウザへの接続をクローズします。CGI::Carp::SAVEERRは
+時期尚早なハプニングからこれを防ぐために使われます。
+
+いろいろな方法でcarpout()にファイルハンドルを渡すことができます。
+Tom Christiansen によると"正しい"方法はファイルハンドルGLOBへの
+リファレンスを渡すことです:
+
+    carpout(\*LOG);
+
+しかしこれは奇妙に単なる死にぞこないのように見えます、そこで以下の
+書き方も受け取ります:
+
+    carpout(LOG);
+    carpout(main::LOG);
+    carpout(main'LOG);
+    carpout(\LOG);
+    carpout(\'main::LOG');
+
+    ... and so on
+
+FileHandleやその他のオブジェクトでもうまく動きます。
+
+carpout()を利用することはパフォーマンス的にはよくありせん。そのため
+デバッグ目的あるいは中程度で使用されるアプリケーションにお勧めします。
+このモジュールの将来では、パフォーマンスへの影響を押さえるため、
+STDERRへのリダイレクトをCGI::Carpメソッドのいずれかが呼ばれるまで
+遅らせるかもしれません。
+
+=head1 Perlエラーをブラウザ・ウィンドウに表示させる
+
+致命的な（die、confess)エラーをブラウザに送りたければ、
+特別な"fatalsToBrowser"サブルーチンをインポートします:
+
+    use CGI::Carp qw(fatalsToBrowser);
+    die "Bad error here";
+
+致命的なエラーは、初期のコンパイルエラーで発生したエラーであっても
+見られるように最小限のHTTPヘッダをブラウザに送るようCGI::Carpで
+アレンジされて、ブラウザにエコーされます。
+（carpoutによりリダイレクトされていなければ）致命的でないエラーは、
+まだログファイルにだけ出力されます。
+
+=head2 デフォルト・メッセージの変更
+
+デフォルトでは、ソフトウェア・エラーメッセージにはエラーの時刻と
+日付とともにWebmasterにe-mailでコンタクストするような注意書きがつきます。
+このメッセージが気に入らなければ、set_message()ルーチンを使って変更する
+ことが出来ます。これはデフォルトではインポートされません；use()行で
+インポートしなければなりません:
+
+    use CGI::Carp qw(fatalsToBrowser set_message);
+    set_message("It's not a bug, it's a feature!");
+
+カスタマイズしたエラーメッセージを作るため、コードリファレンスを渡す
+ことも出来ます。実行時には、あなたのコードはスクリプトを死なせた(die)
+エラー・メッセージのテキストで呼び出されます。例:
+
+    use CGI::Carp qw(fatalsToBrowser set_message);
+    BEGIN {
+       sub handle_errors {
+          my $msg = shift;
+          print "<h1>Oh gosh</h1>";
+          print "<p>Got an error: $msg</p>";
+      }
+      set_message(\&handle_errors);
+    }
+
+正確にコンパイル時のエラーを捕まえるためには、set_message()は
+BEGIN{}ブロックの中から呼び出さなければいけません。
+
+=head1 警告をHTMLコメントにする
+
+致命的でないエラーをHTMLコメントとしてあなたのプログラムの出力に
+埋め込むことも出来るようにまりました。この機能を可能とするためには、
+新しい"warningsToBrowser"サブルーチンをエクスポートしてください。
+HTTPヘッダが送信される前にブラウザへ警告を送信するとエラーになるので、
+warninigsToBrowser()サブルーチンをtrueの引数で呼ぶまで、すべての警告
+は内部バッファに格納されます:
+
+    use CGI::Carp qw(fatalsToBrowser warningsToBrowser);
+    use CGI qw(:standard);
+    print header();
+    warningsToBrowser(1);
+
+HTMLコメントが許されない場所で内容を出力している間、ブラウザに警告が
+送られるのを防ぐためwarningsToBrowser()に引数falseを与えることも出来ます:
+
+    warningsToBrowser(0);    # 警告を無効にします
+    print "<script type=\"text/javascript\"><!--\n";
+    print_some_javascript_code();
+    print "//--></script>\n";
+    warningsToBrowser(1);    # 再び警告を有効にします
+
+注意：この点でwarningsToBrowser()はfatalsToBrowser()とは根本的に違います、
+あなたは決してそれをあなた自身で呼ぶことはありません！
+
+=head1 プログラム名の上書き
+
+CGI::Carpには、ログやブラウザ・ウィンドウに書かれるメッセージに、
+エラーあるいは警告を生成したプログラムの名前が入っています。
+時にはPerlは実行されたプログラムの実際の名前がなんであるかについて
+混乱してしまうこともあります。こうした場合には、CGI::Carpが全ての
+メッセージに対して利用するプログラム名を上書きすることができます。
+
+それをする手っ取り早い方法は、useステートメントでCGI::Carpにプログラムの
+名前を伝えることです。"use"ステートメントに"name=cgi_carp_log_name"を
+追加することにより、それを行うことができます。例えば:
+
+    use CGI::Carp qw(name=cgi_carp_log_name);
+
+プログラムの一部分でだけ、プログラム名を変えたければ、
+代わりにC<set_progname()>関数を使うことが出来ます。これは
+デフォルトではエクスポートされません。以下のようにすることにより
+明示的にインポートしなければなりません
+
+    use CGI::Carp qw(set_progname);
+
+一度そうすれば、ログに書かれるプログラムの名前を、以下のように呼び出す
+度に、いつでも変更することができます
+
+    set_progname(new_program_name);
+
+以下のように呼び出すことにより、プログラムをデフォルトに元に戻すことが
+できます
+
+    set_progname(undef);
+
+この上書きはプログラムのコンパイルが終了するまでは起こらないことに
+注意してください。そのためコンパイルエラーは上書きされない
+プログラム名のまま表示されます。
+  
+=head1 変更履歴
+
+1.05 carpout() added and minor corrections by Marc Hedlund
+     <hedlund@best.com> on 11/26/95.
+
+1.06 fatalsToBrowser() no longer aborts for fatal errors within
+     eval() statements.
+
+1.08 set_message() added and carpout() expanded to allow for FileHandle
+     objects.
+
+1.09 set_message() now allows users to pass a code REFERENCE for 
+     really custom error messages.  croak and carp are now
+     exported by default.  Thanks to Gunther Birznieks for the
+     patches.
+
+1.10 Patch from Chris Dean (ctdean@cogit.com) to allow 
+     module to run correctly under mod_perl.
+
+1.11 Changed order of &gt; and &lt; escapes.
+
+1.12 Changed die() on line 217 to CORE::die to avoid B<-w> warning.
+
+1.13 Added cluck() to make the module orthogonal with Carp.
+     More mod_perl related fixes.
+
+1.20 Patch from Ilmari Karonen (perl@itz.pp.sci.fi):  Added
+     warningsToBrowser().  Replaced <CODE> tags with <PRE> in
+     fatalsToBrowser() output.
+
+1.23 ineval() now checks both $^S and inspects the message for the "eval" pattern
+     (hack alert!) in order to accomodate various combinations of Perl and
+     mod_perl.
+
+1.24 Patch from Scott Gifford (sgifford@suspectclass.com): Add support
+     for overriding program name.
+
+=head1 作者(AUTHORS)
+
+Copyright 1995-2002, Lincoln D. Stein.  All rights reserved.  
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+バグレポートとコメントはこちらへ: lstein@cshl.org
+
+=head1 参考資料
+
+Carp, CGI::Base, CGI::BasePlus, CGI::Request, CGI::MiniSvr, CGI::Form,
+CGI::Response
+    if (defined($CGI::Carp::PROGNAME)) 
+    {
+      $file = $CGI::Carp::PROGNAME;
+    }
+
+=head1 翻訳者
+
+川合孝典(GCD00051@nifty.ne.jp)
+

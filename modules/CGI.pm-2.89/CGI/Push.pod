@@ -1,0 +1,213 @@
+=head1 名前
+
+CGI::Push - サーバープッシュへの簡単なインターフェース
+
+=head1 概要
+
+    use CGI::Push qw(:standard);
+
+    do_push(-next_page=>\&next_page,
+            -last_page=>\&last_page,
+            -delay=>0.5);
+
+    sub next_page {
+        my($q,$counter) = @_;
+        return undef if $counter >= 10;
+        return start_html('Test'),
+               h1('Visible'),"\n",
+               "This page has been called ", strong($counter)," times",
+               end_html();
+    }
+
+    sub last_page {
+        my($q,$counter) = @_;
+        return start_html('Done'),
+               h1('Finished'),
+               strong($counter - 1),' iterations.',
+               end_html;
+    }
+
+=head1 説明
+
+CGI::PushはCGI.pmによって作られるCGIオブジェクトのサブクラスです。
+これはサーバ・プッシュ操作に特化しています。それは規則正しい間隔で、
+その内容を変更する、動くページを可能にします。
+
+１つのページを描くサブルーチンへのポインタをCGI::Pushに与えます。
+サブルーチンが呼ばれるたび、それは新しいページを作成します。
+ページの内容は、それまであったものをそれで置き換えるという方法で
+ブラウザに伝えられます。この技術はHTMLページのほか、画像ファイルでも
+機能し、アニメーションGIFを作ることが可能です。
+
+Netscape Navigatorだけがサーバー・プッシュをサポートします。
+Internet Explorerはサポートしていません。
+
+=head1 CGI::Pushの使い方
+
+CGI::Pushは1つの新しいメソッドdo_push()を標準のCGIスイートに
+追加します。このメソッドを呼ぶとき、各新しいページを描くことに
+責任を持つサブルーチンへのリファレンス、間隔、オプションで
+最後のページを描くサブルーチンを渡します。他のオプションの
+パラメータはCGI　header()メソッドにより理解されるもののほとんどを
+含みます。
+
+好みによってオブジェクト指向のやりかたでも、そうでなくても
+do_push()を呼ぶことが出来ます:
+
+    use CGI::Push;
+    $q = new CGI::Push;
+    $q->do_push(-next_page=>\&draw_a_page);
+
+        -あるいは-
+
+    use CGI::Push qw(:standard);
+    do_push(-next_page=>\&draw_a_page);
+
+パラメータは以下の通りです:
+
+=over 4
+
+=item -next_page
+
+    do_push(-next_page=>\&my_draw_routine);
+
+これは必須パラメータで、新しいページを描くことに責任を持つサブルーチンへの
+リファレンスを示します。そのサブルーチンはCGIオブジェクトとサブルーチンが
+何回呼ばれたかを示すカウンターからなる２つのパラメータ期待します。それは
+出力する１つまた複数の要素のB<配列>でページの内容を返さなければなりません。
+再描画するループを中止し、（もしあれば）最後のページを出力するように
+false値（または空の配列）を返すことが出来ます。
+
+    sub my_draw_routine {
+        my($q,$counter) = @_;
+        return undef if $counter > 100;
+        return start_html('testing'),
+               h1('testing'),
+               "This page called $counter times";
+    }
+
+特別な効果のために描画ルーチンの中でグローバルな変数を作成し、
+参照し、使用することはもちろん自由です。
+
+=item -last_page
+
+
+このオプションのパラメータは一連の最後のページを描画することに
+責任を持つサブルーチンへのリファレンスを示します。それは-next_pageルーチンが
+false値を返した後に呼ばれます。このサブルーチンそのものは-next_pageルーチンと
+まったく同じ呼び出し方を持たなければなりません。 
+
+=item -type
+
+このオプションのパラメータは各ページのコンテント・タイプを示します。
+"text/html"がデフォルトです。通常、そのモジュールは各ページは
+MIMEタイプが異なる（heterogeneous）ものと想定しています。しかし
+特別な値"heterogeneous"または"dynamic"のどちらかを指定すると
+（後者は長いパラメータ名が嫌いな人のための便宜のために提供されています）、
+ページ単位にMIMEタイプを-- そしてそのほかのヘッダ・フィールドも--指定することが
+出来ます。詳細は"異質な（heterogeneous）ページ"をご覧下さい。 
+
+=item -delay
+
+秒単位でフレーム間の遅延を示します。遅延が小さければページは早く
+リフレッシュされます。小数の値も許されます。
+
+B<指定されなければ、-delay はデフォルトで1秒になります。>
+
+=item -cookie, -target, -expires, -nph
+
+これらはCGI::header()での同じ名前のパラメータと同じ意味を持ちます。 
+
+指定されなければ、-nphのデフォルトは1(多くのサーバーで必要とされるように、
+下記をご覧ください)。
+
+=back
+
+=head2 異質なページ
+
+通常CGI::Pushにより表示されるすべてのページは共通のMIMEタイプを持ちます。
+しかしdo_push() -type パラメータで "heterogeneous"または"dynamic"を
+指定すると、場合によって各ページのMIMEタイプを指定することが出来ます。
+
+もしこのオプションを使えば、各ページのためのHTTPヘッダを作成する責任は、
+あなたあります。描画ルーチンを単純に以下のように変更してください:
+
+
+    sub my_draw_routine {
+        my($q,$counter) = @_;
+        return header('text/html'),   # ここでヘッダを作成していることに注意
+               start_html('testing'),
+               h1('testing'),
+               "This page called $counter times";
+    }
+
+好きなヘッダ・フィールドを追加することが出来ますが、しかし（クッキーや
+ステータス・フィールドを含めて）いくつかのはブラウザによって解析されない
+かもしれません。１つの面白い効果は一連のページを表示し、そして最後のページを
+表示した後に、ブラウザを新しいURLにリダイレクトすることです。redirect()は
+機能b<しない>ので、一番簡単な方法は以下に示すように-refreshヘッダ・フィールドを
+使うことです:
+
+    sub my_draw_routine {
+        my($q,$counter) = @_;
+        return undef if $counter > 10;
+        return header('text/html'),   # ここでヘッダを作成していることに注意
+               start_html('testing'),
+               h1('testing'),
+               "This page called $counter times";
+    }
+
+    sub my_last_page {
+        return header(-refresh=>'5; URL=http://somewhere.else/finished.html',
+                      -type=>'text/html'),
+               start_html('Moved'),
+               h1('This is the last page'),
+               'Goodbye!'
+               hr,
+               end_html; 
+    }
+
+=head2 実行時にページの遅延を変更する
+
+もしページ毎にページ間の遅延時間を制御したければ、描画ルーチンの中で
+push_delay()を呼び出してください。push_delay()は現在のページが表示された後、
+次のものを表示する前に遅らせたい秒数を表す、１つの数値の引数を取ります。
+遅延時間は小数の値にすることができます。パラメータがなければ、
+push_delay()は単に現在の遅延を返します。
+
+=head1 CGI::Pushスクリプトのインストール
+
+サーバ・プッシュ・スクリプトが正しく機能するためには、解析なしヘッダ(NPH)
+スクリプトとしてインストールされなければいけません。UNIXシステムでは、
+これはしばしば、スクリプトの名前の前に"nph-"をつけることによって実現されます。
+NPHスクリプトの理解はWebSTARとMicrosoft IISでは自動的に行われます。
+他のサーバのユーザは、ヘルプのためにそのドキュメントをご覧になるべきです。
+
+Apache Webサーバーではバージョン1.3b2からは、サーバー・プッシュ・スクリプトが
+NPHスクリプトとしてインストールされる必要がありません: NPHスクリプトによって
+必要とされる特別なヘッダを不能にするため、do_push() への
+-nphパラメータがfalse値に設定されなければならないかもしれません。
+
+=head1 作者情報(AUTHOR INFORMATION)
+
+Copyright 1995-1998, Lincoln D. Stein.  All rights reserved.  
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+バグレポートとコメントはこちらへ: lstein@cshl.org
+
+=head1 BUGS
+
+このセクションは最初はブランクのままです。
+
+（訳者注：どうもデフォルトのままのようです）
+
+=head1 参考資料
+
+L<CGI::Carp>, L<CGI>
+
+=head1 翻訳者
+
+川合孝典(GCD00051@nifty.ne.jp)
+
