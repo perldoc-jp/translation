@@ -1,0 +1,256 @@
+=head1 名前 (NAME)
+
+Apache::SSI - Perl での Server Side Includes の実行
+
+=head1 概要 (SYNOPSIS)
+
+httpd.conf 内:
+
+    <Files *.phtml>  # または何らか
+    SetHandler perl-script
+    PerlHandler Apache::SSI
+    </Files>
+
+あなたは Apache::SSI サブクラスで独自拡張ができます。もしそうするなら
+PERL_METHOD_HANDLERS=1 とあわせて mod_perl をコンパイルしてください (そうすれば
+オブジェクト指向継承が利用可能です)。そしてモジュールをこのように作って下さい:
+
+    package MySSI;
+    use Apache::SSI ();
+    @ISA = qw(Apache::SSI);
+
+    #埋め込みシンタックス:
+    #<!--#something param=value -->
+    sub ssi_something {
+       my($self, $attr) = @_;
+       my $cmd = $attr->{param};
+       ...
+       return $a_string;   
+    }
+ 
+ そして httpd.conf 内は:
+ 
+    <Files *.phtml>
+     SetHandler perl-script
+     PerlHandler MySSI
+    </Files>
+
+=head1 説明 (DESCRIPTION)
+
+Apache::SSI は、HTML サーバ解析処理のための mod_include の機能を実行します。
+これは Apache の mod_perl 下で動作します。
+
+私の考えでは、このモジュールが有用であるかも知れない、主な理由が二つあります:
+独自カスタム SSI 命令を実行するためのサブクラスが使えます。そして/または、
+他の mod_perl ハンドラの出力を解析出来、また、SSI 出力を他のハンドラへ
+送ることができます (その場合 Apache::Filter を利用して下さい)。
+
+各 SSI 命令は Apache::SSI の、接頭辞 "ssi_" のメソッドによって処理されます。
+例えば、<!--#printenv--> は ssi_printenv メソッドによって処理されます。
+SSI タグ内の属性=値のペアは、解析され、ハッシュリファレンスで
+メソッドに渡されます。
+
+'Echo' 命令は、ssi_echo メソッドによって処理され、その委任されたメソッドが、
+接頭辞 "echo_" のメソッドを調べます。例えば、<!--#echo var=DOCUMENT_NAME-->
+は echo_DOCUMENT_NAME メソッドに処理されます。
+
+Apache::SSI から継承し 'ssi_*' や 'echo_*' メソッドをオーバーライドするか、
+新規のメソッドを書くことにより、挙動をカスタマイズできます。
+
+=head2 SSI 命令 (SSI Directives)
+
+このモジュールは mod_include と同じ命令をサポートします。少なくとも、
+それが目標です。=) 以下に一覧されながら、文書化されていないメソッドについては、
+http://www.apache.org/ で mod_include のオンラインドキュメントをご覧下さい。
+
+=over 4
+
+=item * config
+
+=item * echo
+
+=item * exec
+
+=item * fsize
+
+=item * flastmod
+
+=item * include
+
+=item * printenv
+
+=item * set
+
+=item * perl
+
+Perl 関数を呼び出す方法は二つあり、そして引数を与える方法が二つあります。
+関数は無名サブルーチンリファレンスによる指定、
+あるいは他で定義済みの関数名での指定のどちらかでできます。
+
+ <!--#perl sub="sub { localtime() }"-->
+ <!--#perl sub="time::now"-->
+
+もし sub 引数が、正規表現 /^\s*sub[^\w:]/ にマッチすると、
+サブルーチンリファレンスとみなされます。マッチしなければ、関数名とみなされます。
+後者の場合で、関数名に "::" が含まれていない場合に、"main::" 文字列が
+関数名の先頭に付加されます (これは関数が main パッケージか、あなたの指定する
+パッケージ内にあることを強制します)。これは、あなたのコードを
+main パッケージに置くための非常に悪い考えなので、私は気乗りせず
+この特徴を是認しているだけである事に注意してください。
+
+大抵、無名サブルーチンを使うと、より遅くなります。なぜなら、それぞれは
+eval() されなければならず、キャッシュされないためです。
+最善策をとるなら、親プロセス内に必要なコードをプリロードしておき、
+そして関数名でそれを呼び出してください。
+
+もし "&Package::SubPack::handler" のようなサブルーチンを呼び出す場合は
+"handler" の部分は省略可能で、このようにできます:
+
+ <!--#perl sub="Package::Subpack"-->
+
+もしあなたが関数に引数のリストを与えたいなら、"arg" か "args" の
+どちらかのパラメータを使います:
+
+ <!--#perl sub="sub {$_[0] * 7}" arg=7-->
+ <!--#perl sub=holy::matrimony arg=Hi arg=Lois-->
+ <!--#perl sub=holy::matrimony args=Hi,Lois-->
+
+"args" パラメータは簡単なカンマ分割をします。今のところ
+"args" パラメータを介した場合、引数内にカンマを埋め込む方法が存在しないことを
+意味します。その場合は "arg" パラメータを使って下さい。
+
+もしキーと値のペアを与えたくて、キーが 'sub', 'arg', 'args', または
+'pass_request' (以下参照) でなければ、あなたのルーチンへはキーと値の
+B<両者> が渡されます。これはあなたの関数へ、キーと値のペアになった
+ハッシュを渡させます:
+
+ <!--#perl sub=holy::matrimony groom=Hi bride=Lois-->
+ これは &holy::matrimony('groom', 'Hi', 'bride', 'Lois'); を呼びます。
+
+バージョン 1.95 の時点で、私達は現在の Apache リクエストオブジェクト ($r) を
+第一引数として関数に渡します。これを抑制するには、'pass_request=no' という、
+キーと値のペアを渡すか、あなたのサーバ設定ファイル内に
+'PerlSetVar SSIPerlPass_Request no' を設定してください。
+
+Perl SSI 呼び出しに関する詳細情報は C<http://perl.apache.org/src/mod_perl.html>
+をご参照下さい。
+
+=item * if
+
+=item * elif
+
+=item * else
+
+=item * endif
+
+これらの四つの命令は C<mod_include> と同じように使われます。一点の
+重要な違い: ブール式は、Perl の eval() を使用して評価されます。これは、
+等価比較で C<=> に代わり C<==> か C<eq> を使用する事、また、条件式に
+プリロードされた Perl サブルーチンを使用することが出来る事も意味します:
+
+ <!--#if expr="&Movies::is_by_Coen_Brothers($MOVIE)"-->
+  This movie is by the Coen Brothers.
+ <!--#else-->
+  This movie is not by the Coen Brothers.
+ <!--#endif-->
+
+もっとも、とても複雑な Perl の処理はできません。なぜならそれは手作業で
+(C<mod_include> のように $var または ${var} 形式の) 変数を探し、
+$object->method または $hash{'key'} のような表記には間違えさせられるからです。
+Apache の変数に記入している間に、Perl 独自の表記を許可する方法について
+どんな提案でも歓迎します。
+
+=back
+
+=head1 ハンドラのチェーン化 (CHAINING HANDLERS)
+
+スタックされたハンドラのチェーン内にこのモジュールを存在させるため、
+とても簡単な方法が二つあります。第一に C<Apache::Filter> を使い、そして
+あなたの httpd.conf はこのような感じでしょう:
+
+ PerlModule Apache::Filter
+ PerlModule Apache::SSI
+ PerlModule My::BeforeSSI
+ PerlModule My::AfterSSI
+ <Files ~ "\.ssi$">
+  SetHandler perl-script
+  PerlSetVar Filter On
+  PerlHandler My::BeforeSSI Apache::SSI My::AfterSSI
+ </Files>
+
+C<"PerlSetVar Filter On"> ディレクティブは三つのスタックされたハンドラに
+それらをフィルタリングモードにすべきだと命じます。これは必須です。
+
+第二に C<Apache::OutputChain> を使い、そしてあなたの httpd.conf は
+このような感じでしょう:
+
+ PerlModule Apache::OutputChain
+ PerlModule Apache::SSIChain
+ PerlModule My::BeforeSSI
+ PerlModule My::AfterSSI
+ <Files ~ "\.ssi$">
+  SetHandler perl-script
+  PerlHandler Apache::OutputChain My::AfterSSI Apache::SSIChain My::BeforeSSI
+ </Files>
+
+このハンドラの順番は、二つの異なるメソッドで逆順にされる事に注意してください。
+一つの理由は、私が書いた C<Apache::Filter> は、順番をより直感的にさせます。
+もう一つの理由は、C<Apache::SSI> は、これ自体が C<Apache::Filter> を使う
+スタックハンドラで使われる事が出来る事です。それゆえに、C<Apache::OutputChain>
+と一緒に使われるには、C<Apache::SSIChain> にラップされている必要があります。
+
+より明確な情報は C<Apache::OutputChain> と C<Apache::Filter> のドキュメントを
+ご覧下さい。そして、警告 (CAVEATS) の中の注記も見てください。
+ 
+
+=head1 警告 (CAVEATS)
+
+* Apache::Filter を介してハンドラをチェーン化した時に、もし <!--#include ...-->
+または <!--#exec cgi=...--> を使う場合、Apache::SSI はチェーン内の最後のフィルタ
+でなければなりません。これは Apache::SSI がファイルのインクルードのために、
+$r->lookup_uri(...)->run を使い、これは Perl の STDOUT ではなく、
+むしろ C の stdout へ出力を送るからです。従い Apache::Filter には
+出力の捕捉やフィルタが出来ません。
+
+もし Apache::SSI がチェーン内の最後のフィルタであるか、あなたが <!--#fsize-->,
+<!--#flastmod--> 等の簡単な SSI 命令を貼り付けるのなら問題ないでしょう。
+
+* 現在の、<!--#echo var=whatever--> が変数を探す方法は、最初に
+$r->subprocess_env を試み、次に %ENV を試み、そして五つの追加環境変数は
+mod_include が提供します。この順序は正しいでしょうか？
+
+=head1 行うこと (TO DO)
+
+http://www.apache.org/docs/mod/mod_include.html を再訪し、私が出来ることが
+他に何かないかを見ること。
+
+ファイルをインクルードする時に十分に発達したサブリクエストを実行するか、
+または、ただファイルを開いて出力するか、このどちらかを選択させる
+"PerlSetVar ASSI_Subrequests 0|1" オプションを持つことは素敵でしょう。
+
+real.t テストのために Apache::test の使い方を知りたい。
+
+=head1 参考資料 (SEE ALSO)
+
+mod_include, mod_perl(3), Apache(3), HTML::Embperl(3), Apache::ePerl(3),
+Apache::OutputChain(3)
+
+=head1 作者 (AUTHOR)
+
+Ken Williams ken@forum.swarthmore.edu
+
+基本概念は Doug MacEachern dougm@osf.org によるオリジナルバージョン。
+実装は異なる。
+
+=head1 著作権 (COPYRIGHT)
+
+Copyright 1998 Swarthmore College.  All rights reserved.
+
+This library is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
+
+=head1 翻訳者
+
+谷口公一 E<lt>taniguchi@users.sourceforge.jpE<gt>
+
+
