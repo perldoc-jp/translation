@@ -1,0 +1,285 @@
+=head1 NAME
+
+Scalar::Properties - run-time properties on scalar variables
+
+=head1 SYNOPSIS
+
+  use Scalar::Properties;
+  my $val = 0->true;
+    if ($val && $val == 0) {
+    print "yup, its true alright...\n";
+  }
+
+  my @text = (
+    'hello world'->greeting(1),
+    'forget it',
+    'hi there'->greeting(1),
+  );
+  print grep { $_->is_greeting } @text;
+
+  my $l =  'hello world'->length;
+
+=head1 DESCRIPTION
+
+Scalar::Properties attempts to make Perl more object-oriented by
+taking an idea from Ruby: Everything you manipulate is an object,
+and the results of those manipulations are objects themselves.
+
+  'hello world'->length
+  (-1234)->abs
+  "oh my god, it's full of properties"->index('g')
+
+The first example asks a string to calculate its length. The second
+example asks a number to calculate its absolute value. And the
+third example asks a string to find the index of the letter 'g'.
+
+Using this module you can have run-time properties on initialized
+scalar variables and literal values. The word 'properties' is used
+in the Perl 6 sense: out-of-band data, little sticky notes that
+are attached to the value. While attributes (as in Perl 5's attribute
+pragma, and see the C<Attribute::*> family of modules) are handled
+at compile-time, properties are handled at run-time.
+
+Internally properties are implemented by making their values into
+objects with overloaded operators. The actual properties are then
+simply hash entries.
+
+Most properties are simply notes you attach to the value, but some
+may have deeper meaning. For example, the C<true> and C<false>
+properties plays a role in boolean context, as the first example
+of the Synopsis shows.
+
+Properties can also be propagated between values. For details, see
+the EXPORTS section below. Here is an example why this might be
+desirable:
+
+  pass_on('approximate');
+  my $pi = 3->approximate(1);
+  my $circ = 2 * $rad * $pi;
+
+  # now $circ->approximate indicates that this value was derived
+  # from approximate values
+
+Please don't use properties whose name start with an underscore;
+these are reserved for internal use.
+
+You can set and query properties like this:
+
+=over 4
+
+=item C<$var-E<gt>myprop(1)>
+
+sets the property to a true value. 
+
+=item C<$var-E<gt>myprop(0)>
+
+sets the property to a false value. Note that this doesn't delete
+the property (to do so, use the C<del_props> method described
+below).
+
+=item C<$var-E<gt>is_myprop>, C<$var-E<gt>has_myprop>
+
+returns a true value if the property is set (i.e., defined and has
+a true value). The two alternate interfaces are provided to make
+querying attributes sound more natural. For example:
+
+  $foo->is_approximate;
+  $bar->has_history;
+
+=back
+
+=head1 METHODS
+
+Values thus made into objects also expose various utility methods.
+All of those methods (unless noted otherwise) return the result as
+an overloaded value ready to take properties and method calls
+itself, and don't modify the original value.
+
+=head2 INTROSPECTIVE METHODS
+
+These methods help in managing a value's properties.
+
+=over 4
+
+=item C<$var->get_props>
+
+Get a list of names of the value's properties.
+
+=item C<$var->del_props(LIST)>
+
+Deletes one or more properties from the value. This is different
+than setting the property value to zero.
+
+=item C<$var->del_all_props>
+
+Deletes all of the value's properties.
+
+=back
+
+=head2 NUMERICAL METHODS
+
+=over 4
+
+=item C<plus(EXPR)>
+
+Returns the value that is the sum of the value whose method has
+been called and the argument value. This method also overloads
+addition, so:
+
+  $a = 7 + 2;
+  $a = 7->plus(2);    # the same
+
+=item C<minus(EXPR)>
+
+Returns the value that is the the value whose method has been called
+minus the argument value. This method also overloads subtraction.
+
+=item C<times(EXPR)>
+
+Returns the value that is the the value whose method has been called
+times the argument value. This method also overloads multiplication.
+
+=item C<divide(EXPR)>
+
+Returns the value that is the the value whose method has been called
+divided by the argument value. This method also overloads division.
+
+=item C<modulo(EXPR)>
+
+Returns the value that is the the value whose method has been called
+modulo the argument value. This method also overloads the modulo
+operator.
+
+=item C<exp(EXPR)>
+
+Returns the value that is the the value whose method has been called
+powered by the argument value. This method also overloads the
+exponentiation operator.
+
+=item C<abs>
+
+Returns the absolute of the value.
+
+=item C<zero>
+
+Returns a boolean value indicating whether the value is equal to 0.
+
+=back
+
+=head2 STRING METHODS
+
+=over 4
+
+=item C<length>, C<size>
+
+Returns the result of the built-in C<length> function applied to
+the value.
+
+=item C<reverse>
+
+Returns the reverse string of the value.
+
+=item C<uc>, C<ucfirst>, C<lc>, C<lcfirst>, C<hex>, C<oct>
+
+Return the result of the appropriate built-in function applied to
+the value.
+
+=item C<concat(EXPR)>, C<append(EXPR)>
+
+Returns the result of the argument expression appended to the
+value.
+
+=item C<swapcase>
+
+Returns a version of the value with every character's case reversed,
+i.e. a lowercase character becomes uppercase and vice versa.
+
+=item C<split /PATTERN/, LIMIT>
+
+Returns a list of overloaded values that is the result of splitting
+(according to the built-in C<split> function) the value along the
+pattern, into a number of values up to the limit.
+
+=back
+
+=head2 BOOLEAN METHODS
+
+=over 4
+
+=item C<numcmp(EXPR)>
+
+Returns the (overloaded) value of the numerical three-way comparison.
+This method also overloads the C<E<lt>=E<gt>> operator.
+
+=item C<cmp(EXPR)>
+
+Returns the (overloaded) value of the alphabetical three-way
+comparison.  This method also overloads the C<cmp> operator.
+
+=item C<eq(EXPR)>, C<ne(EXPR)>, C<lt(EXPR)>, C<gt(EXPR)>, C<le(EXPR)>,
+C<ge(EXPR)>
+
+Return the (overlaoded) boolean value of the appropriate string
+comparison. These methods also overload those operators.
+
+=item C<eqi(EXPR)>, C<nei(EXPR)>, C<lti(EXPR)>, C<gti(EXPR)>,
+C<lei(EXPR)>, C<gei(EXPR)>
+
+These methods are case-insensitive versions of the above operators.
+
+=item C<is_true>, C<is_false>
+
+Returns the (overloaded) boolean status of the value.
+
+=back
+
+=head1 EXPORTS
+
+Three subroutines dealing with how properties are propagated are
+automatically exported. For an example of propagation, see the
+DESCRIPTION section above.
+
+=over 4
+
+=item C<pass_on(LIST)>
+
+Sets (replaces) the list of properties that are passed on. There
+is only one such list for the whole mechanism. The whole property
+interface is experimental, but this one in particular is likely to
+change in the future.
+
+=item C<passed_on(STRING)>
+
+Tests whether a property is passed on and returns a boolean value.
+
+=item C<get_pass_on>
+
+Returns a list of names of properties that are passed on.
+
+=back
+
+=head1 BUGS
+
+None known so far. If you find any bugs or oddities, please do inform the
+authors.
+
+=head1 AUTHORS
+
+James A. Duncan <jduncan@fotango.com>
+
+Marcel Grunauer, <marcel@codewerk.com>
+
+Some contributions from David Cantrell, <david@cantrell.org.uk>
+
+=head1 COPYRIGHT
+
+Copyright 2001 Marcel Grunauer, James A. Duncan.
+Portions copyright 2003 David Cantrell. All rights reserved.
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=head1 SEE ALSO
+
+perl(1), overload(3pm), Perl 6's properties.
+
