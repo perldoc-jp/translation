@@ -1,0 +1,224 @@
+=head1 NAME
+
+POE::Filter - a protocol abstraction
+
+POE::Filter - プロトコルアブストラクション
+
+=head1 SYNOPSIS
+
+  $filter = POE::Filter::Something->new();
+  $arrayref_of_logical_chunks =
+    $filter->get($arrayref_of_raw_chunks_from_driver);
+  $arrayref_of_streamable_chunks_for_driver =
+     $filter->put($arrayref_of_logical_chunks);
+
+=head1 DESCRIPTION
+
+Filters implement generic interfaces to low- and medium-level
+protocols.  Wheels use them to communicate in basic ways without
+needing to know the details for doing so.  For example, the Line
+filter does everything needed to translate incoming streams into lines
+and outgoing lines into streams.  Sessions can get on with the
+business of using lines.
+
+フィルタは低水準から中水準のプロトコルへの一般的なインターフェースを実
+装します。ホイールはそれらを使用して詳細を知る必要無しに基本的な方法で
+通信します。例えば、Lineフィルタは入力ストリームを行単位に、行単位の出
+力をストリームに変換するのに必要なことを全て行います。セッションは行単
+位のデータを使用する仕事に取り組むことができます。
+
+=head1 PUBLIC FILTER METHODS
+
+These methods are the generic Filter interface, and every filter must
+implement them.  Specific filters may have additional methods.
+
+これらのメソッドは一般的なFilterインターフェースであり、全てのフィルタ
+はこれらを実装しなければなりません。具体的なフィルタはさらに他のメソッ
+ドを持つかもしれません。
+
+=over 2
+
+=item new
+
+new() creates and initializes a new filter.  Specific filters may have
+different constructor parameters.
+
+new()は新しいフィルタを生成し初期化します。具体的なドライバは異なったコ
+ンストラクタ引数を持つかもしれません。
+
+=item get ARRAYREF
+
+get() translates raw data into records.  What sort of records is
+defined by the specific filter.  The method accepts a reference to an
+array of raw data chunks, and it returns a reference to an array of
+complete records.  The returned ARRAYREF will be empty if there wasn't
+enough information to create a complete record.  Partial records may
+be buffered until subsequent get() calls complete them.
+
+get()は生のデータをレコードに変換します。どのようなレコードかはそれぞれ
+のフィルタによって定義されます。このメソッドは生のデータチャンクの配列
+へのリファレンスを受け取り、完全なレコードの配列へのリファレンスを返し
+ます。もし完全なレコードを生成するのに必要な情報がなければ、返された
+ARRAYREFは空になります。メッセージの一部分は次のget()呼び出しがそれを完
+全にするまでバッファされるかもしれません。
+
+  my $records = $filter->get( $driver->get( $filehandle ) );
+
+get() processes and returns as many records as possible.  This is
+faster than one record per call, but it introduces race conditions
+when switching filters.  If you design filters and intend them to be
+switchable, please see get_one_start() and get_one().
+
+get()は可能な限り多くのレコードを処理し返します。これは呼び出しごとに一
+つのレコードを処理するよりも速くなりますが、フィルタを交換するときに競
+合状態を持ち込んでしまいます。もし交換可能なフィルタを設計する場合、
+get_one_start()とget_one()を参照してください。
+
+=item get_one_start ARRAYREF
+
+=item get_one
+
+These methods are a second interface to a filter's input translation.
+They split the usual get() into two stages.
+
+これらのメソッドはフィルタの入力変換への第2インターフェースです。これら
+は通常のget()を2段階に分けます。
+
+get_one_start() accepts an array reference containing unprocessed
+stream chunks.  It adds them to the filter's internal buffer and does
+nothing else.
+
+get_one_start()は未処理のストリームチャンクを含んだ配列へのリファレンス
+を受け取ります。フィルタの内部バッファにそれらを追加する以外は何も行い
+ません。
+
+get_one() takes no parameters and returns an ARRAYREF of zero or more
+complete records from the filter's buffer.  Unlike the plain get()
+method, get_one() is not greedy.  It returns as few records as
+possible, preferrably just zero or one.
+
+get_one()は引数を取らず、フィルタのバッファから0つ以上の完全なレコード
+のARRAYREFを返します。単純なget()メソッドとは違って、get_one()は貪欲で
+はありません。これは可能な限り少ないレコード、なるべくただ0つか1つ、を
+返します。
+
+get_one_start() and get_one() reduce or eliminate race conditions when
+switching filters in a wheel.
+
+get_one_start()とget_one()はホイールでフィルタを交換するときに生じる競
+合状態を軽減するか除去します。
+
+=item put ARRAYREF
+
+put() serializes records into a form that may be written to a file or
+sent across a socket.  It accepts a reference to a list of records,
+and it returns a reference to a list of stream chunks.
+
+put()はレコードをファイルに書き出したりソケットを通じて送るための形に直
+列化します。レコードのリストへのリファレンスを受け取り、ストリームチャ
+ンクのリストへのリファレンスを返します。
+
+The list reference it returns may be passed directly to a driver.
+
+返されるリストへのリファレンスはドライバに直接渡されるかもしれません。
+
+  $driver->put( $filter->put( \@records ) );
+
+=item get_pending
+
+get_pending() returns a filter's partial input buffer.  Unlike
+previous versions, the filter's input buffer is B<not> cleared.  The
+ReadWrite wheel uses this for hot-swapping filters; it gives partial
+input buffers to the next filter.
+
+get_pending()はフィルタの入力バッファの一部分を返します。以前のバージョ
+ンとは違って、フィルタの入力バッファはきれいに片付いてはB<いません>。
+ReadWriteホイールはこれを使ってフィルタをホットスワップします。これは次
+のフィルタに入力バッファの一部分を与えます。
+
+get_pending() returns undef if nothing is pending.  This is different
+from get() and get_one().
+
+get_pending()は何も保留されていなければundefを返します。これはget()や
+get_one()とは異なっています。
+
+Filters don't have output buffers.  They accept complete records and
+immediately pass the serialized information to a driver's queue.
+
+フィルタは出力バッファを持ちません。フィルタは完全なレコードを受け取り、
+直列化された情報を直ちにドライバのキューに渡します。
+
+It can be tricky keeping both ends of a socket synchronized during a
+filter change.  It's recommended that some sort of handshake protocol
+be used to make sure both ends are using the same type of filter at
+the same time.
+
+フィルタ変更の間にソケットの両端で巧妙に同期させておくことができます。
+両端で同時に同じ種類のフィルタを使用していることを確かめるために何らか
+のハンドシェイクプロトコルを使用することが推奨されます。
+
+TCP also tries to combine small packets for efficiency's sake.  In a
+streaming protocol, a filter change could be embedded between two data
+chunks.
+
+またTCPは効率のために小さなパケットを結合しようとします。ストリーミング
+プロトコルでは、フィルタ変更は2つのデータチャンクの間に埋め込まれること
+もあるでしょう。
+
+  type-1 data
+  type-1 data
+  change to type-2 filter
+  type-2 data
+  type-2 data
+
+  タイプ-1のデータ
+  タイプ-1のデータ
+  タイプ-2のフィルタへ変更
+  タイプ-2のデータ
+  タイプ-2のデータ
+
+A driver can easily read that as a single chunk.  It will be passed to
+a filter as a single chunk, and that filter (type-1 in the example)
+will break the chunk into pieces.  The type-2 data will be interpreted
+as type-1 because the ReadWrite wheel hasn't had a chance to switch
+filters yet.
+
+ドライバは容易にそれを単独のチャンクとして読めてしまいます。単独のチャ
+ンクとしてフィルタに渡され、そのフィルタ(例ではタイプ-1)はそのチャンク
+を粉々に砕くでしょう。ReadWriteホイールはまだフィルタを交換する機会を持
+っていないのでタイプ-2のデータはタイプ-1だと解釈されるでしょう。
+
+Adding a handshake protocol means the sender will wait until a filter
+change has been acknowledged before going ahead and sending data in
+the new format.
+
+ハンドシェイクプロトコルの追加は先に進む前にフィルタの変更が承認される
+まで送信者が待ってから新しいフォーマットでデータを送ることを意味します。
+
+=back
+
+=head1 SEE ALSO
+
+The SEE ALSO section in L<POE> contains a table of contents covering
+the entire POE distribution.
+
+L<POE>のSEE ALSOセクションがPOEのディストリビューション全体をカバーする
+目次を含んでいます。
+
+=head1 BUGS
+
+In theory, filters should be interchangeable.  In practice, stream and
+block protocols tend to be incompatible.
+
+理論上は、フィルタは置き換え可能であるべきです。実際には、ストリームと
+ブロックのプロトコルは相容れない傾向にあります。
+
+=head1 AUTHORS & COPYRIGHTS
+
+Please see L<POE> for more information about authors and contributors.
+
+作者と貢献者についての詳しい情報はL<POE>を参照してください。
+
+=head1 Translators
+
+井上 謙次 <deq@oct.zaq.ne.jp>
