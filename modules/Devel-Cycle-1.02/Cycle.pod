@@ -1,0 +1,135 @@
+=head1 NAME
+
+Devel::Cycle - Find memory cycles in objects
+
+=head1 SYNOPSIS
+
+  #!/usr/bin/perl
+  use Devel::Cycle;
+  my $test = {fred   => [qw(a b c d e)],
+	    ethel  => [qw(1 2 3 4 5)],
+	    george => {martha => 23,
+		       agnes  => 19}
+	   };
+  $test->{george}{phyllis} = $test;
+  $test->{fred}[3]      = $test->{george};
+  $test->{george}{mary} = $test->{fred};
+  find_cycle($test);
+  exit 0;
+
+  # output:
+
+Cycle (1):
+	                $A->{'george'} => \%B
+	               $B->{'phyllis'} => \%A
+
+Cycle (2):
+	                $A->{'george'} => \%B
+	                  $B->{'mary'} => \@A
+	                       $A->[3] => \%B
+
+Cycle (3):
+	                  $A->{'fred'} => \@A
+	                       $A->[3] => \%B
+	               $B->{'phyllis'} => \%A
+
+Cycle (4):
+	                  $A->{'fred'} => \@A
+	                       $A->[3] => \%B
+	                  $B->{'mary'} => \@A
+
+=head1 DESCRIPTION
+
+This is a simple developer's tool for finding circular references in
+objects and other types of references.  Because of Perl's
+reference-count based memory management, circular references will
+cause memory leaks.
+
+=head2 EXPORT
+
+The find_cycle() subroutine is exported by default.
+
+=over 4
+
+=item find_cycle($object_reference,[$callback])
+
+The find_cycle() function will traverse the object reference and print
+a report to STDOUT identifying any memory cycles it finds.
+
+If an optional callback code reference is provided, then this callback
+will be invoked on each cycle that is found.  The callback will be
+passed an array reference pointing to a list of lists with the
+following format:
+
+ $arg = [ ['REFTYPE',$index,$reference,$reference_value],
+          ['REFTYPE',$index,$reference,$reference_value],
+          ['REFTYPE',$index,$reference,$reference_value],
+           ...
+        ]
+
+Each element in the array reference describes one edge in the memory
+cycle.  'REFTYPE' describes the type of the reference and is one of
+'SCALAR','ARRAY' or 'HASH'.  $index is the index affected by the
+reference, and is undef for a scalar, an integer for an array
+reference, or a hash key for a hash.  $reference is the memory
+reference, and $reference_value is its dereferenced value.  For
+example, if the edge is an ARRAY, then the following relationship
+holds:
+
+   $reference->[$index] eq $reference_value
+
+The first element of the array reference is the $object_reference that
+you pased to find_cycle() and may not be directly involved in the
+cycle.
+
+If a reference is a weak ref produced using Scalar::Util's weaken()
+function then it won't contribute to cycles.
+
+=back
+
+The default callback prints out a trace of each cycle it finds.  You
+can control the format of the trace by setting the package variable
+$Devel::Cycle::FORMATTING to one of "raw," "cooked," or "roasted."
+
+The "raw" format prints out anonymous memory references using standard
+Perl memory location nomenclature.  For example, a "Foo::Bar" object
+that points to an ordinary hash will appear in the trace like this:
+
+	Foo::Bar=HASH(0x8124394)->{'phyllis'} => HASH(0x81b4a90)
+
+The "cooked" format (the default), uses short names for anonymous
+memory locations, beginning with "A" and moving upward with the magic
+++ operator.  This leads to a much more readable display:
+
+        $Foo::Bar=B->{'phyllis'} => \%A
+
+The "roasted" format is similar to the "cooked" format, except that
+object references are formatted slightly differently:
+
+	$Foo::Bar::B->{'phyllis'} => \%A
+
+For your convenience, $Devel::Cycle::FORMATTING can be imported:
+
+       use Devel::Cycle qw(:DEFAULT $FORMATTING);
+       $FORMATTING = 'raw';
+
+
+=head1 SEE ALSO
+
+L<Devel::Leak>
+
+L<Scalar::Util>
+
+=head1 AUTHOR
+
+Lincoln Stein, E<lt>lstein@cshl.eduE<gt>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright (C) 2003 by Lincoln Stein
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself, either Perl version 5.8.2 or,
+at your option, any later version of Perl 5 you may have available.
+
+
