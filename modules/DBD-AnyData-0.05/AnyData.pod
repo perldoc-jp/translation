@@ -1,0 +1,1077 @@
+=head1 名前
+
+ DBD::AnyData -- XML、CSVそしてその他のフォーマットへのDBIアクセス
+
+=head1 概要
+
+ use DBI;
+ my $dbh = DBI->connect('dbi:AnyData(RaiseError=>1):');
+ $dbh->func( 'trains', 'CSV', '/users/joe/cars.csv', 'ad_catalog');
+ $dbh->func( 'bikes',  'XML', [$xml_str],            'ad_import');
+ $dbh->func( 'cars',   'DBI', $mysql_dbh,            'ad_import');
+ #
+ # ... テーブル'cars','bikes','trains'にアクセス／変更するための　DBI/SQL メソッド
+ #
+ print $dbh->func( 'cars', 'HTMLtable', 'ad_export');
+
+ または
+
+ use DBI;
+ my $dbh = DBI->connect('dbi:AnyData(RaiseError=>1):');
+ $dbh->func( 'Pipe', 'data.pipe', 'XML', 'data.xml', 'ad_convert');
+
+ あるいは
+
+ (多くの他のデータフォーマットの数多くの組み合わせ。下記を参照）
+
+=head1 説明
+
+DBD::AnyData モジュールは多くのフォーマット、多くのソースに入ったデータへのDBI/SQL
+インターフェースを提供します。
+
+現在のところ、サポートされているフォーマットには汎用的なフォーマットのフラット・ファイル
+(CSV、固定長、タブやパイプで"区切られた"ものなど)、特定のフォーマット
+(passwdファイル、webログなど)、フォーマットの他の種類（XML、Mp3、HTMLテーブル）、そして
+ある種の操作ではすべてのDBIがアクセス可能なデータベースが含まれています。サポートされる
+フォーマットの数は急速に大きくなり続けるでしょう。というのもオープンなAPIにより
+AnyDataに組み込むことができる追加のフォマーット・パーサーを作成するのを簡単に
+しているからです。
+
+これらの多様なフォーマットのデータはローカル・ファイル、リモート・ファイル、文字列や
+配列といったperlデータ構造体を元にすることができます。
+
+データのフォーマットやソースに関係なく、すべての標準的なDBIメソッドやSQL文法のサブセットを
+使ってアクセスそして/あるいは変更されます。
+
+標準的なファイルへのデータベース・アクセスに加えて、メモリ内のテーブルもサポートしています。
+これにより一時的なビューを作成したり;いくつかのソースのデータを組み合わせたり;
+素早くデータベース・システムのプロトタイプを作成したり;そしてデータをサポートされている
+フォーマットのいずれかで表示あるいは保存したり（例えばCSVファイルに入っているデータを
+HTMLテーブルで表示する）といったことが可能です。これらメモリ内のテーブルはDBIデータベースや
+任意のフォーマットのファイルの組み合わせからも作成することができます。これはperlデータ構造からも
+作ることができます。つまりファイル・アクセスやrdbmsバックエンドがまったくなくても、
+データベース・システム素早くプロトタイプをすることができます。
+
+このモジュールはサポートされているフォーマット間でのファイル変換をサポートしています。
+（例えばMySQLやOracleからselectされたデータをXMLファイルに保存するなど）
+
+機能のほんのちょっとした例を以下に示します:
+
+    # PASSWDファイルからのデータの取得
+    #
+    $dbh->func( 'users', 'Passwd', '/etc/passwd', 'ad_catalog');
+    my $sth = $dbh->prepare("SELECT username,homedir,GID FROM users');
+
+    # 新しい行をCSVファイルに挿入
+    #
+    $dbh->func( 'cars', 'CSV', 'cars.csv', 'ad_catalog');
+    $dbh->do("INSERT INTO cars VALUES ('Honda','Odyssey')");
+
+    # リモートにあるXMLファイルを読み込み、HTMLテーブルとして出力
+    #
+    print $dbh->func( 'XML', $url, 'HTMLtable', 'ad_convert');
+
+    # MySQLデータベースをXMLに変換し、新しいファイルに保存
+    #
+    $dbh->func( 'DBI', $mysql_dbh, 'XML', 'data.xml', 'ad_convert');
+
+    # Oracleデータベースとタブで区切られたファイルからのデータが
+    # 入ったVIEWを作成し、アクセス
+    #
+    $dbh->func( 'combo', 'DBI', $oracle_dbh, 'ad_import');
+    $dbh->func( 'combo', 'Tab', 'data.tab', 'ad_import');
+    my $sth = $dbh->prepare("SELECT * FROM combo");
+
+
+=head1 インストール
+
+ DBD::AnyDataを使いたければ、以下のすべてのモジュールをインストールする必要があります。
+ すべてがCPANから利用できますし、大半はActiveStateから利用できます。
+
+  * DBI
+  * SQL::Statement
+  * DBD::File
+  * AnyData
+  * DBD::AnyData
+
+ 注意: DBD::File はDBD::CSVディストリビューションの一部です。
+
+ いくつかの高等な機能は追加のモジュールが必要です：
+
+ * リモート・ファイルアクセスには LWP (libwww バンドル)が必要です。
+ * XML アクセスには XML::Parser と XML::Twig　が必要です。
+ * HTML テーブルアクセスは HTML::Parser と HTML::TableExtractが必要です。
+ * HTML テーブルの書き込みには CGI　が必要です。
+
+ AnyData と DBD::AnyData そのものはどちらも標準的なmakefile、make、make test、
+ make installで、あるいは単に適切なディレクトリにそれらをコピーすることによって
+ インストールすることができます。他のモジュールは完全なmakeプロセスやあらかじめ
+ コンパイルされているバイナリを必要とします。
+
+=head1 クイック・スタート 
+
+=head2 基本
+
+=over 1
+
+=item スクリプトでDBD::AnyDataを使うには主に４つのステップがあります:
+
+ 1. DBIモジュールを使いたいことを指定
+ 2. データベース・ハンドルの作成
+ 3. 欲しいテーブル、ファイル、フォーマットを指定
+ 4. データをアクセスそして／または変更のためのDBI/SQLコマンドを使用
+
+
+ステップ #1, #2, そして #3 は、それぞれ1行程度の小さなものになります。
+
+状況によってはステップ#3と#4を省略することができます。下記の"メモリ内のデータの動き"と
+"データ変換"のセクションをご覧ください。 
+
+=item ステップ #1 : DBIモジュールを使いたいことを指定
+
+ このステップは常に同じです: スクリプトの先頭にこれをおいておくだけです：
+
+     use DBI;
+
+=item ステップ #2 データベース・ハンドルの作成
+
+ このステップは必要によってちょっとずつ違うかもしれませんが、通常は以下の通りです:
+
+     my $dbh = DBI->connect('dbi:AnyData(RaiseError=>1):');
+
+他の接続の形式については、下記のセクション"接続オプション"をご覧ください。
+2つ以上のデータベース・ハンドルを作る場合については下記のセクション
+"複数データベースの使い方"をご覧ください。
+
+=item ステップ #3 : テーブル、ファイル、フォーマットの指定
+
+このステップではDBD::AnyData独特のいくつかのメソッドの1つを使います。
+これらのメソッドはfunc()の呼び出しをおこない、最後のパラメータとして
+メソッドの名前を指定するため、#2で作成されたデータベース・ハンドルを使います。
+例えば'ad_catalog'メソッドは以下のように呼ばれます:
+
+ $dbh->func( ..., 'ad_catalog')
+
+ad_catalog() メソッドは3つの必須のパラメータと1つのオプションの
+パラメータを取ります:
+
+     $dbh->func( $table, $format, $file, $flags, 'ad_catalog')
+
+     $table  = SQLコマンドでTABLEとして使う名前
+     $format = データのフォーマット（'XML', 'CSV', 'Fixed', など)
+     $file   = データが入っているローカルまたはリモートファイル
+     $flags  = データフォーマットによっては必要となるオプションのフラグのハッシュ
+
+ 例えば:
+
+    $dbh->func( 'cars', 'XML', 'cars.xml', 'ad_catalog' )
+
+これはテーブル名を'cars'が、ファイル'cars,xml'に格納されたXMLデータに
+アクセスするために使われることを指定します。
+
+1度catalogコマンドを発行してしまえば、$fileの中のデータにアクセスしたり
+変更するためにSQLコマンドで名前$tableを使うことができます。catalogは
+テーブル/ファイル/フォーマットの組み合わせを指定するために1度だけ必要で、
+無数の処理コマンドのために使うことができます。
+
+=item ステップ #4:データのアクセスそして／または変更のためにDBI/SQLコマンドの使用 
+
+ DBD::AnyDataは標準のDBIメソッドのすべてとSQL文法のサブセットをサポート
+ しています。サポートされているSQLについては、下記のセクション "SQL文法"を
+ ご覧ください。DBIコマンドの詳しい説明についてはDBIドキュメントをご覧ください。
+
+ テーブルを作ったり削除したり、行タを挿入、削除、更新するためにdo()メソッドを
+ 使うことができます:
+
+    $dbh->do("CREATE TABLE ... )
+    $dbh->do("DROP TABLE ... )
+    $dbh->do("INSERT INTO ... )
+    $dbh->do("UPDATE ... )
+    $dbh->do("DELETE ... )
+
+ データのアクセスのためにprepare()、execute()そしてfetch()メソッドの組み合わせを
+ 使うことができます:
+
+    my $sth = $dbh->prepare("SELECT * FROM cars WHERE make = 'Honda'");
+    $sth->execute();
+    while (my $row = $sth->fetchrow_hashref){
+        print $row->{model};
+    }
+
+=item 全部一緒に
+
+ これは"cars.csv"というファイルにCSVフォーマットで格納されたデータに
+ アクセスするために必要な完全なスクリプトです。これはデータベースの
+ "make"と"model"カラムからすべてのデータを出力します。
+
+ 1.  use DBI;
+ 2.  my $dbh = DBI->connect('dbi:AnyData(RaiseError=>1):');
+ 3.  $dbh->func( 'cars', 'CSV', 'cars.csv' 'ad_catalog');
+ 4.  my $sth = $dbh->prepare("SELECT make, model FROM cars");
+ 5.  $sth->execute();
+ 6.  while (my $row = $sth->fetch) {
+ 7.      print "@$row\n";
+ 8.  }
+
+ 行 1 DBIモジュールを使うことを指定します。
+ 行 2 データベース・ハンドルの作成
+ 行 3 テーブル、フォーマットそしてデータが入っているファイルを指定します
+ 行 4 から 8 DBIとSQLを使ってファイルの中のデータにアクセスします。
+
+=back
+
+=head2 テーブル構造のカスタマイズ 
+
+データベースからのデータの読み込み方法を決めるとき、DBD::AnyData は数々の
+デフォルトを使います。そして多くの場合、これらのデフォルトはまさにあなたに
+必要なものです。しかしあなたの使っているフォーマットやデータベースによっては、
+カラム名やレコード・セパレータなどのような、他の特徴を指定する必要がある
+かもしれません。
+
+この追加の情報をad_catalogや他のDBD::AnyDataメソッドの$flagsパラメータで
+指定することができます。$flagsは常に配列へのリファレンスです。つまり1つまたは
+複数のキーと値のペアが=>でつなげられ、カンマによって区切られ、曲括弧で
+囲まれます:
+
+    $flags = { key1 => value1, key2 => value2 ... }
+
+    あるいはメソッド呼び出しで：
+
+    $dbh->func( $table, $format, $file, { key1=>val1, ... }, 'ad_catalog');
+
+    ※訳者注：原文では{ key1=>,val1 ... },となっていたが明らかに間違い
+
+=over 2
+
+=item カラム名
+
+いくつかのフォーマットではあらかじめ決まったカラム名を持っています:
+
+    Passwd  username
+            passwd
+            UID
+            GID
+            fullname
+            homedir
+            shell
+
+    Weblog  remotehost
+            usernname
+            authuser
+            date
+            request
+            status
+            bytes
+            referer
+            client
+
+    Mp3     song
+            artist
+            album
+            year
+            genre
+            filename
+            filesize
+
+他のフォーマットでのカラム名はデータベースそのもので指定することもできますし、
+$flagsパラメータで与えることもできます
+
+データベースでカラム名が指定されると、データベースの最初のレコードから
+取得されます。例えば、CSV(Comma Separated Value)ファイルや固定長ファイルでは、
+デフォルトではテーブルの最初の行をカラム名のリストとして扱います。
+HTMLテーブルではデフォルトは最初のテーブルの最初の<tr>を見ます。XMLファイルでは
+デフォルトはすべての属性名、最初の初期タグでなないタグに入っている
+すべてのCDATAとPCDATA要素を使います。
+
+ほとんどの場合、カラム名を定義する最初のレコードはテーブルの残りと
+同じフォーマットです。例えばCSVファイルでのCSV文字列、タブ区切りファイルで
+タブで区切られた文字列など。この例外の1つは固定長ファイルです。
+ファイルの先頭行には固定長のリストではなく、カラム名の*カンマ区切り*の
+リストが入れることができます。HTMLテーブルとXMLもカラム名を選択するために
+他のフラグを使います（例えばテーブルの番号とかチェックするツリーでの深さ）。
+デフォルトがどのように選択されるかについてのさらなる詳細は、それぞれの
+フォーマットのドキュメントをご覧ください。
+
+ほとんどのフォーマットでは、カラム名がファイルの最初のレコードにカラム名が
+入っていなければ、$flagsパラメータでカンマ区切りのリストとして
+指定することができます。 例えば:
+
+    $dbh->func(
+        'cars',
+        'Tab',
+        'data.tab',
+        { col_names => 'make,model,year' },
+    'ad_catalog')
+
+=back
+
+=head1 サポートされているフォーマット
+
+=head2 CSV, タブ, パイプ, Ini, パラグラフ 
+
+=head2 固定長(Fixed)
+
+固定長フォーマット・ファイル（各カラムは指定された長さ）はいくつかの点で
+独特です。まず、上記で述べたように、ファイルそのものにカラム名を入れようと
+思ったら、そのファイルの先頭行に*カンマ区切り*の文字列で入れなければ
+なりません。
+
+次に、'pattern'という必須のフラグがあります。固定長フォーマットを
+使いたいときにはいつでも使わなければなりません。このフラグはカラムの幅を
+指定します。これはパターンを指定するために標準のPerl pack/unpackの書き方を
+使います。さらなる詳細については、Perlドキュメントをご覧ください。
+ほとんどの場合、単に先頭を'A'、その後にカラムの長さをつけるだけです:
+
+  { pattern => 'A10 A12 A4' }
+
+これはテーブルには10、12、14文字の3つのフィールドが入っている
+ということを指定します。 
+
+=head2 XML
+
+=head2 HTMLtable
+
+=head2 DBI
+
+DBD::AnyData はすべてのDBIデータベースをメモリにインポートすることを
+サポートしています。そして任意のDBIデータベースを他のAnyDataフォーマットの
+いずれかに変換することもできます。
+
+'DBI'というフォーマット名を使い、filenameの代わりに、ad_import呼び出しに
+あなたが使うデータベースへの接続と、SQL SELECTステートメントを指定して
+渡ししてください:
+
+  my $dbh = DBI->connect('dbi:AnyData:(RaiseError=>1)');
+  $dbh->func(
+      'table1',
+      'DBI',
+      DBI->connect('dbi:mysql:database=test:(RaiseError=>1)'),
+      {sql=>"SELECT make, model FROM cars WHERE make = 'honda'"},
+  'ad_import');
+
+上記のようにするとMySQLデータベースから（指定されたカラムと選択された行だけの）
+ビューをAnyDataのメモリ内のテーブルにインポートします。これはメモリ内で
+問い合わせ、そして/あるいは変更することができます。そしてXMLのようなその他の
+フォーマットで表示あるいは格納することができます。
+
+パラメータの配列リファレンスを持った追加のフラグを渡すことにより、SQL呼び出しの
+ためにbind_parameters形式を使うことができます:
+
+     {
+         sql     => "SELECT make,model FROM CARS WHERE make = ?"
+         params  => ['honda']
+     }
+
+ORACLEやMySQLのようなDBIでアクセス可能なデータベースからXMLのような
+AnyDataフォーマットの1つに変換するためにはデータベースにtable_nameフラグも
+入れなければいけません:
+
+  my $dbh = DBI->connect('dbi:AnyData:(RaiseError=>1)');
+  $dbh->func(
+      'DBI',
+      DBI->connect('dbi:mysql:database=test:(RaiseError=>1)'),
+      'XML',
+      'cars.xml',
+      {table_name=>'cars'},
+  'ad_convert');
+
+あるいは同じデータを格納することなく、HTMLテーブルに出力します： 
+
+  my $dbh = DBI->connect('dbi:AnyData:(RaiseError=>1)');
+  print $dbh->func(
+      'DBI',
+      DBI->connect('dbi:mysql:database=test:(RaiseError=>1)'),
+      'HTMLtable',
+      undef,
+      {table_name=>'cars'},
+  'ad_convert');
+
+ad_convert() メソッドはデータベース全体に機能します。データベースの選択された
+一部分だけを変換する必要があれば、SELECT節を付けてad_import()を使い、それを
+新しいフォーマットにad_export()してください。
+
+ad_importメソッドはデフォルトではインポートされたデータベースのための接続を
+閉じます。他のデータベースのために、そのハンドルを使い続けたければ、フラグ
+{keep_connection=>1}を渡してください:
+
+  my $dbh       = DBI->connect('dbi:AnyData:(RaiseError=>1)');
+  my $mysql_dbh = DBI->connect('dbi:mysql:database=test:(RaiseError=>1)'),
+  $dbh->func(
+      'cars',
+      'DBI',
+      $mysql_dbh,
+      { keep_connection=>1 },
+  'ad_import');
+  #...
+  $mysql_dbh->disconnect;
+
+=head2 Passwd, Weblog, Mp3
+
+=head2 その他のフォーマット  
+
+DBD::AnyDataは他の人が他のフォーマットのためのサポートを作れるようなオープンAPIを
+サポートしています。 つまり、サポートされるフォーマットのリストは大きくなり続ける
+だろうということです。現在Wes Hardaker がAnyData::Format::SNMP のために働いていますし、
+Earl Cahill がAnyData::Format::Storableのために働いています。新しいフォーマット・
+モジュールについて働らくことに興味を持ったら、
+私に連絡してください (mailto:jeff@vpservices.com)。
+
+=head1 詳細情報 
+
+=head2 フォーマット間での変換 
+
+$dbh->func(...,'ad_convert') メソッドは、DBD::AnyDataによってサポートされている
+任意のデータフォーマット間での1ステップによる変換の方法を提供します。例えば
+CSVファイルを読み込みXMLファイルに保存する、あるいはその逆など。詳細については
+下記のセクション"変換(convert)"をご覧ください。ORACLEまたはMySQLやその他の
+データベースからXML、CSV、あるいは任意のDBD::AnyDataフォーマットへ変換することに
+関する情報についてはセクション"他のDBIデータベースと機能させる"をご覧ください。
+
+=head2 リモート・ファイルの使用
+
+FTPまたはHTTPによってアクセスできるリモートのファイルを直接DBD::AnyDataの
+メモリ内データベースに、'ad_import'を使ってインポートしたり、ad_convertを
+使ってリモート・ファイルを文字列として出力したり、ローカルファイルに保存したり
+といったことができます。もしad_importまたはad_convetの$fileパラメータが
+"ftp"または"http"から始まっていると、DBD::AnyDataは見えないところでLWPを呼び出し、
+そのファイルを取り出します。
+
+これはリモート・ファイルを取り出し、そのXMLを解析し、DBI/SQLで問い合わせたり、
+ローカルファイルに保存できるメモリ内のテーブルを提供します:
+
+    $dbh->func(
+        'news',
+        'XML',
+        'http://www.somewhere.org/files/news.xml',
+    'ad_import');
+
+
+これはリモート・ファイルを取り出し、そのXMLを解析し、HTMLテーブルとして
+出力します:
+
+    print $dbh->func(
+        'XML',
+        'http://www.somewhere.org/files/news.xml',
+        'HTMLtable',
+    'ad_convert');
+
+
+もしリモート・ファイルが認証を必要とするならば、$flagsパラメータに
+"user"と"pass"のための値を入れることができます:
+
+    $dbh->func(
+        'news',
+        'XML',
+        'http://www.somewhere.org/news.xml',
+        { user => 'fred', passwd => 'x9y77d' },
+    'ad_import');
+
+=head2 メモリ内のテーブルで動かす
+
+通常のファイルに記録されるデータベースに加え、DBD::AnyDataはメモリ内に格納され、
+変更されるデータベースをサポートします。データベースに単に問い合わせてクローズしたり、
+ad_exportメソッドを使ってデータを画面に表示したり、ファイルに保存することができます。
+メモリ内のデータベースを使いたいという理由には以下のものを含めていくつかあります:
+
+プロトタイピング:ファイルやrdbmsへのアクセスを一切必要とせず、文字列、配列やスクリプトのDATAセクションから素早くデータベースを作る。
+
+ビューの作成:ORACLEやMySQLデータベース一般から、選択されたカラム、選択された行を取り出し、データベース全体を使うのではなく、メモリ内で使う。
+
+複数のフォーマットのデータの組み合わせ:例えばXMLファイルやOracleデータベースそしてCSVファイルから選択されたカラム、選択された行をインポートすることにより、1つのメモリ内テーブルを作成する。 
+
+ロールバック／コミット:メモリ内データベースに複数の変更をすることができ、そしてそれらの変更が成功か失敗かによって、その変更をディスクに保存するエクスポートを使ってコミットするか、実質的にデータベースをインポートの前の状態に戻すようエクスポートを飛ばす。
+
+メモリ内テーブルはDBI/SQLコマンドによって変更することができます。そして任意のAnyDataフォーマットで
+画面上に出力したり、ディスクに保存することができます（下記のad_exportメソッドをご覧ください） 
+
+メモリ内テーブルはいくつかの方法で作られます:
+
+ 1. 1つまたは複数のローカルもしくはリモートのファイルからテーブルを作り移植する
+ 2. 文字列からテーブルを作り移植する
+ 3. 配列からテーブルを作り移植する
+ 4. DBI/SQLコマンドを使って、テーブルを作り移植する
+
+=over 3
+
+=item ローカルあるいはリモート・ファイルからメモリ内テーブルを作る
+
+ 指定されたフォーマットの文字列からメモリ内テーブルを作ることができます。
+ 注意: 文字列は角括弧で囲まれていなければなりません。
+
+ これはCSVファイルをメモリ内テーブルに読み込みます。特にad_exportを
+ 使ってテーブルをファイルに保存しなければ、さらなるアクセスと変更は
+ ファイルアクセスなしにメモリ内で行われます。
+
+    # ローカルファイルからテーブルを作成
+    #
+    $dbh->func( 'test2', 'CSV', $filename, 'ad_import');
+
+    # リモート・ファイルからテーブルを作成
+    #
+    $dbh->func( 'test2', 'CSV', $url, 'ad_import');
+
+ リモート・ファイルの使い方の詳細については、"リモート・ファイルアクセス"に
+ ついてのセクションをご覧ください。
+
+=item 文字列からメモリ内テーブルを作成する
+
+ 指定されたフォーマットの文字列からメモリ内テーブルを作ることができます。
+ 注意: 文字列は角括弧で囲まれていなければなりません。
+
+ この例はCSV文字列からメモリ内テーブルを作成します:
+
+    # CSV文字列からテーブルを作る
+    #
+    $dbh->func( 'test2', 'CSV',
+         ["id,phrase\n1,foo\n2,bar"],
+    'ad_import');
+
+=item スクリプトのDATAセクションからメモリ内テーブルを作る
+
+ Perlはマーカー__END__の後にテキストをおいておけば、DATA配列を使った
+ ファイルからのようにそのテキストにアクセスできるという、本当にクールな
+ 機能を持っています。これはクイック・プロトタイピングにはとっては
+ 素晴らしいことになります。
+
+ 例えばこれは小さなテーブルを構築し、アクセスし、"Just Another Perl Hacker!"と
+ 出力するという一通りスクリプトです:
+
+     use DBI;
+     my $dbh=DBI->connect('dbi:AnyData(RaiseError=>1):');
+     $dbh->func( 'test', 'XML',  [<DATA>],  'ad_import');
+     print $dbh->selectcol_arrayref(qq{
+         SELECT phrase FROM test WHERE id = 2
+     })->[0];
+     __END__
+     <phrases>
+         <phrase id="1">Hello World!</phrase>
+         <phrase id="2">Just Another Perl Hacker!</phrase>
+     </phrases>
+
+ DATAセクションで任意の大きさのサポートされている任意のフォーマットについて
+ 同じ考え方をすることができます。
+
+=item 配列からメモリ内テーブルを作る
+
+ 配列からもメモリ内テーブルを作ることができます。あるいはさらにテクニカルですが、
+ 配列へのリファレンスからも。配列はそれら自体が行の値の配列へのリファレンスである
+ 行を構成しなければなりません。最初の行はカラム名でなければなりません。
+
+ 例:
+
+   # 配列からテーブルを作る
+   #
+   $dbh->func( 'test3', 'ARRAY',
+               [
+                  ['id','phrase'],
+                  [1,'foo'],
+                  [2,'bar']
+               ],
+   'ad_import');
+
+=item DBI/SQLコマンドからメモリ内テーブルを作る
+
+ ファイルにテーブル名を関連づけるためにad_catalogやad_importを
+ 使わなければ、テーブルはメモリ内テーブルになります。そのため
+ DBI/SQLコマンドを使えばすぐに始めることができます:
+
+    # DBI/SQLコマンドからテーブルを作り、移植
+    #
+    use DBI;
+    my $dbh = DBI->connect('dbi:AnyData(RaiseError=>1):');
+    $dbh->do("CREATE TABLE test (id TEXT,phrase TEXT)");
+    $dbh->do("INSERT INTO test VALUES (1,'foo')");
+    $dbh->do("INSERT INTO test VALUES (2,'bar')");
+    $dbh->do("UPDATE test SET phrase='baz' WHERE id = '2'");
+    $dbh->do("DELETE FROM test WHERE id = '1'");
+
+=back
+
+=head2 複数のデータベースを使う、ジョインのシミュレーション 
+
+任意の数のデータベースを1つのスクリプトでアクセスできます。そしてさまざまなデータ・フォーマットを
+混ぜ、マッチさせることができます。 
+
+例えばこれは2つのデータ・フォーマットから２つのメモリ内テーブルを作ります
+
+ $dbh->func( 'classes', 'CSV', 'classes.csv' 'ad_import');
+ $dbh->func( 'profs',   'XML', 'profs.xml',  'ad_import');
+
+同様にいくつかの異なるフォーマットから１つのテーブルへカラムをインポートすることが
+できます。例えば、これはXMLファイルとパイプ区切りファイルからデータをインポートし、
+1つのメモリ内データベースにデータをインポートします。それぞれのインポートからの
+データが1つのテーブルに追加されるので、$tableパラメータが各呼び出しで同じである
+ことに注意してください。 
+
+ $dbh->func( 'test', 'XML',  [$xmlStr],  'ad_import');
+ $dbh->func( 'test', 'CSV',  [$csvStr],  'ad_import');
+ $dbh->func( 'test', 'Pipe', [$pipeStr], 'ad_import');
+
+このように複数のテーブルを1つのテーブルにインポートすると、出来上がったテーブルは
+lookup_keyフラグを与えないとクロス・ジョインになります。もしlookup_keyが与えられると、
+出来上がったテーブルはそのキー・カラムで完全なアウター・ジョインになります。
+この機能は時間の関係から実験的なものですが、キー・カラム以外に同じ複数のテーブルで
+同じ名前のカラムがなければ思ったとおりに動くでしょう。インポートする前に空の何もない
+テーブルを作ることにより、ジョインされたテーブルが特定のカラムだけを持つように
+指定することができます。sqlフラグで特定の行だけを入れるように指定することができます。
+例えば： 
+
+  $dbh->func('test','ARRAY',[],{col_names=>'foo,bar'baz'}, 'ad_import');
+  $dbh->func('test','XML',$file1,{lookup_key=>'baz'},'ad_import');
+  $dbh->func('test','CSV',$file1,{lookup_key=>'baz'},'ad_import');
+
+DBD::AnyData は現在のところ、１つのSQLステートメントに複数のテーブルを使うことを
+サポートしていません。しかし複数のテーブルを使い、異なるSQLステートメントで
+別々に問い合わせることができます。つまり2つのステートメント・ハンドルを作り、
+最初のハンドルからの値を2番目のハンドルのためのlookupキーとして使うことにより、
+ジョインをシミュレートすることができるということです。このようにして:
+
+ $dbh->func( 'classes', 'CSV', 'classes.csv' 'ad_import');
+ $dbh->func( 'profs',   'XML', 'profs.xml',  'ad_import');
+ my $classes_sth = $dbh->prepare( "SELECT pid,title FROM classes" );
+ my $profs_sth   = $dbh->prepare( "SELECT name FROM profs WHERE pid = ?" );
+ $classes_sth->execute;
+ while (my($pid,$class_title) = $classes_sth->fetchrow_array) {
+     $profs_sth->execute($pid);
+     my $row = $profs_sth->fetchrow_arrayref;
+     my $prof_name = $row ? $row->[0] : '';
+     print "$class_title : $prof_name\n";
+ }
+
+ これは以下のものと同じ結果になります:
+
+     SELECT classes.title,profs.name FROM classes,profs WHERE pid = pid
+ 
+
+=head1 リファレンス
+
+=head2 DBD::AnyDataメソッドの概要 
+
+ DBD::AnyDataでは他のドライバにはない５つのメソッドを使うことができます:
+
+     ad_catalog  DBI/SQLのために使われるファイルを指定します
+                 連続したファイルアクセス 
+
+     ad_import   データをメモリ内テーブルにインポートします
+
+     ad_export   メモリ内テーブルからファイルへデータをエクスポートします
+
+     ad_clear    メモリ内テーブルをクリアします（メモリから削除します）
+
+     ad_convert  データをあるフォーマットから他のフォーマットに変換し、
+                 新しいファイルに保存するか、それを文字列として返します
+
+ これらのメソッドはDBI func()を使って呼ばれます、例えば:
+
+     $dbh->func( $table, $format, 'ad_export');
+
+ 各種のメソッドのためのパラメータを以下に示します:
+
+     $dbh->func( $table, $format, $file, $flags, 'ad_catalog');
+
+     $dbh->func( $table, $format, $data, $flags, 'ad_import');
+
+     $dbh->func( $source_format, $source_data,
+                 $target_format, $target_file,
+                 $source_flags,  $target_flags,
+     'ad_convert');
+
+     $dbh->func( $table, $format, $file, $flags, 'ad_export');
+
+     $dbh->func( $table, 'ad_clear' );
+     
+ $tableは適切なSQLテーブル名です
+
+ $formatはAnyDataフォーマットの1つです（'XML'、'CSV'など）
+
+ $fileはローカル・コンピュータ上の（相対または絶対の）適切なファイル名です
+
+ $flagsはキー／値の組が入ったハッシュ・リファレンスです。例えば
+
+    { col_names => 'make,model,year', pattern => 'A10 A12 A4' }
+
+ $dataは以下のいずれか１つです： 
+
+    * ローカル・コンピュータ上の適切なファイル名（相対または絶対）
+
+    * 適切な絶対FTPまたはHTTP URL
+
+    * 最初にカラム名が入った行の配列リファレンスの入った配列リファレンス
+
+        [
+          ['make','model'],
+          ['Honda','Odyssy'],
+          ['Ford','Suburban'],
+        ]
+
+    * 指定されたフォーマットの文字列が入った配列リファレンス
+
+        CSV  :  ["id,phrase\n1,foo\n2,bar"]
+        Pipe :  ["id|phrase\n1|foo\n2|bar"]
+
+    * ファイルのDATAセクションへのリファレンス
+
+         [<DATA>]
+
+    * DBIデータベースハンドル
+
+         DBI->connect('dbi:mysql:database=...)
+
+
+ad_catalogメソッドはファイルをデータベースとして扱うための標準的な方法です。
+それはデータにアクセスするたびに、ファイルから読み込み、そしてデータを変更するたびに、
+ファイルに書き込みます。明示的に要求しなければ、ファイル全体はメモリ内にすべて
+読み込まれるということはありません。
+
+ad_importメソッドはデータをローカルやリモートのファイルから、DBIがアクセスできる
+データベースのいずれかから、配列や文字列のようなperlデータ構造体からデータを
+インポートすることができます。テーブル全体もしくは指定したカラムや行だけを
+インポートすることができます。もしデータがファイルからインポートされると、
+ad_importを呼んだときに、選択したデータのすべてはメモリ内に読み込まれます。
+そのためこれはメモリにフィットするよりも大きい選択で行われるべきではありません:-)。
+すべてのアクセス、変更はメモリ内で行われます。もし変更の結果を保存したければ、
+明示的にad_exportする必要があります。 
+
+全てのフォーマットとデータ・ソースが全てのメソッドで機能するわけではありません。
+いかに何が機能するかの一覧を示します。"全てのソース"にはローカル・ファイル、
+リモート・ファイル、DBIがアクセス可能なデータベース、perl配列リファレンス、
+perl文字列が含まれます。
+
+ Import From   全てのフォーマット、全てのソース
+ Convert From  全てのフォーマット、全てのソース
+ Convert To    DBIを除く全てのフォーマット、ローカル・ファイル、配列あるいは文字列のみ
+ Export To     DBIを除く全てのフォーマット、ローカル・ファイル、配列あるいは文字列のみ
+ Catalog       DBIを除く全てのフォーマット、XML、XML, HTMLtable, Mp3, 配列,ローカル・ファイルのみ
+
+=head2 connect
+
+DBI->connect 呼び出し
+
+=head2 ad_catalog
+
+ 目的:
+
+    テーブル名、データフォーマット、ファイルの関連付けを作成する。
+
+ 書き方:
+
+     $dbh->func( $table, $format, $file, $flags, 'ad_catalog' )
+
+ パラメータ:
+
+     $table  = SQLコマンドで使われるテーブル名
+
+     $format = AnyDataフォーマット('XML','CSV'など）
+
+     $file   = ローカルファイルの名前（フルパスあるいは相対）
+
+     $flags  = オプションのカラム名または他の値のハッシュ・リファレンス
+
+ 例:
+
+    これはテーブル'cars'に対するすべてののDBI/SQLステートメントが
+　　ファイル'/users/me/data.xml'のなかのXMLデータにアクセスそして/または
+　　変更することを指定します。
+
+       $dbh->func( 'cars', 'XML', '/usrs/me/data.xml', 'ad_catalog' )
+
+ 注意:
+
+    formatにはDBI、XML、HTMLtable、MP3を*除く*任意のAnyDataフォーマットを指定することができます。
+
+=head2 ad_import
+
+ 目的:
+
+     任意のソースの任意のフォーマットからのデータをメモリ内テーブルにインポートします。
+
+ 書き方:
+
+     $dbh->func( $table, $format, $data_source, $flags, 'ad_import' )
+
+ パラメータ:
+
+     $table       = SQLコマンドで使われるテーブル名
+
+     $format      = AnyDataフォーマット('XML','CSV'など）
+
+     $data_source = $ファイル名
+             または $url
+             または [$文字列]
+             または [<DATA>]
+             または $配列の配列へのリファレンス
+             または $DBIデータベース・ハンドル
+
+     ($data_sourceの詳細についてはセクション"データ・ソース"をご覧ください）
+
+ 例:
+
+     $dbh->func( 'cars', 'XML', '/usrs/me/data.xml', 'ad_import' )
+
+     さらなる例についてはセクション "メモリ内テーブル"、"リモート・ファイル"、
+     "DBIデータベース"をご覧ください。
+
+
+=head2 ad_export
+
+ 目的:
+
+     メモリ内テーブルを指定されたフォーマットに変換し、ファイルに保存したり、
+     文字列として返したりします。
+
+ 書き方:
+
+     $dbh->func( $table, $format, $file, $flags, 'ad_export' )
+
+     または
+
+     my $string = $dbh->func( $table, $format, $flags, 'ad_export' )
+
+ パラメータ:
+
+     $table  = エスクポートするメモリ内テーブルの名前
+
+     $format = AnyDataフォーマット('XML','CSV'など）
+
+     $file   = ローカルファイルの名前（フルパスあるいは相対）
+
+  例:
+
+     テーブルをXMLファイルで保存:
+
+        $dbh->func( 'cars', 'XML', '/usrs/me/data.xml', 'ad_export' )
+
+     テーブルをHTMLテーブルで出力
+
+         print $dbh->func( 'cars', 'HTMLtable', 'ad_export' )
+
+=head2 ad_convert
+
+ 目的:
+
+     1つのフォーマットから別のフォーマットにデータを変換し、
+     文字列として返したり、新しいフォーマットでファイルに保存したり
+     します。
+
+ 書き方:
+
+   my $str = $dbh->func(
+       $source_format,
+       $data_source
+       $target_format,
+       $source_flags,
+       $target_flags,
+   'ad_convert' );
+
+   または
+
+   $dbh->func(
+       $source_format,
+       $data_source
+       $target_format,
+       $target_file,
+       $source_flags,
+       $target_flags,
+   'ad_convert' );
+
+ パラメータ:
+
+     $source_format = 元になるDBのAnyDataフォーマット('XML','CSV'など）
+
+     $target_format = ターゲットになるDBのAnyDataフォーマット('XML','CSV'など)
+
+     $target_file  = 変換されたデータが格納されるファイルの名前
+
+     $data_source = $ファイル名
+             または $URL
+             または [$文字列]
+             または [<DATA>]
+             または $配列の配列へのリファレンス
+             または $DBIデータベース・ハンドル
+
+     ($data_sourceの詳細についてはセクション"データ・ソース"をご覧ください）
+
+ 例:
+
+ # CSVファイルをXMLファイルに変換する
+ #
+ $dbh->func( 'CSV', 'data.csv', 'XML', 'data.xml', 'ad_convert');
+
+ # 配列リファレンスをHTMLテーブルに変換し、それを出力
+ #
+ print $dbh->func( 'ARRAY', $aryref, 'HTMLtable', 'ad_convert');
+
+ # 配列リファレンスをXMLに変換し、それをファイルに保存
+ #
+ $dbh->func( 'ARRAY', $aryref, 'XML', 'data.xml', 'ad_convert');
+
+ # MySQLデータベースから選択したものをXMLに変換し、
+ # ファイルに保存
+ #
+ $dbh->func(
+     'DBI',
+     $mysql_dbh,
+     'XML',
+     'data.xml',
+     {sql=>"SELECT make,model FROM CARS where year > 1996"}
+ 'ad_convert');
+
+ 注意
+
+　フォーマット'DBI'（DBIがアクセスできる任意のデータベース）を変換の元として
+　使うことができますが、ターゲットとしては使えません。 
+
+　フォーマット'ARRAY'は変換の元が配列へのリファレンスであることを示すために
+　使うことができます。もしくは変換結果が配列リファレンスとして返されるように
+　使うことができます。（配列リファレンスの構造については "メモリ内テーブルの
+　を利用する"　をご覧ください）
+
+=head2 データソース
+
+ ad_import と ad_convert メソッドはローカル・ファイル、リモート・ファイル
+ 文字列、配列、DBIがアクセスできる任意のデータベース、スクリプトのDATA
+ セクションなど多くのソースからデータを取ることができます。
+ 
+ ad_importとad_convertに渡される$data_sourceパラメータは
+ 特定のデータソースによって異なります。以下をご覧ください。
+
+ ローカル・ファイル
+
+     ローカル・ファイル名が入った文字列。フル・パスまたはパスまたは
+     現在定義されているf_dirからの相対（?をご覧ください）；
+
+     e.g. '/users/me/data.xml'
+
+ リモート・ファイル
+
+     データのURLが入った文字列。'ftp://'または'http://'で始まらな
+     ければなりません
+
+     e.g. 'http://www.somewhere.org/misc/news.xml'
+
+ 配列の配列
+
+     データの配列へのリファレンス。データの各行は値の行への
+     リファレンスです。先頭行はカラム名になります。
+     例:
+
+        [
+          ['make','model'],
+          ['Honda','Odyssy'],
+          ['Ford','Suburban'],
+        ]
+
+  文字列
+
+     すべてのフィールドとレコード区切りが入った、指定されたフォーマットの
+     文字列。文字列は配列リファレンスで行だけが入っていなければなりません。
+     （つまり角括弧でくくられなければなりません）
+     e.g. CSV文字列
+
+         ["id,phrase\n1,foo\n2,bar"]
+
+     あるいはパイプで区切られた文字列
+
+         ["id|phrase\n1|foo\n2|bar"]
+
+  ファイルのDATAセクション
+
+      スクリプトでの__END__以降ろの行から得られる配列への
+      リファレンス。
+
+         [<DATA>]
+
+  DBIデータベース
+
+      指定されたrdbmsのためのデータベース・ハンドル。
+
+      DBI->connect('dbi:mysql:database=...)
+
+
+=head2 ad_clear
+
+ 目的:
+
+     メモリ内テーブルをクリアします(メモリからそれを削除します)
+
+ 書き方:
+
+     $dbh->func( $table, 'ad_clear' )
+
+ パラメータ:
+
+     $table  = クリアするメモリ内テーブルの名前
+
+ 注意:
+
+ それらを作るために使われたデータベース・ハンドルがスコープから外れると
+ メモリ内テーブルはメモリから自動的に削除されます。作成するために使われた
+ データベースハンドルに$dbh->disconnect()を呼び出しても削除されます。
+ ad_clearメソッドはデータベース・ハンドルを使い続けたいけれども、
+ 指定されたテーブルはもう必要がないときに、メモリを解放するための方法です。
+ 他の（すべての？）Perlメモリ操作と同じように、これはPerlスクリプトの残り
+ ために解放はしますが、スクリプトにより使われえているシステムメモリ全体の
+ 量を減らすわけではありません。
+
+=head2 SQL文法
+
+ 現在、限られたSQLコマンドサブセットだけがサポートされています。
+ 各コマンドでは１つのテーブルだけが使われます。つまり、*ジョイン*は
+ ないということです。しかし上記のセクションを見ていただくとおり、
+ ジョインのシュミレーションはあります。数ヵ月後には追加のSQL機能が追加
+ されるでしょう。ですからusenetやdbi-usersメーリングリストでのANNOUNCE
+ メッセージにご注目ください（下記　"さらなるヘルプを得るには"もご覧ください）
+
+ これは簡単な概要です。これについてのさらに完全な説明はSQL::Statement
+ のドキュメントをご覧ください。
+
+
+       CREATE  TABLE $table
+                     ( $col1 $type1, ..., $colN $typeN,
+                     [ PRIMARY KEY ($col1, ... $colM) ] )
+
+        DROP  TABLE  $table
+
+        INSERT  INTO $table
+                     [ ( $col1, ..., $colN ) ]
+                     VALUES ( $val1, ... $valN )
+
+        DELETE  FROM $table
+                     [ WHERE $wclause ]
+
+             UPDATE  $table
+                     SET $col1 = $val1, ... $colN = $valN
+                     [ WHERE $wclause ]
+
+  SELECT  [DISTINCT] $col1, ... $colN
+                     FROM $table
+                     [ WHERE $wclause ] 
+                     [ ORDER BY $ocol1 [ASC|DESC], ... $ocolM [ASC|DESC] ]
+
+           $wclause  [NOT] $col $op $val|$col
+                     [ AND|OR $wclause2 ... AND|OR $wclauseN ]
+
+                $op  = |  <> |  < | > | <= | >= 
+                     | IS NULL | IS NOT NULL | LIKE | CLIKE
+
+ "CLIKE"演算子は"LIKE"とまったく同じように動きます。ただし大文字小文字を区別しません。
+
+=head1 さらなるヘルプを得るには
+
+=head1 謝辞
+
+Many people have contributed ideas and code, found bugs, and generally been 
+supportive including Tom Lowery, Andy Duncan, Randal Schwartz, Michel Rodriguez, 
+Wes Hardraker, Bob Starr, Earl Cahill, Bryan Fife, Matt Sisk, Matthew Wickline, 
+Wolfgang Weisseberg.  Thanks to Jochen Weidmann for DBD::File and SQL::Statement 
+and of course Tim Bunce and Alligator Descartes for DBI and its documentation.
+
+=head1 作者 & 著作権(=AUTHOR & COPYRIGHT)
+
+ copyright 2000, Jeff Zucker <jeff@vpservices.com>
+ all rights reserved
+
+=head1 翻訳者
+
+川合孝典(GCD00051@nifty.ne.jp)
+
