@@ -64,7 +64,7 @@ Net::Server::PreForkはいくつかの設定用パラメータを含む。
   max_requests      \d+                     1000
 
   serialize         (flock|semaphore|pipe)  undef
-  # serialize defaults to flock on multi_port or on Solaris
+  # multi_portかSolarisでの直列化はflockがデフォルト
   lock_file         "filename"              POSIX::tmpnam
 
   check_for_dead    \d+                     30
@@ -79,10 +79,15 @@ Net::Server::PreForkはいくつかの設定用パラメータを含む。
 The maximum number of child servers to start and maintain.
 This does not apply to dequeue processes.
 
+開始及び維持する子サーバの最大数。dequeueプロセスには
+適用されない。
+
 =item max_requests
 
 The number of client connections to receive before a
 child terminates.
+
+子プロセスが終了するまえに受信するクライアント接続数。
 
 =item serialize
 
@@ -99,6 +104,19 @@ portable.  (Flock is able to reliquish the block if the
 process dies between accept on the socket and reading
 of the client connection - semaphore and pipe do not)
 
+サーバが子プロセスの接続を直列化(serialize)するかどうか決める。
+オプションはundef、flock、semaphore、ないしはpipe。デフォルトは
+undef。multi_portサーバ上、あるいはSolarisで実行されるサーバ上
+では、デフォルトはflockになる。flockオプションは、I<lock_file>
+（後述）で指定されたファイルに対するflockの排他的ブロックを
+利用する。semaphoreオプションはIPC::Semaphore（Bennett Todd）を
+使って、いくつかのサンプルコードを与えている。pipeオプションは
+pipe上で読み込むことによって次のものを選択する。flockオプション
+は最も堅牢で、一方、pipeオプションは最もお手軽だろう。
+（ソケットの受付とクライアント接続の読み込みとの間にプロセスが
+dieしてしまった場合、flockはブロックを解除することができる。
+ - これはsemaphoreとpipeではできないことだ。）
+
 =item lock_file
 
 Filename to use in flock serialized accept in order to
@@ -107,10 +125,18 @@ will default to a generated temporary filename.  If default
 value is used the lock_file will be removed when the server
 closes.
 
+flockによる受付の直列化で使うファイル名。これにより、
+子プロセス間で連続する受付を直列化する。デフォルトでは
+一時的なファイル名を生成する。もしデフォルト値が使用された
+場合、lock_fileはサーバが閉じた時に削除される。
+
 =item check_for_dead
 
 Seconds to wait before checking to see if a child died
 without letting the parent know.
+
+親プロセスに知らせずに子プロセスが死んでしまったかどうかを
+チェックするまでの待ち時間の秒数。
 
 =item max_dequeue
 
@@ -118,6 +144,10 @@ The maximum number of dequeue processes to start.  If a
 value of zero or undef is given, no dequeue processes will
 be started.  The number of running dequeue processes will
 be checked by the check_for_dead variable.
+
+dequeue処理を始める最大数。もし値に0かundefを与えたなら、
+dequeue処理は開始されない。実行しているdequeue処理の数は
+check_for_dead変数に応じてチェックされる。
 
 =item check_for_dequeue
 
@@ -127,51 +157,59 @@ It is intended to use the dequeue process to take care of
 items such as mail queues.  If a value of undef is given,
 no dequeue processes will be started.
 
+dequeue処理をfork offするまでに待機する秒数。
+これはメールキューのような要素を取り扱う
+dequeue処理を使用する。もしも値にundefが与えられたら
+dequeueプロセスは開始されない。
 
 =back
 
-=head1 CONFIGURATION FILE
+=head1 設定ファイル
 
 C<Net::Server::PreFork> allows for the use of a
 configuration file to read in server parameters.  The format
 of this conf file is simple key value pairs.  Comments and
 white space are ignored.
 
+C<Net::Server::PreFork>はサーバのパラメータを読み込むために
+設定ファイルを利用することができる。設定ファイルの書式は
+単純なキーと値の組だ。コメントと空白は無視される。
+
   #-------------- file test.conf --------------
 
-  ### server information
+  ### サーバ情報
   max_servers   80
 
   max_requests  1000
 
-  ### user and group to become
+  ### 変更されるuserとgroup
   user        somebody
   group       everybody
 
-  ### logging ?
+  ### ログを記録するか？
   log_file    /var/log/server.log
   log_level   3
   pid_file    /tmp/server.pid
 
-  ### access control
+  ### アクセスコントロール
   allow       .+\.(net|com)
   allow       domain\.com
   deny        a.+
 
-  ### background the process?
+  ### バックグラウンドで実行するか？
   background  1
 
-  ### ports to bind
+  ### bindするポート
   host        127.0.0.1
   port        localhost:20204
   port        20205
 
-  ### reverse lookups ?
+  ### 逆引きをするか？
   # reverse_lookups on
 
   #-------------- file test.conf --------------
 
-=head1 PROCESS FLOW
+=head1 処理の流れ
 
 Process flow follows Net::Server until the loop phase.  At
 this point C<max_servers> are forked and wait for
@@ -180,11 +218,22 @@ processing a client, or exits, it relays that information to
 the parent, which keeps track and makes sure there are
 always C<max_servers> running.
 
+処理の流れはloop段階までNet::Serverと同じである。
+この時点でC<max_servers>個のプロセスがforkされて接続待機に
+入る。子プロセスが接続を受け付けるとき、クライアントの処理を
+終えるとき、exitするとき、その情報は親プロセスに中継される。
+これにより親プロセスは追跡し、常にC<max_servers>個の子サーバ
+が実行されていることを保証する。
+
 =head1 HOOKS
 
 The PreForkSimple server has the following hooks in addition
 to the hooks provided by the Net::Server base class.
 See L<Net::Server>
+
+PreForkSimpleサーバは基本クラスであるNet::Serverの提供する
+hookに以下のものを付け加える。
+L<Net::Server>を参照。
 
 =over 4
 
@@ -197,16 +246,29 @@ chrooting or other security measures.  It is suggested
 that all perl modules be used by this point, so that
 the most shared memory possible is used.
 
+このhookは、親プロセスから子プロセスがforkされた直後で、かつ、
+その子プロセスが接続を受け付け始める前に発生する。これは
+chrootやその他のセキュリティ手段を追加することを意図している。
+この時点で、全てのperlモジュールが利用される。これにより
+可能なほとんどの共有メモリが使われる。
+
 =item C<$self-E<gt>child_finish_hook()>
 
 This hook takes place immediately before the child tells
 the parent that it is exiting.  It is intended for
 saving out logged information or other general cleanup.
 
+このhookは、子プロセスがexitすることを親プロセスに伝える直前に
+発生する。これはログ情報の保存や、その他一般的なクリーンアップを
+意図している。
+
 =item C<$self-E<gt>run_dequeue()>
 
 This hook only gets called in conjuction with the
 check_for_dequeue setting.
+
+このhookは、check_for_dequeueのセッティングと共に
+呼び出される。
 
 =back
 
@@ -214,17 +276,22 @@ check_for_dequeue setting.
 
 See L<Net::Server>
 
-=head1 AUTHOR
+L<Net::Server>を参照。
+
+=head1 作者
 
 Paul T. Seamons paul@seamons.com
 
-=head1 THANKS
+=head1 謝辞
 
 See L<Net::Server>
 
-=head1 SEE ALSO
+=head1 参考
 
 Please see also
+
+以下も参照して欲しい。
+
 L<Net::Server::Fork>,
 L<Net::Server::INET>,
 L<Net::Server::PreFork>,
