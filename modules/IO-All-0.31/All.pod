@@ -1,0 +1,1998 @@
+=head1 名前
+
+IO::All - IO::All of it to Graham and Damian!
+
+=head1 概要
+
+    use IO::All;                                # Let the madness begin...
+
+    # ファイル全体をスカラに入れる多くの方法のうちのいくつか
+    io('file.txt') > $contents;                 # "arrow"のオーバーロード
+    $contents < io 'file.txt';                  # 反転しているが、同じ操作
+    $io = io 'file.txt';                        # IO::All オブジェクトの作成
+    $contents = $$io;                           # スカラーのデリファレンスのオーバーロード
+    $contents = $io->all;                       # すべてを読み込むメソッド
+    $contents = $io->slurp;                     # そのための別のメソッド
+    $contents = join '', $io->getlines;         # 分割された行をつなげる
+    $contents = join '', map "$_\n", @$io;      # 同じ事. 配列のデリファレンスのオーバーロード
+    $io->tie;                                   # ハンドルとしてオブジェクトを tie する
+    $contents = join '', <$io>;                 # ビルトインでそれを使う
+    # リストは続きます ...
+
+    # 他のファイル操作:
+    @lines = io('file.txt')->slurp;             # リストコンテキストのslurp
+    $content > io('file.txt');                  # ファイルに出力
+    io('file.txt')->print($content, $more);     # (同様)
+    $content >> io('file.txt');                 # ファイルに追加
+    io('file.txt')->append($content);           # (同様)
+    $content << $io;                            # 文字列に追加
+    io('copy.txt') < io('file.txt');            $ ファイルをコピー
+    io('file.txt') > io('copy.txt');            # File::Copy を呼び出します
+    io('more.txt') >> io('all.txt');            # ファイルに追加
+
+    # ファイルのパスを出力する:
+    print $io->name;                            # 直接のメソッド
+    print "$io";                                # オブジェクトを名前の文字列にする
+    print $io;                                  # クォートする必要はありません
+    print $io->filename;                        # ファイルの一部だけ
+
+    # ディレクトリ内のすべてのファイル/ディレクトリを読む
+    $io = io('my/directory/');                  # 新しいディレクトリオブジェクトの作成
+    @contents = $io->all;                       # ディレクトリのすべての内容を得ます
+    @contents = @$io;                           # 配列としてディレクトリを
+    @contents = values %$io;                    # ハッシュとしてディレクトリを
+    push @contents, $subdir                     # 一つずつ
+      while $subdir = $io->next;
+
+    # 上のすべての内容の、名前とファイルタイプを出力する
+    print "$_ is a " . $_->type . "\n"          # @contentsのそれぞれの要素が、
+      for @contents;                            # IO::All のオブジェクト!!
+
+    # それぞれのファイルの最初の行のを出力する:
+    print $_->getline                           # getsline は、1行を取り出します
+      for io('dir')->all_files;                 # ファイルだけ
+
+    # すべてのファイル/ディレクトリの名前を3ディレクトリ下まで出力します:
+    print "$_\n" for $io->all(3);               # 深さを渡します。デフォルトは1
+
+    # すべてのファイル/ディレクトリの名前を再帰的に出力します:
+    print "$_\n" for $io->all(0);               # Zero means all the way down
+    print "$_\n" for $io->All;                  # 大文字で始まるショートカット
+    print "$_\n" for $io->deep->all;            # 別のやり方
+
+    # 特別なファイル名:
+    print io('-');                              # STDINをSTDOUTに
+    io('-') > io('-');                          # 再びそうします
+    io('-') < io('-');                          # 同じ。 コンテキストを区別します
+    "Bad puppy" > io('=');                      # メッセージをSTDERRに
+    $string_file = io('$');                     # IO::String オブジェクトの作成
+    $temp_file = io('?');                       # テンポラリファイルの作成
+
+    # ソケット操作:
+    $server = io('localhost:5555')->fork;       # デーモンソケットの作成
+    $connection = $server->accept;              # ソケットの接続を得ます
+    $input < $connection;                       # それから、なんらかのデータを得ます
+    "Thank you!" > $connection;                 # 呼び出し元に感謝する
+    $connection->close;                         # ハングアップ
+    io(':6666')->accept->slurp > io->devnull;   # Take a complaint and file it
+    
+    # DBM database operations:
+    $dbm = io 'my/database';                    # データベースオブジェクトを作成
+    print $dbm->{grocery_list};                 # ハッシュコンテキストでは、それをDBMにします
+    $dbm->{todo} = $new_list;                   # データベースに書き込む
+    $dbm->dbm('GDBM_file');                     # 特定のDMBを要求
+    io('mydb')->mldbm->{env} = \%ENV;           # MLDBM のサポート
+
+    # Tie::File のサポート:
+    $io = io 'file.txt';
+    $io->[42] = 'Line Forty Three';             # 行の変更
+    print $io->[@$io / 2];                      # 途中の行を出力
+    @$io = reverse @$io;                        # ファイル内の行を逆転させる
+
+    # Stat の機能:
+    printf "%s %s %s\n",                        # 名前、uid、サイズを出力
+      $_->name, $_->uid, $_->size               # カレントディレクトリの内容
+        for io('.')->all;
+    print "$_\n" for sort                       # mtimeメソッドを使って、最近変更のあった時間を元に、
+      {$b->mtime <=> $a->mtime}                 # カレントディレクトリのすべてのファイルを
+        io('.')->All_Files;                     # ソートする
+
+    # File::Spec のサポート:
+    $contents < io->catfile(qw(dir file.txt));  # 持ち運べるファイル操作
+    
+    # そのほか:
+    @lines = io('file.txt')->chomp->slurp;      # Chomp as you slurp
+    @chunks = 
+      io('file.txt')->separator('xxx')->slurp;  # 改行の代わりのセパレータを使う
+    $binary = io('file.bin')->binary->all;      # バイナリファイルの読み込み
+    io('a-symlink')->readlink->slurp;           # readlink は、オブジェクトを返す
+    print io('foo')->absolute->pathname;        # foo の絶対パスを出力
+
+    # IO::All 外部 Plugin メソッド
+    io("myfile") > io->("ftp://store.org");     # ftpを使ってファイルをアップロード
+    $html < io->http("www.google.com");         # web page を取ってくる
+    io('mailto:worst@enemy.net')->print($spam); # 友達にEmailを送る
+
+    # これは、ほんの始まりに過ぎません。読み続けてください...
+
+=head1 説明
+
+"Graham Barr for doing it all. Damian Conway for doing it all different."
+
+IO::All combines all of the best Perl IO modules into a single Spiffy
+object oriented interface to greatly simplify your everyday Perl IO
+idioms. It exports a single function called C<io>, which returns a new
+IO::All object. And that object can do it all!
+
+IO::All すべての最良の Perl IO モジュールを、一つの気の利いた
+オブジェクト指向インターフェースに一体化し、
+毎日のPerl IO イディオムをかなり単純にします。
+IO::All は、一つの関数C<io>をエクスポートします。
+C<io>は、IO::Allオブジェクトを返します。IO::Allオブジェクトは、
+それをすべて行うことができます!!
+
+The IO::All object is a proxy for IO::File, IO::Dir, IO::Socket,
+IO::String, Tie::File, File::Spec, File::Path and File::ReadBackwards;
+as well as all the DBM and MLDBM modules. You can use most of the
+methods found in these classes and in IO::Handle (which they inherit
+from). IO::All adds dozens of other helpful idiomatic methods
+including file stat and manipulation functions. 
+
+IO::All オブジェクトは、IO::File、IO::Dir、IO::Socket、IO::String、IO::File、
+File::Spec、File::Path、File::ReadBackwrds のプロキシです;
+同様に、DBM と、MLDBMモジュールのプロキシでもあります。
+それらのクラスと、IO::Handle(それらのクラスが継承している)で、見つけられる
+ほとんどのメソッドを使えます。
+IO::All は、数十の他の有益なイディオマチックなメソッドを追加しています。
+それには、ファイルの stat や取り扱いの機能を含みます。
+
+IO::All is pluggable, and modules like IO::All::LWP and IO::All::Mailto
+add even more functionality. Optionally, every IO::All object can be
+tied to itself. This means that you can use most perl IO builtins on it:
+readline, <>, getc, print, printf, syswrite, sysread, close.
+
+IO::All は、pluggableで、IO::ALL::LWPや、IO::All::Mailto が、
+もっと機能性を追加するように。オプションとして、すべてのIO::Allオブジェクトは
+それ自身nい tie できます。 このことは、ほとんどの組み込みの Perl IO を使えることを
+意味します: readline, <>, getc, print, printf, syswrite, sysread, close。
+
+The distinguishing magic of IO::All is that it will automatically open
+(and close) files, directories, sockets and other IO things for you. You
+never need to specify the mode ('<', '>>', etc), since it is determined
+by the usage context. That means you can replace this:
+
+IO::Allを特徴づける魔法は、自動的にファイル、ディレクトリ、ソケット、他のIOの、
+オープン(とクローズ)を行うことです。モード('<', '>>' など)を指定する必要はありません。
+使用される文脈で決定されるからです。次のように置き換えることができます:
+
+    open STUFF, '<', './mystuff'
+      or die "Can't open './mystuff' for input:\n$!";
+    local $/;
+    my $stuff = <STUFF>;
+    close STUFF;
+
+with this:
+
+次のように:
+
+    my $stuff < io"./mystuff";
+
+And that is a B<good thing>!
+
+あれはB<いいものだ>!
+
+=head1 METHOD ROLE CALL
+
+Here is an alphabetical list of all the public methods that you can call
+on an IO::All object.
+
+IO::All オブジェクトで呼び出せるすべてのパブリックメソッドのアルファベット順のリストです。
+
+C<abs2rel>, C<absolute>, C<accept>, C<All>, C<all>, C<All_Dirs>,
+C<all_dirs>, C<All_Files>, C<all_files>, C<All_Links>, C<all_links>,
+C<append>, C<appendf>, C<appendln>, C<assert>, C<atime>, C<autoclose>,
+C<autoflush>, C<backwards>, C<bcc>, C<binary>, C<binmode>, C<blksize>,
+C<blocks>, C<block_size>, C<buffer>, C<canonpath>, C<case_tolerant>,
+C<catdir>, C<catfile>, C<catpath>, C<cc>, C<chdir>, C<chomp>, C<clear>,
+C<close>, C<confess>, C<content>, C<ctime>, C<curdir>, C<dbm>, C<deep>,
+C<device>, C<device_id>, C<devnull>, C<dir>, C<domain>, C<empty>,
+C<eof>, C<errors>, C<file>, C<filename>, C<fileno>, C<filepath>,
+C<filter>, C<fork>, C<from>, C<ftp>, C<get>, C<getc>, C<getline>,
+C<getlines>, C<gid>, C<handle>, C<http>, C<https>, C<inode>,
+C<io_handle>, C<is_absolute>, C<is_dir>, C<is_dbm>, C<is_executable>,
+C<is_file>, C<is_link>, C<is_mldbm>, C<is_open>, C<is_pipe>,
+C<is_readable>, C<is_socket>, C<is_stdio>, C<is_string>, C<is_temp>,
+C<is_writable>, C<join>, C<length>, C<link>, C<lock>, C<mailer>,
+C<mailto>, C<mkdir>, C<mkpath>, C<mldbm>, C<mode>, C<modes>, C<mtime>,
+C<name>, C<new>, C<next>, C<nlink>, C<open>, C<password>, C<path>,
+C<pathname>, C<perms>, C<pipe>, C<port>, C<print>, C<printf>,
+C<println>, C<put>, C<rdonly>, C<rdwr>, C<read>, C<readdir>,
+C<readlink>, C<recv>, C<rel2abs>, C<relative>, C<rename>, C<request>,
+C<response>, C<rmdir>, C<rmtree>, C<rootdir>, C<scalar>, C<seek>,
+C<send>, C<separator>, C<shutdown>, C<size>, C<slurp>, C<socket>,
+C<sort>, C<splitdir>, C<splitpath>, C<stat>, C<stdio>, C<stderr>,
+C<stdin>, C<stdout>, C<string>, C<string_ref>, C<subject>, C<sysread>,
+C<syswrite>, C<tell>, C<temp>, C<tie>, C<tmpdir>, C<to>, C<touch>,
+C<truncate>, C<type>, C<user>, C<uid>, C<unlink>, C<unlock>, C<updir>,
+C<uri>, C<utf8>, C<utime> and C<write>.
+
+Each method is documented further below.
+
+それぞれメソッドは以下に説明しています。
+
+=head1 演算子オーバーロード
+
+IO::All objects overload a small set of Perl operators to great effect.
+The overloads are limited to <, <<, >, >>, dereferencing operations, and
+stringification.
+
+IO::All オブジェクトは、Perlの演算子のいくつかをオーバーロードしています。
+オーバーロードは、<、<<、>、>>、でリファレンス操作、文字列化に限られています。
+
+Even though relatively few operations are overloaded, there is actually
+a huge matrix of possibilities for magic. That's because the overloading
+is sensitive to the types, position and context of the arguments, and an
+IO::All object can be one of many types.
+
+比較的少ない演算子しかオーバーロードされていませんが、実際には、
+魔法のための可能性の巨大なマトリックスがあります。
+というのは、オーバーディングは、引数の、型、ポジション、コンテキストを区別し、
+IO::All オブジェクトは多くのタイプを一つにできているからです。
+
+The most important overload to grok is stringification. IO::All objects
+stringify to their file or directory name. Here we print the contents of
+the current directory:
+
+心底から理解するためのもっとも重要なオーバーロードは、文字列化です。
+IO::Allオブジェクトは、ファイルやディレクトリ名を文字列化します。
+カレントディレクトリの内容を出力します:
+
+    perl -MIO::All -le 'print for io(".")->all'
+
+is the same as:
+
+下と同様です:
+
+    perl -MIO::All -le 'print $_->name for io(".")->all'
+
+Stringification is important because it allows IO::All operations to return
+objects when they might otherwise return file names. Then the recipient can
+use the result either as an object or a string.
+
+文字列化は重要です。それは、それを望む時には、ファイル名を返す代わりに、
+IO::Allにオブジェクトを返す操作を許すからです。
+受取る物はオブジェクトか文字列の結果を使うことができます。
+
+'>' and '<' move data between objects in the direction pointed to by the
+operator.
+
+'>' と、'<' は、演算子が示す方向に、オブジェクトの間のデータを移します。
+
+    $content1 < io('file1');
+    $content1 > io('file2');
+    io('file2') > $content3;
+    io('file3') < $content3;
+    io('file3') > io('file4');
+    io('file5') < io('file4');
+
+'>>' and '<<' do the same thing except the recipent string or file is
+appended to.
+
+'>>' と '<<' 受け取り側の文字列かファイルに追加されることをのぞいては、同じです。
+
+An IO::All file used as an array reference becomes tied using Tie::File:
+
+配列リファレンスとして使われる、IO::AllのファイルはTie::Fileを使って tie されます:
+
+    $file = io"file";
+    # Print last line of file
+    print $file->[-1];
+    # Insert new line in middle of file
+    $file->[$#$file / 2] = 'New line';
+
+An IO::All file used as a hash reference becomes tied to a DBM class:
+
+ハッシュリファレンスとして使われる、IO::Allのファイルは、DBM クラスに tie されます。
+
+    io('mydbm')->{ingy} = 'YAML';
+
+An IO::All directory used as an array reference, will expose each file or
+subdirectory as an element of the array.
+
+配列リファレンスとして使われる、IO::All ディレクトリは、
+それぞれのファイルかディレクトリを、配列の要素として展開します。
+
+    print "$_\n" for @{io 'dir'};
+
+IO::All directories used as hash references have file names as keys, and
+IO::All objects as values:
+
+ハッシュリファレンスとして使われる、IO::All ディレクトリは、キーにファイルネームを持ち、
+値に、IO::All オブジェクトを持ちます。
+
+    print io('dir')->{'foo.txt'}->slurp;
+
+Files used as scalar references get slurped:
+
+スカラリファレンスとして使われるファイルは、slurp されます:
+
+    print ${io('dir')->{'foo.txt'}};
+
+Not all combinations of operations and object types are supported. Some
+just haven't been added yet, and some just don't make sense. If you use
+an invalid combination, an error will be thrown.
+
+演算子とオブジェクトのタイプのすべての組み合わせはサポートされていません。
+いくつかは、まだ追加されていませんし、いくつかは意味がありません。
+不正な組み合わせを使うと、エラーが投げられれます。
+
+=head1 クックブック
+
+This section describes some various things that you can easily cook up
+with IO::All.
+
+このセクションでは、IO::Allをつかって、簡単に料理できる様々なことをいくつか説明しています。
+
+=head2 ファイルのロック
+
+IO::All makes it very easy to lock files. Just use the C<lock> method. Here's a
+standalone program that demonstrates locking for both write and read:
+
+IO::All は、ファイルのロックをとても簡単にしています。
+C<lock>メソッドを使うだけです。書き込みと読み込みの両方をロックするデモンストレーションをする
+スタンドアロンのプログラムです:
+
+    use IO::All;
+    my $io1 = io('myfile')->lock;
+    $io1->println('line 1');
+
+    fork or do {
+        my $io2 = io('myfile')->lock;
+        print $io2->slurp;
+        exit;
+    };
+
+    sleep 1;
+    $io1->println('line 2');
+    $io1->println('line 3');
+    $io1->unlock;
+
+There are a lot of subtle things going on here. An exclusive lock is
+issued for C<$io1> on the first C<println>. That's because the file
+isn't actually opened until the first IO operation.
+
+たくさんの微妙なものが行われています。排他ロックは、
+最初のC<printin>のC<$io1>でのために行われています。
+最初のIO操作まで、ファイルは実際には開かれていないからです。
+
+When the child process tries to read the file using C<$io2>, there is
+a shared lock put on it. Since C<$io1> has the exclusive lock, the
+slurp blocks.
+
+子プロセスが、C<$io2>を使うファイルを読もうとすると、
+それに共有ロックをつけます。C<$io1>は、排他ロックを持っているので、
+slurp は、ブロックします
+
+The parent process sleeps just to make sure the child process gets a
+chance. The parent needs to call C<unlock> or C<close> to release the
+lock. If all goes well the child will print 3 lines.
+
+子プロセスが機会を得るために、親プロセスはスリープしています。
+親プロセスは、C<unlock>かC<close>を、ロックを解除するために呼ぶ必要があります。
+すべてがうまくいけば、子は、3行を出力します。
+
+=head2 ラウンドロビン
+
+This simple example will read lines from a file forever. When the last
+line is read, it will reopen the file and read the first one again.
+
+この単純な例はァイルからいつも行を読もうとします。
+最後の行が読まれたら、ファイルを再度開いて、最初の行を再び読みます。
+
+    my $io = io'file1.txt';
+    $io->autoclose(1);
+    while (my $line = $io->getline || $io->getline) {
+        print $line;
+    }
+
+=head2 逆向きの読み込み
+
+If you call the C<backwards> method on an IO::All object, the
+C<getline> and C<getlines> will work in reverse. They will read the
+lines in the file from the end to the beginning.
+
+IO::Allオブジェクトで、C<backwards>メソッドを呼び出すと、
+C<getline>と、C<getlines>が逆向きに働きます。
+ファイルを最後から最初に読みます。
+
+    my @reversed;
+    my $io = io('file1.txt');
+    $io->backwards;
+    while (my $line = $io->getline) {
+        push @reversed, $line;
+    }
+
+or more simply:
+
+または、もっと単純に:
+
+    my @reversed = io('file1.txt')->backwards->getlines;
+
+The C<backwards> method returns the IO::All object so that you can
+chain the calls.
+
+C<backwards>メソッドは、IO::Allオブジェクトを返すので、
+呼び出しを連鎖できます。
+
+NOTE: This operation requires that you have the File::ReadBackwards 
+module installed.
+
+注意:この操作をするには、File:::ReadBackwardsモジュールがインストールされていなければなりません。
+
+=head2 クライアント/サーバ ソケット
+
+IO::All makes it really easy to write a forking socket server and a
+client to talk to it.
+
+IO::All ソケットサーバのフォーキングを書くのと、クライアントがサーバと
+お話するのを本当に簡単にします。
+
+In this example, a server will return 3 lines of text, to every client
+that calls it. Here is the server code:
+
+次の例では、サーバは、それを呼ぶすべてのクライアントに、3行のテキストを返します。
+サーバのコードです:
+
+    use IO::All;
+
+    my $socket = io(':12345')->fork->accept;
+    $socket->print($_) while <DATA>;
+    $socket->close;
+
+    __DATA__
+    On your mark,
+    Get set,
+    Go!
+
+Here is the client code:
+
+クライアントのコードです:
+
+    use IO::All;
+
+    my $io = io('localhost:12345');
+    print while $_ = $io->getline;
+
+You can run the server once, and then run the client repeatedly (in
+another terminal window). It should print the 3 data lines each time.
+
+一度サーバを動し、それから、クライアントを繰り返し動かします(別のターミナルウィンドウで)
+。3行をいちいち出力するはずです。
+
+Note that it is important to close the socket if the server is forking,
+or else the socket won't go out of scope and close.
+
+サーバがフォーキングしているなら、ソケットを閉じるのは重要です。
+さもないと、ソケットはスコープの外に行かずクローズしないでしょう。
+
+=head2 ちっちゃなWebサーバ
+
+Here is how you could write a simplistic web server that works with static and
+dynamic pages:
+
+静的、動的ページを扱う極端に単純化したwebサーバを書く方法です:
+
+    perl -MIO::All -e 'io(":8080")->fork->accept->(sub { $_[0] < io(-x $1 ? "./$1 |" : $1) if /^GET \/(.*) / })'
+
+There is are a lot of subtle things going on here. First we accept a socket
+and fork the server. Then we overload the new socket as a code ref. This code
+ref takes one argument, another code ref, which is used as a callback. 
+
+多くの不思議なものがあります。まず、ソケットを許可し、サーバを、フォークします。
+それから、コードリファレンスとして、新しいソケットをオーバーロードします。
+このコードリファレンスは一つの引数、別のコードリファレンスをとります。
+このコードリファレンスは、コールバックとして使われます。
+
+The callback is called once for every line read on the socket. The line
+is put into C<$_> and the socket itself is passed in to the callback.
+
+コールバックは、ソケット上で読まれた各行に対して一度呼ばれます。
+その行は、C<$_>に置かれ、ソケットそれ自身がコールバックに渡されます。
+
+Our callback is scanning the line in C<$_> for an HTTP GET request. If one is
+found it parses the file name into C<$1>. Then we use C<$1> to create an new
+IO::All file object... with a twist. If the file is executable (C<-x>), then
+we create a piped command as our IO::All object. This somewhat approximates
+CGI support.
+
+このコールバックは、HTTP GETリクエストのために、C<$_>の行をスキャニングします。
+C<$1>に、ファイル名を解析するのをみつけると、C<$1>を使って、
+新しいIO::ALlファイルオブジェクトを作ります...一つの仕掛けとともに。
+ファイルが実行可能(C<-x>)であれば、IO::Allオブジェクトとして、パイプされたコマンドを
+作ります。これで、だいたい、おおよそ、CGIをサポートします。
+
+Whatever the resulting object is, we direct the contents back at our socket
+which is in C<$_[0]>. Pretty simple, eh? 
+
+オブジェクトの結果はなんでも、ソケットにその内容、$_[0]にある、を返します。
+とってもシンプルでしょ？
+
+=head2 DBM ファイル
+
+IO::All file objects used as a hash reference, treat the file as a DBM tied to
+a hash. Here I write my DB record to STDERR:
+
+IO::All ファイルオブジェクトがハッシュリファレンスとして使われると、
+ハッシュにtieされたDMBとして、ファイルを扱います。
+私のDBレコードをSTDERRに書き出します:
+
+    io("names.db")->{ingy} > io'=';
+
+Since their are several DBM formats available in Perl, IO::All picks the first
+one of these that is installed on your system:
+
+Perlで利用可能なDBMフォーマットは、複数あるので、IO::All それらのなかの
+システムにインストールされている、最初の1つを使います。
+
+    DB_File GDBM_File NDBM_File ODBM_File SDBM_File
+
+You can override which DBM you want for each IO::All object:
+
+それぞれのIO::Allオブジェクトに、使いたいDBMをオーバーライドできます。
+
+    my @keys = keys %{io('mydbm')->dbm('SDBM_File')};
+
+=head2 File サブクラスを作る
+
+Subclassing is easy with IO::All. Just create a new module and use
+IO::All as the base class. Since IO::All is a Spiffy module, you do it
+like this:
+
+サブクラスを作るのは、IO::Allでは簡単です。基底クラスとしてIO::Allを使った
+新たなモジュールを作るだけです。IO::Allは、気の利いたモジュールなので、
+次のようにしてください:
+
+    package NewModule;
+    use IO::All '-base';
+
+You need to do it this way so that IO::All will export the C<io> function.
+Here is a simple recipe for subclassing:
+
+こうしなければならないのは、IO::Allが、C<io>を関数をエクスポートするからです。
+サブクラスを作るのには、単純なレシピを示します。
+
+IO::Dumper inherits everything from IO::All and adds an extra method
+called C<dump>, which will dump a data structure to the file we
+specify in the C<io> function. Since it needs Data::Dumper to do the
+dumping, we override the C<open> method to C<require Data::Dumper> and
+then pass control to the real C<open>.
+
+IO::Dumper は、IO::Allからすべてのものを継承し、
+C<dump>という付加的なメソッドを追加します。
+C<dump>は、データ構造をC<io>関数で指定したファイルにダンプします。
+Data::Dumperを、ダンプするのに必要とするので、
+C<open>メソッドを、C<require Data::Dumper>に、オーバーライドし、
+それから、本当のC<open>コントロールを渡しています。
+
+First the code using the module:
+
+まず、そのモジュールを使うコード:
+
+    use IO::Dumper;
+    
+    io('./mydump')->dump($hash);
+
+And next the IO::Dumper module itself:
+
+次に、IO::Dumper モジュール自身:
+
+    package IO::Dumper;
+    use IO::All '-base';
+    use Data::Dumper;
+    
+    sub dump {
+        my $self = shift;
+        Dumper(@_) > $self;
+    }
+    
+    1;
+
+=head2 インラインのサブクラスの作り方
+
+This recipe does the same thing as the previous one, but without needing
+to write a separate module. The only real difference is the first line.
+Since you don't "use" IO::Dumper, you need to still call its C<import>
+method manually.
+
+このレシピは、先ほどと同じ事をします。ですが、
+別のモジュールを書く必要はありません。
+唯一の違いは、最初の行にあります。
+"use" IO::Dumperせずに、C<import>メソッドを手動で呼び出します。
+
+    IO::Dumper->import;
+    io('./mydump')->dump($hash);
+    
+    package IO::Dumper;
+    use IO::All '-base';
+    use Data::Dumper;
+    
+    sub dump {
+        my $self = shift;
+        Dumper(@_) > $self;
+    }
+
+=head1 IO::All メソッド
+
+This section gives a full description of all of the methods that you can
+call on IO::All objects. The methods have been grouped into subsections
+based on object construction, option settings, configuration, action
+methods and support for specific modules.
+
+このセクションは、IO::All オブジェクトで呼べるすべてのメソッドの完全な説明です。
+メソッドは、下記に基づいたサブセクションでグループ化されています。
+オブジェクトコンストラクション、オプションの設定、設定、
+アクションメソッドと、特定のモジュールのサポートです。
+
+=head2 オブジェクトコンストラクションと初期化メソッド
+
+=over 4
+
+=item * new
+
+There are three ways to create a new IO::All object. The first is with
+the special function C<io> which really just calls C<< IO::All->new >>.
+The second is by calling C<new> as a class method. The third is calling
+C<new> as an object instance method. In this final case, the new objects
+attributes are copied from the instance object.
+
+IO::Allオブジェクトを作る方法は3つあります。
+一つ目は特別な関数C<io>、これは、実際、C<< IO::All->new >>と同じです。
+二つ目はクラスメソッドとして、C<new>を呼ぶことです。
+三つ目はオブジェクトのインスタンスメソッドとして、C<bew>を呼ぶことです。
+最後の方法では、新しいオブジェクトは、元のインスタンスオブジェクトから
+属性がコピーされます。
+
+    io(file-descriptor);
+    IO::All->new(file-descriptor);
+    $io->new(file-descriptor);
+            
+All three forms take a single argument, a file descriptor. A file
+descriptor can be any of the following:
+
+三つのやり方は、どれも、一つの引数、ファイルデスクリプタを取ります。
+ファイルデスクリプタは、下記のどれもかまいません:
+
+    - A file name
+    - A file handle
+    - A directory name
+    - A directory handle
+    - A typeglob reference
+    - A piped shell command. eq '| ls -al'
+    - A socket domain/port.  eg 'perl.com:5678'
+    - '-' means STDIN or STDOUT (depending on usage)
+    - '=' means STDERR
+    - '$' means an IO::String object
+    - '?' means a temporary file
+    - A URI including: http, https, ftp and mailto
+
+If no file descriptor is provided, an object will still be created, but
+it must be defined by one of the following methods before it can be used
+for I/O:
+
+ファイルデスクリプタが渡されなくても、オブジェクトは作られます。
+ですが、I/Oのために使われる前に、下記のメソッドの一つでファイルデスクリプタを
+決める必要があります。
+
+=item * file
+
+    io->file(file-name);
+
+Using the C<file> method sets the type of the object to I<file> and sets
+the pathname of the file if provided.
+
+C<file>メソッドを使って、オブジェクトのタイプをI<file>にセットし、
+もしあれば、ファイルのパス名をセットします。
+
+It might be important to use this method if you had a file whose name
+was C<'-'>, or if the name might otherwise be confused with a
+directory or a socket. In this case, either of these statements would
+work the same:
+
+ファイル名がC<'-'>であるか、ディレクトリかソケットと混同される名前であるかは、
+このメソッドを使う際に重要です。このケースでは、これらのステートメントは、
+同じように動きます。
+
+    my $file = io('-')->file;
+    my $file = io->file('-');
+
+=item * dir
+
+    io->file(dir-name);
+
+Make the object be of type I<directory>.
+
+I<directory>タイプのオブジェクトを作ります。
+
+=item * socket
+
+    io->file(domain:port);
+
+Make the object be of type I<socket>.
+
+I<socket>タイプのオブジェクトを作ります。
+
+=item * link
+
+    io->file(link-name);
+
+Make the object be of type I<link>.
+
+I<link>タイプのオブジェクトを作ります。
+
+=item * pipe
+
+    io->file(link-name);
+
+Make the object be of type I<pipe>. The following two statements are
+equivalent:
+
+I<pipe>タイプのオブジェクトを作ります。
+下の二つのステートメントは同じです:
+
+    my $io = io('ls -l |');
+    my $io = io('ls -l')->pipe;
+    my $io = io->pipe('ls -l');
+
+=item * dbm
+
+This method takes the names of zero or more DBM modules. The first one
+that is available is used to process the dbm file.
+
+このメソッドは0か、複数のDBMかモジュールの名前を引数に取ります。
+最初の物が使えれば、それを使い、dbm ファイルを処理します。
+
+    io('mydbm')->dbm('NDBM_File', 'SDBM_File')->{author} = 'ingy';
+
+If no module names are provided, the first available of the
+following is used:
+
+モジュール名が渡されなければ、下記の中で最初に利用可能な物が使われます:
+
+    DB_File GDBM_File NDBM_File ODBM_File SDBM_File
+
+=item * mldbm
+
+Similar to the C<dbm> method, except create a Multi Level DBM object
+using the MLDBM module.
+
+C<dbm>メソッドと似ていますが、MLDBMモジュールを使って、
+マルチレベルのDBM オブジェクトを作ります。
+
+This method takes the names of zero or more DBM modules and an optional
+serialization module. The first DBM module that is available is used to
+process the MLDBM file. The serialization module can be Data::Dumper,
+Storable or FreezeThaw.
+
+このメソッドは、0か複数のDBMモジュールと、オプションとしてシリアライゼーションモジュールを
+引数に取ります。利用可能な最初のDBMモジュールが使われ、
+MLDBMファイルを処理します。シリアライゼーションモジュールは、Data::Dumperか、
+Storable か、FreezeThaw になります。
+
+    io('mymldbm')->mldbm('GDBM_File', 'Storable')->{author} = 
+      {nickname => 'ingy'};
+
+=item * string
+
+Make the object be a IO::String object. These are equivalent:
+
+オブジェクトを IO::String オブジェクトにします。これらは同じです:
+
+    my $io = io('$');
+    my $io = io->string;
+
+=item * temp
+
+Make the object represent a temporary file. It will automatically be
+open for both read and write.
+
+オブジェクトはテンポラリファイルを意味します。
+自動的に、読み、書き両方で開かれます。
+
+=item * stdio
+
+Make the object represent either STDIN or STDOUT depending on how it is
+used subsequently. These are equivalent:
+
+オブジェクトは、どのように続けられるかに依存して、STDINかSTDOUTを意味します。
+以下は同じです:
+
+    my $io = io('-');
+    my $io = io->stdin;
+
+=item * stdin
+
+Make the object represent STDIN.
+
+オブジェクトは、STDINを意味します。
+
+=item * stdout
+
+Make the object represent STDOUT.
+
+オブジェクトは、STDOUTを意味します。
+
+=item * stderr
+
+Make the object represent STDERR.
+
+オブジェクトは、STDERRを意味します。
+
+=item * handle
+
+    io->handle(io-handle);
+
+Forces the object to be created from an pre-existing IO handle. You can
+chain calls together to indicate the type of handle:
+
+これは、オブジェクトに、すでに存在するIOハンドルから作られるように強います。
+ハンドルのタイプを示すために、一緒につなげて呼ぶことができます。
+
+    my $file_object = io->file->handle($file_handle);
+    my $dir_object = io->dir->handle($dir_handle);
+
+=item * http
+
+Make the object represent an http uri. Requires IO-All-LWP.
+
+オブジェクトは、http uriを意味します。IO-All-LWPを必要とします。
+
+=item * https
+
+Make the object represent an https uri. Requires IO-All-LWP.
+
+オブジェクトは、https uri を意味します。IO-All-LWPを必要とします。
+
+=item * ftp
+
+Make the object represent a ftp uri. Requires IO-All-LWP.
+
+オブジェクトは、ftp uri を意味します。IO-All-LWPを必要とします。
+
+=item * mailto
+
+Make the object represent a mailto uri. Requires IO-All-Mailto.
+
+オブジェクトは、amilto uri を意味します。IO-All-Mailtoを必要とします。
+
+=back
+
+If you need to use the same options to create a lot of objects, and
+don't want to duplicate the code, just create a dummy object with the
+options you want, and use that object to spawn other objects.
+
+たくさんのオブジェクトを作るのに同じオプションを使わなければならず、
+コードを二重化したくなければ、望むオプションでダミーのオブジェクトを作り、
+そのオブジェクトを使って、他のオブジェクトを生み出すようにします。
+
+    my $lt = io->lock->tie;
+    ...
+    my $io1 = $lt->new('file1');
+    my $io2 = $lt->new('file2');
+
+Since the new method copies attributes from the calling object, both
+C<$io1> and C<$io2> will be locked and tied.
+
+new メソッドは呼ばれたオブジェクトから属性をコピーするので、
+C<$io1>と、C<$io2>は、ロックされ、tie されるでしょう。
+
+=head2 オプション設定メソッド
+
+The following methods don't do any actual I/O, but they specify options
+about how the I/O should be done.
+
+下記のメソッドは、実際のIOは何も行いませんが、
+どのように、I/Oがなされるべきかについてのオプションを設定します。
+
+Each Option Can Take a single argument of 0 or 1. If no argument is
+given, the value 1 is assumed. Passing 0 turns the option off.
+
+それぞれのオプションは、0か1の単一の引数を取ります。
+引数を与えなければ、値は1が想定されます。
+0を与えると、オプションはオフになります。
+
+All of these options return the object reference that was used to
+invoke them. This is so that the option methods can be chained
+together. For example:
+
+これらのオプションはすべて、メソッドを呼び出すのに使われた
+オブジェクトリファレンスを返します。そのため、
+オプションメソッドは、一緒に連鎖させることができます。次のように:
+
+    my $io = io('path/file')->tie->assert->chomp->lock;
+
+=over 4
+
+=item * absolute
+
+Indicates that the C<pathname> for the object should be made absolute.
+
+オブジェクトにC<pathname>を指定すると、絶対パスになります。
+
+=item * assert
+
+This method ensures that the path for a file or directory actually exists
+before the file is open. If the path does not exist, it is created.
+
+このメソッドは、ファイルかディレクトリのパのパスがファイルが開かれる前に存在することを保証します。
+もしパスが存在しなければ、作られます。
+
+=item * autoclose
+
+By default, IO::All will close an object opened for input when EOF is
+reached. By closing the handle early, one can immediately do other
+operations on the object without first having to close it.
+
+デフォルトでは、IO::Allは、EOFに達すると、開かれたオブジェクトを
+クローズします。ハンドルを早くにクローズすることで、
+まず、それをクローズすることなしに、
+そのオブジェクトで他の操作即座にすることができます。
+
+This option is on by default, so if you don't want this behaviour, say
+so like this:
+
+このオプションはデフォルトです、そのため、もしこの振る舞いを望まなければ、
+次のようにしてください:
+
+    $io->autoclose(0);
+
+The object will then be closed when C<$io> goes out of scope, or you
+manually call C<< $io->close >>.
+
+これで、C<$io>がスコープから外れたときか、手動で、C<< $io->close>>を呼んだときに、
+オブジェクトはクローズされます。
+
+=item * autoflush
+
+Proxy for IO::Handle::autoflush
+
+IO::Handle::autoflush のプロキシ
+
+=item * backwards
+
+Sets the object to 'backwards' mode. All subsequent C<getline>
+operations will read backwards from the end of the file.
+
+'backwards' モードにオブジェクトをセットします。
+すべての連続するC<getline>操作は、ファイルの終わりから
+後ろ向きに読みます。
+
+Requires the File::ReadBackwards CPAN module.
+
+File::ReadBackwards CPAN モジュールを必要とします。
+
+=item * binary
+
+Indicates the file has binary content and should be opened with
+C<binmode>.
+
+ファイルがバイナリの内容であり、C<binmode>で開かれるべきであることを指示します。
+
+=item * chdir
+
+chdir() to the pathname of a directory object. When object goes out of
+scope, chdir back to starting directory.
+
+ディレクトリオブジェクトのパスネームに、chdir()します。
+スコープから外れると、最初のディレクトリに戻ります。
+
+=item * chomp
+
+Indicates that all operations that read lines should chomp the lines. If
+the C<separator> method has been called, chomp will remove that value
+from the end of each record.
+
+すべてのリードライン操作は、行をchompすべきだと指示します。
+C<separator>メソッドが呼ばれていれば、chomp は、すべてのレコードの終わりから、
+その値をのぞきます。
+
+=item * confess
+
+Errors should be reported with the very detailed Carp::confess function.
+
+とても詳細なCarp::confess 関数で、エラーをレポートします。
+
+=item * deep
+
+Indicates that calls to the C<all> family of methods should search
+directories as deep as possible.
+
+C<all>とその類似メソッドに、可能な限り深くディレクトリを探すように指示します。
+
+=item * fork
+
+Indicates that the process should automatically be forked inside the
+C<accept> socket method.
+
+C<accept>ソケットメソッドの内部で、プロセスが自動的にフォークされる
+るように指示します。
+
+=item * lock
+
+Indicate that operations on an object should be locked using flock.
+
+flock を使用して、オブジェクトの操作がロックするように指示します。
+
+=item * rdonly
+
+This option indicates that certain operations like DBM and Tie::File
+access should be done in read-only mode.
+
+このオプションは、DBMと、Tie::Fileのような操作のアクセスが、
+リードオンリーモードで行うように指示します。
+
+=item * rdwr
+
+This option indicates that DBM and MLDBM files should be opened in read-
+write mode.
+
+このオプションは、DBMと、MLDBM ファイルが、
+読み書きモードでオープンされるように指示します。
+
+=item * relative
+
+Indicates that the C<pathname> for the object should be made relative.
+
+オブジェクトのC<pathname>が相対パスであることを指示します。
+
+=item * sort
+
+Indicates whether objects returned from one of the C<all> methods will
+be in sorted order by name. True by default.
+
+C<all>メソッドの一つから返されるオブジェクトはなんでも、
+名前によって、ソートされるように指示します。デフォルトは真です。
+
+=item * tie
+
+Indicate that the object should be tied to itself, thus allowing it to
+be used as a filehandle in any of Perl's builtin IO operations.
+
+オブジェクトがそれ自身にtieされるように指示します。
+このようにすると、オブジェクトが、すべてのPerlの組み込みのIO操作で、
+ファイルハンドルとして使われることを許します。
+
+    my $io = io('foo')->tie;
+    @lines = <$io>;
+
+=item * utf8
+
+Indicates that IO should be done using utf8 encoding. Calls binmode with
+C<:utf8> layer.
+
+IOがutf8エンコーディングを使用されるように指示します。
+C<:utf8>レイヤーで、binmode を呼びます。
+
+=back
+
+=head2 設定メソッド
+
+The following methods don't do any actual I/O, but they set specific
+values to configure the IO::All object.
+
+下記のメソッドは、実際のIOは何も行いませんが、
+IO::Allオブジェクトを設定する特定の値をセットします。
+
+If these methods are passed no argument, they will return their
+current value. If arguments are passed they will be used to set the
+current value, and the object reference will be returned for potential
+method chaining.
+
+これらのメソッドになんの値も渡されなければ、
+現在の値が返されます。現在の値をセットするために使われる引数が与えられると、
+潜在的なメソッドの連鎖のために、オブジェクトリファレンスが返されます。
+
+=over 4
+
+=item * bcc
+
+Set the Bcc field for a mailto object.
+
+mailto オブジェクトのBccフィールドをセットします。
+
+=item * binmode
+
+Proxy for binmode. Requires a layer to be passed. Use C<binary> for
+plain binary mode.
+
+binmode のプロキシ。レイヤが渡される必要があります。
+ただのバイナリモードには、C<binary>を使ってください。
+
+=item * block_size
+
+The default length to be used for C<read> and C<sysread> calls.
+Defaults to 1024.
+
+C<read>と、C<sysread>の呼び出しに使われるデフォルトの長さです。
+デフォルトは1024です。
+
+=item * buffer
+
+Returns a reference to the internal buffer, which is a scalar. You can
+use this method to set the buffer to a scalar of your choice. (You can
+just pass in the scalar, rather than a reference to it.)
+
+内部バッファへのスカラリファレンスを返します。
+このメソッドを、バッファに自分の選んだスカラをセットするのに使えます
+(りふぁれんすではなく、ただスカラーを渡すこともできます)。
+
+This is the buffer that C<read> and C<write> will use by default.
+
+これは、C<read>と、C<write>がデフォルトで使うバッファです。
+
+You can easily have IO::All objects use the same buffer:
+
+簡単に同じバッファを使う、IO::Allオブジェクトをもてます。
+
+    my $input = io('abc');
+    my $output = io('xyz');
+    my $buffer;
+    $output->buffer($input->buffer($buffer));
+    $output->write while $input->read;
+
+=item * cc
+
+Set the Cc field for a mailto object.
+
+mailtoオブジェクトのCcフィールドをセットします。
+
+=item * content
+
+Get or set the content for an LWP operation manually.
+
+手動でLWP 操作の内容を得るか、セットします。
+
+=item * domain
+
+Set the domain name or ip address that a socket should use.
+
+ソケットが使用するドメインか、IPアドレスをセットします。
+
+=item * errors
+
+Use this to set a subroutine reference that gets called when an internal
+error is thrown.
+
+内部エラーが投げられる時に、呼ばれる、サブルーチンのリファレンスをセットします。
+
+=item * filter
+
+Use this to set a subroutine reference that will be used to grep
+which objects get returned on a call to one of the C<all> methods.
+For example:
+
+C<all>メソッドの一つを呼び出す際に返されるオブジェクトを
+grepする際に呼び出されるサブルーチンのリファレンスをセットます。
+たとえば:
+
+    my @odd = io->curdir->filter(sub {$_->size % 2})->All_Files;
+
+C<@odd> will contain all the files under the current directory whose
+size is an odd number of bytes.
+
+C<@odd> は、カレントディレクトリ下のサイズが奇数のファイルをすべて含みます。
+
+=item * from
+
+Indicate the sender for a mailto object.
+
+mailtoオブジェクトのseder を示します。
+
+=item * mailer
+
+Set the mailer program for a mailto transaction. Defaults to 'sendmail'.
+
+mailto トランザクションにメール送信するプログラムをセットします。
+デフォルトでは、'sendmail'です。
+
+=item * mode
+
+Set the mode for which the file should be opened. Examples:
+
+ファイルが開かれるべきモードをセットします。たとえば:
+
+    $io->mode('>>')->open;
+    $io->mode(O_RDONLY);
+
+=item * name
+
+Set or get the name of the file or directory represented by the IO::All
+object.
+
+IO::Allオブジェクトで意味されるファイルかディレクトリの名前を得るか、セットします。
+
+=item * password
+
+Set the password for an LWP transaction.
+
+LWPトランザクションのパスワードをセットします。
+
+=item * perms
+
+Sets the permissions to be used if the file/directory needs to be created.
+
+ファイル/ディレクトリを作成する場合に使われるパーミッションをセットします。
+
+=item * port
+
+Set the port number that a socket should use.
+
+ソケットが使うべきポート番号をセットします。
+
+=item * request
+
+Manually specify the request object for an LWP transaction.
+
+手動で、LWP トランザクションに、リクエストオブジェクトを指定します。
+
+=item * response
+
+Returns the resulting reponse object from an LWP transaction.
+
+LWPトランザクションから結果のレスポンスオブジェクトを返します。
+
+=item * separator
+
+Sets the record (line) separator to whatever value you pass it. Default
+is \n. Affects the chomp setting too.
+
+渡された値をなんでも、レコード(行)のセパレータを、セットします。
+デフォルトでは、\n です。chomp の設定にも影響します。
+
+=item * string_ref
+
+Proxy for IO::String::string_ref
+
+IO::String::string_refのプロキシ。
+
+Returns a reference to the internal string that is acting like a file.
+
+ファイルのように振る舞う内部の文字列へのリファレンスを返します。
+
+=item * subject
+
+Set the subject for a mailto transaction.
+
+mailto トランザクションのサブジェクトをセットします。
+
+=item * to
+
+Set the recipient address for a mailto request.
+
+mailto トランザクションの宛先アドレスをセットします。
+
+=item * uri
+
+Direct access to the URI used in LWP transactions.
+
+LWPトランザクションで使われるURIに直接にアクセスします。
+
+=item * user
+
+Set the user name for an LWP transaction.
+
+LWPトランザクションのユーザー名をセットします。
+
+=back
+
+=head2 IO アクションメソッド
+
+These are the methods that actually perform I/O operations on an IO::All
+object. The stat methods and the File::Spec methods are documented in
+separate sections below.
+
+IO::All オブジェクトの I/O 操作を実行するメソッドです。
+stat メソッドとFile::Spec メソッドは下記とは別のセクションに説明します。
+
+=over 4
+
+=item * accept
+
+For sockets. Opens a server socket (LISTEN => 1, REUSE => 1). Returns an
+IO::All socket object that you are listening on.
+
+If the C<fork> method was called on the object, the process will
+automatically be forked for every connection.
+
+=item * all
+
+Read all contents into a single string.
+
+    compare(io('file1')->all, io('file2')->all);
+
+=item * all (For directories)
+
+Returns a list of IO::All objects for all files and subdirectories in a
+directory. 
+
+'.' and '..' are excluded.
+
+Takes an optional argument telling how many directories deep to search. The
+default is 1. Zero (0) means search as deep as possible.
+
+The filter method can be used to limit the results.
+
+The items returned are sorted by name unless C<< ->sort(0) >> is used.
+
+=item * All
+
+Same as C<all(0)>.
+
+=item * all_dirs
+
+Same as C<all>, but only return directories.
+
+=item * All_Dirs
+
+Same as C<all_dirs(0)>.
+
+=item * all_files
+
+Same as C<all>, but only return files.
+
+=item * All_Files
+
+Same as C<all_files(0)>.
+
+=item * all_links
+
+Same as C<all>, but only return links.
+
+=item * All_Links
+
+Same as C<all_links(0)>.
+
+=item * append
+
+Same as print, but sets the file mode to '>>'.
+
+=item * appendf
+
+Same as printf, but sets the file mode to '>>'.
+
+=item * appendln
+
+Same as println, but sets the file mode to '>>'.
+
+=item * clear
+
+Clear the internal buffer. This method is called by C<write> after it
+writes the buffer. Returns the object reference for chaining.
+
+=item * close
+
+Close will basically unopen the object, which has different meanings for
+different objects. For files and directories it will close and release
+the handle. For sockets it calls shutdown. For tied things it unties
+them, and it unlocks locked things.
+
+=item * empty
+
+Returns true if a file exists but has no size, or if a directory exists but
+has no contents.
+
+=item * eof
+
+Proxy for IO::Handle::eof
+
+=item * exists
+
+Returns whether or not the file or directory exists.
+
+=item * filename
+
+Return the name portion of the file path in the object. For example:
+
+    io('my/path/file.txt')->filename;
+
+would return C<file.txt>.
+
+=item * fileno
+
+Proxy for IO::Handle::fileno
+
+=item * filepath
+
+Return the path portion of the file path in the object. For example:
+
+    io('my/path/file.txt')->filename;
+
+would return C<my/path>.
+
+=item * get
+
+Perform an LWP GET request manually.
+
+=item * getc
+
+Proxy for IO::Handle::getc
+
+=item * getline
+
+Calls IO::File::getline. You can pass in an optional record separator.
+
+=item * getlines
+
+Calls IO::File::getlines. You can pass in an optional record separator.
+
+=item * io_handle
+
+Direct access to the actual IO::Handle object being used on an opened
+IO::All object.
+
+=item * is_dir
+
+Returns boolean telling whether or not the IO::All object represents
+a directory.
+
+=item * is_executable
+
+Returns true if file or directory is executable.
+
+=item * is_dbm
+
+Returns boolean telling whether or not the IO::All object
+represents a dbm file.
+
+=item * is_file
+
+Returns boolean telling whether or not the IO::All object
+represents a file.
+
+=item * is_link
+
+Returns boolean telling whether or not the IO::All object represents
+a symlink.
+
+=item * is_mldbm
+
+Returns boolean telling whether or not the IO::All object
+represents a mldbm file.
+
+=item * is_open
+
+Indicates whether the IO::All is currently open for input/output.
+
+=item * is_pipe
+
+Returns boolean telling whether or not the IO::All object represents
+a pipe operation.
+
+=item * is_readable
+
+Returns true if file or directory is readable.
+
+=item * is_socket
+
+Returns boolean telling whether or not the IO::All object represents
+a socket.
+
+=item * is_stdio
+
+Returns boolean telling whether or not the IO::All object represents
+a STDIO file handle.
+
+=item * is_string
+
+Returns boolean telling whether or not the IO::All object represents
+an IO::String object.
+
+=item * is_temp
+
+Returns boolean telling whether or not the IO::All object represents
+a temporary file.
+
+=item * is_writable
+
+Returns true if file or directory is writable.
+
+=item * length
+
+Return the length of the internal buffer.
+
+=item * mkdir
+
+Create the directory represented by the object.
+
+=item * mkpath
+
+Create the directory represented by the object, when the path contains
+more than one directory that doesn't exist. Proxy for File::Path::mkpath.
+
+=item * next
+
+For a directory, this will return a new IO::All object for each file
+or subdirectory in the directory. Return undef on EOD.
+
+=item * open
+
+Open the IO::All object. Takes two optional arguments C<mode> and
+C<perms>, which can also be set ahead of time using the C<mode> and
+C<perms> methods.
+
+NOTE: Normally you won't need to call open (or mode/perms), since this
+happens automatically for most operations.
+
+=item * pathname
+
+Return the absolute or relative pathname for a file or directory, depending on
+whether object is in C<absolute> or C<relative> mode.
+
+=item * print
+
+Proxy for IO::Handle::print
+
+=item * printf
+
+Proxy for IO::Handle::printf
+
+=item * println
+
+Same as print, but adds newline to each argument unless it already
+ends with one.
+
+=item * put
+
+Perform an LWP PUT request manually.
+
+=item * read
+
+This method varies depending on its context. Read carefully (no pun
+intended).
+
+For a file, this will proxy IO::File::read. This means you must pass
+it a buffer, a length to read, and optionally a buffer offset for where
+to put the data that is read. The function returns the length actually
+read (which is zero at EOF).
+
+If you don't pass any arguments for a file, IO::All will use its own
+internal buffer, a default length, and the offset will always point at
+the end of the buffer. The buffer can be accessed with the C<buffer>
+method. The length can be set with the C<block_size> method. The default
+length is 1024 bytes. The C<clear> method can be called to clear
+the buffer.
+
+For a directory, this will proxy IO::Dir::read.
+
+=item * readdir
+
+Similar to the Perl C<readdir> builtin. In scalar context, return the next
+directory entry (ie file or directory name), or undef on end of directory. In
+list context, return all directory entries.
+
+Note that C<readdir> does not return the special C<.> and C<..> entries.
+
+=item * readline
+
+Same as C<getline>.
+
+=item * readlink
+
+Calls Perl's readlink function on the link represented by the object.
+Instead of returning the file path, it returns a new IO::All object
+using the file path.
+
+=item * recv
+
+Proxy for IO::Socket::recv
+
+=item * rename
+
+    my $new = $io->rename('new-name');
+
+Calls Perl's rename function and returns an IO::All object for the
+renamed file. Returns false if the rename failed.
+
+=item * rewind
+
+Proxy for IO::Dir::rewind
+
+=item * rmdir
+
+Delete the directory represented by the IO::All object.
+
+=item * rmtree
+
+Delete the directory represented by the IO::All object and all the files
+and directories beneath it. Proxy for File::Path::rmtree.
+
+=item * scalar
+
+Deprecated. Same as C<all()>.
+
+=item * seek
+
+Proxy for IO::Handle::seek. If you use seek on an unopened file, it will
+be opened for both read and write.
+
+=item * send
+
+Proxy for IO::Socket::send
+
+=item * shutdown
+
+Proxy for IO::Socket::shutdown
+
+=item * slurp
+
+Read all file content in one operation. Returns the file content
+as a string. In list context returns every line in the file.
+
+=item * stat
+
+Proxy for IO::Handle::stat
+
+=item * sysread
+
+Proxy for IO::Handle::sysread
+
+=item * syswrite
+
+Proxy for IO::Handle::syswrite
+
+=item * tell
+
+Proxy for IO::Handle::tell
+
+=item * throw
+
+This is an internal method that gets called whenever there is an error.
+It could be useful to override it in a subclass, to provide more control
+in error handling.
+
+=item * touch
+
+Update the atime and mtime values for a file or directory. Creates an empty
+file if the file does not exist.
+
+=item * truncate
+
+Proxy for IO::Handle::truncate
+
+=item * type
+
+Returns a string indicated the type of io object. Possible values are:
+
+    file
+    dir
+    link
+    socket
+    string
+    pipe
+
+Returns undef if type is not determinable.
+
+=item * unlink
+
+Unlink (delete) the file represented by the IO::All object.
+
+NOTE: You can unlink a file after it is open, and continue using it
+until it is closed.
+
+=item * unlock
+
+Release a lock from an object that used the C<lock> method.
+
+=item * utime
+
+Proxy for the utime Perl function.
+
+=item * write
+
+Opposite of C<read> for file operations only.
+
+NOTE: When used with the automatic internal buffer, C<write> will
+clear the buffer after writing it.
+
+=back
+
+=head2 Stat Methods
+
+This methods get individual values from a stat call on the file,
+directory or handle represented by th IO::All object.
+
+=over 4
+
+=item * atime
+
+Last access time in seconds since the epoch
+
+=item * blksize
+
+Preferred block size for file system I/O
+
+=item * blocks
+
+Actual number of blocks allocated
+
+=item * ctime
+
+Inode change time in seconds since the epoch
+
+=item * device
+
+Device number of filesystem
+
+=item * device_id
+
+Device identifier for special files only
+
+=item * gid
+
+Numeric group id of file's owner
+
+=item * inode
+
+Inode number
+
+=item * modes
+
+File mode - type and permissions
+
+=item * mtime
+
+Last modify time in seconds since the epoch
+
+=item * nlink
+
+Number of hard links to the file
+
+=item * size
+
+Total size of file in bytes
+
+=item * uid
+
+Numeric user id of file's owner
+
+=back
+
+=head2 File::Spec Methods
+
+These methods are all adaptations from File::Spec. Each method
+actually does call the matching File::Spec method, but the arguments
+and return values differ slightly. Instead of being file and directory
+B<names>, they are IO::All B<objects>. Since IO::All objects stringify
+to their names, you can generally use the methods just like File::Spec.
+
+=over 4
+
+=item * abs2rel
+
+Returns the relative path for the absolute path in the IO::All object.
+Can take an optional argument indicating the base path.
+
+=item * canonpath
+
+Returns the canonical path for the IO::All object.
+
+=item * case_tolerant
+
+Returns 0 or 1 indicating whether the file system is case tolerant.
+Since an active IO::All object is not needed for this function, you can
+code it like:
+
+    IO::All->case_tolerant;
+
+or more simply:
+
+    io->case_tolerant;
+
+=item * catdir
+
+Concatenate the directory components together, and return a new IO::All
+object representing the resulting directory.
+
+=item * catfile
+
+Concatenate the directory and file components together, and return a new
+IO::All object representing the resulting file.
+
+    my $contents = io->catfile(qw(dir subdir file))->slurp;
+
+This is a very portable way to read C<dir/subdir/file>.
+
+=item * catpath
+
+Concatenate the volume, directory and file components together, and
+return a new IO::All object representing the resulting file.
+
+=item * curdir
+
+Returns an IO::All object representing the current directory.
+
+=item * devnull
+
+Returns an IO::All object representing the /dev/null file.
+
+=item * is_absolute
+
+Returns 0 or 1 indicating whether the C<name> field of the IO::All object is
+an absolute path.
+
+=item * join
+
+Same as C<catfile>.
+
+=item * path
+
+Returns a list of IO::All directory objects for each directory in your path.
+
+=item * rel2abs
+
+Returns the absolute path for the relative path in the IO::All object. Can
+take an optional argument indicating the base path.
+
+=item * rootdir
+
+Returns an IO::All object representing the root directory on your
+file system.
+
+=item * splitdir
+
+Returns a list of the directory components of a path in an IO::All object.
+
+=item * splitpath
+
+Returns a volume directory and file component of a path in an IO::All object.
+
+=item * tmpdir
+
+Returns an IO::All object representing a temporary directory on your
+file system.
+
+=item * updir
+
+Returns an IO::All object representing the current parent directory.
+
+=back
+
+=head1 OPERATIONAL NOTES
+
+=over 4
+
+=item *
+
+Each IO::All object gets reblessed into an IO::All::* object as soon as
+IO::All can determine what type of object it should be. Sometimes it gets
+reblessed more than once:
+
+    my $io = io('mydbm.db');
+    $io->dbm('DB_File');
+    $io->{foo} = 'bar';
+
+In the first statement, $io has a reference value of 'IO::All::File', if
+C<mydbm.db> exists. In the second statement, the object is reblessed into
+class 'IO::All::DBM'.
+
+=item *
+
+An IO::All object will automatically be opened as soon as there is
+enough contextual information to know what type of object it is, and
+what mode it should be opened for. This is usually when the first read
+or write operation is invoked but might be sooner.
+
+=item *
+
+The mode for an object to be opened with is determined heuristically
+unless specified explicitly.
+
+=item *
+
+For input, IO::All objects will automatically be closed after EOF (or
+EOD). For output, the object closes when it goes out of scope.
+
+To keep input objects from closing at EOF, do this:
+
+    $io->autoclose(0);
+
+=item * 
+
+You can always call C<open> and C<close> explicitly, if you need that
+level of control. To test if an object is currently open, use the
+C<is_open> method.
+
+=item *
+
+Overloaded operations return the target object, if one exists.
+
+This would set C<$xxx> to the IO::All object:
+
+    my $xxx = $contents > io('file.txt');
+
+While this would set C<$xxx> to the content string:
+
+    my $xxx = $contents < io('file.txt');
+
+=back
+
+=head1 安定性
+
+The goal of the IO::All project is to continually refine the module
+to be as simple and consistent to use as possible. Therefore, in the
+early stages of the project, I will not hesitate to break backwards
+compatibility with other versions of IO::All if I can find an easier
+and clearer way to do a particular thing.
+
+IO::Allプロジェクトのゴールは、可能な限り単純で一貫性があるように、
+モジュールを頻繁に洗練することです。
+そのため、プロジェクトの早い段階では、特別なことをする簡単で簡潔な方法を見つけたなら、
+IO::Allの他のバージョンとの後方互換性を壊すことに躊躇しません。
+
+IO is tricky stuff. There is definitely more work to be done. On the
+other hand, this module relies heavily on very stable existing IO
+modules; so it may work fairly well.
+
+IO は、トリッキーなものです。決定的に多くの仕事があります。
+一方で、このモジュールはかなり、とても安定している既存のIOモジュールに、
+頼っています; そのため、かなりよく働くでしょう。
+
+I am sure you will find many unexpected "features". Please send all
+problems, ideas and suggestions to ingy@cpan.org.
+
+予期しない"特徴"を見つけることを確信しています。
+すべての問題、アイディア、提案を ingy@cpan.org に送ってください。
+
+=head2 既知のバグと欠陥
+
+Not all possible combinations of objects and methods have been tested.
+There are many many combinations. All of the examples have been tested.
+If you find a bug with a particular combination of calls, let me know.
+
+すべてのあり得るオブジェクトとメソッドの組み合わせは、テストされていません。
+本当に多くの組み合わせがあります。例にあるものはすべてテストされています。
+特有の組み合わせの呼び出しにバグを見つけたら知らせてください。
+
+If you call a method that does not make sense for a particular object,
+the result probably won't make sense. Little attempt is made to check
+for improper usage.
+
+特殊なオブジェクトにとって、意味のないメソッドを呼ぶことは、
+結果もたぶん、意味がありません。普通でない使い方のチェックはほとんどされていません。
+
+=head1 SEE ALSO
+
+IO::Handle, IO::File, IO::Dir, IO::Socket, IO::String, File::Spec,
+File::Path, File::ReadBackwards, Tie::File
+
+Also check out the Spiffy module if you are interested in extending this
+module.
+
+このモジュールを拡張したいと思ったら、
+上記の気の利いたモジュールをチェックしてください。
+
+=head1 クレジット
+
+A lot of people have sent in suggestions, that have become a part of
+IO::All. Thank you.
+
+Special thanks to Ian Langworth for continued testing and patching.
+
+Thank you Simon Cozens for tipping me off to the overloading possibilities.
+
+Finally, thanks to Autrijus Tang, for always having one more good idea.
+
+(It seems IO::All of it to a lot of people!)
+
+=head1 著者
+
+Brian Ingerson <ingy@cpan.org>
+
+=head1 著作権
+
+Copyright (c) 2004. Brian Ingerson. All rights reserved.
+
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
+
+See L<http://www.perl.com/perl/misc/Artistic.html>
+
