@@ -1,0 +1,896 @@
+=head1 NAME
+
+Net::Server - Extensible, general Perl server engine
+
+=head1 SYNOPSIS
+
+  #!/usr/bin/perl -w -T
+  package MyPackage;
+
+  use Net::Server;
+  @ISA = qw(Net::Server);
+
+  sub process_request {
+     #...code...
+  }
+
+  MyPackage->run(port => 160);
+  exit;
+
+=head1 OBTAINING
+
+Visit http://seamons.com/ for the latest version.
+
+=head1 FEATURES
+
+ * Single Server Mode
+ * Inetd Server Mode
+ * Preforking Simple Mode (PreForkSimple)
+ * Preforking Managed Mode (PreFork)
+ * Forking Mode
+ * Multiplexing Mode using a single process
+ * Multi port accepts on Single, Preforking, and Forking modes
+ * Simultaneous accept/recv on tcp, udp, and unix sockets
+ * Safe signal handling in Fork/PreFork avoids perl signal trouble
+ * User customizable hooks
+ * Chroot ability after bind
+ * Change of user and group after bind
+ * Basic allow/deny access control
+ * Customized logging (choose Syslog, log_file, or STDERR)
+ * HUP able server (clean restarts via sig HUP)
+ * Dequeue ability in all Fork and PreFork modes.
+ * Taint clean
+ * Written in Perl
+ * Protection against buffer overflow
+ * Clean process flow
+ * Extensibility
+
+=head1 DESCRIPTION
+
+C<Net::Server> is an extensible, generic Perl server engine.
+C<Net::Server> combines the good properties from
+C<Net::Daemon> (0.34), C<NetServer::Generic> (1.03), and
+C<Net::FTPServer> (1.0), and also from various concepts in
+the Apache Webserver.
+
+C<Net::Server> attempts to be a generic server as in
+C<Net::Daemon> and C<NetServer::Generic>.  It includes with
+it the ability to run as an inetd process
+(C<Net::Server::INET>), a single connection server
+(C<Net::Server> or C<Net::Server::Single>), a forking server
+(C<Net::Server::Fork>), a preforking server which maintains
+a constant number of preforked children (C<Net::Server::PreForkSimple>),
+or as a managed preforking server which maintains the number
+of children based on server load (C<Net::Server::PreFork>).
+In all but the inetd type, the server provides the ability to
+connect to one or to multiple server ports.
+
+C<Net::Server> uses ideologies of C<Net::FTPServer> in order
+to provide extensibility.  The additional server types are
+made possible via "personalities" or sub classes of the
+C<Net::Server>.  By moving the multiple types of servers out of
+the main C<Net::Server> class, the C<Net::Server> concept is
+easily extended to other types (in the near future, we would
+like to add a "Thread" personality).
+
+C<Net::Server> borrows several concepts from the Apache
+Webserver.  C<Net::Server> uses "hooks" to allow custom
+servers such as SMTP, HTTP, POP3, etc. to be layered over
+the base C<Net::Server> class.  In addition the
+C<Net::Server::PreFork> class borrows concepts of
+min_start_servers, max_servers, and min_waiting servers.
+C<Net::Server::PreFork> also uses the concept of an flock
+serialized accept when accepting on multiple ports (PreFork
+can choose between flock, IPC::Semaphore, and pipe to control
+serialization).
+
+=head1 PERSONALITIES
+
+C<Net::Server> is built around a common class (Net::Server)
+and is extended using sub classes, or C<personalities>.
+Each personality inherits, overrides, or enhances the base
+methods of the base class.
+
+Included with the Net::Server package are several basic
+personalities, each of which has their own use.
+
+=over 4
+
+=item Fork
+
+Found in the module Net/Server/Fork.pm (see
+L<Net::Server::Fork>).  This server binds to one or more
+ports and then waits for a connection.  When a client
+request is received, the parent forks a child, which then
+handles the client and exits.  This is good for moderately
+hit services.
+
+=item INET
+
+Found in the module Net/Server/INET.pm (see
+L<Net::Server::INET>).  This server is designed to be used
+with inetd.  The C<pre_bind>, C<bind>, C<accept>, and
+C<post_accept> are all overridden as these services are
+taken care of by the INET daemon.
+
+=item MultiType
+
+Found in the module Net/Server/MultiType.pm (see
+L<Net::Server::MultiType>).  This server has no server
+functionality of its own.  It is designed for servers which
+need a simple way to easily switch between different
+personalities.  Multiple C<server_type> parameters may be
+given and Net::Server::MultiType will cycle through until it
+finds a class that it can use.
+
+=item Multiplex
+
+Found in the module Net/Server/Multiplex.pm (see
+L<Net::Server::Multiplex>).  This server binds to one or more
+ports.  It uses IO::Multiplex to multiplex between waiting
+for new connections and waiting for input on currently
+established connections.  This personality is designed to
+run as one process without forking.  The C<process_request>
+method is never used but the C<mux_input> callback is used
+instead (see also L<IO::Multiplex>).  See
+examples/samplechat.pl for an example using most of the
+features of Net::Server::Multiplex.
+
+=item PreForkSimple
+
+Found in the module Net/Server/PreFork.pm (see
+L<Net::Server::PreFork>).  This server binds to one or more
+ports and then forks C<max_servers> child process.  The
+server will make sure that at any given time there are always
+C<max_servers> available to receive a client request.  Each
+of these children will process up to C<max_requests> client
+connections.  This type is good for a heavily hit site that
+can dedicate max_server processes no matter what the load.
+It should scale well for most applications.  Multi port accept
+is accomplished using either flock, IPC::Semaphore, or pipe to serialize the
+children.  Serialization may also be switched on for single
+port in order to get around an OS that does not allow multiple
+children to accept at the same time.  For a further
+discussion of serialization see L<Net::Server::PreFork>.
+
+=item PreFork
+
+Found in the module Net/Server/PreFork.pm (see
+L<Net::Server::PreFork>).  This server binds to one or more
+ports and then forks C<min_servers> child process.  The
+server will make sure that at any given time there are
+at least C<min_spare_servers> but not more than C<max_spare_servers>
+available to receive a client request, up
+to C<max_servers>.  Each of these children will process up
+to C<max_requests> client connections.  This type is good
+for a heavily hit site, and should scale well for most
+applications.  Multi port accept is accomplished using
+either flock, IPC::Semaphore, or pipe to serialize the
+children.  Serialization may also be switched on for single
+port in order to get around an OS that does not allow multiple
+children to accept at the same time.  For a further
+discussion of serialization see L<Net::Server::PreFork>.
+
+=item Single
+
+All methods fall back to Net::Server.  This personality is
+provided only as parallelism for Net::Server::MultiType.
+
+=back
+
+C<Net::Server> was partially written to make it easy to add
+new personalities.  Using separate modules built upon an
+open architecture allows for easy addition of new features,
+a separate development process, and reduced code bloat in
+the core module.
+
+=head1 SOCKET ACCESS
+
+Once started, the Net::Server will take care of binding to
+port and waiting for connections.  Once a connection is
+received, the Net::Server will accept on the socket and
+will store the result (the client connection) in
+$self-E<gt>{server}-E<gt>{client}.  This property is a
+Socket blessed into the the IO::Socket classes.  UDP
+servers are slightly different in that they will perform
+a B<recv> instead of an B<accept>.
+
+To make programming easier, during the post_accept phase,
+STDIN and STDOUT are opened to the client connection.  This
+allows for programs to be written using E<lt>STDINE<gt> and
+print "out\n" to print to the client connection.  UDP will
+require using a -E<gt>send call.
+
+=head1 SAMPLE CODE
+
+The following is a very simple server.  The main
+functionality occurs in the process_request method call as
+shown below.  Notice the use of timeouts to prevent Denial
+of Service while reading.  (Other examples of using
+C<Net::Server> can, or will, be included with this distribution).
+
+  #!/usr/bin/perl -w -T
+  #--------------- file test.pl ---------------
+
+  package MyPackage;
+
+  use strict;
+  use vars qw(@ISA);
+  use Net::Server::PreFork; # any personality will do
+
+  @ISA = qw(Net::Server::PreFork);
+
+  MyPackage->run();
+  exit;
+
+  ### over-ridden subs below
+
+  sub process_request {
+    my $self = shift;
+    eval {
+
+      local $SIG{ALRM} = sub { die "Timed Out!\n" };
+      my $timeout = 30; # give the user 30 seconds to type a line
+
+      my $previous_alarm = alarm($timeout);
+      while( <STDIN> ){
+        s/\r?\n$//;
+        print "You said \"$_\"\r\n";
+        alarm($timeout);
+      }
+      alarm($previous_alarm);
+
+    };
+
+    if( $@=~/timed out/i ){
+      print STDOUT "Timed Out.\r\n";
+      return;
+    }
+
+  }
+
+  1;
+
+  #--------------- file test.pl ---------------
+
+Playing this file from the command line will invoke a
+Net::Server using the PreFork personality.  When building a
+server layer over the Net::Server, it is important to use
+features such as timeouts to prevent Denial of Service
+attacks.
+
+=head1 ARGUMENTS
+
+There are four possible ways to pass arguments to
+Net::Server.  They are I<passing on command line>, I<using a
+conf file>, I<passing parameters to run>, or I<using a
+pre-built object to call the run method>.
+
+Arguments consist of key value pairs.  On the commandline
+these pairs follow the POSIX fashion of C<--key value> or
+C<--key=value>, and also C<key=value>.  In the conf file the
+parameter passing can best be shown by the following regular
+expression: ($key,$val)=~/^(\w+)\s+(\S+?)\s+$/.  Passing
+arguments to the run method is done as follows:
+C<Net::Server->run(key1 => 'val1')>.  Passing arguments via
+a prebuilt object can best be shown in the following code:
+
+  #!/usr/bin/perl -w -T
+  #--------------- file test2.pl ---------------
+  package MyPackage;
+  use strict;
+  use vars (@ISA);
+  use Net::Server;
+  @ISA = qw(Net::Server);
+
+  my $server = bless {
+    key1 => 'val1',
+    }, 'MyPackage';
+
+  $server->run();
+  #--------------- file test.pl ---------------
+
+All five methods for passing arguments may be used at the
+same time.  Once an argument has been set, it is not over
+written if another method passes the same argument.  C<Net::Server>
+will look for arguments in the following order:
+
+  1) Arguments contained in the prebuilt object.
+  2) Arguments passed on command line.
+  3) Arguments passed to the run method.
+  4) Arguments passed via a conf file.
+  5) Arguments set in the configure_hook.
+
+Key/value pairs used by the server are removed by the
+configuration process so that server layers on top of
+C<Net::Server> can pass and read their own parameters.
+Currently, Getopt::Long is not used. The following arguments
+are available in the default C<Net::Server> or
+C<Net::Server::Single> modules.  (Other personalities may
+use additional parameters and may optionally not use
+parameters from the base class.)
+
+  Key               Value                    Default
+  conf_file         "filename"               undef
+
+  log_level         0-4                      2
+  log_file          (filename|Sys::Syslog)   undef
+
+  ## syslog parameters
+  syslog_logsock    (unix|inet)              unix
+  syslog_ident      "identity"               "net_server"
+  syslog_logopt     (cons|ndelay|nowait|pid) pid
+  syslog_facility   \w+                      daemon
+
+  port              \d+                      20203
+  host              "host"                   "*"
+  proto             (tcp|udp|unix)           "tcp"
+  listen            \d+                      SOMAXCONN
+
+  reverse_lookups   1                        undef
+  allow             /regex/                  none
+  deny              /regex/                  none
+
+  ## daemonization parameters
+  pid_file          "filename"               undef
+  chroot            "directory"              undef
+  user              (uid|username)           "nobody"
+  group             (gid|group)              "nobody"
+  background        1                        undef
+  setsid            1                        undef
+
+  no_close_by_child (1|undef)                undef
+
+  ## See Net::Server::Proto::(TCP|UDP|UNIX|etc)
+  ## for more sample parameters.
+
+=over 4
+
+=item conf_file
+
+Filename from which to read additional key value pair arguments
+for starting the server.  Default is undef.
+
+=item log_level
+
+Ranges from 0 to 4 in level.  Specifies what level of error
+will be logged.  "O" means logging is off.  "4" means very
+verbose.  These levels should be able to correlate to syslog
+levels.  Default is 2.  These levels correlate to syslog levels
+as defined by the following key/value pairs: 0=>'err',
+1=>'warning', 2=>'notice', 3=>'info', 4=>'debug'.
+
+=item log_file
+
+Name of log file to be written to.  If no name is given and
+hook is not overridden, log goes to STDERR.  Default is undef.
+If the magic name "Sys::Syslog" is used, all logging will
+take place via the Sys::Syslog module.  If syslog is used
+the parameters C<syslog_logsock>, C<syslog_ident>, and
+C<syslog_logopt>,and C<syslog_facility> may also be defined.
+If a C<log_file> is given or if C<setsid> is set, STDIN and
+STDOUT will automatically be opened to /dev/null and STDERR
+will be opened to STDOUT.  This will prevent any output
+from ending up at the terminal.
+
+=item pid_file
+
+Filename to store pid of parent process.  Generally applies
+only to forking servers.  Default is none (undef).
+
+=item syslog_logsock
+
+Only available if C<log_file> is equal to "Sys::Syslog".  May
+be either "unix" of "inet".  Default is "unix".
+See L<Sys::Syslog>.
+
+=item syslog_ident
+
+Only available if C<log_file> is equal to "Sys::Syslog".  Id
+to prepend on syslog entries.  Default is "net_server".
+See L<Sys::Syslog>.
+
+=item syslog_logopt
+
+Only available if C<log_file> is equal to "Sys::Syslog".  May
+be either zero or more of "pid","cons","ndelay","nowait".
+Default is "pid".  See L<Sys::Syslog>.
+
+=item syslog_facility
+
+Only available if C<log_file> is equal to "Sys::Syslog".
+See L<Sys::Syslog> and L<syslog>.  Default is "daemon".
+
+=item port
+
+See L<Net::Server::Proto>.
+Local port/socket on which to bind.  If low port, process must
+start as root.  If multiple ports are given, all will be
+bound at server startup.  May be of the form
+C<host:port/proto>, C<host:port>, C<port/proto>, or C<port>,
+where I<host> represents a hostname residing on the local
+box, where I<port> represents either the number of the port
+(eg. "80") or the service designation (eg.  "http"), and
+where I<proto> represents the protocol to be used.  See
+L<Net::Server::Proto>.  If you are working with unix sockets,
+you may also specify C<socket_file|unix> or
+C<socket_file|type|unix> where type is SOCK_DGRAM or
+SOCK_STREAM.  If the protocol is not specified, I<proto> will
+default to the C<proto> specified in the arguments.  If C<proto> is not
+specified there it will default to "tcp".  If I<host> is not
+specified, I<host> will default to C<host> specified in the
+arguments.  If C<host> is not specified there it will
+default to "*".  Default port is 20203.
+
+=item host
+
+Local host or addr upon which to bind port.  If a value of '*' is
+given, the server will bind that port on all available addresses
+on the box.  See L<Net::Server::Proto>. See L<IO::Socket>.
+
+=item proto
+
+See L<Net::Server::Proto>.
+Protocol to use when binding ports.  See L<IO::Socket>.  As
+of release 0.70, Net::Server supports tcp, udp, and unix.  Other
+types will need to be added later (or custom modules extending the
+Net::Server::Proto class may be used).
+
+=item listen
+
+  See L<IO::Socket>.  Not used with udp protocol (or UNIX SOCK_DGRAM).
+
+=item reverse_lookups
+
+Specify whether to lookup the hostname of the connected IP.
+Information is cached in server object under C<peerhost>
+property.  Default is to not use reverse_lookups (undef).
+
+=item allow/deny
+
+May be specified multiple times.  Contains regex to compare
+to incoming peeraddr or peerhost (if reverse_lookups has
+been enabled).  If allow or deny options are given, the
+incoming client must match an allow and not match a deny or
+the client connection will be closed.  Defaults to empty
+array refs.
+
+=item chroot
+
+Directory to chroot to after bind process has taken place
+and the server is still running as root.  Defaults to
+undef.
+
+=item user
+
+Userid or username to become after the bind process has
+occured.  Defaults to "nobody."  If you would like the
+server to run as root, you will have to specify C<user>
+equal to "root".
+
+=item group
+
+Groupid or groupname to become after the bind process has
+occured.  Defaults to "nobody."  If you would like the
+server to run as root, you will have to specify C<group>
+equal to "root".
+
+=item background
+
+Specifies whether or not the server should fork after the
+bind method to release itself from the command line.
+Defaults to undef.  Process will also background if
+C<setsid> is set.
+
+=item setsid
+
+Specifies whether or not the server should fork after the
+bind method to release itself from the command line and then
+run the C<POSIX::setsid()> command to truly daemonize.
+Defaults to undef.  If a C<log_file> is given or if
+C<setsid> is set, STDIN and STDOUT will automatically be
+opened to /dev/null and STDERR will be opened to STDOUT.
+This will prevent any output from ending up at the terminal.
+
+=item no_close_by_child
+
+Specifies whether or not a forked child process has permission
+or not to shutdown the entire server process.  If set to 1, the
+child may NOT signal the parent to shutdown all children.  Default
+is undef (not set).
+
+=back
+
+=head1 PROPERTIES
+
+All of the C<ARGUMENTS> listed above become properties of
+the server object under the same name.  These properties, as
+well as other internal properties, are available during
+hooks and other method calls.
+
+The structure of a Net::Server object is shown below:
+
+  $self = bless( {
+                   'server' => {
+                                 'key1' => 'val1',
+                                 # more key/vals
+                               }
+                 }, 'Net::Server' );
+
+This structure was chosen so that all server related
+properties are grouped under a single key of the object
+hashref.  This is so that other objects could layer on top
+of the Net::Server object class and still have a fairly
+clean namespace in the hashref.
+
+You may get and set properties in two ways.  The suggested
+way is to access properties directly via
+
+ my $val = $self->{server}->{key1};
+
+Accessing the properties directly will speed the
+server process.  A second way has been provided for object
+oriented types who believe in methods.  The second way
+consists of the following methods:
+
+  my $val = $self->get_property( 'key1' );
+  my $self->set_property( key1 => 'val1' );
+
+Properties are allowed to be changed at any time with
+caution (please do not undef the sock property or you will
+close the client connection).
+
+=head1 CONFIGURATION FILE
+
+C<Net::Server> allows for the use of a configuration file to
+read in server parameters.  The format of this conf file is
+simple key value pairs.  Comments and white space are
+ignored.
+
+  #-------------- file test.conf --------------
+
+  ### user and group to become
+  user        somebody
+  group       everybody
+
+  ### logging ?
+  log_file    /var/log/server.log
+  log_level   3
+  pid_file    /tmp/server.pid
+
+  ### optional syslog directive
+  ### used in place of log_file above
+  #log_file       Sys::Syslog
+  #syslog_logsock unix
+  #syslog_ident   myserver
+  #syslog_logopt  pid|cons
+
+  ### access control
+  allow       .+\.(net|com)
+  allow       domain\.com
+  deny        a.+
+
+  ### background the process?
+  background  1
+
+  ### ports to bind (this should bind
+  ### 127.0.0.1:20205 and localhost:20204)
+  ### See Net::Server::Proto
+  host        127.0.0.1
+  port        localhost:20204
+  port        20205
+
+  ### reverse lookups ?
+  # reverse_lookups on
+
+  #-------------- file test.conf --------------
+
+=head1 PROCESS FLOW
+
+The process flow is written in an open, easy to
+override, easy to hook, fashion.  The basic flow is
+shown below.
+
+  $self->configure_hook;
+
+  $self->configure(@_);
+
+  $self->post_configure;
+
+  $self->post_configure_hook;
+
+  $self->pre_bind;
+
+  $self->bind;
+
+  $self->post_bind_hook;
+
+  $self->post_bind;
+
+  $self->pre_loop_hook;
+
+  $self->loop;
+
+  ### routines inside a standard $self->loop
+  # $self->accept;
+  # $self->run_client_connection;
+  # $self->done;
+
+  $self->pre_server_close_hook;
+
+  $self->server_close;
+
+The server then exits.
+
+During the client processing phase
+(C<$self-E<gt>run_client_connection>), the following
+represents the program flow:
+
+  $self->post_accept;
+
+  $self->get_client_info;
+
+  $self->post_accept_hook;
+
+  if( $self->allow_deny
+
+      && $self->allow_deny_hook ){
+
+    $self->process_request;
+
+  }else{
+
+    $self->request_denied_hook;
+
+  }
+
+  $self->post_process_request_hook;
+
+  $self->post_process_request;
+
+The process then loops and waits for the next
+connection.  For a more in depth discussion, please
+read the code.
+
+During the server shutdown phase
+(C<$self-E<gt>server_close>), the following
+represents the program flow:
+
+  $self->close_children;  # if any
+
+  $self->post_child_cleanup_hook;
+
+  if( Restarting server ){
+     $self->restart_close_hook();
+     $self->hup_server;
+  }
+
+  exit;
+
+=head1 HOOKS
+
+C<Net::Server> provides a number of "hooks" allowing for
+servers layered on top of C<Net::Server> to respond at
+different levels of execution.
+
+=over 4
+
+=item C<$self-E<gt>configure_hook()>
+
+This hook takes place immediately after the C<-E<gt>run()>
+method is called.  This hook allows for setting up the
+object before any built in configuration takes place.
+This allows for custom configurability.
+
+=item C<$self-E<gt>post_configure_hook()>
+
+This hook occurs just after the reading of configuration
+parameters and initiation of logging and pid_file creation.
+It also occurs before the C<-E<gt>pre_bind()> and
+C<-E<gt>bind()> methods are called.  This hook allows for
+verifying configuration parameters.
+
+=item C<$self-E<gt>post_bind_hook()>
+
+This hook occurs just after the bind process and just before
+any chrooting, change of user, or change of group occurs.
+At this point the process will still be running as the user
+who started the server.
+
+=item C<$self-E<gt>pre_loop_hook()>
+
+This hook occurs after chroot, change of user, and change of
+group has occured.  It allows for preparation before looping
+begins.
+
+=item C<$self-E<gt>post_accept_hook()>
+
+This hook occurs after a client has connected to the server.
+At this point STDIN and STDOUT are mapped to the client
+socket.  This hook occurs before the processing of the
+request.
+
+=item C<$self-E<gt>allow_deny_hook()>
+
+This hook allows for the checking of ip and host information
+beyond the C<$self-E<gt>allow_deny()> routine.  If this hook
+returns 1, the client request will be processed,
+otherwise, the request will be denied processing.
+
+=item C<$self-E<gt>request_denied_hook()>
+
+This hook occurs if either the C<$self-E<gt>allow_deny()> or
+C<$self-E<gt>allow_deny_hook()> have taken place.
+
+=item C<$self-E<gt>post_process_request_hook()>
+
+This hook occurs after the processing of the request, but
+before the client connection has been closed.
+
+=item C<$self-E<gt>pre_server_close_hook()>
+
+This hook occurs before the server begins shutting down.
+
+=item C<$self-E<gt>write_to_log_hook>
+
+This hook handles writing to log files.  The default hook
+is to write to STDERR, or to the filename contained in
+the parameter C<log_file>.  The arguments passed are a
+log level of 0 to 4 (4 being very verbose), and a log line.
+If log_file is equal to "Sys::Syslog", then logging will
+go to Sys::Syslog and will bypass the write_to_log_hook.
+
+=item C<$self-E<gt>fatal_hook>
+
+This hook occurs when the server has encountered an
+unrecoverable error.  Arguments passed are the error
+message, the package, file, and line number.  The hook
+may close the server, but it is suggested that it simply
+return and use the built in shut down features.
+
+=item C<$self-E<gt>post_child_cleanup_hook>
+
+This hook occurs in the parent server process after all
+children have been shut down and just before the server
+either restarts or exits.  It is intended for additional
+cleanup of information.  At this point pid_files and
+lockfiles still exist.
+
+=item C<$self-E<gt>restart_open_hook>
+
+This hook occurs if a server has been HUPed (restarted
+via the HUP signal.  It occurs just before reopening to
+the filenos of the sockets that were already opened.
+
+=item C<$self-E<gt>restart_close_hook>
+
+This hook occurs if a server has been HUPed (restarted
+via the HUP signal.  It occurs just before restarting the
+server via exec.
+
+=back
+
+=head1 RESTARTING
+
+Each of the server personalities (except for INET), support
+restarting via a HUP signal (see "kill -l").  When a HUP
+is received, the server will close children (if any), make
+sure that sockets are left open, and re-exec using
+the same commandline parameters that initially started the
+server.  (Note: for this reason it is important that @ARGV
+is not modified until C<-E<gt>run> is called.
+
+=head1 TO DO
+
+There are several tasks to perform before the alpha label
+can be removed from this software:
+
+=over 4
+
+=item Use It
+
+The best way to further the status of this project is to use
+it.  There are immediate plans to use this as a base class
+in implementing some mail servers and banner servers on a
+high hit site.
+
+=item Other Personalities
+
+Explore any other personalities
+
+=item Net::Server::HTTP, etc
+
+Create various types of servers.  Possibly, port exising
+servers to user Net::Server as a base layer.
+
+=back
+
+=head1 FILES
+
+  The following files are installed as part of this
+  distribution.
+
+  Net/Server.pm
+  Net/Server/Fork.pm
+  Net/Server/INET.pm
+  Net/Server/MultiType.pm
+  Net/Server/PreForkSimple.pm
+  Net/Server/PreFork.pm
+  Net/Server/Single.pm
+  Net/Server/Daemonize.pm
+  Net/Server/SIG.pm
+  Net/Server/Proto.pm
+  Net/Server/Proto/*.pm
+
+=head1 INSTALL
+
+Download and extract tarball before running
+these commands in its base directory:
+
+  perl Makefile.PL
+  make
+  make test
+  make install
+
+For RPM installation, download tarball before
+running these commands in your _topdir:
+
+  rpm -ta SOURCES/Net-Server-*.tar.gz
+  rpm -ih RPMS/noarch/perl-Net-Server-*.rpm
+
+=head1 AUTHOR
+
+Paul T. Seamons <paul at seamons.com>
+
+=head1 THANKS
+
+Thanks to Rob Brown <rbrown at about-inc.com> for help with
+miscellaneous concepts such as tracking down the
+serialized select via flock ala Apache and the reference
+to IO::Select making multiport servers possible.  And for
+researching into allowing sockets to remain open upon
+exec (making HUP possible).
+
+Thanks to Jonathan J. Miner <miner@doit.wisc.edu> for
+patching a blatant problem in the reverse lookups.
+
+Thanks to Bennett Todd <bet at rahul.net> for
+pointing out a problem in Solaris 2.5.1 which does not
+allow multiple children to accept on the same port at
+the same time.  Also for showing some sample code
+from Viktor Duchovni which now represents the semaphore
+option of the serialize argument in the PreFork server.
+
+Thanks to I<traveler> and I<merlyn> from http://perlmonks.org
+for pointing me in the right direction for determining
+the protocol used on a socket connection.
+
+Thanks to Jeremy Howard <j+daemonize at howard.fm> for
+numerous suggestions and for work on Net::Server::Daemonize.
+
+Thanks to Vadim <vadim at hardison.net> for patches to
+implement parent/child communication on PreFork.pm.
+
+=head1 SEE ALSO
+
+Please see also
+L<Net::Server::Fork>,
+L<Net::Server::INET>,
+L<Net::Server::PreForkSimple>,
+L<Net::Server::PreFork>,
+L<Net::Server::MultiType>,
+L<Net::Server::Single>
+
+=head1 COPYRIGHT
+
+  Copyright (C) 2001, Paul T Seamons
+                      paul at seamons.com
+                      http://seamons.com/
+
+  This package may be distributed under the terms of either the
+  GNU General Public License
+    or the
+  Perl Artistic License
+
+  All rights reserved.
+
