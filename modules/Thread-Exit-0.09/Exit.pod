@@ -1,35 +1,35 @@
-=head1 NAME
+=head1 名前
 
-Thread::Exit - provide thread-local exit(), BEGIN {}, END {} and exited()
+Thread::Exit - スレッドローカルなexit()、BEGIN {}、END {}およびexited()の提供
 
-=head1 SYNOPSIS
+=head1 概要
 
-    use Thread::Exit ();   # just make exit() thread local
+    use Thread::Exit ();   # スレッドローカルなexit()の生成だけ
 
     use Thread::Exit
-     begin => 'begin_sub', # sub to exec at beginning of thread (default: none)
-     end => 'end_sub',     # sub to exec at end of thread (default: none)
-     inherit => 1,         # make all new threads inherit (default: 1)
+     begin => 'begin_sub', # スレッド開始時に実行するルーチン（デフォルト：なし）
+     end => 'end_sub',     # スレッド終了時に実行するルーチン（デフォルト：なし）
+     inherit => 1,         # 全ての新スレッドが引き継ぐ（デフォルト：1）
     ;
 
-    $thread = threads->new( sub { exit( "We've exited" ) } ); # or "create"
-    print $thread->join;            # prints "We've exited"
+    $thread = threads->new( sub { exit( "We've exited" ) } ); # または "create"
+    print $thread->join;            # "We've exited"を出力
 
-    Thread::Exit->ismain;           # mark this thread as main thread
+    Thread::Exit->ismain;           # このスレッドをメインスレッドとみなす
 
-    Thread::Exit->begin( \$begin_sub ); # set/adapt BEGIN sub later
-    Thread::Exit->begin( undef );       # disable BEGIN sub
+    Thread::Exit->begin( \$begin_sub ); # 後でBEGINサブルーチンをセット/適応
+    Thread::Exit->begin( undef );       # BEGINサブルーチンを無効
     $begin = Thread::Exit->begin;
 
-    Thread::Exit->end( \$end_sub ); # set/adapt END sub later
-    Thread::Exit->end( undef );     # disable END sub
+    Thread::Exit->end( \$end_sub ); # 後でENDサブルーチンをセット/適応
+    Thread::Exit->end( undef );     # ENDサブルーチンを無効
     $end = Thread::Exit->end;
 
-    Thread::Exit->inherit( 1 );     # make all new threads inherit settings
-    Thread::Exit->inherit( 0 );     # new threads won't inherit settings
+    Thread::Exit->inherit( 1 );     # 全ての新スレッドが設定を引き継ぐようにする
+    Thread::Exit->inherit( 0 );     # 新スレッドは設定を引き継がない
     $inherit = Thread::Exit->inherit;
 
-=head1 DESCRIPTION
+=head1 説明
 
                   *** A note of CAUTION ***
 
@@ -40,13 +40,29 @@ Thread::Exit - provide thread-local exit(), BEGIN {}, END {} and exited()
 
                   *************************
 
+                  *** 注   意   書   き ***
+
+ このモジュールは、Perlのバージョン5.8.0以降で、かつ、-Dusethreads
+ オプションでスレッドが有効になっている場合にのみ機能する。5.8.0以前、
+ あるいはスレッドが有効になっていない場合は、使うことができない。
+
+                  *************************
+
 This module adds three features to threads that are sorely missed by some.
+
+このモジュールは、人によっては無いと大層困る三つの機能をスレッドに追加する。
 
 The first feature is that you can use exit() within a thread to return() from
 that thread only.  Without this module, exit() stops B<all> threads and exits
 to the calling process (which usually is the operating system).  With this
 module, exit() functions just as return() (including passing back values to
 the parent thread).
+
+第一の特徴は、あるスレッドからのみreturn()するために、そのスレッド内部で
+exit()が使えるようになる。このモジュールを使わないと、exit()はB<全ての>
+スレッドを停止して、呼び出したプロセス（普通これはオペレーティングシステム）
+へ抜ける。このモジュールを使うことによって、exit()はまさにreturn()として
+機能する（値は親スレッドに送られる）。
 
 The second feature is that you can specify a subroutine that will be executed
 B<after> the thread is started, but B<before> the subroutine of which the
@@ -55,26 +71,39 @@ CLONE subroutine, which differs by being B<really> executed inside the context
 of the new thread (as shown by the value of C<threads->tid>). Multiple "begin"
 subroutines can be chained together if necessary.
 
+第二の特徴として、スレッドが開始されたB<後に>、ただしスレッドを構成する
+サブルーチンがスタートするB<前に>、実行されるサブルーチンを指定できる。これは
+CLONEサブルーチンの違うやり方での実装であり、（C<threads->tid>の値で示される）
+新しいスレッドのコンテキスト内部でB<本当に>実行されるという点が異なる。必要と
+あらば複数の"begin"サブルーチンを繋げることができる。
+
 The third feature is that you can specify a subroutine that will be executed
 B<after> the thread is done, but B<before> the thread returns to the parent
 thread.  This is similar to the END subroutine, but on a per-thread basis.
 Multiple "end" subroutines can be chained together if necessary.
 
-=head1 CLASS METHODS
+三番目の特徴は、スレッドが終了したB<後に>、ただし、そのスレッドが親スレッドに
+戻るB<前に>、実行されるサブルーチンを指定できるということだ。これは
+ENDサブルーチンに似ているが、各スレッド毎に基づく。必要とあらば
+複数の"end"サブルーチンを繋げることができる。
+
+=head1 クラスメソッド
 
 These are the class methods.
 
+以下はクラスメソッドである。
+
 =head2 begin
 
- Thread::Exit->begin( 'begin' );             # execute "begin"
+ Thread::Exit->begin( 'begin' );             # "begin"を実行する
 
- Thread::Exit->begin( undef );               # don't execute anything
+ Thread::Exit->begin( undef );               # なにも実行しない
 
- Thread::Exit->begin( 'module::before',-1 ); # execute "module::before" first
+ Thread::Exit->begin( 'module::before',-1 ); # 最初に"module::before"を実行する
 
- Thread::Exit->begin( \&after,1 );           # execute "after" last
+ Thread::Exit->begin( \&after,1 );           # 最後に"after"を実行する
 
- $begin = Thread::Exit->begin;               # return current code reference
+ $begin = Thread::Exit->begin;               # 現在のコードリファンレンスを返す
 
 The "begin" class method sets and returns the subroutine that will be executed
 B<after> the current thread is started but B<before> it starts the actual
@@ -83,14 +112,29 @@ subroutine, but is really executed in the context of the thread (whereas
 CLONE currently fakes this for performance reasons, causing XS routines and
 threads->tid to be executed in the wrong context).
 
+"begin"クラスメソッドは、現在のスレッドが開始されたB<後>に、しかし、その
+スレッドを構成する実際のサブルーチンが開始されるB<前>に実行されるサブルーチンを
+セットして返す。これはCLONEサブルーチンに似ているが、そのスレッドのコンテキスト
+で実際に実行される（対してCLONEは今のところ、パフォーマンスの理由からこれを
+模倣している。その結果、XSルーチンとthreads->tidが間違ったコンテキストで
+実行される）。
+
 The first input parameter is the name or a reference to the subroutine that
 should be executed before this thread really starts.  It can be specified as a
 name or as a code reference.  No changes will be made if no parameters are
 specified.  If the first parameter is undef()ined or empty, then no subroutine
 will be executed when this thread has started.
 
+最初の入力パラメータは、このスレッドが本当に開始する前に実行される
+サブルーチンの名前かリファレンスである。名前かコードリファレンスを指定できる。
+パラメータを指定しなければ何も起こらない。最初のパラメータがundefされるか
+空の場合、このスレッドが開始したときにサブルーチンは実行されない。
+
 The second input parameter only has meaning if there has been a "begin"
 subroutine specified before.  The following values are recognized:
+
+二番目の入力パラメータは、その前に"begin"サブルーチンが設定されているときだけ
+意味を持つ。次の値を認識する：
 
 =over 2
 
@@ -100,40 +144,59 @@ If the value B<0> is specified, then the new subroutine specification will
 B<replace> any current "begin" subroutine specification done earlier.  This is
 the default.
 
+B<0>が設定されると、その新しいサブルーチン指定が、先に設定の済んだ現在の
+"begin"サブルーチンに取って代わる。これはデフォルトである。
+
 =item after (1)
 
 If the value B<1> is specified, then the subroutine specificed will be
 executed B<after> any other "begin" subroutine that was specified earlier.
+
+B<1>が設定されると、その新しいサブルーチン指定が、先に設定の済んだ他の
+"begin"サブルーチンのB<後に>実行される。
 
 =item before (-1)
 
 If the value B<-1> is specified, then the subroutine specificed will be
 executed B<before> any other "begin" subroutine that was specified earlier.
 
+B<-1>が設定されると、その新しいサブルーチン指定が、先に設定の済んだ他の
+"begin"サブルーチンのB<前に>実行される。
+
 =back
 
 By default, new threads inherit the settings of the "begin" subroutine.
 Check the L<inherit> method to change this.
 
+デフォルトでは、新しいスレッドは"begin"サブルーチンの設定を引き継ぐ。
+L<inherit>メソッドを使えばこれを変更できる。
+
 =head2 end
 
- Thread::Exit->end( 'end' );               # execute "end"
+ Thread::Exit->end( 'end' );               # "end"を実行する
 
- Thread::Exit->end( undef );               # don't execute anything
+ Thread::Exit->end( undef );               # なにも実行しない
 
- Thread::Exit->end( 'module::before',-1 ); # execute "module::before" first
+ Thread::Exit->end( 'module::before',-1 ); # 最初に"module::before"を実行する
 
- Thread::Exit->end( \&after,1 );           # execute "after" last
+ Thread::Exit->end( \&after,1 );           # 最後に"after"を実行する
 
- $end = Thread::Exit->end;                 # return current code reference
+ $end = Thread::Exit->end;                 # 現在のコードリファレンスを返す
 
 The "end" class method sets and returns the subroutine that will be executed
 B<after> the current thread is finished but B<before> it will return via a
 join().
 
+"end"クラスメソッドは、現在のスレッドが終了したB<後に>、しかし、join()を
+通じてスレッドが戻るB<前に>、実行されるサブルーチンを設定して返す。
+
 The "end" subroutine is passed a single flag which is true if the thread
 is exiting by calling exit().  Please note that the system variable C<$@>
 is also set if the thread exited because of a compilation or execution error.
+
+そのスレッドがexit()を呼び出して終了しているなら、"end"サブルーチンは
+真の値をもつ一つのフラグを渡す。注意して欲しいのは、コンパイルエラーや
+実行時エラーでスレッドが終了すると、システム変数C<$@>もセットされることだ。
 
 The first input parameter is the name or a reference to the subroutine that
 should be executed after this thread is finished.  It can be specified as a
@@ -141,8 +204,16 @@ name or as a code reference.  No changes will be made if no parameters are
 specified.  If the first parameter is undef()ined or empty, then no subroutine
 will be executed when this thread ends.
 
+最初の入力パラメータは、このスレッドが終了した後に実行されるサブルーチンの
+名前かリファレンスである。名前かコードリファレンスを指定できる。
+パラメータを指定しなければ何も起こらない。最初のパラメータがundefされるか
+空の場合、このスレッドが終了したときにサブルーチンは実行されない。
+
 The second input parameter only has meaning if there has been an "end"
 subroutine specified before.  The following values are recognized:
+
+二番目の入力パラメータは、その前に"end"サブルーチンが設定されているときだけ
+意味を持つ。次の値を認識する：
 
 =over 2
 
@@ -152,32 +223,48 @@ If the value B<0> is specified, then the new subroutine specification will
 B<replace> any current "end" subroutine specification done earlier.  This is
 the default.
 
+B<0>が設定されると、その新しいサブルーチン指定が、先に設定の済んだ現在の
+"end"サブルーチンに取って代わる。これはデフォルトである。
+
 =item after (1)
 
 If the value B<1> is specified, then the subroutine specificed will be
 executed B<after> any other "end" subroutine that was specified earlier.
+
+B<1>が設定されると、その新しいサブルーチン指定が、先に設定の済んだ他の
+"end"サブルーチンのB<後に>実行される。
 
 =item before (-1)
 
 If the value B<-1> is specified, then the subroutine specificed will be
 executed B<before> any other "end" subroutine that was specified earlier.
 
+B<-1>が設定されると、その新しいサブルーチン指定が、先に設定の済んだ他の
+"end"サブルーチンのB<前に>実行される。
+
 =back
 
 By default, new threads inherit the settings of the "end" subroutine.
 Check the L<inherit> method to change this.
 
+デフォルトでは、新しいスレッドは"end"サブルーチンの設定を引き継ぐ。
+L<inherit>メソッドを使えばこれを変更できる。
+
 =head2 inherit
 
- Thread::Exit->inherit( 1 );         # default, new threads inherit
+ Thread::Exit->inherit( 1 );         # デフォルト、新スレッドは継承する
 
- Thread::Exit->inherit( 0 );         # new threads don't inherit
+ Thread::Exit->inherit( 0 );         # 新スレッドは継承しない
 
- $inherit = Thread::Exit->inherit;   # return current setting
+ $inherit = Thread::Exit->inherit;   # 現在の設定を返す
 
 The "inherit" class method sets and returns whether newly created threads
 will inherit the "begin" and "end" subroutine settings (as previously
 indicated with a call to the L<begin> or L<end> class methods).
+
+"inherit"クラスメソッドは、新たに生成されるスレッドが"begin"および"end"
+サブルーチンの設定（既に示したようにL<begin>あるいはL<end>クラスメソッドを
+呼び出す）を引き継ぐかどうか設定して返す。
 
 If an input parameter is specified, it indicates the new setting of this flag.
 A true value indicates that new threads should inherit the "begin" and "end"
@@ -185,8 +272,17 @@ subroutine settings.  A false value indicates that new threads should B<not>
 have any "begin" or "end" subroutine (unless of course specified otherwise
 inside the thread after the thread has started).
 
+入力パラメータが指定されると、このフラグの新しい設定が示される。真値は
+新しいスレッドが"begin"および"end"サブルーチンの設定を引き継ぐことを示す。
+偽値は新しいスレッドが"begin"ないし"end"サブルーチンをB<持たない>ことを
+示している（もちろん、そのスレッドがスタートした後に、スレッド内で違う
+設定を指定しない限りにおいて）。
+
 The default settings is B<1>, causing L<begin> and L<end> settings to be
 inherited by newly created threads.
+
+デフォルトの設定はB<1>だ。新しく生成されるスレッドは、L<begin>とL<end>
+の設定を引き継ぐことになる。
 
 =head2 ismain
 
@@ -196,12 +292,21 @@ The "ismain" class method is only needed in very special situation.  It marks
 the current thread as the "main" thread from which a "real" exit() should
 occur.
 
+"ismain"クラスメソッドは、非常に特別な場合にのみ必要となる。このメソッドは
+現在のスレッドを"main"スレッドとして印付け、このmainスレッドから"本当の"exit()が
+呼び出される。
+
 By default, only the thread in which the C<use Thread::Exit> occurred, will
 perform a "real" exit (either to CORE::exit() or to Apache::exit() when in a
 mod_perl environment).  This may however, not always be right.  In those cases
 you can use this class method.
 
-=head1 REQUIRED MODULES
+デフォルトでは、C<use Thread::Exit>が現れたスレッドだけが"本当の"exitを
+実行する（CORE::exit()あるいはmod_perl環境ではApache::exit()のいずれか）。
+これはしかし、常に正しいというわけではない。場合によってはこのクラスメソッドを
+使える。
+
+=head1 必要なモジュール
 
  load (0.12)
 
@@ -213,30 +318,37 @@ Apache::exit() subroutine exists, then that exit routine will be preferred
 over the CORE::exit() routine when exiting from the thread in which the
 first C<use Thread::Exit> occurred.
 
+このモジュールがmod_perlを使うApacheの下で機能するために、Apache::exit()
+サブルーチンが存在するか調べる特別なチェックが含まれる。Apache::exit()が
+存在するなら、最初のC<use Thread::Exit>が現れたスレッドから抜けるときに、
+CORE::exit()よりもこのexitルーチンがされる。
+
 =head1 TODO
 
 Examples should be added.
 
-=head1 AUTHOR
+例の追加。
+
+=head1 作者
 
 Elizabeth Mattijsen, <liz@dijkmat.nl>.
 
 Please report bugs to <perlbugs@dijkmat.nl>.
 
-=head1 ACKNOWLEDGEMENTS
+=head1 謝辞
 
 Nick Ing-Simmons and Rafael Garcia-Suarez for their suggestions and support.
 Mike Pomraning for pointing out that C<die()> can also take a reference as
 a parameter inside an C<eval()>, so that the dependency on Thread::Serialize
 could be removed.
 
-=head1 COPYRIGHT
+=head1 著作権
 
 Copyright (c) 2002-2003 Elizabeth Mattijsen <liz@dijkmat.nl>. All rights
 reserved.  This program is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself.
 
-=head1 SEE ALSO
+=head1 参考
 
 L<threads>.
 
