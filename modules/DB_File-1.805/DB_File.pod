@@ -1,0 +1,1725 @@
+=head1 名前
+
+DB_File - Berkeley DB バージョン 1.xへのPerl5アクセス
+
+=head1 概要
+
+ use DB_File;
+
+ [$X =] tie %hash,  'DB_File', [$filename, $flags, $mode, $DB_HASH] ;
+ [$X =] tie %hash,  'DB_File', $filename, $flags, $mode, $DB_BTREE ;
+ [$X =] tie @array, 'DB_File', $filename, $flags, $mode, $DB_RECNO ;
+
+ $status = $X->del($key [, $flags]) ;
+ $status = $X->put($key, $value [, $flags]) ;
+ $status = $X->get($key, $value [, $flags]) ;
+ $status = $X->seq($key, $value, $flags) ;
+ $status = $X->sync([$flags]) ;
+ $status = $X->fd ;
+
+ # BTREE のみ
+ $count = $X->get_dup($key) ;
+ @list  = $X->get_dup($key) ;
+ %list  = $X->get_dup($key, 1) ;
+ $status = $X->find_dup($key, $value) ;
+ $status = $X->del_dup($key, $value) ;
+
+ # RECNO のみ
+ $a = $X->length;
+ $a = $X->pop ;
+ $X->push(list);
+ $a = $X->shift;
+ $X->unshift(list);
+ @r = $X->splice(offset, length, elements);
+
+ # DBM フィルター
+ $old_filter = $db->filter_store_key  ( sub { ... } ) ;
+ $old_filter = $db->filter_store_value( sub { ... } ) ;
+ $old_filter = $db->filter_fetch_key  ( sub { ... } ) ;
+ $old_filter = $db->filter_fetch_value( sub { ... } ) ;
+
+ untie %hash ;
+ untie @array ;
+
+=head1 説明
+
+B<DB_File>はBerkeley DB version 1.xによって提供されている機能を
+Perlプログラムが使えるようにするモジュールです。
+（もしさらに新しいバージョンのDBを持っているのであれば、
+L<DB_FileをBerkeley DB バージョン2以上で使用する>をご覧ください。）
+このドキュメントを読むとき、あなたがBerkeley DBマニュアルページを
+手元においていることを前提としています。ここで定義されている
+インターフェースはBerkeley DBインターフェースをかなり反映しています。
+
+Berkeley DB はいくつかのデータベース・フォーマットに対する
+一貫性のあるインターフェースを提供するCライブラリです。
+B<DB_File>は現在Berkeley DBによってサポートされている3つ全ての
+データベースタイプへのインタフェースを提供しています。
+
+そのファイルタイプには以下ものがあります：
+
+=over 5
+
+=item B<DB_HASH>
+
+このデータベース・タイプは、任意のキー／値の組をデータファイルに
+格納することを可能にします。これは機能の面でDBM, NDBM, ODBM, GDBM, 
+そしてSDBMといった他のハッシュをおこなうパッケージが提供する同じです。
+しかしDB_HASHを使って作られたファイルが、いま上げた他のパッケージと
+互換性がないということを忘れないでください。 
+
+デフォルトのハッシュ・アルゴリズムがBerkeley DBに組み込まれており、
+ほとんどのアプリケーションに適合します。もし独自のハッシュ・アルゴリズムを
+使う必要があれば、Perlで独自に書込み、B<DB_File>が代わりにそれを使うように
+することも出来ます。
+
+=item B<DB_BTREE>
+
+btreeフォーマットは任意のキー／値の組を、バランスがとれた
+バイナリー・ツリーに格納することが出来ます。 
+
+DB_HASHフォーマットの場合と同じように、キーの比較を実行するユーザ定義の
+Perlのルーチンを提供することが出来ます。しかしデフォルトでは、
+キーは文字(lexical)の順に格納されます。
+
+=item B<DB_RECNO>
+
+DB_RECNOは固定長と可変長の両方のフラットなテキスト・ファイルを、
+DB_HASHやDB_BTREEと同じキー／値の組のインターフェースを使って扱える
+ようにします。この場合、キーはレコード（行）番号になります。 
+
+=back
+
+=head2 DB_FileをBerkeley DB バージョン2以上で使用する
+
+B<DB_File>はBerkeley DB バージョン1を使うようになっていますが、
+バージョン2,3あるいは4で使うことも出来ます。この場合、インターフェースは
+Berkeley DB 1.xよって提供されている機能に限定されます。バージョン2以上の
+インターフェースで異なる箇所は、どこでもバージョン1のように機能するよう
+B<DB_File>が変更しています。この機能により、バージョン1で構築された
+B<DB_File>スクリプトを変更することなく、バージョン2以上に移行することが
+できます。
+
+もしBerkeley DB 2.x以上で利用可能な新しい機能を使いたいのであれば、
+PerlモジュールB<BerkeleyDB>を代わりに使ってください。
+
+B<注意:> Berkeley DB version 2, 3 そして 4でデータベース・ファイルの
+フォーマットは何回か変更されています。もしデータベースを再作成できない
+のであれば、Berkeley DBに付いてくるC<db_dump>あるいはC<db_dump185>
+ユーティリティのどちらかで、既存の全てのデータベースをダンプしなければなりません。
+一度、Berkeley DB version 2以上を使うためにDB_Fileを再作成すれば、
+C<db_load>を使って再作成することができます。さらなる詳細はBerkeley DBドキュメントを
+参照してください。
+
+DB_FileでBerkeley DBのバージョン2.x以上使う前にL<著作権(COPYRIGHT)>をご覧になってください。
+
+=head2 Berkeley DBへのインターフェース
+
+B<DB_File>はBerkeley DB ファイルにPerl5のtie()機能を使ってアクセスする
+ことを可能にします。(完全な詳細についてはL<perlfunc/tie()>をご覧下さい)。
+この機能はDB_Fileに連想配列(DB_HASHとDB_BTREEファイル・タイプ）を使ったり、
+通常の配列(DB_RECNOファイルタイプ)を使ってBerkeley DBファイルにアクセスする
+ことを可能にします。
+
+tie()インターフェースに加えて、Berkeley DB API によって提供される、ほとんど
+全ての関数に直接アクセスすることもできます。L<APIインターフェース>をご覧下さい。
+
+=head2 Berkeley DBデータベースファイルのオープン
+
+Berkeley DBはデータベースのオープンや作成にdbopen() 関数を使います。
+dbopen()のCプロトタイプは以下の通りです:
+
+      DB*
+      dbopen (const char * file, int flags, int mode, 
+              DBTYPE type, const void * openinfo)
+
+パラメータC<type>は列挙子(enumeration)で、３つのインタフェース・メソッド
+(DB_HASH, DB_BTREE または　DB_RECNO)のどれを使うかを指定します。実際に
+どれが選ばれたかによって、最後のパラメータI<openinfo>には指定された
+インタフェース・メソッドに適合するデータ構造体を指定します。
+
+インターフェースはB<DB_File>では若干異なります。B<DB_File>を使った
+同じ呼び出しは以下の通りです:
+
+        tie %array, 'DB_File', $filename, $flags, $mode, $DB_HASH ;
+
+C<filename>, C<flags> そして C<mode> パラメータはdbopen()での対応する
+ものとそのまま同じです。最後のパラメータ$DB_HASH はdbopen()でのC<type>と
+C<openinfo>パラメータの両方の機能を行います。
+
+上記の例では$DB_HASHは実際にあらかじめ定義されたハッシュ・オブジェクトへの
+リファレンスになります。DB_Fileはこれらの既に定義された3つのリファレンスを
+持っています。$DB_HASHのほかに$DB_BTREEと$DB_RECNOがあります。
+
+これら既に定義されているリファレンスで許されるキーはC構造体と同様、
+使用される名前に限定されます。そのため例えば $DB_HASHはC<bsize>, C<cachesize>,
+C<ffactor>, C<hash>, C<lorder> そして C<nelem>だけをキーとして許します。
+
+これらの要素を変更するには、以下のように代入するだけです：
+
+    $DB_HASH->{'cachesize'} = 10000 ;
+
+3つのあらかじめ定義された変数 $DB_HASH, $DB_BTREE そして $DB_RECNO は大抵の
+アプリケーションに適応します。もしこられオブジェクトの特別なインスタンスを
+作る必要があれば、それぞれのファイルタイプのためにコンストラクタを利用します。
+
+DB_HASH, DB_BTREE そして DB_RECNOに対応するコンストラクタと適切なオプションの
+それぞれの例を以下に示します：
+
+     $a = new DB_File::HASHINFO ;
+     $a->{'bsize'} ;
+     $a->{'cachesize'} ;
+     $a->{'ffactor'};
+     $a->{'hash'} ;
+     $a->{'lorder'} ;
+     $a->{'nelem'} ;
+
+     $b = new DB_File::BTREEINFO ;
+     $b->{'flags'} ;
+     $b->{'cachesize'} ;
+     $b->{'maxkeypage'} ;
+     $b->{'minkeypage'} ;
+     $b->{'psize'} ;
+     $b->{'compare'} ;
+     $b->{'prefix'} ;
+     $b->{'lorder'} ;
+
+     $c = new DB_File::RECNOINFO ;
+     $c->{'bval'} ;
+     $c->{'cachesize'} ;
+     $c->{'psize'} ;
+     $c->{'flags'} ;
+     $c->{'lorder'} ;
+     $c->{'reclen'} ;
+     $c->{'bfname'} ;
+
+上記でハッシュに格納される値はCの対応する部分と全く同じです。それらは
+Cの対応部分のように、全てはデフォルトに設定されます-つまり一部を変更
+したいだけであれば全ての値を設定する必要が無いということです。以下に
+例を示します：
+
+     $a = new DB_File::HASHINFO ;
+     $a->{'cachesize'} =  12345 ;
+     tie %y, 'DB_File', "filename", $flags, 0777, $a ;
+
+いくつかのオプションについては、さらに説明する必要があります。
+使用するさい、CでのC<hash>、C<compare>、C<prefix>という項目は
+C関数へのポインタを格納します。B<DB_File>では、これらのキーは
+Perlサブルーチンへのリファレンスを格納するために使われます。
+各サブルーチンのテンプレートは以下に示します:
+
+    sub hash
+    {
+        my ($data) = @_ ;
+        ...
+        # $dataのためのハッシュ値を返す
+    return $hash ;
+    }
+
+    sub compare
+    {
+    my ($key, $key2) = @_ ;
+        ...
+        # 戻り値 $key1 eq $key2 ならば 0
+        #        $key1 lt $key2 ならば -1
+        #        $key1 gt $key2 ならば 1
+        return (-1 , 0 or 1) ;
+    }
+
+    sub prefix
+    {
+    my ($key, $key2) = @_ ;
+        ...
+        # $key1よりも大きいと判定するために必要な
+        # $key2の長さの長さを返します
+        return $bytes ;
+    }
+
+C<compare>テンプレートを使った例についてはL<BTREEソート順の変更>を
+ご覧下さい。
+
+DB_RECNO インターフェースを使っていて、C<bval>を使おうとするのであれば、
+L<'bval'オプション>をチェックする必要があります。
+
+=head2 デフォルト・パラメータ
+
+C<tie>の呼び出しでの最後の4つのパラメータのいくつか、あるいは全てを省略し、
+デフォルト値をとるようにすることができます。以下のように呼び出すと、
+最も一般的なファイルフォーマットであるDB_HASHが使われます:
+
+    tie %A, "DB_File", "filename" ;
+
+これは以下のものと同等です:
+
+    tie %A, "DB_File", "filename", O_CREAT|O_RDWR, 0666, $DB_HASH ;
+
+ファイル名(filename)パラメータも省略することが可能です。以下のように
+呼び出します：
+
+    tie %A, "DB_File" ;
+
+これは以下のものと同等です:
+
+    tie %A, "DB_File", undef, O_CREAT|O_RDWR, 0666, $DB_HASH ;
+
+ファイル名の場所でC<undef>を使うことについての説明は
+L<メモリ上のデータベース>をご覧下さい。
+
+=head2 メモリ上のデータベース
+
+Berkeley DB はファイル名の場所にNULL（つまりCでのC<(char *)0>）を
+使うことにより、メモリ上のデータベース(in-memory database)を
+作成することを可能にしています。B<DB_File>では、この機能を
+提供するためにNULLの代りにC<undef>を使います。
+
+=head1 DB_HASH
+
+DB_HASH ファイル・フォーマットはB<DB_File>がサポートしている3つの
+ファイル・フォーマットの中で、おそらく最も一般的に使われています。
+これは非常に使い方がわかりやすいものです。
+
+=head2 簡単な例
+
+この例ではデータベースの作り方、データベースへのキー／値の組の追加、
+キー／値の組の削除、そして最後にデータベースを順に出力する方法を示します。
+
+    use warnings ;
+    use strict ;
+    use DB_File ;
+    our (%h, $k, $v) ;
+
+    unlink "fruit" ;
+    tie %h, "DB_File", "fruit", O_RDWR|O_CREAT, 0666, $DB_HASH 
+        or die "Cannot open file 'fruit': $!\n";
+
+    # いくつかのキー／値の組をファイルに追加
+    $h{"apple"} = "red" ;
+    $h{"orange"} = "orange" ;
+    $h{"banana"} = "yellow" ;
+    $h{"tomato"} = "red" ;
+
+    # キーが存在するかチェック
+    print "Banana Exists\n\n" if $h{"banana"} ;
+
+    # キー／値の組を削除
+    delete $h{"apple"} ;
+
+    # ファイルの内容を出力する
+    while (($k, $v) = each %h)
+      { print "$k -> $v\n" }
+
+    untie %h ;
+
+以下のように出力されます：
+
+    Banana Exists
+
+    orange -> orange
+    tomato -> red
+    banana -> yellow
+
+通常の連想配列（ハッシュ）と同様、取り出されるキーの順番は見た目上、
+でたらめになることに注意してください。
+
+=head1 DB_BTREE
+
+与えられた順序でデータを格納したいとき、DB_BTREE フォーマットは便利です。
+デフォルトではキーは文字の(lexical)順で格納されます。しかし次のセクション
+での例からもわかるようにソートするための独自の関数を定義するのは、
+とても簡単です。
+
+=head2 BTREEソート順の変更
+
+このスクリプトはBTREEが使うデフォルトのソート用アルゴリズムを上書きする
+方法を示しています。通常の文字による順序を使う代りに、大文字/小文字の
+違いを無視した比較関数を使います。
+
+    use warnings ;
+    use strict ;
+    use DB_File ;
+
+    my %h ;
+
+    sub Compare
+    {
+        my ($key1, $key2) = @_ ;
+        "\L$key1" cmp "\L$key2" ;
+    }
+
+    # 比較を行うPerl subを指定します
+    $DB_BTREE->{'compare'} = \&Compare ;
+
+    unlink "tree" ;
+    tie %h, "DB_File", "tree", O_RDWR|O_CREAT, 0666, $DB_BTREE 
+        or die "Cannot open file 'tree': $!\n" ;
+
+    # ファイルにキー／値の組を追加
+    $h{'Wall'} = 'Larry' ;
+    $h{'Smith'} = 'John' ;
+    $h{'mouse'} = 'mickey' ;
+    $h{'duck'}  = 'donald' ;
+
+    # 削除
+    delete $h{"duck"} ;
+
+    # 順番にキーを繰り返し、出力します
+    # btreeが自動的に順番を保っているので
+    # キーをソートする必要がないことに注意してください
+    foreach (keys %h)
+      { print "$_\n" }
+
+    untie %h ;
+
+上記のコードは以下のように出力します：
+
+    mouse
+    Smith
+    Wall
+
+BTREEデータベースで順序を変更したいのであれば、いくつか注意すべき
+ポイントがあります:
+
+=over 5
+
+=item 1.
+
+新しい比較関数はデータベースを作成するときに指定されなければなりません。 
+
+=item 2.
+
+一度データベースを作成してしまったら順序を変更することはできまんせん。
+このためデータベースにアクセスするときには、いつも同じ比較関数を
+使わなければなりません。 
+
+=item 3
+
+キーの重複は完全に比較関数によって定義されます。
+上記の大文字/小文字を区別しない例では、キー: 'KEY'と'key'は
+重複するものと考えられ、2番目のものを代入すると最初のものを上書き
+するでしょう。(下記で説明するR_DUPSフラグで）重複が許されるれるので
+あれば、1つの重複したキーがデータベースに格納されます ---そのため
+（再び上記の例では）キー: 'KEY'、'Key'そして'key'は、データベースに
+3つの値を持った最初のキー: 'KEY'だけを残します。状況によっては
+これは情報のロスになります。そこで必要なときには完全に修飾された
+比較を提供するように注意しなければなりません。例えば上記の比較ルーチンは
+もし2つのキーが大文字/小文字を区別しないときに同じであれば、
+追加として大文字/小文字を区別して比較するように変更することができます:
+
+    sub compare {
+        my($key1, $key2) = @_;
+        lc $key1 cmp lc $key2 ||
+        $key1 cmp $key2;
+    }
+
+こうすれば、キーそのものが本当に同じときにだけ、重複を持つことに
+なります。（注意：1996年11月頃までのdbライブラリのバージョンでは、
+そのような重複したキーが残され、そのため同じであると比較されるキーの
+集合で元のキーを戻すことができました）。
+
+
+=back 
+
+=head2 重複するキーの取り扱い
+
+BTREEファイル・タイプはオプションで、１つのキーを任意の個数の値に
+関連付けることを可能にしています。このオプションはデータベースを作成
+するとき、 C<$DB_BTREE>のフラグ要素をR_DUPに設定することにより可能になります。
+
+BTREEデータベースを重複したキーを持って扱いたいならば、tieされている
+ハッシュ・インターフェースを使う場合、いくつかの問題があります。
+以下のコードについて考えてみてください：
+
+    use warnings ;
+    use strict ;
+    use DB_File ;
+
+    my ($filename, %h) ;
+
+    $filename = "tree" ;
+    unlink $filename ;
+
+    # レコードの重複を可能とします
+    $DB_BTREE->{'flags'} = R_DUP ;
+
+    tie %h, "DB_File", $filename, O_RDWR|O_CREAT, 0666, $DB_BTREE 
+    or die "Cannot open $filename: $!\n";
+
+    # いくつかのキー／値の組をファイルに追加します
+    $h{'Wall'} = 'Larry' ;
+    $h{'Wall'} = 'Brick' ; # キーの重複に注意
+    $h{'Wall'} = 'Brick' ; # キーと値の重複に注意
+    $h{'Smith'} = 'John' ;
+    $h{'mouse'} = 'mickey' ;
+
+    # 連想配列の分繰り返し、
+    # 各キー/値の組を出力します
+    foreach (sort keys %h)
+      { print "$_  -> $h{$_}\n" }
+
+    untie %h ;
+
+これは以下のように出力します:
+
+    Smith   -> John
+    Wall    -> Larry
+    Wall    -> Larry
+    Wall    -> Larry
+    mouse   -> mickey
+
+キーC<Wall>で3つのレコードが正常に作成できたように見えます−これが
+唯一本当のことです。データベースから取り出すと、まるでC<Larry>という
+名前で同じ値が入っているかのように見えます。問題は連想配列
+インターフェースが機能する方法によって発生します。基本的に
+連想配列インターフェースは与えられたキーに関連付けられた値を取り出す
+ために使われます。これは最初の値だけを取り出します。
+
+これは上記のコードでは、あまり明確にはなっていませんが、
+連想配列インターフェースは重複するキーで値を書きこむことはできます。
+しかし、データベースから値を読みこむためには使えません。
+
+この問題を回避するためにはC<seq>というBerkeley DB APIメソッドを使います。
+このメソッドは順番にキー／値の組にアクセスすることを可能にします。
+C<seq>メソッドの詳細とAPI全般についてはL<APIインターフェース>をご覧下さい。
+
+C<seq> APIメソッドを使って上記のスクリプトを書き直したものは以下の通りです：
+
+    use warnings ;
+    use strict ;
+    use DB_File ;
+
+    my ($filename, $x, %h, $status, $key, $value) ;
+
+    $filename = "tree" ;
+    unlink $filename ;
+
+    # レコードの重複を可能とします
+    $DB_BTREE->{'flags'} = R_DUP ;
+
+    $x = tie %h, "DB_File", $filename, O_RDWR|O_CREAT, 0666, $DB_BTREE 
+    or die "Cannot open $filename: $!\n";
+
+    # いくつかのキー／値の組をファイルに追加します
+    $h{'Wall'} = 'Larry' ;
+    $h{'Wall'} = 'Brick' ; # キーの重複に注意
+    $h{'Wall'} = 'Brick' ; # キーと値の重複に注意
+    $h{'Smith'} = 'John' ;
+    $h{'mouse'} = 'mickey' ;
+
+    # 連想配列の分繰り返し、
+    # 各キー/値の組を出力します。
+    $key = $value = 0 ;
+    for ($status = $x->seq($key, $value, R_FIRST) ;
+         $status == 0 ;
+         $status = $x->seq($key, $value, R_NEXT) )
+      {  print "$key -> $value\n" }
+
+    undef $x ;
+    untie %h ;
+
+これは以下のように出力します:
+
+    Smith   -> John
+    Wall    -> Brick
+    Wall    -> Brick
+    Wall    -> Larry
+    mouse   -> mickey
+
+今度はキーC<Wall>に関連付けられた複数の値も含めて、全てのキー/値を
+取得しました。
+
+重複するキーの扱いをより簡単にするため、B<DB_File>はいくつかの
+ユーティリティ・メソッドを備えています。
+
+=head2 get_dup()メソッド
+
+C<get_dup>メソッドはBTREEデータベースから重複した値を読み込むことを
+助けます。このメソッドは以下のような形式とることができます:
+
+    $count = $x->get_dup($key) ;
+    @list  = $x->get_dup($key) ;
+    %list  = $x->get_dup($key, 1) ;
+
+スカラー・コンテキストではC<$key>というキーに関連付けられた
+値の数を返します。
+
+リスト・コンテキストではC<$key>に対応する値を全て返します。
+値は見かけ上、でたらめな順番で返って来るということに注意してください。
+
+リスト・コンテキストでは、2番目の引数がありTRUEに評価されれば、
+メソッドは連想配列を返します。その連想配列のキーはBTREEでのマッチした
+値に対応し、その配列の値はその値がBTREEに現れる回数です。
+
+これをもとに上記で作成したデータベースについて考えると、以下のように
+C<get_dup>を使うことができます:
+
+    use warnings ;
+    use strict ;
+    use DB_File ;
+
+    my ($filename, $x, %h) ;
+
+    $filename = "tree" ;
+
+    # レコードの重複を可能とします
+    $DB_BTREE->{'flags'} = R_DUP ;
+
+    $x = tie %h, "DB_File", $filename, O_RDWR|O_CREAT, 0666, $DB_BTREE 
+    or die "Cannot open $filename: $!\n";
+
+    my $cnt  = $x->get_dup("Wall") ;
+    print "Wall occurred $cnt times\n" ;
+
+    my %hash = $x->get_dup("Wall", 1) ;
+    print "Larry is there\n" if $hash{'Larry'} ;
+    print "There are $hash{'Brick'} Brick Walls\n" ;
+
+    my @list = sort $x->get_dup("Wall") ;
+    print "Wall =>  [@list]\n" ;
+
+    @list = $x->get_dup("Smith") ;
+    print "Smith => [@list]\n" ;
+
+    @list = $x->get_dup("Dog") ;
+    print "Dog =>   [@list]\n" ;
+
+
+これは以下のように出力します:
+
+    Wall occurred 3 times
+    Larry is there
+    There are 2 Brick Walls
+    Wall => [Brick Brick Larry]
+    Smith =>    [John]
+    Dog =>  []
+
+=head2 find_dup()メソッド
+
+    $status = $X->find_dup($key, $value) ;
+
+このメソッドは、あるキー／値の組が存在するかどうかをチェックします。
+もしその組があればカーソルはその組を示し、メソッドは0を返します。
+そうでなければメソッドは0以外の値を返します。
+
+前の例からのデータベースについて考えれば:
+
+    use warnings ;
+    use strict ;
+    use DB_File ;
+
+    my ($filename, $x, %h, $found) ;
+
+    $filename = "tree" ;
+
+    # レコードの重複を可能とします
+    $DB_BTREE->{'flags'} = R_DUP ;
+
+    $x = tie %h, "DB_File", $filename, O_RDWR|O_CREAT, 0666, $DB_BTREE 
+    or die "Cannot open $filename: $!\n";
+
+    $found = ( $x->find_dup("Wall", "Larry") == 0 ? "" : "not") ; 
+    print "Larry Wall is $found there\n" ;
+
+    $found = ( $x->find_dup("Wall", "Harry") == 0 ? "" : "not") ; 
+    print "Harry Wall is $found there\n" ;
+
+    undef $x ;
+    untie %h ;
+
+これは以下のように出力します：
+
+    Larry Wall is  there
+    Harry Wall is not there
+
+
+=head2 del_dup()メソッド
+
+    $status = $X->del_dup($key, $value) ;
+
+このメソッドは指定されたキー／値の組を削除します。もし存在し、
+正常に削除できたら0を返します。そうでなければ0以外の値を返します。 
+
+再びC<tree>データベースがあるとします。
+
+    use warnings ;
+    use strict ;
+    use DB_File ;
+
+    my ($filename, $x, %h, $found) ;
+
+    $filename = "tree" ;
+
+    # レコードの重複を可能とします
+    $DB_BTREE->{'flags'} = R_DUP ;
+
+    $x = tie %h, "DB_File", $filename, O_RDWR|O_CREAT, 0666, $DB_BTREE 
+    or die "Cannot open $filename: $!\n";
+
+    $x->del_dup("Wall", "Larry") ;
+
+    $found = ( $x->find_dup("Wall", "Larry") == 0 ? "" : "not") ; 
+    print "Larry Wall is $found there\n" ;
+
+    undef $x ;
+    untie %h ;
+
+これは以下のように出力します：
+
+    Larry Wall is not there
+
+=head2 部分キーのマッチング
+
+BTREEインターフェースはマッチさせるための部分キーを許すという
+機能を持っています。この機能はR_CURSORフラグと一緒にC<seq>メソッドを
+使ったときにI<のみ>有効です。
+
+    $x->seq($key, $value, R_CURSOR) ;
+
+dbopenマニュアルページから関連するseqでのR_CURSORフラグの使い方に
+ついて定義している部分の引用を以下に示します：
+
+    Note, for the DB_BTREE access method, the returned key is not
+    necessarily an exact match for the specified key. The returned key
+    is the smallest key greater than or equal to the specified key,
+    permitting partial key matches and range searches.
+
+    DB_BTREEアクセス・メソッドについては返されるキーは必らずしも指定されたキーに
+    完全にマッチするわけではないことに注意。返されるキーは指定されたキーより大きいか
+    同じである最小のキーで、部分キーマッチや範囲検索を可能としています。
+
+以下の例のスクリプトでは、matchサブルーチンは、この機能を使って指定された
+部分キーにマッチする最初のキー／値の組を見つけ出力します。
+
+    use warnings ;
+    use strict ;
+    use DB_File ;
+    use Fcntl ;
+
+    my ($filename, $x, %h, $st, $key, $value) ;
+
+    sub match
+    {
+        my $key = shift ;
+        my $value = 0;
+        my $orig_key = $key ;
+        $x->seq($key, $value, R_CURSOR) ;
+        print "$orig_key\t-> $key\t-> $value\n" ;
+    }
+
+    $filename = "tree" ;
+    unlink $filename ;
+
+    $x = tie %h, "DB_File", $filename, O_RDWR|O_CREAT, 0666, $DB_BTREE
+        or die "Cannot open $filename: $!\n";
+
+    # ファイルにいくつかのキー/値の組を追加します
+    $h{'mouse'} = 'mickey' ;
+    $h{'Wall'} = 'Larry' ;
+    $h{'Walls'} = 'Brick' ; 
+    $h{'Smith'} = 'John' ;
+
+
+    $key = $value = 0 ;
+    print "IN ORDER\n" ;
+    for ($st = $x->seq($key, $value, R_FIRST) ;
+     $st == 0 ;
+         $st = $x->seq($key, $value, R_NEXT) )
+
+      {  print "$key    -> $value\n" }
+
+    print "\nPARTIAL MATCH\n" ;
+
+    match "Wa" ;
+    match "A" ;
+    match "a" ;
+
+    undef $x ;
+    untie %h ;
+
+これは以下のように出力します:
+
+    IN ORDER
+    Smith -> John
+    Wall  -> Larry
+    Walls -> Brick
+    mouse -> mickey
+
+    PARTIAL MATCH
+    Wa -> Wall  -> Larry
+    A  -> Smith -> John
+    a  -> mouse -> mickey
+
+=head1 DB_RECNO
+
+DB_RECNOはフラットなテキストファイルへのインターフェースを提供します。
+可変長レコードと固定長レコードの両方をサポートします。
+
+RECNOをPerlとの互換性を持たせるため、RECNO配列のための配列オフセットは
+Berkeley DBでの1ではなく0から始まります。
+
+通常のPerl配列と同じように、RECNO配列には負のインデックスを使って
+アクセスすることができます。インデックス -1は配列の最後の要素を、
+-2は後ろから2番目をといったように参照します。配列の最初よりも
+前の要素にアクセスしようとすると致命的なランタイム・エラーを起こします。
+
+=head2 'bval'オプション
+
+bvalオプションの操作はいくつかの点を保証します。以下は
+Berkeley DB 1.85 recnoマニュアル・ページからのbvalの定義です：
+
+    The delimiting byte to be used to mark  the  end  of  a
+    record for variable-length records, and the pad charac-
+    ter for fixed-length records.  If no  value  is  speci-
+    fied,  newlines  (``\n'')  are  used to mark the end of
+    variable-length records and  fixed-length  records  are
+    padded with spaces.
+
+    可変長レコードため、レコードの終わりをマークするために使われる
+    区切りバイト、そして固定長レコードのために埋められる文字。
+    指定されなければ、改行（"\n")が可変長レコードの終わりを示すために
+    使われ、固定長レコードには空白が埋められます。
+
+2番目の文は間違っています。実際には、dbopenでのopeninfoパラメータが
+NULLであるときだけ、bvalはデフォルトでC<"\n">となります。NULL以外の
+openinfoパラメータが使われると、bvalが使われるとき、たまたまその値に
+なってしまいます。つまりopeninfoパラメータでオプションを使用するとき
+には、bvalを指定しなければなりません。このドキュメントのエラーは
+Berkeley DBの次のリリースで修正されるでしょう。
+
+Berkeley DB自身についての状況は明らかになりました。
+それではB<DB_File>はどうでしょう？上記の引用で定義されている
+動きはとても便利です、そこでB<DB_File>はこれに従っています。
+
+つまりbvalを可変長レコードには"C<\n">を、固定長レコードには
+空白をデフォルトにしたまま、他のオプション（例えばcachesize)を
+指定することができます。
+
+またbvalオプションは区切りとして1バイトだけが指定できることにも
+注意してください。
+
+=head2 簡単な例
+
+以下にRECNOを使った簡単な例を示します（もし5.004_57よりも前の
+バージョンをPerlを使っていると、このサンプルは動きません-- 
+解決するためには L<特別なRECNOメソッド>をご覧下さい）。
+
+    use warnings ;
+    use strict ;
+    use DB_File ;
+
+    my $filename = "text" ;
+    unlink $filename ;
+
+    my @h ;
+    tie @h, "DB_File", $filename, O_RDWR|O_CREAT, 0666, $DB_RECNO 
+        or die "Cannot open file 'text': $!\n" ;
+
+    # いくつかのキー／値の組をファイルに加えます
+    $h[0] = "orange" ;
+    $h[1] = "blue" ;
+    $h[2] = "yellow" ;
+
+    push @h, "green", "black" ;
+
+    my $elements = scalar @h ;
+    print "The array contains $elements entries\n" ;
+
+    my $last = pop @h ;
+    print "popped $last\n" ;
+
+    unshift @h, "white" ;
+    my $first = shift @h ;
+    print "shifted $first\n" ;
+
+    # キーの存在をチェックします
+    print "Element 1 Exists with value $h[1]\n" if $h[1] ;
+
+    # マイナスのインデックスを使います
+    print "The last element is $h[-1]\n" ;
+    print "The 2nd last element is $h[-2]\n" ;
+
+    untie @h ;
+
+スクリプトの出力は以下のようになります：
+
+    The array contains 5 entries
+    popped black
+    shifted white
+    Element 1 Exists with value blue
+    The last element is green
+    The 2nd last element is yellow
+
+=head2 特別なRECNOメソッド
+
+5.004_57より前のバージョンのPerlを使っているのであれば、tieされた
+配列のインターフェースは非常に限定されます。上記のスクリプト例での
+C<push>、C<pop>、C<shift>、C<unshift>や長さを判定することはtieされた
+配列ではうまく機能しません。
+
+古いPerlのバージョンのための、インターフェースをより使いやすくするため、
+C<DB_File>では、失われた配列操作をシュミレートする、いくつかのメソッドが
+提供されています。これらすべてのメソッドはtie呼び出しで返される
+オブジェクトを介してアクセスされます。
+
+以下のメソッドがあります：
+
+=over 5
+
+=item B<$X-E<gt>push(list) ;>
+
+配列の最後にC<list>の要素を追加します。 
+
+=item B<$value = $X-E<gt>pop ;>
+
+配列の最後の要素を削除し返します。 
+
+=item B<$X-E<gt>shift>
+
+配列の最初の要素を削除し返します。 
+
+=item B<$X-E<gt>unshift(list) ;>
+
+配列の先頭にC<list>の要素を追加します。
+
+=item B<$X-E<gt>length>
+
+配列の要素数を返します。 
+
+=item B<$X-E<gt>splice(offset, length, elements);>
+
+配列のspliceを返します。
+
+=back
+
+=head2 もう1つの例
+
+以下に、上記で説明したメソッドのいくつかを使ったもう1つ完全な例を
+示します。これはAPIインターフェースも直接使っています。
+ (L<APIインターフェース>もご覧下さい)。 
+
+    use warnings ;
+    use strict ;
+    my (@h, $H, $file, $i) ;
+    use DB_File ;
+    use Fcntl ;
+
+    $file = "text" ;
+
+    unlink $file ;
+
+    $H = tie @h, "DB_File", $file, O_RDWR|O_CREAT, 0666, $DB_RECNO 
+        or die "Cannot open file $file: $!\n" ;
+
+    # 最初に、扱うテキストファイルを作成します
+    $h[0] = "zero" ;
+    $h[1] = "one" ;
+    $h[2] = "two" ;
+    $h[3] = "three" ;
+    $h[4] = "four" ;
+
+
+    # レコードを順番に出力します。
+    #
+    # スカラ・コンテキストでtieされた配列を評価しても、
+    # 配列の要素数を返さないので、lengthメソッドが必要です。
+
+    print "\nORIGINAL\n" ;
+    foreach $i (0 .. $H->length - 1) {
+        print "$i: $h[$i]\n" ;
+    }
+
+    # push と pop メソッドを使います
+    $a = $H->pop ;
+    $H->push("last") ;
+    print "\nThe last record was [$a]\n" ;
+
+    # そしてshift と unshift メソッドを使います
+    $a = $H->shift ;
+    $H->unshift("first") ;
+    print "The first record was [$a]\n" ;
+
+    # レコード2の後に新しいレコードを追加するためAPIを使います。
+    $i = 2 ;
+    $H->put($i, "Newbie", R_IAFTER) ;
+
+    # そして新しいレコードをレコード１の前に
+    $i = 1 ;
+    $H->put($i, "New One", R_IBEFORE) ;
+
+    # レコード3を削除
+    $H->del(3) ;
+
+    # 今度は逆の順番でレコードを出力します
+    print "\nREVERSE\n" ;
+    for ($i = $H->length - 1 ; $i >= 0 ; -- $i)
+      { print "$i: $h[$i]\n" }
+
+    # 同じことをもう一度。ただし代りにAPI関数を使います。
+    print "\nREVERSE again\n" ;
+    my ($s, $k, $v)  = (0, 0, 0) ;
+    for ($s = $H->seq($k, $v, R_LAST) ; 
+             $s == 0 ; 
+             $s = $H->seq($k, $v, R_PREV))
+      { print "$k: $v\n" }
+
+    undef $H ;
+    untie @h ;
+
+これは以下のように出力します：
+
+    ORIGINAL
+    0: zero
+    1: one
+    2: two
+    3: three
+    4: four
+
+    The last record was [four]
+    The first record was [zero]
+
+    REVERSE
+    5: last
+    4: three
+    3: Newbie
+    2: one
+    1: New One
+    0: first
+
+    REVERSE again
+    5: last
+    4: three
+    3: Newbie
+    2: one
+    1: New One
+    0: first
+
+注意:
+
+=over 5
+
+=item 1.
+
+以下のように配列C<@h>全体を繰り返すのではなく:
+
+    foreach $i (@h)
+
+以下のようにする必要があります：
+
+    foreach $i (0 .. $H->length - 1) 
+
+あるいは以下のようにします：
+
+    for ($a = $H->get($k, $v, R_FIRST) ;
+         $a == 0 ;
+         $a = $H->get($k, $v, R_NEXT) )
+
+=item 2.
+
+C<put>メソッドが使われたときは両方ともレコード・インデックス
+にリテラル値ではなく、変数C<$i>が使われていることに
+注意してください。これはC<put>はパラメータによって追加された
+行のレコード番号を返すためです。 
+
+=back
+
+=head1 APIインターフェース
+
+tieされたハッシュや配列を使ってBerkeley DBにアクセスするだけでなく、 
+Berkeley DB ドキュメントで定義されてるAPI関数のほとんどを
+直接使うこともできます。
+
+これをするためにはtieから返されるオブジェクトのコピーを
+取っておく必要があります。
+
+    $db = tie %hash, "DB_File", "filename" ;
+
+一度そうすれば、以下のようにB<DB_File>メソッドのように
+Berkeley DB API関数に直接アクセスすることができます:
+
+    $db->put($key, $value, R_NOOVERWRITE) ;
+
+B<重要:> C<tie>から返されるオブジェクトのコピーを保存した場合は、
+tieされた変数の結び付けがはずされ(untie)、保存されたオブジェクトが
+破壊されるまで、元になっているデータベース・ファイルはクローズ
+I<されません>。
+
+    use DB_File ;
+    $db = tie %hash, "DB_File", "filename" 
+        or die "Cannot tie filename: $!" ;
+    ...
+    undef $db ;
+    untie %hash ;
+
+詳細については L<untie()がしでかすこと> をご覧ください。
+
+close()とdbopen() 自身を除くL<dbopen>で定義された全ての関数を
+利用することができます。サポートされる関数へのB<DB_File>
+メソッド・インターフェースは、可能な限りBerkeley DBの方法と
+同じように実装されています。特に以下の点に注意してください：
+
+=over 5
+
+=item *
+
+メソッドはステータス値を返します。成功すれば0を返します。
+エラーを表すためには-1を返し、厳密なエラーコードはC<$!>に設定します。
+リターンコード1は（常にではありませんが）一般的には指定されたキーが
+データベースに存在しないことを意味します。
+
+他にもリターンコードが定義されています。詳細については以下の説明
+およびBerkeley DBドキュメントをご覧下さい。Berkeley DB ドキュメントが
+決定的な情報源です。
+
+=item *
+
+Berkeley DB 関数がデータをパラメータの１つを介して返すときにはいつでも、
+同様の B<DB_File>メソッドは全く同じ名前で存在します。 
+
+=item *
+
+あなたが注意すれば、tieされたハッシュ／配列インターフェースと
+APIを同じプログラムの中に混ぜることもできます。tieされた
+インターフェースを実装するために使われるメソッドのうち
+ほんの少ししかカーソルを利用しませんが、tieされた
+ハッシュ／配列インターフェースが使われたときは、
+いつもカーソルが変更されていると考えなければなりません。
+例えば、このコードはたぶん期待していたようには動きません：
+
+    $X = tie %x, 'DB_File', $filename, O_RDWR|O_CREAT, 0777, $DB_BTREE
+        or die "Cannot tie $filename: $!" ;
+
+    # 最初のキー/値の組を取得し、カーソルを設定します
+    $X->seq($key, $value, R_FIRST) ;
+
+    # この行はカーソルを変更してしまいます
+    $count = scalar keys %x ; 
+
+    # 2番目のキー／値の組を取り出します。
+    # オヤ、そうではありません。最後のキー/値の組を取り出しました！
+    $X->seq($key, $value, R_NEXT) ;
+
+この問題を回避するために上記のコードを以下のように書きかえることができます：
+
+    $X = tie %x, 'DB_File', $filename, O_RDWR|O_CREAT, 0777, $DB_BTREE
+        or die "Cannot tie $filename: $!" ;
+
+    # この行はカーソルを変更してしまいます。
+    $count = scalar keys %x ; 
+
+    # 最初のキー／値の組を取得し、カーソルを設定します
+    $X->seq($key, $value, R_FIRST) ;
+
+    # 2番目のキー／値の組を取り出します。
+    # 今度はうまくいきました
+    $X->seq($key, $value, R_NEXT) ;
+
+=back
+
+flagパラメータで利用できるようにL<dbopen>で定義されている全ての定数を
+以下のメソッドでも使うことができます。flagsの値の正確な意味については
+Berkeley DBドキュメントをご覧下さい。
+
+利用できるメソッドの一覧を以下に示します。
+
+=over 5
+
+=item B<$status = $X-E<gt>get($key, $value [, $flags]) ;>
+
+キー (C<$key>) が与えられると、このメソッドはデータベースから
+関連する値を読みこみます。データベースから読みこんだ値は
+C<$value>パラメータに返されます。
+
+キーが存在しなければ、メソッドは1を返します。
+
+このメソッドについては、現在なんのflagも拒否されません。
+
+=item B<$status = $X-E<gt>put($key, $value [, $flags]) ;>
+
+データベースにキー／値の組みを格納します。
+
+R_IAFTERまたはR_IBEFOREフラグを使うと、C<$key>パラメータは
+挿入するキー／値の組のレコード番号を持ちます。
+
+適切なflagはR_CURSOR, R_IAFTER, R_IBEFORE, R_NOOVERWRITE そして
+R_SETCURSORです。
+
+=item B<$status = $X-E<gt>del($key [, $flags]) ;>
+
+データベースからキーC<$key>をもつ全てのキー／値の組を削除します。
+
+リターンコード1は要求されたキーがデータベースに存在しなかったことを
+意味します。
+
+R_CURSOR だけがいまのことろ唯一適切なflagです。
+
+=item B<$status = $X-E<gt>fd ;>
+
+元になっているデータベースのためのファイル・ディスクリプタを
+返します。
+
+データベースをロックするためにC<fd>を使うべきではない理由の説明
+についてはL<ロック: fdでのトラブル>をご覧下さい。
+
+=item B<$status = $X-E<gt>seq($key, $value, $flags) ;>
+
+このインターフェースはデータベースから順番に取り出すことを
+可能にします。完全な詳細についてはL<dbopen>をご覧下さい。
+
+C<$key>とC<$value>パラメータの両方はデータベースから
+読みこまれるキー／値の組に設定されます。
+
+flagsパラメータは必須です。適切なflagの値はR_CURSOR, R_FIRST, 
+R_LAST, R_NEXT そして R_PREVです。
+
+=item B<$status = $X-E<gt>sync([$flags]) ;>
+
+キャッシュされたバッファをディスクにフラッシュします。
+
+今はR_RECNOSYNCだけが適切なflagです。
+
+=back
+
+=head1 DBMフィルター
+
+DBMフィルターはコードの集まりでであり、DBMデータベースの中の
+全てのキーと/または値に同じ変換を行いたいとI<常に>思っている
+ときに使われます。
+
+DBMフィルターに関連しては4つのメソッドがあります。全て同様に
+機能します。それぞれは1つのDBMフィルターをインストール
+（またはアンインストール）するために使われます。各メソッドは
+1つのパラメータ、つまりsubへのリファレンスを期待します。
+それぞれの唯一の違いはフィルターがインストールされる場所です。
+
+まとめると以下のようになります：
+
+=over 5
+
+=item B<filter_store_key>
+
+このメソッドでフィルターがインストールされると、
+DBMデータベースにキーを書きこむたびに、それが呼ばれます。
+
+=item B<filter_store_value>
+
+このメソッドでフィルターがインストールされると、DBMデータベースに
+値を書きこむたびに、それが呼ばれます。
+
+=item B<filter_fetch_key>
+
+このメソッドでフィルターがインストールされると、DBMデータベースから
+キーを読みこむたびに、それが呼ばれます。
+
+=item B<filter_fetch_value>
+
+このメソッドでフィルターがインストールされると、DBMデータベースから
+値を読みこむたびに、それが呼ばれます。 
+
+=back
+
+全く無しから4つ全てまで、これらを自由に組み合わせて使うことができます。
+
+全てのフィルター・メソッドは、もしあれば既存のフィルターを、
+無ければC<undef>を返します。
+
+フィルターを削除するにはC<undef>を渡してください。
+
+=head2 フィルター
+
+各フィルターがPerlから呼び出されるとき、C<$_>のローカル・コピーには
+フィルターされるキーまたは値が入ります。フィルタリングはC<$_>の内容を
+変更することにより実現されます。フィルターからの戻り値は無視されます。
+
+=head2 例 -- NULL終わりの問題
+
+以下のシナリオについて考えてみてください。サードパーティの
+Cアプリケーションと共有する必要があるDBMデータベースを
+持っているとします。そのCアプリケーションはC<全ての>キーと
+値はNULLで終わるものと仮定しています。不幸にもPerlがDBM
+データベースに書きこむとき、NULL終わりを使いません。
+そのため、あなたのPerlアプリケーションは自分自身でNULL終わりを
+管理しなければなりません。データベースに書きこむとき、以下のような
+方法をとる必要があります：
+
+    $hash{"$key\0"} = "$value\0" ;
+
+同様に存在するキー／値の長さを考えるとき、NULLを考慮に入れる
+必要があります。
+
+メインのアプリケーション・プログラムでのNULL終わり問題を無視する
+ことができ、データベースに書きこむときにはいつでも自動的に全ての
+キーと値に終わりのNULLを付与し、データベースから読みこむときには、
+それらを削除するような機構を持つならば、素晴らしいことです。
+既におわかりかと思いますが、この問題はDBMフィルターによって
+とても簡単に修正することができます。
+
+    use warnings ;
+    use strict ;
+    use DB_File ;
+
+    my %hash ;
+    my $filename = "/tmp/filt" ;
+    unlink $filename ;
+
+    my $db = tie %hash, 'DB_File', $filename, O_CREAT|O_RDWR, 0666, $DB_HASH 
+      or die "Cannot open $filename: $!\n" ;
+
+    # DBMフィルターのインストール
+    $db->filter_fetch_key  ( sub { s/\0$//    } ) ;
+    $db->filter_store_key  ( sub { $_ .= "\0" } ) ;
+    $db->filter_fetch_value( sub { s/\0$//    } ) ;
+    $db->filter_store_value( sub { $_ .= "\0" } ) ;
+
+    $hash{"abc"} = "def" ;
+    my $a = $hash{"ABC"} ;
+    # ...
+    undef $db ;
+    untie %hash ;
+
+できるならば各フィルターの内容は自己説明的であるべきです。
+両方の"fetch"フィルターがNULL終わりを取り除き、
+両方の"store"フィルターがNULL終わりを付与します。
+
+=head2 もう１つの例 -- キーがC int
+
+実際の場面での例をもう一つ。デフォルトではPerlはDBMデータベースに
+書きこむときはいつでも、キーと値を文字列として書きこみます。
+そのため以下のようにすると：
+
+    $hash{12345} = "soemthing" ;
+
+キー12345 は5バイトの文字列"12345"としてDBMデータベースに
+格納されます。もし本当にDBMデータベースにCのintでキーを
+格納したいのであれば、書きこむときにC<pack>し、読みこむときに
+C<unpack>する必要があります。
+
+以下はそれをおこなうDBMフィルターです：
+
+    use warnings ;
+    use strict ;
+    use DB_File ;
+    my %hash ;
+    my $filename = "/tmp/filt" ;
+    unlink $filename ;
+
+
+    my $db = tie %hash, 'DB_File', $filename, O_CREAT|O_RDWR, 0666, $DB_HASH 
+      or die "Cannot open $filename: $!\n" ;
+
+    $db->filter_fetch_key  ( sub { $_ = unpack("i", $_) } ) ;
+    $db->filter_store_key  ( sub { $_ = pack ("i", $_) } ) ;
+    $hash{123} = "def" ;
+    # ...
+    undef $db ;
+    untie %hash ;
+
+今回は2つのフィルターを使いました -- キーの内容を扱うことだけが必要
+だったので、値のフィルターをインストールする必要がありません。
+
+=head1 ヒントと小技
+
+=head2 ロック: fdでのトラブル
+
+このモジュールのバージョン1.72まで、B<DB_File>データベースをロックする
+ための推奨されるテクニックは、"fd"関数から返されるファイルハンドルを
+flockすることでした。残念ながら、このテクニックは根本的に無効である
+ことが明らかになりました(これを突き止めた栄誉はDavid Harrisにあります）。
+あなた自身の責任でそれを使ってください!
+
+ロックのテクニックは以下のようなものでした。
+
+    $db = tie(%db, 'DB_File', '/tmp/foo.db', O_CREAT|O_RDWR, 0666)
+        || die "dbcreat /tmp/foo.db $!";
+    $fd = $db->fd;
+    open(DB_FH, "+<&=$fd") || die "dup $!";
+    flock (DB_FH, LOCK_EX) || die "flock: $!";
+    ...
+    $db{"Tom"} = "Jerry" ;
+    ...
+    flock(DB_FH, LOCK_UN);
+    undef $db;
+    untie %db;
+    close(DB_FH);
+
+簡単にいえば、このようなことが起こります:
+
+=over 5
+
+=item 1.
+
+データベースをオープンするため"tie"を使ってください。
+
+=item 2.
+
+fd & flockでデータベースをロックしてください。
+
+=item 3.
+
+データベースの読み込み & 書込み。
+
+=item 4.
+
+データベースのロックを解除してクローズ。
+
+=back
+
+ここに問題の急所があります。ステップ2でB<DB_File>をオープンする副作用
+としてデータベースからの先頭ブロックはディスクから読み込まれ、
+メモリにキャッシュされます。
+
+この問題の理由をわかるため、2つのプロセス"A"と"B"の両方が同じB<DB_File>
+データベースを上記のロック手順を使って更新したいときに何が起きるのかを
+考えてみましょう。プロセス"A"が既にデータベースをオープンし、
+書込ロックを持っているけれども、まだデータベースを実際には更新
+していないとします(ステップ2まで終わっていても、まだステップ3を
+開始していません)。そこでプロセス"B"が同じデータベースを
+オープンしようとします - ステップ1は成功します。しかしプロセス"A"が
+ロックを解除するまでステップ2でブロックされます。ここで
+気をつけなければならない重要なことは、この時点で両方のプロセスが
+データベースからのキャッシュされた同じ先頭ブロックを持っていることです。
+
+そしてプロセス"A"がデータベースを更新し、たまたま先頭バッファの中の
+データをいくらか変更したとします。プロセス"A"が終了し、
+全てのキャッシュされたデータをディスクにフラッシュし、データベース・
+ロックを解除します。この時点で、ディスク上のデータベースは
+プロセス"A"によって行われた変更を正しく反映しています。
+
+ロックが解除されると、プロセス"B"が処理を続けることができます。それも
+データベースを更新し、それも残念なことに先頭バッファにあるデータを
+変更したとします。データがディスクにフラッシュされると、プロセス"A"が
+データベースに対して行った、一部/全ての変更を上書きしてしまいます。
+
+このシナリオの結果は、最善でもデータベースには、あなたが予期している
+ものが入っていません。悪ければデータベースがおかしくなっていまいます。
+
+上記のことは競合するプロセスが同じB<DB_File>データベースを更新する
+度に発生するわけではありません。しかしなぜそのテクニックを使うべきで
+ないかは明らかにしています。
+
+=head2 データベースをロックする安全な方法
+
+version 2.xから、Berkeley DBは内部でロックをサポートしています。
+これに親密な関係がある、B<BerkeleyDB>は、このロック機能への
+インターフェースを提供しています。Berkeley DBデータベースをロックする
+ことに真剣であれば、B<BerkeleyDB>を使うことを強く推奨します。
+
+もしB<BerkeleyDB>を使うことが選択になければ、ロックを実装するために
+使うことが出来る、いくつかのモジュールをCPANから取得することができます。
+それぞれは異なる方法でロックを実装し、異なるゴールを想定しています。
+このため、あなたのアプリケーションにあったものを選べるように、
+その違いを知ることには価値があります。以下に3つのロックを行う
+ラッパーを示します:
+
+=over 5
+
+=item B<Tie::DB_Lock>
+
+マルチバージョン化された並行読み込みアクセスの一種を実現するため、
+読み込みアクセスのためのデータベース・ファイルのコピーを作成する
+B<DB_File>ラッパー。しかし更新はシリアルです。
+読み込みが長く、一貫性の問題が起きるかもしれないデータベースに
+使ってください。
+
+=item B<Tie::DB_LockFile> 
+
+それが使われている間、データベースをロックしアンロックする能力を
+持つB<DB_File>ラッパー。ロックを取得したり、はずすとき、データベースを
+再びtieすることにより、flockの前のtie問題を避けます。
+セッションの途中でのロックを解除し、再び取得するときの柔軟性のため、
+アプリケーションがPODドキュメントにあるヒントに従えば、
+長い更新そして/あるいは読み込みを行うシステムに当てはめることができます。
+
+=item B<DB_File::Lock> 
+
+データベースをtieする前にロックファイルを単純にflockし、
+untieの後にロックをはずす、非常に軽いB<DB_File>ラッパー。
+デッドロック問題を回避するため、そうしたければ複数のデータベースに
+同じロックファイルを使うことを可能にしています。
+更新と読み込みが速く、単純なflockロックのセマンティクで十分で
+あるデータベースで利用してください。
+
+=back
+
+=head2 Cアプリケーションとのデータベースの共有
+
+Berkeley DBデータベースをPerlとCアプリケーションとで共有できないという
+技術的な理由は何もありません。
+
+ここで報告されている非常に大きな問題はPerl文字列はそうでないのに、C文字列が
+NULL終わりであるということです。この問題を回避する一般的な方法については
+L<DBMフィルター>をご覧下さい。
+
+実際の例を以下に示します。Netscape 2.0 はDB_HASHデータベースに、あなたが
+訪れた場所(location)を、あなたが最後にそこを訪れた時間とを一緒にレコード
+にして保存しています。これは通常、ファイルF<~/.netscape/history.db>
+に格納されます。そのデータベースのキーフィールドは場所（location)の文字列で
+あり、値のフィールドは最後に訪れた時刻が4バイトのバイナリ値として格納
+されます。
+
+つまり場所の文字列はNULL付きで格納されます。データベースに
+アクセスするときにはこれに気をつけなければなりません。
+
+以下に部分的なプログラムを示します。これはTom ChristiansenのI<ggh>
+スクリプトを不正確ながらベースにしています。 
+(これはあなたに最も近いCPANアーカイブの 
+F<authors/id/TOMC/scripts/nshist.gz>で取得することができます） 
+
+    use warnings ;
+    use strict ;
+    use DB_File ;
+    use Fcntl ;
+
+    my ($dotdir, $HISTORY, %hist_db, $href, $binary_time, $date) ;
+    $dotdir = $ENV{HOME} || $ENV{LOGNAME};
+
+    $HISTORY = "$dotdir/.netscape/history.db";
+
+    tie %hist_db, 'DB_File', $HISTORY
+        or die "Cannot open $HISTORY: $!\n" ;;
+
+    # データベース全体をダンプ
+    while ( ($href, $binary_time) = each %hist_db ) {
+
+        # 末尾のNULLを削除
+        $href =~ s/\x00$// ;
+
+        # バイナリのtimeをユーザ・フレントリな文字列に変換する
+        $date = localtime unpack("V", $binary_time);
+        print "$date $href\n" ;
+    }
+
+    # 特定のキーが存在するかをチェック
+    # NULLを付けるのを忘れないで下さい
+    if ( $binary_time = $hist_db{"http://mox.perl.com/\x00"} ) {
+        $date = localtime unpack("V", $binary_time) ;
+        print "Last visited mox.perl.com on $date\n" ;
+    }
+    else {
+        print "Never visited mox.perl.com\n"
+    }
+
+    untie %hist_db ;
+
+=head2 untie()がしでかすこと
+
+Berkeley DB APIを使うのであれば、L<perltie/The untie Gotcha>を読むことを
+I<非常に>強くお勧めします。
+
+もし今のところはAPIインターフェースを使わないのであっても、
+読む価値はあります。
+
+B<DB_File>の見地から問題を示す例を以下に示します:
+
+
+    use DB_File ;
+    use Fcntl ;
+
+    my %x ;
+    my $X ;
+
+    $X = tie %x, 'DB_File', 'tst.fil' , O_RDWR|O_TRUNC
+        or die "Cannot tie first time: $!" ;
+
+    $x{123} = 456 ;
+
+    untie %x ;
+
+    tie %x, 'DB_File', 'tst.fil' , O_RDWR|O_CREAT
+        or die "Cannot tie second time: $!" ;
+
+    untie %x ;
+
+実行すると、このスクリプトは以下のエラーメッセージを出します:
+
+    Cannot tie second time: Invalid argument at bad.file line 14.
+
+上記のエラーメッセージではスプリプトでの2番目のtie()ステートメントを
+指しているにもかかわらず、この問題の原因は本当はその前にある
+untie()ステートメントにあります。
+
+L<perltie>を読んであれば既にお分かりのように、エラーはC<$X>に
+格納されたtieされたオブジェクトの余分な複製によって起こされています。
+読んでいなければ、要するに問題はtieされているオブジェクトへの
+I<全ての>リファレンスが破壊されなければ、B<DB_File>デストラクタDESTROY
+が呼ばれないということにあります。上記のtieされた変数C<%X>とC<$X>は両方
+ともオブジェクトへのリファレンスを持っています。untie()を呼び出すと
+最初のものは破壊されますが、しかしC<$X>はまだ適切なリファレンスを
+持っており、そのためデストラクタは呼ばれず、F<tst.fil>はオープン
+されたままです。事実Berkeley DBは、すでにオープンしているデータベースを
+開こうとするとcatch-allな"Invalid argument"（不適切な引数）を
+報告しますが、何の助けにもなりません。
+
+このスクリプトをC<-w>フラグを付けて実行すると、以下のような
+エラーメッセージになります：
+
+    untie attempted while 1 inner references still exist at bad.file line 12.
+    Cannot tie second time: Invalid argument at bad.file line 14.
+
+これは本当の問題を指しています。最終的にはAPIオブジェクトをuntieの前に
+破壊することにより元の問題を修正するように変更することができます:
+
+    ...
+    $x{123} = 456 ;
+
+    undef $X ;
+    untie %x ;
+
+    $X = tie %x, 'DB_File', 'tst.fil' , O_RDWR|O_CREAT
+    ...
+
+
+=head1 よくある質問
+
+=head2 私のデータベースにPerlソースが入っているのはなぜですか？
+
+DB_Fileによって作成されたデータベースの中身を見ると、その中にPerl
+スクリプトの一部が入っていることがあります。
+
+これはBerkeley DB が、後でデータベースファイルに書きこまれるバッファ
+を取るために動的メモリを使っているためです。動的であるために、メモリは
+DBがmallocする前に使われていたままになります。Berkeley DBはアロケート
+されたメモリをクリアしないので、使われない部分にはデタラメなゴミが入って
+います。Perlスクリプトがデータベースに書き込まれている場合、
+そのデタラメなゴミが、スクリプトをコンパイルするとき、たまたま使われた
+動的メモリの領域に対応していたのでしょう。
+
+Perlスクリプトの一部でもがデータベース・ファイル埋め込まれるかもしれない
+ことがイヤでなければ、何も心配することではありません。
+
+=head2 DB_Fileに複雑なデータ構造を格納するにはどうすればいいですか？
+
+B<DB_File>は直接これをできませんが、この機能を実現するためB<DB_File>の
+上に透過的に重ねることのできるモジュールがあります。
+
+CPANのF<modules/by-module/MLDBM>ディレクトリから取得できるMLDBMモジュールを
+試してみてください。
+
+=head2 "Invalid Argument"ってどういう意味ですか？
+
+C<tie>の呼び出しでパラメータの１つが間違っていると、このエラー・メッセージを
+取得します。残念ながらパラメータが間違うことはあまりないので、
+それが難なのかを発見することは難しいかもしれません。
+
+以下にいくつかの可能性をしめします:
+
+
+=over 5
+
+=item 1.
+
+データベースをクローズなしに再オープンしようとした 
+
+=item 2.
+
+O_WRONLYフラグを使っている 
+
+=back
+
+=head2 "Bareword 'DB_File' not allowed"ってどういう意味ですか？
+
+この特定のエラーメッセージは、スクリプトの中にC<strict "subs">プラグマ
+（あるいはすべてのstrictプログマ）があるときに発生します。
+以下のスクリプトについて考えてみてください：
+
+    use warnings ;
+    use strict ;
+    use DB_File ;
+    my %x ;
+    tie %x, DB_File, "filename" ;
+
+これを実行すると質問のエラーを起こします：
+
+    Bareword "DB_File" not allowed while "strict subs" in use 
+
+このエラーを回避するには、以下のようにC<DB_File>という単語をシングル
+またはダブル・クォートの中に入れてください：
+
+    tie %x, "DB_File", "filename" ;
+
+これはかなりの苦痛に見えますが、C<use strict>をあなたの全てのスクリプトに
+入れようとすることは本当に価値のあることです。
+
+=head1 リファレンス
+
+B<DB_File>やその使い方についての記事は以下の通り。
+
+=over 5
+
+=item 1.
+
+I<Full-Text Searching in Perl>, Tim Kientzle (tkientzle@ddj.com),
+Dr. Dobb's Journal, Issue 295, January 1999, pp 34-41
+
+=back
+
+=head1 更新履歴
+
+Changesファイルに移動しました。
+
+=head1 バグ
+
+以前のいくつかのBerkeley DBは、RECNOファイル・フォーマットを使った
+固定長レコードで問題がありました。この問題はBerkeley DBの
+バージョン1.85から修正されています。
+
+このプログラムにバグがあると思っています。何か見つけたら、あるいは
+拡張についてなにか提案できるのであれば、コメントをお待ちしています。
+
+=head1 利用するには
+
+B<DB_File>は標準のPerl sourceディストリビューションと一緒に入ります。
+F<ext/DB_File>をご覧下さい。Perlといっしょに出されたバージョンの
+リリースからの時間のために古くなっているかもしれません。
+そこで最新のバージョンは常にCPAN(詳細についてはL<perlmod/CPAN>をご覧下さい）
+のディレクトリL<modules/by-module/DB_File>で取得することができます。
+
+このバージョンのB<DB_File>はBerkeley DBの1.x、2.x、3.xのいずれでも動きます。
+しかしバージョン1によって提供されている機能に限定されます。
+
+Berkeley DB の公式ウェブサイトは F<http://www.sleepycat.com> です。
+そこではすべてのバージョンのBerkeley DBを取得することができます。
+
+代りとして、Berkeley DB バージョン 1 は一番近くのCPANアーカイブでの
+F<src/misc/db.1.85.tar.gz>で取得できます。
+
+IRIXを使っているのであれば、Berkeley DB バージョン1を 
+F<http://reality.sgi.com/ariel>で取得することができます。
+IRIX5.3で適切にコンパイルするために必要なパッチが入っています。
+
+=head1 著作権(COPYRIGHT)
+
+Copyright (c) 1995-2002 Paul Marquess. All rights reserved. This program
+is free software; you can redistribute it and/or modify it under the
+same terms as Perl itself.
+
+B<DB_File>はPerlライセンスによってカバーされますが、これが使用する
+ライブラリ、つまりBerkeley DBはそうではありません。Berkeley DBは
+それ自身の著作権と独自のライセンスを持っています。それを読んでください。
+
+Berkeley DB FAQ (F<http://www.sleepycat.com>)からライセンスについての
+一部を示します:
+
+    Perlスクリプトで使うためにDBをライセンスする必要がありますか？
+
+    いいえ。Berkeley DBライセンスはBerkeley DBを利用するソフトウェアは、
+    自由に再配布可能であることを必要とします。Perlの場合、つまり
+    ソフトウェアはPerlであり、あなたのスクリプトではありません。
+    あなたが書いた全てのPerlスクリプトはBerkeley DBを使ったものも
+    含めて、あなたの資産です。PerlライセンスもBerkeley DBライセンスも
+     あなたがそれらを使ってできることを何ら制限しません。
+
+もしライセンスの状況に疑問があれば、Berkeley DBの作者あるいはDB_Fileの
+作者にコンタクトしてください。下記のL<作者>をご覧ください。
+
+=head1 参考資料
+
+L<perl(1)>, L<dbopen(3)>, L<hash(3)>, L<recno(3)>, L<btree(3)>,
+L<dbmfilter>
+
+=head1 作者
+
+DB_FileインターフェースはPaul Marquess
+E<lt>Paul.Marquess@btinternet.comE<gt>  によって作成されました。
+Questions about the 
+DBシステムそのものについての疑問は
+E<lt>db@sleepycat.com<gt> にお願いします。
+
