@@ -1,0 +1,785 @@
+=head1 NAME
+
+=head1 名前
+
+C<CGI::Explorer> - A class to manage a tree of data, for use in CGI scripts
+
+C<CGI::Explorer> - CGIスクリプトの運用において、木構造のデータを管理するクラス
+
+=head1 VERSION
+
+=head1 バージョン
+
+This document refers to version 1.12 of C<CGI::Explorer>, released 23-Mar-2001.
+
+このドキュメントは2001年3月23日にリリースされたC<CGI::Explorer>バージョン1.12
+のドキュメントに関連します。
+
+=head1 SYNOPSIS
+
+=head1 概要
+
+This is tested code, altho the she-bang (#!) line must start in column 1:
+
+これはテスト用のコードであるが、(#!)で始まる行を1行目でならない。
+
+	#!/usr/Bin/Perl
+
+	use strict;
+	use warnings;
+
+	use CGI;
+	use CGI::Explorer;
+
+	my($q)		= CGI -> new();
+	my($tree)	= CGI::Explorer -> new();
+	my($dir)	= 'D:/My Documents/HomePage';
+
+	$tree -> from_dir($dir);
+
+	my($state)	= $tree -> state($q); # Must follow from_dir() or from_hash().
+	my($tree_set)	= $tree -> as_HTML($q);
+	my($result_set)	= 'Id: ' . $tree -> current_id() . '. Name: ' . $tree -> name();
+
+	print	$q -> header(),
+			$q -> start_html(),
+			$tree -> css(),
+			$q -> start_form({action => $q -> url()}),
+			$q -> hidden({name => 'explorer_state', value => $state, force => 1}),
+			$q -> table
+			(
+				{border => 1},
+				$q -> Tr
+				([
+					$q -> td($tree_set) .
+					$q -> td($result_set),
+				])
+			),
+			$q -> end_form(),
+			$q -> end_html();
+
+You need only change 2 lines at most, after cutting and pasting it:
+
+これをカットアンドペーストした後、多くて2行の変更だけが必要である:
+
+=over 4
+
+=item *
+
+#!/usr/Bin/Perl
+
+=item *
+
+my($dir) = 'D:/My Documents/HomePage';
+
+=back
+
+=head1 DESCRIPTION
+
+=head1 説明
+
+C<CGI::Explorer> is a support module for CGI scripts. It manages a tree of data, so
+that the script can display the tree, and the user can click on B<the icon> of a node
+in the tree to open or close that node.
+
+C<CGI::Explorer>はCGIスクリプトをサポートしたモジュールである。ツリーを
+表示し、ユーザーがノードのB<アイコン>をクリックすることでノードの
+オープンやクローズができるようデータのツリーを管理します。
+
+Opening a node reveals all children of that node, and restores their open/closed state.
+
+オープンされたノードは全ての子ノードを見せ、そしてオープンされた/クローズされた
+と言う情報を復元します。
+
+Closing a node hides all children of that node.
+
+クローズされたノードは全ての子ノードを隠します。
+
+Even when using the B<new>(click_text => 1), clicking on B<the text> of a node does
+not toggle the open/closed status of a node.
+
+B<new>(click_text => 1)を用いたときでも、ノードのB<テキスト>のクリック時に
+ノードのオープン/クローズされた状態を切り替えることはありません。
+
+=head1 Overview
+
+=head1 大要
+
+C<CGI::Explorer> reconstructs its internal representation of the tree each time the script
+is invoked.
+
+C<CGI::Explorer>は毎回スクリプトが呼び出される度に木の内部表現を
+再構築します。
+
+Some of data comes from the script calling B<from_dir()> or
+B<from_hash()>, and some of the data comes from CGI form fields returned
+from the previous invocation of the script.
+
+いくつかのデータはスクリプトが呼び出すB<from_dir()>またはB<from_hash()>に
+由来し、またいくつかのデータは以前のスクリプトの呼び出しによるCGI
+フォームフィールドに由来します。
+
+Specifically, the open/closed state of each node is sent on a round trip from one
+invocation of the script out to the browser, and, via a 'form submit', back to the
+next invocation of the script.
+
+特に、各ノードのオープン/クローズされた状態はスクリプトの呼び出しから
+
+Also, clicking on a node on a form submits the form, and passed the id of the node
+so clicked back to the second invocation of the script. When using the B<new()> option
+click_text => 1, clicking on the text of the node also submits the form.
+
+State maintenance - a complex issue - is discussed further below. See the 'state'
+method.
+
+フォーム上のサブミットフォーム
+
+=head1 Constructor and initialization
+
+=head1 コンストラクタと初期化
+
+new(...) returns a C<CGI::Explorer> object.
+
+This is the class's contructor.
+
+これはクラスのコンストラクタです。
+
+A call to B<new()> is equivalent to:
+
+B<new()>を呼び出すことは以下と等価である:
+
+new(click_text => 0, css => '...', image_dir => '/images', show_current => 1,
+show_id => 1, show_name => 1, sort_by => 'name')
+
+Options:
+
+オプション:
+
+=over 4
+
+=item *
+
+click_text - Default is 1
+
+click_text - デフォルトは1です
+
+Make the displayed text (id and/or name) of the node a submit button.
+
+ノードに関するテキスト(id及びname)が表示されるテキストsubmitボタン
+
+=item *
+
+css - Default is <a very long string>. See source code for gory details
+
+css - デフォルトは<a very long string>です。詳細を知りたい場合は
+ソースコードを御覧下さい。
+
+Provide a style-sheet for submit buttons, for use when click_text == 1.
+
+click_text == 1の時、submitボタンのためのスタイルシートを適用して使用
+するためのものです。
+
+A default style-sheet is provided. Yes, I know the submit button text,
+using the style-sheet, is really too wide, but as you'll see from the source,
+I cannot find a style-sheet command to make it narrower.
+
+デフォルトではスタイルシートが適用されます。そうです、私はスタイルシートを
+適用したテキストのsubmitボタンの幅が実に広くなりすぎてしまうことを
+知っているます。けれども、あなたにソースを見てもらったとしても、
+私は幅を狭くするスタイルシートのコマンドを見付けることはできません。
+
+=item *
+
+css_background - Default is 'white'
+
+css_backgorund - デフォルトは'white'です
+
+The background color for submit buttons.
+
+submitボタンの背景色です。
+
+=item *
+
+css_color - Default is 'navy'
+
+css_color - デフォルトは'navy'です
+
+The foreground color for submit buttons.
+
+submitボタンの前景色です。
+
+=item *
+
+image_dir - Default is '/images'
+
+image_dir - デフォルトは'/images'です
+
+Specify the web server's directory in which the node icons are to be found.
+
+アイコンのあるwebサーバーの特殊なディレクトリです。
+
+Note: This is B<not> the operating system path of the directory, it is the path
+relative to the web server's document root.
+
+Note: ディレクトリはオペレーティングシステムにおけるパスB<ではなく>、
+webサーバーのドキュメントルートに関するものです。
+
+=item *
+
+show_current - Default is 1
+
+show_current - デフォルトは1です
+
+Show a special icon for the 'current' node.
+
+'現在の'ノードに対して特殊なアイコンを表示します
+
+=item *
+
+show_id - Default is 1
+
+show_id - デフォルトは1です
+
+Show the id of the node, to the right of the node's icon.
+
+ノードのアイコンの右側に、ノードのidを表示します。
+
+=item *
+
+show_name - Default is 1
+
+show_name - デフォルトは1です。
+
+Show the name of the node, to the right of the node's icon, and to the right of the
+node's id (if show_id == 1).
+
+ノードのアイコンの右側かつ(もしshow_id == 1の場合)ノードのidの
+右側にノードの名前を表示します。
+
+If show_id == 0 && show_name == 0, nothing is displayed.
+
+もしshow_id == 0 && show_name == 0の場合は何も表示されません。
+
+=item *
+
+sort_by - Default is 'name'
+
+sort_by - デフォルトは'name'です
+
+When set to 'name' (any case), sort the nodes by their names. When set to 'id', sort
+them by their ids. Sorting applies to all nodes at the same depth.
+
+(どのような場合でも)'name'にセットした場合、名前でノードをソートします。
+'id'にセットした場合はidでソートを行います。ソートは同じ階層の全ての
+ノードに対して行われます。
+
+=back
+
+=head1 Icons for Nodes
+
+=head1 ノードのアイコン
+
+C<CGI::Explorer> ships with a set of icons, with a PNG and a GIF for each icon.
+
+C<CGI::Explorer>にはアイコンのセットが同梱れており、それぞれのアイコンは
+PNG及びGIFです。
+
+The default is GIF, because more browsers support GIF transparency than support
+PNG transparency.
+
+デフォルトはGIFで、より多くのブラウザが透過PNGよりも透過GIFをサポートしている
+からです。
+
+You don't have to pay UniSys a licence for usage of the GIF compression algorithm,
+because the GIFs are uncompressed :-).
+
+GIFの圧縮アルゴリズムの使用に関するUniSysのライセンスを気にする必要は
+ありません。なぜならばそれらのGIFは圧縮されていないからです :-)。
+
+The make file does not install these files automatically. You must install them
+manually under the web server's document root, and then use the image_dir option
+to point to the directory containing these files.
+
+make fileはこれらのファイルを自動的にインストールしてくれません。あなたは
+それらをドキュメントルート下に主導でインストールしなくてはならず、それから
+image_dirオプションを用いることでこれらのファイルがある場所に指定しなくては
+なりません。
+
+Many GIFs are from a package called MySQLTool. Unfortunately the authors of this
+program have forgotten to put a download URI in their package. You may get some joy
+here: http://lists.dajoba.com/m/listinfo/mysqltool.
+
+多くのGIFはMySQLToolと呼ばれるパッケージに由来するものです。不幸なことに
+このプログラムの作者はパッケージのダウンロードURIにパッケージをアップロード
+し忘れています。あなたは
+http://lists.dajoba.com/m/listinfo/mysqltool
+
+
+I've renamed their files from the names used by MySQLTool.
+
+MySQLToolで使用されているファイル名からは変更されています。
+
+The icons for the root node, and for the current node, are not quite satisfactory.
+Let me know if you have better ones available.
+
+ルートノードのアイコン、そしてカレントノードのアイコンですが十分満足なものでは
+ありません。もしもっと良いものが使えるのであれば私にお知らせ下さい。
+
+If the transparent PNG does not display properly on your browser, which is likely,
+update the browser, or try using the GIFs.
+
+もし透過PNGが適切にブラウザに表示されなかった場合、ブラウザをアップデートする
+か、あるいはGIFを試してみて下さい。
+
+Almost all icons are constrained to a size of 17 x 17. The exception is the icon
+for the root, which is unconstrained, so that you may use any image you wish.
+
+ほとんど全てのアイコンのサイズは17 x 17固定です。例外はルートアイコンで、
+サイズが固定されていないため、あなたの望むどんな画像でも扱うことができます。
+
+Use the method B<image($icon_id, $image_name)> to change the image file name of an icon.
+
+アイコン画像のファイル名を変更するためにはB<image($icon_id, $image_name)>
+メソッドを使用します。
+
+=head1 as_HTML($q)
+
+Returns a string.
+
+文字列を返します。
+
+Converts the internal representation of the data into HTML, and returns that.
+
+データの内部表現をHTMLに変換して、それを返します。
+
+=head1 _build_result(...)
+
+Used internally.
+
+内部的に使用されます。
+
+=head1 css([$new_css])
+
+Returns a string of HTML containing a style-sheet for submit buttons.
+
+submitボタンのためのスタイルシートを含むHTML文字列を返します。
+
+Can be used to set the style-sheet, like B<set>(css => $new_css).
+
+B<set>(css => $new_css)のように、スタイルシートをセットする目的にも
+使用されます。
+
+See ce.pl for an example.
+
+例としてはce.plを御覧下さい。
+
+=head1 current_id()
+
+Returns the id of the 'current' node.
+
+'現在の'ノードidを返します。
+
+=head1 depth($id)
+
+Returns the depth of the node whose id is given, or 0.
+
+idが与えられたノードの深さか、あるいは0を返します。
+
+=head1 _depth()
+
+Used internally.
+
+内部的に使用されます。
+
+Called by B<depth()> via Tree::Nary::traverse.
+
+Tree::Nary::traverse経由でB<depth()>が呼び出されます。
+
+=head1 _found()
+
+Used internally.
+
+内部的に使用されます。
+
+Called by File::Find, which means it does not receive $self as its first parameter,
+which means in turn that it must use the class global $myself to access class data.
+
+File::Findによって呼び出されますが、その１番目のパラメータとして$selfを
+受け取らないことを意味し、またそうであることによってクラスのデータにアクセス
+するためにグローバルな$myselfを使わなくてはならないことを示します。
+
+=head1 from_dir($dir_name)
+
+Returns nothing.
+
+何も返しません。
+
+Tells the object to construct its internal representation of the data by parsing
+the names of all sub-directories in the given directory.
+
+オブジェクトに対して、与えられたディレクトリの中の全てのサブディレクトリ名を
+パースすることによりデータの内部表現を構築させます。
+
+Usage:
+
+使用方法:
+
+=over 4
+
+=item *
+
+$tree -> from_dir('/home/rons');
+
+=item *
+
+$tree -> from_dir('D:\My Documents');
+
+=item *
+
+$tree -> from_dir('D:/My Documents');
+
+=back
+
+You call B<as_HTML($q)> later to retrieve a printable version of the data.
+
+出力可能なデータを解決した後、B<as_HTML($q)>を呼び出すことになります。
+
+See ce.pl for an example.
+
+例としてce.plを御覧下さい。
+
+=head1 from_hash($hash_ref)
+
+Returns nothing.
+
+何も返しません。
+
+Tells the object to construct its internal representation of the data by extracting
+information from the given hash.
+
+ハッシュで与えられた情報からデータを抜粋することによりオブジェクトに対して
+内部表現を構築させます。
+
+You would call B<as_HTML($q)> later to retrieve a printable version of the data.
+
+出力可能なデータを解決した後B<as_HTML($q)>を呼び出すことになるでしょう。
+
+Each key in %$hash_ref is a unique positive integer, and points to a hash ref with these
+sub keys:
+
+%$hash_refの各キーはユニークな正の整数で、これらのサブキーとともにハッシュの
+リファレンスを指しています。
+
+=over 4
+
+=item *
+
+id - A unique positive integer, different for each node
+
+id - ユニークな正の整数で、各ノードで異なります
+
+This is the identifier of this node. It is displayed with the constructor option
+B<new>(show_id => 1), which is the default.
+
+これはノードの識別子です。コンストラクタのオプションではB<new>(show_id => 1)
+とすることによって表示されますが、これはデフォルトです。
+
+Yes, this is a copy of the key within $hash_ref, for use within
+Tree::Nary-dependent code.
+
+そうです、これはTree::Naryに依存したコードの内部で用いるための
+$hash_key内に含まれるキーのコピーなのです。
+
+=item *
+
+name - A string
+
+name - 文字列です
+
+This is the name of this node. It is displayed with the constructor option
+B<new>(show_name => 1), which is the default.
+
+これはノードの名前です。コンストラクタオプションB<new>(show_name => 1)を
+用いることによって表示させることができますが、これはデフォルトです。
+
+=item *
+
+parent_id - An integer
+
+parent_id - 整数です
+
+This is the identifier of the parent of this node.
+
+これはこのノードの親の識別子です。
+
+The relationship between id and parent_id is what makes the data a tree.
+
+idとparent_id間での関係がツリーのデータを形成します。
+
+0 means the node has no parent, ie this node is a child of a virtual root node.
+By virtual, I mean each C<CGI::Explorer> object creates its own root node, so that you
+do not have to.
+
+0はノードが親を持っていないことを示します。すなわちこのノードは仮想的なルート
+ノードの子と言えます。事実上、各C<CGI::Explorer>のオブジェクトが
+自身のルートノードを形成しています。よってあなたはルートノードを意識して
+作る必要が無いのです。
+
+If you do have your own root node, with id 1 (say), then your root node's parent will
+still be 0, and your next-level nodes will all have a parent id of 1.
+
+もしあなたが
+
+=back
+
+See ce.pl for an example.
+
+例はce.plを御覧下さい。
+
+=head1 get($option)
+
+Returns the current value of the given option, or undef if the option is unknown.
+
+与えられたオプションの現在の値を返すか、又は未知のオプションである場合は
+undefを返します。
+
+$tree -> get('css_background') returns 'white', by default.
+
+$tree -> get('css_background')はデフォルトで'white'を返します。
+
+=head1 image($icon_id, $new_image)
+
+Returns the file name of the image for the given icon id.
+
+与えられたアイコンidに関する画像ファイル名を返します。
+
+Sets a new image file name for the given icon id.
+
+与えられたアイコンidに対する新しい画像ファイル名を設定します。
+
+See ce.pl for an example.
+
+例はce.plを御覧下さい。
+
+The prefixes are:
+
+プリフィクスは:
+
+=over 4
+
+=item *
+
+	'root' - The root icon
+
+	'root' - ルートアイコンです
+
+=item *
+
+	'**' - The current icon
+
+	'**' - カレントのアイコンです
+
+=item *
+
+	'-L' - An open node with no siblings below it
+
+	'-L' - それより下に兄弟を持たないオープンなノードです
+
+=item *
+
+	'--' - An open node with siblings below it
+
+	'--' - それより下に兄弟を持つオープンなノードです
+
+=item *
+
+	'+L' - A closed node with no siblings below it
+
+	'+L' - それより下のほうに兄弟を持たないクローズされたノードです
+
+=item *
+
+	'+-' - A closed node with siblings below it
+
+	'+-' - それより下ほうに兄弟を持つクローズされたノードです
+
+=item *
+
+	' L' - A childless node with no siblings below it
+
+	' L' - それより下のほうに兄弟を持たず子を持たないノードです
+
+=item *
+
+	' -' - A childless node with siblings below it
+
+	' -' - それより下のほうに兄弟を持ち、子を持たないノードです
+
+=item *
+
+	'&nbsp;&nbsp;' - A horizontal spacer
+
+	'&nbsp;&nbsp;' - 水平スペースです
+
+=item *
+
+	'| ' - A vertical connector
+
+	'| ' - 垂直コネクタです
+
+=back
+
+Note: These are indented because of a bug in pod2html: It complains about '-L' when
+that string is in column 1.
+
+Note: これらはpod2htmlのバグのためにインデントされています: 文字列が
+1列目にある時'-L'に関してそれが起こります。
+
+=head1 name()
+
+Returns the name of the 'current' node.
+
+'現在の'ノードを返します。
+
+=head1 parent_id()
+
+Returns the id of the parent of the 'current' node.
+
+'現在の'ノードの親のidを返します。
+
+=head1 set()
+
+Returns nothing.
+
+何も返しません。
+
+Used to set a new value for any option, after a call to B<new()>.
+
+B<new()>の呼び出しの後に、どんなオプションでも構わないのですが、値を新たに
+設定するために用いられます。
+
+B<set()> takes the same parameters as B<new()>.
+
+B<set()>はB<new()>と同じパラメーターを取ります。
+
+=head1 state($q)
+
+Returns the open/closed state of all nodes.
+
+全てのノードにおけるオープン/クローズの状態を返します。
+
+Tells the object to update its internal representation of the data by recovering
+CGI form field data from the given CGI object.
+
+与えられたCGIオブジェクトからフォームフィールドのデータを復元することにより
+内部データ表現をオブジェクトに更新させます。
+
+Warning: This method can only be called after B<from_dir()> or B<from_hash()>.
+
+Warinig: このメソッドはB<from_dir()>又はB<from_hash()>を呼び出した後でしか
+         呼び出すことができません。
+
+Warning: You B<must> use the return value as a field, presumably hidden, in a form,
+in your script so that the value can do a round trip out to the browser and back.
+This way the value can be recovered by the next invocation of your script.
+
+Warining: ブラウザへの出力とその背後を往復するようなあなたのスクリプトの
+おそらくは隠しフィールドとして、返り値を扱わねばなりません(B<must>)。
+この方法では次のスクリプト呼び出しで値を復元することが可能です。
+
+This is the mechanism C<CGI::Explorer> uses to maintain the open/closed state of each
+node. State maintenance is a quite a complex issue. For details, see:
+
+これは各ノードのオープン/クローズされたと言う状態を保つための
+C<CGI::Explorer>のメカニズムです。
+
+	Writing Apache Modules with Perl and C
+	Lincoln Stein and Doug MacEachern
+	O'Reilly
+	1-56592-567-X
+	Chapter 5 'Maintaining State'
+
+You can see the problem: When you close and then re-open a node, you expect all child
+nodes to be restored to the open/close state they were in before the node was closed.
+
+With a program like Windows Explorer, this is simple, since the program remains in
+RAM, running, all the time nodes are being clicked. Thus it can maintain the state of
+each node in its own (process) memory.
+
+With a CGI script, 2 separate invocations of the script must maintain state outside
+their own memory. I have chosen to use (hidden) form fields in C<CGI::Explorer>.
+
+See ce.pl for an example.
+
+The form fields have these names:
+
+=over 4
+
+=item *
+
+explorer_id_(\d+) - The id of the node clicked on
+
+There is 1 such form field per node.
+
+The click on this node, or the text of this node (when using click_text => 1), is
+what submitted the form. (\d+) is a unique positive integer.
+
+Your CGI script does not need to output these form fields. B<as_HTML($q)> does this
+for you.
+
+=item *
+
+explorer_state - The open/closed state of all nodes. Its value is a string
+
+Your CGI script must output this value.
+
+See ce.pl for an example.
+
+=back
+
+=head1 Required Modules
+
+=head1 必要とされるモジュール
+
+=over 4
+
+=item *
+
+Tree::Nary. Not shipped with Perl. Get it from a CPAN near you
+
+Tree::Naryが必要です。Perlにはあらかじめ入っていません。
+CPANあるいはあなたの近辺で入手して下さい。
+
+=back
+
+=head1 Changes
+
+=head1 更新履歴
+
+See Changes.txt.
+
+Changes.txtを御覧下さい。
+
+=head1 AUTHOR
+
+=head1 作者
+
+C<CGI::Explorer> was written by Ron Savage I<E<lt>ron@savage.net.auE<gt>> in 2001.
+
+C<CGI::Explorer>はRon SavageI<E<lt>ron@savage.net.auE<gt>>によって2001年
+書かれた。
+
+Home page: http://savage.net.au/index.html
+
+=head1 COPYRIGHT
+
+Austrlian copyright (c) 2001, Ron Savage. All rights reserved.
+
+	All Programs of mine are 'OSI Certified Open Source Software';
+	you can redistribute them and/or modify them under the terms of
+	The Artistic License, a copy of which is available at:
+	http://www.opensource.org/licenses/index.html
+
+=head1 翻訳者
+
+三浦真磁<snj@users.sourceforge.jp>
