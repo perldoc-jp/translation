@@ -1,0 +1,302 @@
+=pod
+
+=head1 名前
+
+HTTP::Lite - 軽量なHTTP実装 
+
+=head1 利用例
+
+    use HTTP::Lite;
+    $http = new HTTP::Lite;
+    $req = $http->request("http://www.cpan.org/") 
+        or die "Unable to get document: $!";
+    print $http->body();
+
+=head1 説明
+
+    HTTP::LiteはPerlのための、単体で動作する、軽量なHTTP/1.1の
+    実装です。これは十全の機能をもち、LWPの代わりとなって
+    置き換えるようなものではありません。かわりに、HTTPをサポート
+    するためにアーカイブにインストールするモジュールが最小である
+    ことが好ましい状況、プロセッサが遅く、CPUにとってLWPが良い
+    候補とならない状況で役立つものであろうと考えています。
+    HTTP::Liteは、通常は有意にLWPより高速です。 
+
+    HTTP::LiteはCGI（やmod_perl）プログラムでの利用に、あるいは
+    HTTP GETおよびPOST機能だけが不可欠なより大きなパッケージへの
+    バンドルには理想的です。 
+
+    HTTP::Liteは基本的なPOSTおよびGET操作だけをサポートします。
+    0.2.1では、HTTP::LiteはHTTP/1.1をサポートし、名前ベースの
+    バーチャル・ホストに不可欠なHOSTヘッダーを受け入れます。
+    加えて、HTTP::Liteは現在、プロキシをサポートします。 
+
+    2.0.0になり、HTTP::Liteは現在ではリクエストデータを
+    受け取ってすぐに処理できるように、コールバックをサポート
+    しました。これは、十分なメモリなしで巨大なファイルを
+    取り扱うのに役立ちます。 
+
+    もし、FTPやHTTPSといったより以上の機能的な要求があれば、
+    libwwwperl (LWP)をご覧下さい。 LWPはHTTP::Liteより実に良く、
+    包括的なパッケージで、利用できるのであればHTTP::Liteの
+    代わりに使うべきです。 
+
+=head1 コンストラクタ
+
+=over 4
+
+=item new
+
+HTTP::Liteのコンストラクタです。これは現在のところ引数を
+とりません。将来のバージョンのHTTP::Liteはパラメータを
+受け入れるでしょう。 
+
+=back
+
+=head1 メソッド
+
+=over 4
+
+=item request ( $url, $data_callback, $cbargs )
+
+指定されたURLでリクエストを初期化します。
+
+I/Oエラーが起こるとundefが、そうでなければHTTPステータスコードが
+返されます。200番台のステータスコードは成功を、300は一時的な
+エラーを、400は恒久的なエラーを、500はサーバーエラーを
+あらわします。 
+
+HTTPステータスコードの詳細は
+F<http://www.w3.org/Protocols/HTTP/HTRESP.html>
+を参照してください。 
+
+$data_callbackパラメータは、使用された場合、受信データへのフィルタや、
+大きな転送量をハンドルする方法になります。これは関数への
+リファレンスである必要があり、この関数は以下を渡されます : 
+callbackしたhttpリクエストインスタンスへのリファレンス、
+bodyに追加されようとしているデータブロックへのリファレンス、
+それから$cbargsパラメータ（何かしら指定されていれば）。これは、
+ドキュメントのボディに追加するデータへのリファレンスか、undefの
+どちらかを返さなければいけません。 
+
+set_callbackが使用された場合、$data_callbackと$cbargsは使われません。
+$cbargsはスカラーとリファレンスのどちらでも構いません。
+
+data_callbackは次のように呼び出されます:
+  &$data_callback( $self, $dataref, $cbargs )
+
+ドキュメントをファイルに保存するための例です : 
+
+  # ファイルハンドル$cbargsへデータを書き出し
+  sub savetofile {
+    my ($self,$phase,$dataref,$cbargs) = @_;
+    print $cbargs $$dataref;
+    return undef;
+  }
+
+  $url = "$testpath/bigbinary.dat";
+  open OUT, ">bigbinary.dat";
+  $res = $http->request($url, \&savetofile, OUT);
+  close OUT;
+
+=item set_callback ( $functionref, $dataref )
+
+リクエストの種々のステージにおいて、コールバックをリクエストの状態監視や
+振る舞いの変更のために使うことができます。これらの動作はrequest()への
+$data_callbackパラメータに似ていますが、より用途の広い(訳者注)ものです。
+set_callbackはrequest()での$data_callbackを無効にします。
+
+callbacksは次のように呼び出されます:
+  callback ( $self, $phase, $dataref, $cbargs )
+
+現在、次のphasesがあります:
+
+  connect - コネクションが確立され、ヘッダーが送信されようとしています。
+
+  content-length - 返り値がcontent-lengthとして使われます。未指定時には、
+            prepare_post()が使用されている場合にはコンテンツ長は算出
+            されます。
+
+  done-headers - 全ヘッダー送信完了時点です。
+
+  content - 返り値がコンテントとして扱われ、クライアントに送信されます。
+            prepare_post()で内部的に定義されたコンテントを使用するには
+            undefを返します。
+            
+  content-done - コンテントの転送が成功した時です。
+
+  data - データを1ブロック分受信した時です。データは$datarefで参照
+            されます。返り値として渡された参照値で、最初に渡された
+            コンテントが置き換えられます。大きなドキュメントでメモリが
+            使用されるのを避けるにはundefを返します。
+
+  done - リクエスト終了時です。
+
+※訳者注:verstaileとあったがversatileとみなして訳した。
+
+=item prepare_post ( $hashref )
+
+POSTフォームに含めるアップロードしたい値の連想配列への
+リファレンスを取ります。HTTPボディを生成し、メソッドを
+POSTに設定します。 
+
+=item http11_mode ( 0 | 1 )
+
+HTTP/1.1サポートのOn/Offを切り替えます。壊れたHTTP/1.1サーバに
+対応するため、デフォルトではoffです。 HTTP/1.1サポートを有効に
+するには、1にしてください。 
+
+=item add_req_header ( $header, $value )
+
+=item get_req_header ( $header )
+
+=item delete_req_header ( $header )
+
+HTTPリクエストヘッダを追加、削除、または取得します。この関数は
+どのヘッダでも上書きを許します。現在は、HTTP::Liteモジュールに
+よりあらかじめHost、User-Agent、Content-Type、Accept、そして
+Connectionが定義されます。 HostやConnection、あるいはAcceptは
+上書きしない方が良いでしょう。
+
+（プロキシ）認証を提供するには、以下を使います : 
+
+    use HTTP::Lite;
+    use MIME::Base64;
+    $http = new HTTP::Lite;
+    $encoded = encode_base64('username:password');
+    $http->add_req_header("Authorization", $encoded);
+
+B<注意>: 現在の実装では、どのヘッダも１つのインスタンスに制限
+されます。 
+
+=item body
+
+リモートサーバーから返されたドキュメントのボディを返します。
+
+=item headers_array
+
+リモートホストから返されたHTTPヘッダーを配列で返します。 
+
+=item headers_string
+
+リモートホストから返されたHTTPヘッダーを文字列表現で返します。 
+
+=item get_header ( $header )
+
+リクエストヘッダーを配列で返します。 
+
+B<注意>: HTTPリクエストはヘッダごとのインスタンスになるような
+制限がありません。このため、すべてのヘッダに１つ以上のエントリが
+入るかもしれません。 
+
+=item protocol
+
+リモートサーバから告げられたHTTPプロトコル標識を返します。これは
+一般に、HTTP/1.0かHTTP/1.1のどちらかです。
+
+=item proxy ( $proxy_server )
+
+次のリクエストで使用するプロキシのURLまたはホストネームです。
+
+=item status
+
+サーバから返されたHTTPステータスコードを返します。これは通常、
+I<request()>の返り値です。 
+
+=item status_message
+
+サーバーから返されたステータスコードの、テキストによる記述を
+返します。ステータス文字列は特定のフォーマットの遵守を
+求められませんが、大半のHTTPサーバーは標準的な記述のセットを
+使います。 
+
+=item reset
+
+これはHTTP::Liteハンドルを再利用する前に実行します。
+そうしないと、結果は不確定です。 
+
+=item local_addr ( $ip )
+
+ローカルIPアドレスを明示的に選択します。0.0.0.0（デフォルト）は
+システムによる選択を許します。
+
+=item local_port ( $port )
+
+ローカルポートを明示的に選択します。0（デフォルトかつ推奨）は
+システムによる選択を許します。
+
+=item method ( $method )
+
+メソッドを明示的に選択します。prepare_postまたはresetを使用すると
+この設定は上書きされます。通常選択できるのはGET、POST、PUT、HEADです。
+
+=head1 例
+
+    # CPANホームページのヘッダーとボディーを取得し、出力する
+    use HTTP::Lite;
+    $http = new HTTP::Lite;
+    $req = $http->request("http://www.cpan.org/")
+        or die "Unable to get document: $!";
+    die "Request failed ($req): ".$http->status_message()
+      if $req ne "200";
+    @headers = $http->headers_array();
+    $body = $http->body();
+    foreach $header (@headers)
+    {
+      print "$header$CRLF";
+    }
+    print "$CRLF";
+    print "$body$CRLF";
+
+    # dejanews USENET検索エンジンにリクエストをポストする
+    use HTTP::Lite;
+    $http = new HTTP::Lite;
+    %vars = (
+             "QRY" => "perl",
+             "ST" => "MS",
+             "svcclass" => "dncurrent",
+             "DBS" => "2"
+            );
+    $http->prepare_post(\%vars);
+    $req = $http->request("http://www.deja.com/dnquery.xp")
+      or die "Unable to get document: $!";
+    print "req: $req\n";
+    print $http->body();
+
+=head1 未実装の機能
+
+    - FTP
+    - HTTPS (SSL)
+    - Authenitcation/Authorizaton/Proxy-Authorizationは直接は
+      サポートしておらず、MIME::Base64が必要です。 
+    - リダイレクト（Location）は自動的に追跡されません。 
+    - multipart/form-dataのPOSTは直接サポートされてはません。
+      （これはファイルアップロードには不可欠です） 
+
+=head1 バグ
+
+    正しく動作しないHTTP/1.1サーバーはファイル転送時に、不正確な
+    サイズを送ります。HTTP/1.1モードは現在、デフォルトでは無効に
+    してあります。 
+
+=head1 作者
+
+Roy Hooper <rhooper@thetoybox.org>
+
+=head1 参照
+
+L<LWP>
+RFC 2068 - HTTP/1.1 -http://www.w3.org/
+
+=head1 著作権
+
+Copyright (c) 2000-2002 Roy Hooper.  All rights reserved.
+
+このプログラムはフリーウェアです; Perlそれ自体と同じ文言の元で
+改変と/あるいは再配布を行うことができます。
+
+=head1 翻訳者
+
+塚本 牧生 <walrus@digit.que.ne.jp>
+
+=cut
