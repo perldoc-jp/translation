@@ -1,0 +1,360 @@
+=head1 名前
+
+RPC::PlServer - PlRPCサーバーを書くためのPerl拡張
+
+=head1 概要
+
+  # RPC::PlServerのサブクラスを作成します
+  use RPC::PlServer;
+
+  package MyServer;
+  $MyServer::VERSION = '0.01';
+  @MyServer::ISA = qw(RPC::PlServer);
+
+  # Run()メソッドを１つの接続を扱うようにオーバーライト
+  sub Run {
+      my $self = shift;
+      my $socket = $self->{'socket'};
+  }
+
+  # MyServerクラスのインスタンスの作成
+  package main;
+  my $server = MyServer->new({'localport' => '1234'}, \@ARGV);
+
+  # 実際に実行させるポートにサーバーをバインドします
+  $server->Bind();
+
+
+=head1 説明
+
+PlRPC (Perl RPC) は完全にPerlによってかかれたサーバーとクライントを
+実装するためのパッケージです。この名前はSunのRPC(Remote Procedure Call)から
+借りてきましたが、JavaのRMI("Remote Method Interface")と同じぐらいよいもの
+かもしれません。というのもPlRPCは非常に簡単なやり方でPerlのOOフレームワークの
+完全なパワーを与えるからです。
+
+RPC::PlServerはサーバー側で使われるパッケージです。そうなればRPC::PlClientが
+何のためのものかはお分かりでしょう。両方のパッケージはRPC::PlServer::Commを
+通信のために共有しています。これらの部分についてはL<PlRPC::Client(3)>と
+L<RPC::PlServer::Comm>をご覧ください。
+
+PlRPCはクライアントによって実行されるであろうメソッドのセットを定義することに
+より動きます。例えばサーバーはメソッド "multiply" をクライアントに提供すると
+します。そうすると関数の呼出しはクライアントでは以下のようになります
+
+    @result = $client->multiply($a, $b);
+
+これはサーバーでは以下のような対応する呼出しに対応づけられます
+
+    @result = $server->multiply($a, $b);
+
+引数と結果はサーバーへ、あるいはサーバーから自動的に魔法で転送されます。
+（この魔法はPerlでの名前を持っています：Storableモジュールです。
+この素晴らしいパッケージについてRaphael Manfrediに感謝します）。
+簡単でしょ？ :-)
+
+RPC::PlServer と RPC::PlClient は抽象的なサーバーとクライアントです：
+独自のクラスを派生させる必要があります。
+
+
+=head2 追加のオプション
+
+RPC::PlServerはNet::Daemonのオプションと属性をすべて継承しており、さらに
+以下のものを追加します:
+
+=over 8
+
+=item I<cipher>
+
+この属性値はCrypt::DES、Crypt::IDEAあるいはブロック暗号化のための同じAPIを
+持っているその他のクラスのインスタンスです。もしそのような属性を設定すると、
+クライアントとサーバーの間の転送は、このオプションを使って暗号化されます。 
+
+=item I<maxmessage> (B<--maxmessage=size>)
+
+サービス不能攻撃をさけるため、クライアントとサーバーの間で交換される
+メッセージの大きさは制限されます。デフォルトではその制限は65536バイト
+です。 
+
+=item users
+
+これはクライアント・オブジェクトの属性は構成設定ファイルでの許可／拒否
+(Permit/Deny)ルールのために使われます。その値は、与えられたクライアント
+から接続を許された、ユーザー名の配列へのリファレンスです。
+構成設定ファイルの例は下記のL<構成設定ファイル>をご覧ください。
+
+=back
+
+=head2 エラーの取扱い
+
+完全にPerlの例外をベースとしているので、RPCパッケージでのエラーの
+取扱いはとても簡単です。そのため典型的なコードは以下のようになります:
+
+  eval {
+      # ここで何かをします。エラーについて何も面倒みません
+      ...
+  };
+  if ($@) {
+      # エラー発生
+      ...
+  }
+
+
+=head2 サーバのコンストラクタ
+
+  my $server = RPC::PlServer(\%options, \@args);
+
+(クラス・メソッド) このコンストラクタはNet::Daemonパッケージから、
+そのまま継承されています。詳しくはL<Net::Daemon(3)>をご覧ください。
+
+
+=head2 アクセス制御
+
+  $ok = $self->AcceptApplication($app);
+  $ok = $self->AcceptVersion($version);
+  $ok = $self->AcceptUser($user, $password);
+
+RPC::PlServerパッケージは、とても細かなアクセス制御スキームを
+持っています：まず最初にNet::Daemonのホストをベースとした
+アクセス制御を継承しています。それはバージョンによる制御とユーザー認証も
+加えています。これを実現するために、Net::DaemonからのメソッドI<Accept>は
+3つのメソッドに分割されています。I<AcceptApplication>、I<AcceptVersion>
+そしてI<AcceptUser>のそれぞれはTRUEまたはFALSEを返します。クライアントは、
+その引数をI<application>, I<version>, I<user>そしてI<password>として
+受け取ります。クライアントは上記のメソッドの全てがTRUEを返すときだけ
+受け付けられます。
+
+デフォルトの実装では以下のようになります: B<$self>がB<$app>のサブクラス
+であれば、AcceptApplicationはTRUEを返します。AcceptVersionは要求された
+バージョンがB<${$class}::VERSION>以下であればTRUEを返します。ユーザーが
+接続を許されるかどうかはクライアント構成設定によります。
+例はL<構成設定ファイル>をご覧ください。
+
+
+=head2 メソッドを基にしたアクセス制御
+
+クライアントに任意のメソッドを呼び出す能力を与えることは、恐ろしい
+セキュリティホールになりかねません。そのためサーバーはI<methods>属性を
+持っています。これはクラス名をキーに、値はメソッド名をキーとした
+ハッシュのリファレンスとするハッシュのリファレンスです。
+つまり以下のようなハッシュだったとします：
+
+    $self->{'methods'} = {
+        'CalcServer' => {
+            'NewHandle' => 1,
+            'CallMethod' => 1 },
+        'Calculator' => {
+            'new' => 1,
+            'multiply' => 1,
+            'add' => 1,
+            'divide' => 1,
+            'subtract' => 1 }
+        };
+
+そして、クライアントはオブジェクトを作るためにCalcServerのI<NewHandle>
+メソッドを使うことができますが、許可されたコンストラクタ Calculator->newを
+通した場合だけです。一度、Calculatorが作成されると、サーバーはメソッド
+multiply、add、divide、subtractを呼び出すことができます。
+
+
+=head1 構成設定ファイル
+
+サーバーの構成設定ファイルはNet::Daemonから継承されています。
+I<users>とI<cipher>属性をクライアント・リストに追加しています。
+このため典型的な構成設定ファイルは以下のようになります：
+
+    # 外部モジュールのロード:　これはchroot()オプションを
+    # 使わなければ必要ありません
+    #require DBD::mysql;
+    #require DBD::CSV;
+
+    # 鍵の作成
+    my $myhost_key = Crypt::IDEA->new('83fbd23390ade239');
+    my $bob_key    = Crypt::IDEA->new('be39893df23f98a2');
+
+    {
+        # 'chroot' => '/var/dbiproxy',
+        'facility' => 'daemon',
+        'pidfile' => '/var/dbiproxy/dbiproxy.pid',
+        'user' => 'nobody',
+        'group' => 'nobody',
+        'localport' => '1003',
+        'mode' => 'fork',
+
+        # アクセス制御
+        'clients' => [
+            # ローカルなLAN(192.168.1.*)は受け付けます
+            {
+                'mask' => '^192\.168\.1\.\d+$',
+                'accept' => 1,
+                'users' => [ 'bob', 'jim' ],
+                'cipher' => $myhost_key
+            },
+            # myhost.company.comは受け付けます
+            {
+                'mask' => '^myhost\.company\.com$',
+                'accept' => 1,
+                'users' => [ {
+                    'name' => 'bob',
+                    'cipher' => $bob_key
+                    } ]
+            },
+            # その他は全て拒絶します
+            {
+                'mask' => '.*',
+                'accept' => 0
+            }
+        ]
+    }
+
+気をつけなければならないこと: 192.168.1*のユーザーリストにはスカラー値が
+入っていますが、myhost.company.comのユーザリストにはハッシュへの
+リファレンスが入っています；これはユーザーの構成設定はユーザー・ベースの
+暗号化になっているので、これが必要です。
+
+
+
+=head1 使用例
+
+十分に時間を使いましたから、言葉ではなく例をお見せしましょう :-)
+MD5ダイジェストのためのサーバーという簡単なサーバーを書きましょう。
+このサーバーは外部パッケージ MD5を使いますが、クライアントには、この
+パッケージL<MD5(3)>をインストールする必要はありません。ここではサーバーの
+ソースを示します。クライアントの部分はRPC::PlClient manページに
+あります。 L<RPC::PlClient(3)>をご覧ください。
+
+
+    #!/usr/bin/perl -wT
+    #  -T スィッチに注意してください！ これはPerlサーバーには常にお勧めします。
+
+    use strict;               # 常によい選択です
+
+    require RPC::PlServer;
+    require MD5;
+
+
+    package MD5_Server;  # クライアントはアプリケーション "MD5_Server"を
+                         # 要求する必要があります
+
+    $MD5_Server::VERSION = '1.0'; # もしバージョン 1.1を要求するのであれば、
+                                  # クライアントは拒絶されます
+    @MD5_Server::ISA = qw(RPC::PlServer);
+
+    eval {
+        # 以下のサーバーオプションは構成設定フィルまたはコマンドラインで
+        # 上書きすることができます。
+        my $server = MD5_Server->new({
+        'pidfile'    => '/var/run/md5serv.pid',
+        'configfile' => '/etc/md5serv.conf',
+        'facility'   => 'daemon', # デフォルト
+        'user'       => 'nobody',
+        'group'      => 'nobody',
+        'localport'  => 2000,
+        'logfile'    => 0,        # syslogを使用
+            'mode'       => 'fork',   # Unixには推奨
+            'methods'    => {
+            'MD5_Server' => {
+            'ClientObject' => 1,
+            'CallMethod' => 1,
+            'NewHandle' => 1
+            },
+            'MD5' => {
+            'new' => 1,
+            'add' => 1,
+            'hexdigest' => 1
+            },
+            }
+        });
+        $server->Bind();
+    };
+
+
+=head1 セキュリティ
+
+言わなければならないことがあります:PlRPCをベースとしたサーバーには潜在的に
+セキュリティ上の問題があります！私はセキュリティ問題を避けるために全力を
+尽くしてきましたが、何かを落としているかもしれません。セキュリティは設計の
+結果ですが、設計の結果だけではありません。（よく知られている問題ですが...）
+
+以下の設計原則を強くお勧めします：
+
+=head2 "信用されている"ユーザーに対する保護
+
+=over 4
+
+=item perlsec
+
+perlのセキュリティに関するFAQ(C<perldoc perlsec>)を読み、C<-T>スィッチを使ってください。 
+
+=item 汚染モードperl
+
+C<-T>スィッチをB<使いなさい>。 私は本気です！
+
+=item データの検証
+
+検証しないで文字列を汚染モードからはずさないでください。2回検証すると
+さらによいでしょう。例えばI<CallMethod>は、それにメソッドを強制する前に、
+まずオブジェクト・ハンドルが適切かどうかをチェックします 
+
+=item 制約的であれ
+
+メソッドへのアクセスをクライアントに与える前に2回考えましょう。
+
+=item perlsec
+
+そして私が忘れている場合には： C<perlsec> man ページを読みましょう。 :-) 
+
+=back
+
+=head2 信用されていないユーザに対する保護
+
+=over 4
+
+=item ホスト・ベースの認証 
+
+PlRPC は組込みのホスト・ベースの認証スキームを持っています； 
+それを使ってください！ L<構成設定ファイル>をご覧ください。
+
+=item ユーザー・ベースの認証 
+
+PlRPC は組込みのユーザー・ベースの認証スキームを持っています；
+それを使ってください！ L<構成設定ファイル>をご覧ください。 
+
+
+=item 暗号化
+
+PlRPCで暗号化を使うことはとても簡単です。クライアントと暗号化なしで
+通信するのには何ら絶対的な理由はありません。さらに：私は2つのフェーズの
+暗号化を推奨します。最初のフェーズはログイン・フェーズで、ここでは
+ホストをベースとしたキーを使います。ユーザーが認証されたら、ユーザを
+ベースとするキーに切り替えます。例としてDBI::ProxyServerをご覧ください。 
+
+=back
+
+=head1 作者と著作権(AUTHOR AND COPYRIGHT)
+
+The PlRPC-modules are
+
+  Copyright (C) 1998, Jochen Wiedmann
+                      Am Eisteich 9
+                      72555 Metzingen
+                      Germany
+
+                      Phone: +49 7123 14887
+                      Email: joe@ispsoft.de
+
+  All rights reserved.
+
+You may distribute this package under the terms of either the GNU
+General Public License or the Artistic License, as specified in the
+Perl README file.
+
+
+=head1 参考資料
+
+L<RPC::PlClient(3)>, L<RPC::PlServer::Comm(3)>, L<Net::Daemon(3)>,
+L<Net::Daemon::Log(3)>, L<Storable(3)>, L<Sys::Syslog(3)>,
+L<Win32::EventLog(3)>
+
+例のアプリケーションについてはL<DBI::ProxyServer(3)>をご覧ください。
+

@@ -1,0 +1,278 @@
+=pod
+
+=head1 名前
+
+RPC::PlClient - PlRPCクライアントを書くためのPerl拡張
+
+
+=head1 概要
+
+  require RPC::PlClient;
+
+  # クライアント・オブジェクトを作成し、サーバーに接続します
+  my $client = RPC::PlClient->new('peeraddr' => 'joes.host.de',
+                  'peerport' => 2570,
+                  'application' => 'My App',
+                  'version' => '1.0',
+                  'user' => 'joe',
+                  'password' => 'hello!');
+
+  # $class->new()を呼ぶことにより、サーバーに$classのインスタンスを、
+  # クライアントに対応するインスタンスを作成します。
+  my $object = $client->Call('NewHandle', $class, 'new', @args);
+
+
+  # $objectのメソッドを呼び出します。実際には対応するサーバー・インスタンスの
+  # 同じメソッドを呼び出します。
+  my $result = $object->do_method(@args);
+
+
+=head1 説明
+
+PlRPC (Perl RPC) はPerlベースのクライアント／サーバー・アプリケーションを
+書くことを簡単にするパッケージです。RPC::PlServerがサーバー側で使われる
+パッケージですから、RPC::PlClient は、もうお分かりのことでしょう。
+この部分については L<RPC::PlServer(3)>をご覧ください。
+
+PlRPCはクライアントにより実行されるメソッドのセットを定義することに
+より動きます。例えばサーバーはメソッド "multiply" をクライアントに
+提供するとします。そのときクライアントでの関数の呼出しは以下のようになり
+
+    @result = $client->Call('multiply', $a, $b);
+
+サーバーでは以下のように対応する呼出しに対応づけられます
+
+    $server->multiply($a, $b);
+
+数呼出しの結果ははクライアントに転送され、クライアントのメソッド
+の呼出しとして返されます。簡単でしょ？ :-)
+
+
+=head2 クライアント・メソッド
+
+=over 4
+
+=item $client = new(%attr);
+
+（クラス・メソッド）クライアント・コンストラクタ。サーバーに接続された
+クライアント・オブジェクトを返します。エラーの場合にはPerlの例外が
+投げられます。そこで典型的には以下のように使います：
+
+    $client = eval { RPC::PlClient->new ( ... ) };
+    if ($@) {
+    print STDERR "Cannot create client object: $@\n";
+    exit 0;
+    }
+
+The method accepts a list of key/value pairs as arguments. Known arguments
+are:
+
+=over 8
+
+=item peeraddr
+
+=item peerport
+
+=item socket_proto
+
+=item socket_type
+
+=item timeout
+
+これらはIO::Socket::INETのI<PeerAddr>,I<PeerPort>,I<Proto>,I<Type>そして
+I<Timeout>属性に対応します。サーバー接続はそれらをIO::Socket::INET->new()に
+渡すことにより確立されます。 
+
+=item socket
+
+接続が確立された後、IO::Socketインスタンスはこの属性に格納されます。
+もし予め自分自身で接続を確立したければ、独自のIO::Socketのインスタンスを作り、
+newメソッドへのI<socket>属性として渡すこともできます。そのような場合、
+上記の属性は無視されます。
+
+=item application
+
+=item version
+
+=item user
+
+=item password
+
+これはPlRPCの認証処理の一部です。これはクライアントはアプリケーション名、
+プロトコル・バージョンそしてオプションでユーザ名とパスワードを渡す
+ログイン処理に従わなければなりません。これらの引数はサーバーの
+I<Application>, I<Version>そしてI<User>メソッドによって扱われます。 
+
+=item compression
+
+Set this to off (default, no compression) or gzip (requires the
+Compress::Zlib module).
+
+=item cipher
+
+この属性は非常に簡単に暗号化を追加するために使われます。PlRPCは特定の
+暗号化方法ではなく、ブロック暗号化APIに結び付けられています。この属性は
+I<blocksize>,I<encrypt>そして I<decrypt>メソッドをサポートしているオブジェクトに
+なります。例えば、Crypt::DES そして Crypt::IDEAがこうしたインターフェースを
+サポートしています。
+
+実行中に暗号を設定したり、はずしたりできるということに注意してください
+（undefを属性の値として設定すると暗号化を止めます）。しかし両側が確実に
+暗号のモードを変更する必要があります。
+
+使用例: 
+
+    use Crypt::DES;
+    $cipher = Crypt::DES->new(pack("H*", "0123456789abcdef"));
+    $client = RPC::PlClient->new('cipher' => $cipher,
+                ...);
+
+=item maxmessage
+
+サービス不能攻撃(denial of service attacks)を避けるため、クライアントと
+サーバーで交換されるメッセージの大きさは制限されます。デフォルトの
+上限は65536バイトです。 
+
+=item debug
+
+デバッグのメッセージも入れることによりログ・レベルを拡張します。
+
+=item logfile
+
+デフォルトではクライアントはsyslog(Unix)またはイベント・ログ(Windows)にログを
+出力します。どちらかも使えないか、I<logfile>にTRUE値を渡せば、ログは与えられた
+ファイルハンドル、IO::Handleのインスタンスに出力されます。もし値がスカラーで
+あれば、stderrに出力されます。
+
+使用例: 
+
+  # stderrへログ出力:
+  my $client = RPC::PlClient->new('logfile' => 1, ...);
+
+  # 'my.log'にログ出力:
+  my $file = IO::File->new('my.log', 'a')
+      || die "Cannot create log file 'my.log': $!";
+  my $client = RPC::PlClient->new('logfile' => $file, ...);
+
+=back
+
+=item @result = $client->Call($method, @args);
+
+(インスタンス・メソッド)サーバーでメソッドを呼び出します;引数は
+サーバー・クラスのメソッド名とメソッド呼出し引数になります。
+正常であれば、メソッドの結果を返します。そうでなければPerl例が投げられます。
+
+例: 
+
+  @results = eval { $client->Call($method, @args };
+  if ($@) {
+      print STDERR "An error occurred while executing $method: $@\n";
+      exit 0;
+  }
+
+=item $cobj = $client->ClientObject($class, $method, @args)
+
+(インスタンス・メソッド)クライアント側のオブジェクトの取り扱いを驚くほど
+簡単にする、予め定義されたメソッドが使用できます。短く言うと、クライアントが
+あなたのためのサーバーオブジェクトの表現を作成します。サーバーに$sobjという
+オブジェクト、クライアントに対応する$cobjを持っているとします。そして以下の
+ように呼び出します：
+
+  @results = $cobj->my_method(@args);
+
+これはすぐにサーバー側での以下の呼出しに対応づけられます：
+
+  @results = $sobj->my_method(@args);
+
+そして何もプログラムを追加することなく結果を返します。
+それではI<RPC::PlClient::Object>インスタンス、$cobjをどのように作成するのか
+といえば以下のようにします:
+
+  my $cobj = $client->ClientObject($class, 'new', @args);
+
+これはサーバーで以下の呼出しを引き起こします：
+
+  my $sobj = $class->new(@args);
+
+サーバーには$server->{'methods'}を適切に設定することにより、あるクラスと
+メソッドの両方を制限することができることに注意してください。
+
+=back
+
+
+=head1 使用例
+
+ここではMD5クライアントの例となる簡単なプログラムを作成します。
+サーバーにはMD5モジュールがインストールされ、ダイジェストを作成します。
+ここではクライアント部分だけを示します。サーバー部分の例は
+RPC::PlServerのmanページにあります。L<RPC::PlServer(3)>をご覧ください。
+
+    #!/usr/local/bin/perl
+
+    use strict;               # 常によい選択です
+
+    require RPC::PlClient;
+
+    # 定数
+    my $MY_APPLICATION = "MD5_Server";
+    my $MY_VERSION = 1.0;
+    my $MY_USER = "";       # サーバーがユーザ認証を
+    my $MY_PASSWORD = "";   # 要求していません
+
+    my $hexdigest = eval {
+        my $client = RPC::PlClient->new
+        ('peeraddr'    => '127.0.0.1',
+         'peerport'    => 2000,
+         'application' => $MY_APPLICATION,
+         'version'     => $MY_VERSION,
+         'user'        => $MY_USER,
+         'password'    => $MY_PASSWORD);
+
+        # サーバーにMD5オブジェクトと
+        # 関連するクライアント・オブジェクトを作成します。
+        #     $context = MD5->new()
+        # をサーバー上で実行します。
+        my $context = $client->ClientObject('MD5', 'new');
+
+        # サーバーにダイジェストを計算させます。
+        #     $context->add("This is a silly string!");
+        #     $context->hexdigest();
+        # をサーバーで実行します。
+    $context->add("This is a silly string!");
+    $context->hexdigest();
+    };
+    if ($@) {
+        die "An error occurred: $@";
+    }
+
+    print "Got digest $hexdigest\n";
+
+
+=head1 作者と著作権(AUTHOR AND COPYRIGHT)
+
+The PlRPC-modules are
+
+  Copyright (C) 1998, Jochen Wiedmann
+                      Am Eisteich 9
+                      72555 Metzingen
+                      Germany
+
+                      Phone: +49 7123 14887
+                      Email: joe@ispsoft.de
+
+  All rights reserved.
+
+You may distribute this package under the terms of either the GNU
+General Public License or the Artistic License, as specified in the
+Perl README file.
+
+
+=head1 参考資料
+
+L<PlRPC::Server(3)>, L<Net::Daemon(3)>, L<Storable(3)>, L<Sys::Syslog(3)>,
+L<Win32::EventLog>
+
+アプリケーションの例としてはDBI Proxyクライアントがあります:
+
+L<DBD::Proxy(3)>.
+

@@ -1,0 +1,148 @@
+=head1 名前
+
+Net::Daemon::Test - Net::Daemonサーバーをテストするためのサポート関数
+
+
+=head1 概要
+
+    # これはファイル"servertask"に格納されているサーバーです。
+    #
+    # Net::Daemon::Testのサブクラスを作成し、それがさらに
+    # Net::Daemonのサブクラスになります。
+    use Net::Daemon::Test ();
+    package MyDaemon;
+    @MyDaemon::ISA = qw(Net::Daemon::Test);
+
+    sub Run {
+    # これやその他のメソッドを好きなように書きかえて下さい
+    }
+
+    my $self = Net::Daemon->new(\%attr, \@options);
+    eval { $self->Bind() };
+    if ($@) {
+    die "Server cannot bind: $!";
+    }
+    eval { $self->Run() };
+    if ($@) {
+    die "Unexpected server termination: $@";
+    }
+
+
+    # こちらがクライアント、本当のテスト・スクリプトです。
+    # 下で"servertask"ファイルを呼んでいることに注意してください：
+    #
+    # 子プロセスを起動するためにChildメソッドを呼びます。timeoutオプションを
+    # 使うのを忘れないで下さい。
+    use Net::Daemon::Test ();
+
+    my($handle, $port) = eval {
+        Net::Daemon::Test->Child(5, # サブテストの数
+                 'servertask', '--timeout', '20')
+    };
+    if ($@) {
+    print "not ok 1 $@\n";
+    exit 0;
+    }
+    print "ok 1\n";
+
+    # 以下に本当のテスト
+    ...
+
+    # サーバーを終了させます
+    $handle->Terminate();
+
+
+=head1 説明
+
+このモジュールは、Test::Harnessを使うよりも好ましい、
+Net::Daemonサーバー・パッケージのテスト・スクリプトを作成するためのフレームです。
+しかしそれはあなたの選択です。
+
+テストは２つの部分からなります。クライアント部分はとサーバー部分です。
+テストはクライアント部分が、子プロセスを起動し、外部のPerlスクリプトを
+呼び出すことによりサーバー部分を呼び出すことにより実行されます。
+（もちろんfork()では外部ファイルを必要としませんが、テスト・スクリプトに
+スレッドを必要とすることなくテスト・スクリプトをWindowsへ移植できるように
+するには、これが一番可能性があります。）
+
+サーバー部分は通常のNet::Daemonアプリケーションで、例えばdbiproxyのような
+スクリプトです。唯一の違いはNet::Daemon::Testからの派生であって、Net::Daemonから
+のものではないことです。主な違いはB<Bind>メソッドが自動的にポートを
+占有しようとすることです。一度ポートが占有されると、その番号はファイル
+"ndtest.prt"に格納されます。
+
+サーバー・プロセスが起動された後、子プロセスはndtest.prtが作成されるまで
+10秒待ちます（これで十分だとよいのですが）。
+
+
+=head1 利用できるメソッド
+
+=head2 サーバー部分
+
+=over 8
+
+=item Options
+
+Net::DaemonにオプションB<--timeout>を追加します: サーバーのRunメソッドは
+20秒ほどでdieします。 
+
+=pod
+
+=item Bind
+
+(インスタンス・メソッド)ほとんどデフォルトのBindメソッドと同じです。 
+しかし2つの方法でフリーなポートを発見し、占有しようとします：まず最初に
+ポート0をBindしようとします。たいていのシステムではこのような場合、
+自動的にポートを選んでくれます。失敗したようであれば、ポート 30000-30049 が
+試されます。私たちはこれらがうまくいくことを望んでいます。 :-) 
+
+=pod
+
+=item Run
+
+(インスタンス・メソッド) Net::Daemonのメソッドをtimeoutを追加することにより
+書換えます。 
+
+=back
+
+sub Run ($) {
+    my $self = shift;
+    $self->Run();
+}
+
+
+=head2 クライアント部分
+
+=over 8
+
+=item Child
+
+(クラス・メソッド) サーバー・プロセスを起動しようとします。サーバー・プロセスは
+ポート番号を持ったファイル'ndtest.prt' を作成するものと期待されます。
+
+このメソッドはプロセス・ハンドルとポート番号を返します。プロセス・ハンドルは
+メソッドB<Terminate>を提供します。これはサーバー・プロセスを停止させるのに
+使うことができます。
+
+=back
+
+=head1 作者と著作権(AUTHOR AND COPYRIGHT)
+
+  Net::Daemon is Copyright (C) 1998, Jochen Wiedmann
+                                     Am Eisteich 9
+                                     72555 Metzingen
+                                     Germany
+
+                                     Phone: +49 7123 14887
+                                     Email: joe@ispsoft.de
+
+  All rights reserved.
+
+You may distribute under the terms of either the GNU General Public
+License or the Artistic License, as specified in the Perl README file.
+
+
+=head1 参考資料
+
+L<Net::Daemon(3)>, L<Test::Harness(3)>
+

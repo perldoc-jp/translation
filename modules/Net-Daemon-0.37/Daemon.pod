@@ -1,0 +1,544 @@
+=head1 名前
+
+Net::Daemon - 移植可能なデーモンのためのPerl拡張
+
+
+=head1 概要
+
+  # Net::Daemonのサブクラスの作成
+  require Net::Daemon;
+  package MyDaemon;
+  @MyDaemon::ISA = qw(Net::Daemon);
+
+  sub Run ($) {
+    # この関数が本来の仕事をします； これは新しく接続がおこなわれるたびに
+    # 呼び出されます
+  }
+
+
+=head1 警告
+
+これはALPHA状態のソフトウェアです。これはインターフェース(API)が最終的に
+確定されていないためだけに'Alpha'になっています。Alpha状態はコードの品質や
+安定性には当てはまりません。
+
+
+=head1 説明
+
+Net::Daemon はとても簡単に移植可能なサーバー・アプリケーションを実装するための
+抽象クラスです。このモジュールはPerl5.005のために設計されていますが、fork()と
+Perl5.004で機能します。
+
+Net::Daemon クラスはデーモンに必要なほとんどの一般的なタスクのためのメソッドを
+提供します：起動、ログ出力、クライアント認証、セキュリティのために自分の環境を
+制限すること、そして本当の機能をおこなうこと。あなたはあなたの目的に合わない
+メソッドだけを上書きするだけでよいのです。しかし典型的には継承すれば仕事が
+大幅に減らしてくれるでしょう。
+
+=head2 コンストラクタ
+
+  $server = Net::Daemon->new($attr, $options);
+
+  $connection = $server->Clone($socket);
+
+2つのコンストラクタが利用できます：B<new>メソッドは起動時と基本的にプログラム全体での
+アンカーとして機能するオブジェクトが作られるときに呼ばれます。これはL<Getopt::Long (3)> を
+通じてコマンド・ラインの解析もサポートします。
+
+B<new>の引数は属性のハッシュ・リファレンスであるI<$attr>（下記をご覧ください）と
+オプションの配列リファレンスであるI<$options>で、これは典型的にはコマンド・ライン引数
+（例えば B<\@ARGV>）で B<Getopt::Long::GetOptions>に渡されます。
+
+2番目のコンストラクタはB<Clone>です。これはクライアントが接続するたびに呼ばれます。
+これはメインのサーバー・オブジェクトを入力として受け取り、新しいオブジェクトを返します。
+この新しいオブジェクトは、最終的にクライアントと通信する本来の仕事をおこなうメソッドに
+渡されます。通信はB<Clone>の引数である、B<$socket>ソケットで行われます。
+
+設定できるオブジェクト属性と対応するコマンドラインの引数は以下の通りです：
+
+=over 4
+
+=item I<catchint> (B<--nocatchint>)
+
+いくつかのシステム、特にSolarisではaccept()、read()などの関数は
+シグナルによる中断に対して安全ではありません。例えば、ユーザが
+USR1シグナル（典型的には構成設定ファイルの再読に使われます）をおこすと、
+関数はエラーEINTRを返します。もしI<catchint>オプションがオンであれば
+（デフォルト。オフにするには --nocatchint を使ってください）、
+パッケージはできる限りEINTRエラーを無視します。 
+
+=item I<chroot> (B<--chroot=dir>)
+
+(UNIXのみ）bind()をした後、chroot()をすることによりルート・ディレクトリを
+指定されたディレクトリに変更します。これはセキュリティ操作に便利です。
+しかしこれはプログラマに多くの制約を与えます。例えば典型的には、chroot()する前に
+外部のPerl拡張をロードしなければなりませんし、あるいはUnixソケットへハードリンクを
+作成する必要があります。これは典型的には構成設定ファイルで行われます。
+--configfile オプションをご覧ください。また --group と --userもご覧ください。 
+　 
+chroot()をご存じなければ、ログインした後にだけ、あるディレクトリ・ツリーを
+見ることができるFTPサーバーを考えてみてください。 
+
+=item I<clients>
+
+クライアントのリストを持った配列リファレンス。clientsは
+ハッシュ・リファレンスで、その属性はaccept （0ならば受入ない、1なら許可）、
+そしてクライアントIP番号またはホスト名のためのPerl正規表現であるI<mask>に
+なります。下記のL<"アクセス制御">をご覧ください。 
+
+=item I<configfile> (B<--configfile=file>)
+
+Net::Daemon は構成設定ファイルの使用をサポートしています。
+これらのファイルには、newメソッドの引数を上書きする１つのハッシュ・リファレンスが
+入っているものと想定されます。しかしコマンドライン引数は構成設定ファイルよりも
+優先されます。構成設定ファイルについての詳細は下記のL<"構成設定ファイル">を
+ご覧ください。 
+
+=item I<debug> (B<--debug>)
+
+デバッグ・モードをオンにします。主にこれはレベル"debug"のログ出力メッセージが
+作成されることを意味しています。
+
+=item I<facility> (B<--facility=mode>)
+
+(UNIXのみ) L<Sys::Syslog (3)>での facility。デフォルトはB<daemon>です。 
+
+=item I<group> (B<--group=gid>)
+
+bind()をした後に、実際のそして実効のGIDを与えられたものに変更します。
+これはサーバーを特権ポートにbinnd(<1024)にバインドしたいときに便利です。
+しかしrootとしてサーバーを実行したいと思わないで下さい。--userオプションも
+ご覧ください。
+
+GIDにはグループ名も数値も渡すことができます。
+
+=item I<localaddr> (B<--localaddr=ip>)
+
+デフォルトではデーモンはマシンが持っているIP番号の全てについて
+listenします。この属性は与えられたIP番号にサーバーを限定することを
+可能にします。 
+
+=item I<localpath> (B<--localpath=path>)
+
+サーバーをローカル・サービスにだけ限定したければ、もしできるのであれば
+Unixソケットを使いたいでしょう。その場合、作成されるUnixソケットのパスを
+設定するため、このオプションを使うことができます。このオプションは
+B<--proto=unix>も含みます。 
+
+=item I<localport> (B<--localport=port>)
+
+この属性は、デーモンがlistenするポートを設定します。それは何らかの方法で
+与えられなければなりません。デフォルトはありません。 
+
+=item I<logfile> (B<--logfile=file>)
+
+デフォルトではログメッセージはsyslog(Unix)またはイベントログ(Windows NT)に
+書き込まれます。他のオペレーティング・システムではログ・ファイルを指定する
+必要があります。特殊な値 "STDERR"は 標準エラー出力(stderr)にログを
+出力させます。
+
+=item I<loop-child> (B<--loop-child>)
+
+このオプションはループのための新しい子供プロセスを作成させます
+（I<loop-timeout>オプションをご覧ください）。デフォルトでは、ループは
+１つずつ処理されます。 
+
+=item I<loop-timeout> (B<--loop-timeout=secs>)
+
+いくつかのサーバーはある時から時へ行動する必要があります。
+例えば、Net::Daemon::Spoolerは５分毎にそのスプーリング・キューを空に
+しようとします。このオプションが正の値に設定されると（デフォルトでは0）、
+サーバーは"loop-timeout"秒毎に、そのLoopメソッドを呼び出します。
+
+このインターバルの精度をあまり信用しないで下さい。これはいくつかの要素、
+特にLoop()メソッドの実行時間に依存しています。ループはI<select>関数を
+使って実装されています。正確なインターバルが必要であれば、alarm()関数と
+シグナル・ハンドラを使ったほうがよいでしょう。（I<catchint>オプションを
+ご覧になることを忘れないで下さい！）
+
+I<loop-timeout>と一緒に、I<loop-child>オプションを使うことをお勧めします。
+
+=item I<mode> (B<--mode=modename>)
+
+Net::Daemon サーバーは環境によって、3つの異なるモードで実行することが
+できます。
+
+Perl 5.005を走らせ、スレッドが利用できるようにコンパイルしてあれば、
+サーバーは各接続に対して新しいスレッドを作成します。そのスレッドは
+サーバーのRun()メソッドを実行し、終了します。このモードがデフォルトであり、
+これは"--mode=threads"で強制することができます。
+
+もしスレッドが使ええなくても、機能するfork()を持っているのであれば、
+サーバーは同様に、各接続に対して新しいプロセスを作成します。このモードは
+スレッドがない場合には自動的に、あるいは"--mode=fork"オプションを使うと
+利用されます。
+
+最後にシングル−コネクション・モードがあります。サーバーが接続を
+受け取ると、それはRun()メソッドに入ります。他の接続はRun()メソッドから
+戻ってくるまで受け取られません。このオプションはMacintoshのように
+スレッドもfork()持っていないときに有効です。デバッグ目的のため、
+"--mode=single"でこのモードを強制することができます。
+
+シングル・モードで走っているときでも、複数のプロセスを
+あらかじめforkしておく(=prefork)ことにより、あなたは同時に複数の
+クライアントを扱うことができます。子供プロセスの数はオプション 
+"--childs"で設定されます。
+
+=item I<childs>
+
+Net::Daemonをpreforkモードで実行させるため、このパラメータを使ってください。
+これは、このパラメータで与えた子供プロセスの数を、それがforkすることを
+意味します。そして全ての子供プロセスは並列に接続を取り扱います。forkモードとの
+違いは、接続の終了後、子供プロセスが走り続け、新しい接続を受け取ることが
+できるということです。これは子供プロセスの内部でキャッシングするのに
+有効です（例えばDBI::ProxyServer connect_cached属性）
+
+=item I<options>
+
+B<new>メソッドを通じてサーバー・オブジェクトに渡されるコマンドライン・オプションの
+配列リファレンスです 。
+
+=item I<parent>
+
+B<Clone>でオブジェクトが作成されるとき、元のオブジェクトは
+新しいオブジェクトの親になります。B<new>で作られるオブジェクトは
+通常親を持っていません、このためこの属性は設定されません。 
+
+=item I<pidfile> (B<--pidfile=file>)
+
+(UNIX のみ) このオプションがあると、指定された場所にPIDファイルが作成されます。 
+
+=item I<proto> (B<--proto=proto>)
+
+使用されるトランスポート・レイヤ。デフォルトのI<tcp>あるいはUnixソケットの
+ためのI<unix> 。両方を組み合わせることはまだできません。 
+
+=item I<socket>
+
+クライアントに接続されたソケット;B<Clone>メソッドへB<$client>引数として
+渡されます。もしサーバー・オブジェクトがB<new>で作成されると、この属性は
+B<Bind>メソッドが呼ばれるまではundefかもしれません。ソケットはIO::Socket
+オブジェクトものと想定されます。 
+
+=item I<user> (B<--user=uid>)
+
+bind()をした後に、実際のそして実効のUIDを与えられたものに変更します。
+これはサーバーを特権ポートにbinnd(<1024)にバインドしたいときに便利です。
+しかしrootとしてサーバーを実行したいと思わないで下さい。--groupと--chroot
+オプションもご覧ください。
+
+UIDにはグループ名も数値も渡すことができます。
+
+=item I<version> (B<--version>)
+
+サーバーの起動をとばします;代わりにバージョン文字列を出力し、
+プログラムは即座に終了します。 
+
+=back
+
+これらの属性のほとんど(facility, mode, localaddr, localport, pidfile, version) は
+起動のときにのみ意味があることに注意してください。後で設定しても、単に無視されるだけです。
+ほとんど全ての属性は適切なデフォルトを持っています。典型的にはB<localport>ポートだけを
+使います
+
+
+=head2 コマンドラインの解析
+
+  my $optionsAvailable = Net::Daemon->Options();
+
+  print Net::Daemon->Version(), "\n";
+
+  Net::Daemon->Usage();
+
+B<Options>メソッドは可能なコマンド・ライン・オプションのハッシュ・リファレンスを
+返します。キーはオプション名、値は以下のキーを持ったハッシュ・リファレンスです：
+
+=over 4
+
+=item template
+
+B<Getopt::Long::GetOptions>に渡すことができるオプション・テンプレート 
+
+=item description
+
+B<Usage>で使われる、このオプションの説明 
+
+=back
+
+B<Usage>メソッドは全ての可能なオプションと戻りのリストを出力します。
+それはプログラム名とバージョンを出力するためにB<Version>メソッドを使います。
+
+
+=head2 構成設定ファイル
+
+もし構成設定ファイルオプションがコマンドライン・オプションか"new"の引数で指定されると、
+以下のメソッド
+
+  $server->ReadConfigFile($file, $options, $args)
+
+が呼び出されます。デフォルトでは構成設定ファイルはオプションのハッシュ・リファレンスを
+返すPerlソースが入っているものと考えられます。これらのオプションは"new"引数を上書きし、
+$options ハッシュ・リファレンスで表されたように、コマンドライン・オプションによって
+上書きされます。
+
+典型的な構成設定ファイルは以下のようになります。例としてDBI::ProxyServerを
+使っています：
+
+    # 外部のモジュールをロードしてください：chroot() オプションを使わなければ、
+    # これは必要ありません。
+    #require DBD::mysql;
+    #require DBD::CSV;
+
+    {
+    # 'chroot' => '/var/dbiproxy',
+    'facility' => 'daemon',
+    'pidfile' => '/var/dbiproxy/dbiproxy.pid',
+    'user' => 'nobody',
+    'group' => 'nobody',
+    'localport' => '1003',
+    'mode' => 'fork'
+
+    # アクセス制御
+        'clients' => [
+        # ローカルは受け付けます
+        {
+        'mask' => '^192\.168\.1\.\d+$',
+                'accept' => 1
+            },
+        # myhost.company.comを受け付けます
+        {
+        'mask' => '^myhost\.company\.com$',
+                'accept' => 1
+            }
+        # その他は拒絶します
+        {
+        'mask' => '.*',
+        'accept' => 0
+        }
+        ]
+    }
+
+
+=head2 アクセス制御
+
+Net::Daemon パッケージはホスト・ベースのアクセス制御のスキームをサポート
+しています。デフォルトでは全ての人にアクセスが開かれています。しかし属性
+$self->{'clients'} を、典型的には構成設定ファイル中に、作れば、デフォルトで
+アクセス制御ができなくなります。全ての接続について、クライアント・リストが
+処理されます。clients属性はハッシュ・リファレンスのリストへの配列リファレンス
+です。ハッシュ・リファレンスのいずれにも以下のものを含めた、任意の属性を入れる
+ことができます:
+
+=over 8
+
+=item mask
+
+クライアント IP番号またはホスト名の対応するPerlの正規表現。'mask'属性が
+マッチしたときにはいつでも、このリストは左から右に処理され、そして関連する
+ハッシュ・リファレンスがクライアントとして選ばれ、クライアント・リストの
+処理が止まります。 
+
+=item accept
+
+これはtrueまたはfalse（この属性を省略したときのデフォルト）に設定することが
+できます。前者はそのクライアントを受け入れることを意味します。 
+
+=back
+
+
+=head2 イベントログの出力
+
+  $server->Log($level, $format, @args);
+  $server->Debug($format, @args);
+  $server->Error($format, @args);
+  $server->Fatal($format, @args);
+
+B<Log>メソッドはL<Sys::Syslog (3)>またはL<Win32::EventLog (3)>への
+インターフェースです。その引数はB<debug>、B<notice>またはB<err>のような
+syslogレベルであるI<$level>、printfの形式でのフォーマット文字列、
+そしてフォーマット文字列引数です。
+
+B<Debug>とB<Error>メソッドはそれぞれ、debug と err レベルでB<Log>を
+呼び出すための短縮です。B<Fatal>メソッドはB<Error>に似ていますが、
+さらに与えられたメッセージを例外として投げます。
+
+詳細についてはL<Net::Daemon::Log(3)>をご覧ください。
+
+
+=head2 制御の流れ
+
+  $server->Bind();
+  # Bind()の内側は以下の通り:
+  if ($connection->Accept()) {
+      $connection->Run();
+  } else {
+      $connection->Log('err', 'Connection refused');
+  }
+
+サーバーが開始するとき、B<Bind>メソッドがアプリケーションにより
+呼び出されます。典型的にはサーバー・オブジェクトB<$server>が作られたすぐ後に
+おこなうことができます。エラーの場合を除いてB<Bind>は通常何も返しません。
+
+クライアントが接続すると、サーバーは、サーバーからconnection オブジェクト
+B<connection>を派生されるためにB<Clone>を使います。あなたのクラスの
+B<Accept>メソッドを呼び出すためにconnectionオブジェクトを使う新しい
+スレッドもしくはプロセスが作成されます。このメソッドはホスト認証を
+するようになっており、FALSE（クライアントの拒絶）あるいはTRUE
+（クライアントの受入）のどちらかを返します。
+
+もしクライアントが受け入れられると、実際の作業をおこなうB<Run>メソッドが
+呼び出されます。B<RunLが戻り、対応するスレッドまたはプロセスが終了すると、
+接続はクローズされます。
+
+
+=head2 エラーの取扱い
+
+全てのメソッドはエラーの場合にはPerlの例外を投げるようになっています。
+
+
+=head1 マルチスレッドについての注意点
+
+すべてのメソッドはレキスカルなスコープのデータだけで動きます。
+例外はOpenLogメソッドでこれはスレッドが開始する前に呼び出されます。
+このため、スレッド間でハンドルを共有しないかぎり安全です。私はあなたの
+アプリケーション同じように振る舞うことを強く推奨します。
+
+
+
+=head1 使用例
+
+例として、簡単な計算機(calculator)サーバーを書きます。このサーバーに接続した後、
+1行毎に数式を入力来ることができます。サーバーはその数式を評価し、結果を
+出力します。（これは例です。実際にはこのようなセキュリティホールを
+実装することはありません。 :-)）
+
+例のため、値として'hex'、'oct'、'dec'を取る、コマンドライン・オプション
+I<--base>を追加します。サーバー出力はその基数を使います。
+
+  # -*- perl -*-
+  #
+  # 計算機サーバー
+  #
+  require 5.004;
+  use strict;
+
+  require Net::Daemon;
+
+
+  package Calculator;
+
+  use vars qw($VERSION @ISA);
+  $VERSION = '0.01';
+  @ISA = qw(Net::Daemon); # Net::Daemonから継承するため
+
+  sub Version ($) { 'Calculator Example Server, 0.01'; }
+
+  # コマンドラインのオプション "--base"を追加します
+  sub Options ($) {
+      my($self) = @_;
+      my($options) = $self->SUPER::Options();
+      $options->{'base'} = { 'template' => 'base=s',
+                 'description' => '--base                  '
+                    . 'dec (default), hex or oct'
+                  };
+      $options;
+  }
+
+  # コマンド行のオプションをコンストラクタで扱います
+  sub new ($$;$) {
+      my($class, $attr, $args) = @_;
+      my($self) = $class->SUPER::new($attr, $args);
+      if ($self->{'parent'}) {
+      # Clone()経由で呼び出されました
+      $self->{'base'} = $self->{'parent'}->{'base'};
+      } else {
+      # 最初の呼び出し
+      if ($self->{'options'}  &&  $self->{'options'}->{'base'}) {
+          $self->{'base'} = $self->{'options'}->{'base'}
+          }
+      }
+      if (!$self->{'base'}) {
+      $self->{'base'} = 'dec';
+      }
+      $self;
+  }
+
+  sub Run ($) {
+      my($self) = @_;
+      my($line, $sock);
+      $sock = $self->{'socket'};
+      while (1) {
+      if (!defined($line = $sock->getline())) {
+          if ($sock->error()) {
+          $self->Error("Client connection error %s",
+                   $sock->error());
+          }
+          $sock->close();
+          return;
+      }
+      $line =~ s/\s+$//; # CRLFの削除
+      my($result) = eval $line;
+      my($rc);
+      if ($self->{'base'} eq 'hex') {
+          $rc = printf $sock ("%x\n", $result);
+      } elsif ($self->{'base'} eq 'oct') {
+          $rc = printf $sock ("%o\n", $result);
+      } else {
+          $rc = printf $sock ("%d\n", $result);
+      }
+      if (!$rc) {
+          $self->Error("Client connection error %s",
+               $sock->error());
+          $sock->close();
+          return;
+      }
+      }
+  }
+
+  package main;
+
+  my $server = Calculator->new({'pidfile' => 'none',
+                'localport' => 2000}, \@ARGV);
+  $server->Bind();
+
+
+=head1 既知の問題
+
+ほとんど、あるいは全ての既知の問題は、Unixではイベントのロギングのために
+デフォルトで使われるSys::Syslogに関連しています。いくつかを例を
+示しましょう:
+
+=over
+
+=item 使い方: Sys::Syslog::_PATH_LOG ある場所で ...
+
+この問題はperl bug 20000712.003で扱われています。解決方法はSyslog.pmの
+277を以下のように変更することです。
+
+  my $syslog = &_PATH_LOG() || croak "_PATH_LOG not found in syslog.ph";
+
+=back
+
+
+=head1 作者と著作権(AUTHOR AND COPYRIGHT)
+
+  Net::Daemon is Copyright (C) 1998, Jochen Wiedmann
+                                     Am Eisteich 9
+                                     72555 Metzingen
+                                     Germany
+
+                                     Phone: +49 7123 14887
+                                     Email: joe@ispsoft.de
+
+  All rights reserved.
+
+  You may distribute this package under the terms of either the GNU
+  General Public License or the Artistic License, as specified in the
+  Perl README file.
+
+
+=head1 参考資料
+
+L<RPC::pServer(3)>, L<Netserver::Generic(3)>, L<Net::Daemon::Log(3)>,
+L<Net::Daemon::Test(3)>
+
