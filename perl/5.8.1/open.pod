@@ -1,0 +1,232 @@
+=head1 名前
+
+open - perl pragma to set default PerlIO layers for input and output
+
+open - 入出力のためにデフォルトのPerlIOレイヤセットするためのPerlのプラグマ
+
+
+=head1 概要
+
+    use open IN  => ":crlf", OUT => ":bytes";
+    use open OUT => ':utf8';
+    use open IO  => ":encoding(iso-8859-7)";
+
+    use open IO  => ':locale';
+
+    use open ':utf8';
+    use open ':locale';
+    use open ':encoding(iso-8859-7)';
+
+    use open ':std';
+
+=head1 説明
+
+Full-fledged support for I/O layers is now implemented provided
+Perl is configured to use PerlIO as its IO system (which is now the
+default).
+
+I/Oレイヤの徹底したサポートが現在実装され、提供されています。
+PerlはそのIOシステムとしてPerlIOを使っています(現在、PerlIOはデフォルトです)。
+
+The C<open> pragma serves as one of the interfaces to declare default
+"layers" (also known as "disciplines") for all I/O. Any two-argument
+open(), readpipe() (aka qx//) and similar operators found within the
+lexical scope of this pragma will use the declared defaults.
+Three-argument opens are not affected by this pragma since there you
+(can) explicitly specify the layers and are supposed to know what you
+are doing.
+
+C<open>プラグマは全てのI/Oのデフォルトの"レイヤ"("disciplines"としても知られています)
+へのインターフェースの一つとしての役目をします。
+このプラグマのレキシカルコープ内の、全ての二つの引数を取る、open()、 readpipe()(qx// としても知られる)、
+それらと類似のオペレータは、宣言されたデフォルトを使うようになります。
+三つの引数を取るopenなどは、明示的にレイヤを指定する(ことができる)ため、
+自分がすることをわかっていると仮定するので、このプラグマは影響しません。
+
+With the C<IN> subpragma you can declare the default layers
+of input streams, and with the C<OUT> subpragma you can declare
+the default layers of output streams.  With the C<IO>  subpragma
+you can control both input and output streams simultaneously.
+
+C<IN>サブプラグマで入力ストリームのデフォルトのレイヤを宣言できます。
+C<OUT>サブプラグマで出力ストリームのデフォルトのレイヤを宣言できます。
+C<IO>サブプラグマで入出力ストリームの両方を同時に制御できます。
+
+If you have a legacy encoding, you can use the C<:encoding(...)> tag.
+
+レガシーのエンコーディングの場合、C<:encoding(...)>タグが使えます。
+
+if you want to set your encoding layers based on your
+locale environment variables, you can use the C<:locale> tag.
+For example:
+
+ロケールの環境変数でエンコーディングレイヤをセットするならば、C<:locale>タグを使えます。
+例:
+
+    $ENV{LANG} = 'ru_RU.KOI8-R';
+    # the :locale will probe the locale environment variables like LANG
+    use open OUT => ':locale';
+    open(O, ">koi8");
+    print O chr(0x430); # Unicode CYRILLIC SMALL LETTER A = KOI8-R 0xc1
+    close O;
+    open(I, "<koi8");
+    printf "%#x\n", ord(<I>), "\n"; # this should print 0xc1
+    close I;
+
+These are equivalent
+
+次のものは同じです。
+
+    use open ':utf8';
+    use open IO => ':utf8';
+
+as are these
+
+これも同じです。
+
+    use open ':locale';
+    use open IO => ':locale';
+
+and these
+
+こちらも同じです。
+
+    use open ':encoding(iso-8859-7)';
+    use open IO => ':encoding(iso-8859-7)';
+
+The matching of encoding names is loose: case does not matter, and
+many encodings have several aliases.  See L<Encode::Supported> for
+details and the list of supported locales.
+
+エンコーディング名のマッチングはゆるいです:大文字小文字は問題になりませんし、
+多くのエンコーディングに複数のエイリアスがあります。
+詳細とサポートされているロケールのリストは、L<Encode::Supported>にあります。
+
+Note that C<:utf8> PerlIO layer must always be specified exactly like
+that, it is not subject to the loose matching of encoding names.
+
+次のことに注意して下さい。
+C<:utf8> PerlIOレイヤは、常に厳密に指定されなければいけません。
+これについてはエンコーディング名のゆるいマッチングの対象になっていません。
+
+When open() is given an explicit list of layers they are appended to
+the list declared using this pragma.
+
+open()に明示的なレイヤのリストが与えられた場合、
+それらはこのプラグマを使って宣言されたリストに加えられます。
+
+The C<:std> subpragma on its own has no effect, but if combined with
+the C<:utf8> or C<:encoding> subpragmas, it converts the standard
+filehandles (STDIN, STDOUT, STDERR) to comply with encoding selected
+for input/output handles.  For example, if both input and out are
+chosen to be C<:utf8>, a C<:std> will mean that STDIN, STDOUT, and
+STDERR are also in C<:utf8>.  On the other hand, if only output is
+chosen to be in C<< :encoding(koi8r) >>, a C<:std> will cause only the
+STDOUT and STDERR to be in C<koi8r>.  The C<:locale> subpragma
+implicitly turns on C<:std>.
+
+C<:std>サブプラグマはそれ自身は何もしません。
+ですが、C<:utf8>かC<:encoding>サブプラグマと組み合わせた場合、
+それは、標準のファイルハンドル(STDIN, STDOUT, STDERR)を
+input/output ハンドルで選ばれたエンコーディングに従うように変換します。
+一方で、出力だけC<< :encoding(koi8r) >>であるように選ばれたなら、
+C<:std>は、STDOUTとSTDERRだけがC<koi8r>になるようになります。
+C<:locale>サブプラグマは暗にC<:std>をつけています。
+(訳注:組み合わせるというのは、use open ":utf8"; などの後に、 use open ":std" するということです)
+
+The logic of C<:locale> is as follows:
+
+C<:locale>のロジックは下記のようになっています:
+
+=over 4
+
+=item 1.
+
+If the platform supports the langinfo(CODESET) interface, the codeset
+returned is used as the default encoding for the open pragma.
+
+プラットフォームがlanginfo(CODESET)インターフェースをサポートするなら、
+コードセットは、open プラグマのデフォルトのエンコーディングとして使われます。
+
+=item 2.
+
+If 1. didn't work but we are under the locale pragma, the environment
+variables LC_ALL and LANG (in that order) are matched for encodings
+(the part after C<.>, if any), and if any found, that is used 
+as the default encoding for the open pragma.
+
+1. がうまくいかないないが、localeプラグマのもとで、
+環境変数LC_ALLとLANGが(この順番で)エンコーディング(the part after C<.>, if any)にマッチし、
+見つかったなら、open プラグマのデフォルトのエンコーディングとして使われます。
+
+=item 3.
+
+If 1. and 2. didn't work, the environment variables LC_ALL and LANG
+(in that order) are matched for anything looking like UTF-8, and if
+any found, C<:utf8> is used as the default encoding for the open
+pragma.
+
+1. と 2. がうまくいかず、環境変数LC_ALLとLANG(がこの順で)UTF-8にみえるものにマッチし、
+見つかったなら、C<:utf8>がopen プラグマのでふぉるｔのエンコーディングとして使われます。
+
+=back
+
+If your locale environment variables (LC_ALL, LC_CTYPE, LANG)
+contain the strings 'UTF-8' or 'UTF8' (case-insensitive matching),
+the default encoding of your STDIN, STDOUT, and STDERR, and of
+B<any subsequent file open>, is UTF-8.
+
+ロケール環境変数(LC_ALL, LC_CTYPE, LANG)が、'UTF-8' か 'UTF8'(大文字小文字問わず) を
+含むなら、STDIN、STDOUT、STDERR、どんなファイルのopenのデフォルトのエンコーディングは、
+UTF-8になります。
+
+Directory handles may also support PerlIO layers in the future.
+
+将来は、ディレクトリハンドルも、PerlIOレイヤがサポートされるかもしれません。
+
+=head1 NONPERLIO FUNCTIONALITY
+
+If Perl is not built to use PerlIO as its IO system then only the two
+pseudo-layers C<:bytes> and C<:crlf> are available.
+
+Perlが、そのIOシステムとしてPerlIOを使うようにビルドされていなければ、
+二つの仮のレイヤC<:bytes>とC<:crlf>が利用可能です。
+
+The C<:bytes> layer corresponds to "binary mode" and the C<:crlf>
+layer corresponds to "text mode" on platforms that distinguish
+between the two modes when opening files (which is many DOS-like
+platforms, including Windows).  These two layers are no-ops on
+platforms where binmode() is a no-op, but perform their functions
+everywhere if PerlIO is enabled.
+
+"バイナリモード"と"テキストモード"の二つのモードを区別するプラットフォーム(多くのDOSのような(Windowsを含む)プラットフォーム)上で、
+ファイルを開くときに、C<:bytes> レイヤは、"バイナリモード"に対応し、C<:crlf>レイヤは、"テキストモード"に対応します。
+binmode()が操作不能なプラットフォームでは、これらの二つのレイヤは操作不能です。
+ですが、PerlIOが有効ならば、この機能はどこでも動きます。
+
+=head1 IMPLEMENTATION DETAILS
+
+There is a class method in C<PerlIO::Layer> C<find> which is
+implemented as XS code.  It is called by C<import> to validate the
+layers:
+
+C<PerlIO::Layer> に クラスメソッドがあります。
+C<find> は、XS のコードで実装されています。
+C<find>は、C<import>で呼ばれて、レイヤが有効か確認します。
+
+   PerlIO::Layer::->find("perlio")
+
+The return value (if defined) is a Perl object, of class
+C<PerlIO::Layer> which is created by the C code in F<perlio.c>.  As
+yet there is nothing useful you can do with the object at the perl
+level.
+
+返値は(定義されていれば)Perl オブジェクトです。
+F<perlio.c>のCのコードで作られたクラス C<PerlIO::Layer>のものです。
+今のところ、perl レベルのオブジェクトでできる有益なことは何もありません。
+
+=head1 SEE ALSO
+
+L<perlfunc/"binmode">, L<perlfunc/"open">, L<perlunicode>, L<PerlIO>,
+L<encoding>
+
