@@ -1,0 +1,245 @@
+=head1 名前
+
+Crypt::CBC - 暗号ブロック連鎖(Cipher Block Chaining)モードでデータを暗号化します
+
+=head1 SYNOPSIS
+
+  use Crypt::CBC;
+  $cipher = Crypt::CBC->new( {'key'             => 'my secret key',
+                              'cipher'          => 'Blowfish',
+                              'iv'              => '$KJh#(}q',
+                              'regenerate_key'  => 0,   # default true
+                              'padding'         => 'space',
+                              'prepend_iv'      => 0
+                           });
+  
+  $ciphertext = $cipher->encrypt("This data is hush hush");
+  $plaintext = $cipher->decrypt($ciphertext);
+  
+  $cipher->start('encrypting');
+  open(F,"./BIG_FILE");
+  while (read(F,$buffer,1024)) {
+      print $cipher->crypt($buffer);
+  }
+  print $cipher->finish;
+
+
+=head1 説明
+
+このモジュールは暗号化方法　暗号ブロック連鎖(cipher block chaining mode (CBC))の
+Perlだけによる実装です。DESやIDEAのようなブロック暗号と組み合わせ、
+任意の長さのメッセージを暗号化し復号化することができます。
+暗号化されたメッセージはB<SSLeay>により使われる暗号化フォーマットと
+互換性があります。
+
+このモジュールを利用するためには、まずnew()でCrypt::CBC暗号オブジェクトを
+生成します。暗号作成の時点で、利用する暗号化キーとオプションでブロック暗号化
+アルゴリズムを指定します。暗号化あるいは復号化処理を初期化するためにstart()
+メソッドを呼び出し、１つあるいは複数のデータブロックを暗号化あるいは
+復号化するために呼び出し、最後に最後のブロックを埋め込み、暗号化するため
+finish()を呼びます。便利になるように、一度にデータの値全体を
+処理するためencrypt() と decrypt()を呼び出すことが出来ます。
+
+=head2 new()
+
+  $cipher = Crypt::CBC->new( {'key'             => 'my secret key',
+                              'cipher'          => 'Blowfish',
+                              'iv'              => '$KJh#(}q',
+                              'regenerate_key'  => 0,   # デフォルトはtrue
+                              'padding'         => 'space',
+                              'prepend_iv'      => 0
+                           });
+  
+  # あるいは (以前のバージョンとの互換性のため)
+  $cipher = new Crypt::CBC($key,$algorithm);
+
+new()メソッドは新しいCrypt::CBCオブジェクトを作成します。
+
+任意の長さの任意の一連の文字にすることができる、暗号化/復号化キーを
+与えなければなりません。regenerate_keyがfalseの値として指定されなければ、
+実際に使われるキーは、あなたが与えたキーのMD5ハッシュから派生されます。
+cipherはオプションで、他に指定されなければDESがデフォルトになります。
+あらかじめインストールしておいた互換性のあるブロック暗号であれば
+なんでも使うことができます。現在、これにはCrypt::DES、Crypt::DES_EDE3、
+Crypt::IDEA、Crypt::Blowfish、そして Crypt::Rijndaelが含まれます。
+それらのフルネーム("Crypt::IDEA")か省略形("IDEA")を使って、それらを
+参照することができます。
+
+newへのオプションの'iv'というキーを渡すことによって、あるいは
+$cipher->start()を呼び出す前に$cipher->set_initialization_key($iv)
+を呼び出すことによって、初期化ベクトルが指定することができます。
+暗号化されたテキストが正規表現/^RandomIV.{8}/にマッチするテキストで
+表されているのであれば、IVは復号化のさいには無視されます。その場合には
+"RandomIV"の後ろに付く8文字がIVとして使われます。暗号化するとき、
+デフォルトでは暗号化されたテキストは"RandomIVE<lt>IVE<gt>"(16 バイト)で
+表されます。これを無効にするためには、'prepend_iv'を
+falseの値に設定してください。パディング方法は'padding'オプションによって
+指定することができます。何もパディング方法が指定されなければ、
+PKCS#5("標準")によるパディングが想定されます。
+
+=head2 start()
+
+   $cipher->start('encrypting');
+   $cipher->start('decrypting');
+
+start()メソッドは一連の暗号化、復号化の段階のためにcipherを準備し、
+必要であればcipherの内部の状態を再設定します。
+暗号化(encryption)あるいは復号化(dencryption)のどちらを望んでいるのかを
+示す文字列を与える必要があります。"E"、あるいは"e"で始まる任意の単語は
+暗号化を示します。"D"、あるいは"d"で始まる任意の単語は復号化を示します。
+
+=head2 crypt()
+ 
+   $ciphertext = $cipher->crypt($plaintext);
+
+start()を呼び出した後、望んでいるデータを暗号化するため必要なだけ
+crypt()を呼び出さなければなりません。
+
+=head2  finish()
+
+   $ciphertext = $cipher->finish();
+
+暗号化アルゴリズムのブロックサイズ(典型的には8バイト)の余りがない倍数に
+なるまで、CBCアルゴリズムはデータブロックを内部的にバッファしなければ
+なりません。最後のcrypt()呼び出しの後、finish()を呼ばなければなりません。
+これは内部バッファを完了させ、残っている暗号化テキストを返します。
+
+典型的なアプリケーションでは、以下のようなループの中でファイルあるいは
+入力ストリームから平文を読み込み、結果を標準出力に出力することになる
+でしょう:
+
+  $cipher = new Crypt::CBC('hey jude!');
+  $cipher->start('encrypting');
+  print $cipher->crypt($_) while <>;
+  print $cipher->finish();
+
+=head2 encrypt()
+
+  $ciphertext = $cipher->encrypt($plaintext)
+
+この便利な関数は、与えられた平文を処理し、対応する暗号テキストを返す、
+start()、crypt()そして finish()の全体の流れを、あなたに代わって
+実行します。
+
+=head2 decrypt()
+
+  $plaintext = $cipher->decrypt($ciphertext)
+
+この便利な関数は、与えられた暗号テキストを処理し、対応する平文を返す、
+start()、crypt()そして finish()の全体の流れを、あなたに代わって
+実行します。
+
+=head2 encrypt_hex(), decrypt_hex()
+
+  $ciphertext = $cipher->encrypt_hex($plaintext)
+  $plaintext  = $cipher->decrypt_hex($ciphertext)
+
+これらは16進表現の暗号テキストを処理する便利な関数です。
+B<encrypt_hex($plaintext)>は、B<unpack('H*',encrypt($plaintext))>と
+まったく同じです。例えば暗号化されたものを入れたい場合には便利でしょう。
+
+=head2 get_initialization_vector()
+
+  $iv = $cipher->get_initialization_vector()
+
+この関数は暗号化、復号化で使われるIVを返します。
+この関数はnew()で何も指定されなければ暗号化のときに使われる、
+乱数(random)IVを判定するときにも便利です。
+暗号化のときにはstart()が呼び出されるまで、復号化のときには
+crypt()が最初に呼ばれるまで、IVは設定されるかは保障されません。
+
+=head2 set_initialization_vector()
+
+  $cipher->set_initialization_vector('76543210')
+
+この関数は暗号化そして/あるいは復号化で使用されるIVを設定します。この
+関数はIVが復号化される暗号テキスト文字列にIVが入っていなければ、
+あるいは暗号化のために特定のIVにしたいのであれば便利でしょう。
+もし設定されなければ、乱数のIVが生成されます。
+暗号化のときにはstart()が呼び出されるまで、復号化のときには
+crypt()が最初に呼ばれるまで、IVは設定されるかは保障されません。
+
+=head2 パディング方法
+
+パディング方法を変更するためには'padding'オプションを使ってください。
+
+平文の最後のブロックがブロックサイズよりも短いとき、それはパディング
+されなければなりません。パディング方法には以下のものがあります:
+"standard"(つまりPKCS#5)、"oneandzeroes"、 "space"、 そして "null"。
+
+   standard: (デフォルト) バイナリに対しても安全
+      切り落されるべきバイト数で埋められます。そのためブロックサイズが
+      8であれば、"0A0B0C"は"05"で埋められ、結果は"0A0B0C0505050505"に
+      なります。もし最後のブロックがブロック全体で、ブロックサイズが8で
+      あれば、"0808080808080808"というブロックが追加されます。
+
+   oneandzeroes: バイナリに対しても安全
+      ブロックを一杯にするだけ必要なだけの"00"がついた"80"で
+      埋められます。もし最後のブロックがブロック全体で、
+      ブロックサイズが8であれば、"8000000000000000"というブロックが
+      追加されます。
+
+   null: テキストのみ
+      ブロックを一杯にするために必要なだけ"00"で埋めます。最後の
+      ブロックがブロック全体で、ブロックサイズが8であれば、
+      "0000000000000000"というブロックが追加されます。
+
+   space: テキストのみ
+      "null"と同じ。ただし"20"でおこないます。
+
+standard と oneandzeroes の2つのパディングはバイナリに対しても安全です。
+space と null のパディングはテキスト・データにたいしてのみ推奨されます。
+あなたがどのパディングを使うのかは、(Crypt::CBCライブラリではない)外部と
+通信したいかどうかによります。もしそうのような場合であれば、互換性のある
+どんなパディング方法でも使ってください。
+
+カスタムのパディング関数を渡すことも出来ます。こうした場合には、
+以下のような引数をとる関数を作成してください:
+
+   $padded_block = function($block,$blocksize,$direction);
+
+$blockがデータの現在のブロック、$blocksizeがそこまでパディングする
+大きさ、$directionは"e"が暗号化、"d"が復号化を、そして
+$padded_blockはパディングあるいはパディングをはずした後の結果です。
+
+暗号化のときには、関数は常に長さが<blocksize>である文字列を返し、
+復号化のときには、やってくる文字列が常にその長さであることを
+期待することができます。例についてはソースの中の
+_standard_padding(), _space_padding(),_null_padding(), あるいは
+_oneandzeroes_padding() をご覧ください。
+
+spaceとnullパディングは潜在的に、そうであるよりも多くの文字を切り
+落してしまうかもしれないため、Standardとoneandzeroesパディングが
+推奨されます。
+
+=head1 使用例
+
+2つの例、des.plとidea.plがCrypt-CBCディストリビューションのeg/
+サブディレクトリにあります。これらはコマンドラインのDESとIDEA
+暗号アルゴリズムを実装しています。
+
+=head1 制約
+
+暗号と復号の処理は同等の(Cでコンパイルされた)SSLeayプログラムよりも
+10分の1ほどの速度です。これをCで実装することによって改善することが
+できるでしょう。DESとIDEAブロック・アルゴリズムをさらに最適化する
+ことも価値のあることでしょう。
+
+=head1 バグ
+
+どうか報告してください。
+
+=head1 作者(=AUTHOR)
+
+Lincoln Stein, lstein@cshl.org
+
+This module is distributed under the ARTISTIC LICENSE using the same
+terms as Perl itself.
+
+=head1 参考資料
+
+perl(1), Crypt::DES(3), Crypt::IDEA(3), rfc2898 (PKCS#5)
+
+=head1 翻訳者
+
+川合孝典(GCD00051@nifty.ne.jp)
