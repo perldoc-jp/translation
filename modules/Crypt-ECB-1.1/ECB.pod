@@ -1,0 +1,244 @@
+=head1 名前
+
+Crypt::ECB - ECBモードでデータを暗号化します
+
+=head1 概要
+
+Crypt::ECB OO形式で使う場合
+
+  use Crypt::ECB;
+
+  $crypt = Crypt::ECB->new;
+  $crypt->padding(PADDING_AUTO);
+  $crypt->cipher("Blowfish") || die $crypt->errstring;
+  $crypt->key("some_key"); 
+
+  $enc = $crypt->encrypt("Some data.");
+  print $crypt->decrypt($enc);
+
+関数形式のインターフェースで使う場合
+
+  use Crypt::ECB qw(encrypt decrypt encrypt_hex decrypt_hex);
+
+  $ciphertext = encrypt($key2, "Blowfish", "Some data", PADDING_AUTO);
+  $plaintext  = decrypt($key2, "Blowfish", $ciphertext, PADDING_AUTO);
+
+  $hexcode = encrypt_hex("foo_key", "IDEA", $plaintext);
+  $plain   = decrypt_hex("foo_key", "IDEA", "A01B45BC");
+
+=head1 説明
+
+このモジュールはECBモードのPerlだけによる実装です。DES、IDEA、Blowfishのような
+ブロック暗号と組み合わせ、任意の長さのメッセージを暗号化し復号化することが
+できます。しかし安全上の理由から、CBCのようなECBではないモードのほうがいい
+でしょう。なぜなのかを知りたければ暗号についての教科書をご覧ください。
+
+このモジュールの機能はOOメソッドあるいは標準の関数呼び出しによってアクセス
+することができます。例えばBlowfishのような暗号化するモジュールがインストール
+されていなければならないことを忘れないでください。文法はCrypt::CBCの
+ものに従います。つまり例えば、鍵を変更したり、新しい暗号オブジェクトを
+作ることなく暗号化することができますなど、Crypt::ECBはより柔軟ですけれども、
+Crypt::CBCとまったく同じようにアクアセスすることができます。
+
+=head1 メソッド
+
+=head2 new(), key(), cipher(), padding()
+
+  $crypt = Crypt::ECB->new;
+  $crypt->key("Some_key");
+  $crypt->cipher("Blowfish") || die $crypt->errstring;
+  $crypt->padding(PADDING_AUTO);
+
+  print $crypt->key;
+  print $crypt->cipher;
+  print $crypt->padding;
+
+  $crypt = Crypt::ECB->new("Some_key","Blowfish");
+  $crypt->cipher || die "'Blowfish' wasn't loaded for some reason.";
+
+B<new()>はそれを使う変数を初期化します。オプションのパラメータは鍵と、
+暗号です。パラメータなしで呼ばれたら、暗号化をはじめる前に
+B<key()>と B<cipher()>を呼ばなければなりません。鍵だけをつけて暗号を
+渡さなければ、Crypt::CBCとの互換性のため'DES'になります。
+
+B<key()>は、パラメータが与えられると鍵に設定します。常に鍵を返します。
+暗号化モジュールによっては、厳密な長さの鍵を必要とするものもあることに
+注意してください。例えばCrypt::Blowfishは8バイトの鍵を要求します。
+
+B<cipher()>はパラメータが与えられるとブロック暗号に設定します。
+対応するモジュールをロードしようとします。エラーが起きたら、0を返し
+$crypt->{Errstring}を設定します。そうでなければ、暗号の名前を返します。
+利用できるPerlのためのフリーのパッケージには、例えばBlowfish、DES、
+IDEAがあります。パラｍ−エタなしで呼ばれると、単に暗号の名前を返します。
+
+B<padding()>は、暗号のブロックの大きさの倍数になるまで、どのように
+データがパディングされるかの方法を設定します。今のところ2つの方法が
+実装されています:PADDING_NONEが設定されるとパディングは行いません。
+そのときには正しいパディング(そして切捨て)を、あなた自身が面倒みなければ
+なりません。PADDING_AUTOに設定されるとECBモジュールはパディング
+(そして復号化のさいの切捨て)を、Crypt::CBCが行うのと同じ方法で扱います。
+
+デフォルトではパディング形式はPADDING_NONEに設定されています。つまり
+あなたが気にせず、あなたのデータが正しい長さでなければ、モジュールは
+文句をいい、それによって、あなたが本当にどうしたいかについて考えさせます。
+
+=head2 start(), mode(), crypt(), finish()
+
+  $crypt->start('encrypt') || die $crypt->errstring;
+  $enc  = $crypt->crypt($data1)
+       . $crypt->crypt($data2)
+       . $crypt->finish;
+
+  $crypt->start('decrypt');
+  print $crypt->mode;
+
+B<start()> は暗号化モードを設定し、鍵や暗号など全ての必要な変数が
+設定されているかをチェックします。パラメータには'e'または'd'で始まる
+単語が許されます。このメソッドは設定されたモードか、エラーが
+発生したときには0を返します。
+
+B<mode()> はパラメータなしで呼ばれ、設定されているモードを返します。
+
+B<crypt()> は引数として与えられたデータを処理します。引数が与えられないと、
+$_が処理されます。このメソッドは処理されたデータを返します。
+データが処理できるように、暗号と鍵が設定されなければなりません。
+もしこれらがなければ、あるいはB<start()>が先に呼ばれていなければ、
+このメソッドはdieします。
+
+処理される全てのデータをB<crypt()>に送り終わったら、バッファに残っている
+データをフラッシュするため、B<finish()>を呼ばなければなりません。
+
+=head2 caching()
+
+  $crypt->caching(1); # キャッシングがオン
+  $crypt->caching(0); # キャッシングがオフ
+
+  print $crypt->caching;
+
+キャッシング・モードが返されます。引数が与えられると、キャッシング・モードが
+設定されます。B<caching()>がtrueに評価されれば、キャッシングがオンです。
+そうでなければキャッシングはオフです。デフォルトではキャッシングはオンです。
+
+このキャッシングはなんでしょうか？Crypt::ECBモジュールは何らかの
+オブジェクトを通して暗号モジュールと通信します。暗号オブジェクトを
+作ることは、暗号モジュールが初期化をしなければならないために、
+いくらか時間がかかります。そこでキャッシングは、キャッシングがオフになるか、
+鍵や暗号モジュールが変更されるまで、同じ暗号オブジェクトが使われることを
+意味します。キャッシングがオフであれば、B<crypt()>やB<finish()>が
+呼ばれるたびに新しい暗号オブジェクトが生成され、これらのメソッドの
+終わりで破壊されます。キャッシングを使って暗号化することは、キャッシングなし
+よりもB<かなり>早くなります。
+
+=head2 encrypt(), decrypt(), encrypt_hex(), decrypt_hex()
+
+  $enc = $crypt->encrypt($data);
+  print $crypt->decrypt($enc);
+
+  $hexenc = $crypt->encrypt_hex($data);
+  print $crypt->decrypt_hex($hexenc);
+
+B<encrypt()> と B<decrypt()> は、あなたに代わってB<start()>, B<crypt()> 
+そして B<finish()>を呼び出す便利なメソッドです。
+
+B<encrypt_hex()> と B<decrypt_hex()> は16進表現で暗号文を扱う
+便利な関数です。これらは以下のものと完全に同じです
+
+  $hexenc = join('',unpack('H*',$crypt->encrypt($data)));
+  print $crypt->decrypt(pack('H*',$hexenc));
+
+これらの関数は、例えばe-メールメッセージ、WebページあるいはURLに
+暗号化されたメッセージを入れたいときには便利かもしれません。
+
+=head2 errstring()
+
+  print $crypt->errstring;
+
+B<cipher()> や B<start()>などいくつかのメソッドはエラーが起きると
+0を返します。$crypt->errstringを呼ぶことによって、より詳細な
+エラーメッセージを受け取ることができます。
+
+=head1 変数
+
+外側の世界が興味を持つかもしれない変数には以下のものがあります：
+
+  $crypt->{Key},
+  $crypt->{Cipher},
+  $crypt->{Module},
+  $crypt->{Keysize},
+  $crypt->{Blocksize},
+  $crypt->{Mode},
+  $crypt->{Caching},
+  $crypt->{Padding},
+  $crypt->{Errstring}.
+
+変数は直接設定してはいけません。代わりに上記で説明したメソッドを
+使ってください。読込は問題ないはずですが、これも上記のメソッドに
+よって提供されています。
+
+=head1 定数
+
+パディング形式に名前を付ける2つの定数がデフォルトでエクスポートされます:
+
+  PADDING_NONE => 0
+  PADDING_AUTO => 1
+
+=head1 関数
+
+便利な暗号化や復号化は通常の関数によっても行うことができます。
+その関数は:B<encrypt()>, B<decrypt()>, B<encrypt_hex>, B<decrypt_hex>です。
+このモジュールは賢いので、これらの関数がOOコンテキストで呼ばれたのか
+そうでないのかが判ります。
+
+=head2 encrypt(), decrypt(), encrypt_hex(), decrypt_hex()
+
+  $ciphertext = encrypt($key, $cipher, $plaintext, PADDING_AUTO);
+  $plaintext  = decrypt($key, $cipher, $ciphertext, PADDING_AUTO);
+
+  $ciphertext = encrypt_hex($key, $cipher, $plaintext, PADDING_AUTO);
+  $plaintext  = decrypt_hex($key, $cipher, $ciphertext, PADDING_AUTO);
+
+B<encrypt()> と B<decrypt()> は与えられたテキストを処理し、
+それぞれ暗号文(encrypt)や平文(decrypt)を返します。データとパディング形式は
+オプションです。しかしデフォルトではなにもパディングが行われないことを
+忘れないでください。データが省略されると、$_が使われます。
+
+B<encrypt_hex()> と B<decrypt_hex()> は暗号文(=cipertext)を16進表現で
+扱います。それ以外の使い方はB<encrypt()> や B<decrypt()>と同じです。
+
+=head1 バグ
+
+私が知っているものはありません。
+
+=head1 TODO
+
+他のブロック暗号モードCBC, CFB そして OFB が実装されるかもしれません。
+
+base64エンコードを使う便利な暗号化、復号化関数が追加されるかもしれません。
+
+=head1 著作権(=COPYING)
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+
+=head1 作者
+
+Christoph Appel, cappel@debis.com
+
+=head1 参考資料
+
+perl(1), Crypt::DES(3), Crypt::IDEA(3), Crypt::CBC(3)
+
+=head1 翻訳者
+
+川合孝典(GCD00051@nifty.ne.jp)
