@@ -1,0 +1,242 @@
+=head1 名前
+
+Net::SMTP - SMTP(Simple Mail Transfer Protocol)クライアント
+
+=head1 概要
+
+    use Net::SMTP;
+
+    # コンストラクタ
+    $smtp = Net::SMTP->new('mailhost');
+    $smtp = Net::SMTP->new('mailhost', Timeout => 60);
+
+=head1 説明
+
+このモジュールはSMTPおよびESMTPへのクライアント・インタフェースを実装し、
+Perl5アプリケーションがSMTPサーバーと通信することを可能にします。
+このドキュメントは、読者がRFC821で記述されているSMTPプロトコルの概念に
+精通しているものとします。
+
+新しいNet::SMTPオブジェクトはI<new>メソッドによって作られなければなりません。
+一度作成すれば、このオブジェクトを通してすべてのSMTPコマンドにアクセスする
+ことができます。
+
+Net::SMTPクラスはNet::CmdとIO::Socket::INETのサブクラスです。
+
+=head1 使用例
+
+この例はmailhostというSMTPサーバのメール・ドメイン名を表示します:
+
+    #!/usr/local/bin/perl -w
+
+    use Net::SMTP;
+
+    $smtp = Net::SMTP->new('mailhost');
+    print $smtp->domain,"\n";
+    $smtp->quit;
+
+これはmailhostという名前のSMTPサーバにあるpostmasterに小さなメッセージを
+送信します: 
+
+    #!/usr/local/bin/perl -w
+
+    use Net::SMTP;
+
+    $smtp = Net::SMTP->new('mailhost');
+
+    $smtp->mail($ENV{USER});
+    $smtp->to('postmaster');
+
+    $smtp->data();
+    $smtp->datasend("To: postmaster\n");
+    $smtp->datasend("\n");
+    $smtp->datasend("A simple test message\n");
+    $smtp->dataend();
+
+    $smtp->quit;
+
+=head1 コンストラクタ
+
+=over 4
+
+=item new Net::SMTP [ HOST, ] [ OPTIONS ]
+
+これが新しいNet::SMTPオブジェクトのコンストラクタです。C<HOST>は
+SMTP接続しようとするリモートホストの名前です。
+
+C<HOST>が指定されなかった場合には、C<Net::Config>で指定された
+C<SMTP_Host>が使われます。
+
+C<OPTIONS>はキーと値の組というハッシュの形式で渡されます。 
+指定できるオプションは以下の通りです:
+
+B<Hello> - SMTPはあなた自身であることを識別することを必要とします。
+このオプションはあなたのメール・ドメインとして渡す文字列を指定します。
+与えられなければ回答が取得されます。
+
+B<LocalAddr> と B<LocalPort> - これらのパラメータは、ソケットを
+ローカルポートにバインドすることを可能にするためIO::Socketに
+直接渡されます。
+
+B<Timeout> - SMTPサーバーからの応答を待つ、秒単位での最大時間
+(デフォルト:120)
+
+B<Debug> - デバッグ情報を利用できるようにします
+
+
+例:
+
+    $smtp = Net::SMTP->new('mailhost',
+               Hello => 'my.mail.domain'
+               Timeout => 30,
+                           Debug   => 1,
+              );
+
+=back
+
+=head1 メソッド
+
+特に記述がなければ、全てのメソッドはI<true>またはI<false>を返します。
+I<true>が処理が成功したことを意味します。メソッドが値を返すと
+宣言しているときには、失敗ではI<undef>または空リストを返します。
+
+=over 4
+
+=item banner ()
+
+最初に接続が確立されたとき、サーバーがつけて応答するバナーメッセージを
+返します。
+
+=item domain ()
+
+接続中にリモートSMTPサーバーが自分で識別するドメインを返します。
+
+=item hello ( DOMAIN )
+
+使用しているメール・ドメインをEHLOコマンド（EHLOがだめな場合にはHELO）を
+使って、リモートサーバーに伝えます。このメソッドはNet::SMTPオブジェクトが
+作成された時点で自動的に呼び出されるので、ユーザは通常、これをあえて
+呼び出す必要はありません。 
+
+=item etrn ( DOMAIN )
+
+指定されたDOMAINのためのキューの実行を要求します。
+
+=item auth ( USERNAME, PASSWORD )
+
+SASL認証を試みます。
+
+=item mail ( ADDRESS [, OPTIONS] )
+
+=item send ( ADDRESS )
+
+=item send_or_mail ( ADDRESS )
+
+=item send_and_mail ( ADDRESS )
+
+対応するコマンドをMAIL、SEND、SOML、SAMLサーバーへ送信します。C<ADDRESS>は
+送信元のアドレスです。 これによりメッセージの送信を開始します。メッセージを
+送信する各アドレスに対してC<recipient>メソッドが呼び出されなければなりません。
+
+C<mail>メソッドは追加のESMTPオプションをキーと値の組というハッシュ形式で
+渡すことができます。 指定できるオプションは以下の通りです: 
+
+ Size        => <bytes>
+ Return      => <???>
+ Bits        => "7" | "8"
+ Transaction => <ADDRESS>
+ Envelope    => <ENVID>
+
+
+=item reset ()
+
+サーバーのステータスをリセットします。これはメッセージがすでに開始されては
+いてもデータは何も送信していないとき、メッセージの送信をキャンセルする
+ときに呼び出すことが出来ます。
+
+=item recipient ( ADDRESS [, ADDRESS [ ...]] [, OPTIONS ] )
+
+サーバーに現在のメッセージが指定されたすべてのアドレスに送信しなければ
+ならないことを伝えます。各アドレスはサーバーへの別のコマンドで送信されます。
+いずれかのアドレスへの送信が失敗した場合、処理は中断されI<false>が返されます。 
+もしそうであることを望むのであれば、C<reset>かどうかはユーザーによります。
+
+C<recipient>メソッドは、キーと値の組を使うハッシュのような形式で
+渡される追加のオプションを受け付けます。可能なオプションは以下の通りです:
+
+ Notify    =>
+ SkipBad   => 不正なアドレスを無視
+
+C<SkipBad>がtrueであれば、C<recipient>は不正なアドレスにぶつかったとき
+エラーを返さず、成功したアドレスの配列を返します。
+
+  $smtp->recipient($recipient1,$recipient2);  # 正常
+  $smtp->recipient($recipient1,$recipient2, { SkipBad => 1 });  # 正常
+  $smtp->recipient("$recipient,$recipient2"); # 不正
+
+=item to ( ADDRESS [, ADDRESS [...]] )
+
+=item cc ( ADDRESS [, ADDRESS [...]] )
+
+=item bcc ( ADDRESS [, ADDRESS [...]] )
+
+C<recipient>のの同義語。
+
+=item data ( [ DATA ] )
+
+現在のメッセージからデータの送信を開始します。
+
+C<DATA>にはリストまたはリストへのリファレンスを指定することができます。
+指定された場合には、C<DATA>の内容と最後の文字 C<".\r\n">がサーバーに
+送信されます。データが受け取られると、結果はtrueになります。
+
+C<DATA>を指定しない場合、結果はサーバーがデータが送信されることを望んで
+いるかどうかになります。そのときには、データはL<Net::Cmd>で説明されている
+C<datasend>、C<dataend>メソッドを使って送信されなければなりません。
+
+=item expand ( ADDRESS )
+
+サーバーに指定したアドレスの展開を依頼します。サーバーから読み込まれた
+テキストが入った配列が返されます。
+
+=item verify ( ADDRESS )
+
+C<ADDRESS>がメール・アドレスとして正しいかチェックします。
+
+=item help ( [ $subject ] )
+
+サーバーからヘルプ・テキストを取得します。 テキストあるいは失敗したらundefを返します。
+
+=item quit ()
+
+QUITコマンドをリモートSMTPサーバーに送信し、ソケット接続をクローズします。 
+
+=back
+
+=head1 アドレス
+
+アドレスを受け取る全てメソッドは適切なrfc2821に基づいたアドレスであることを
+期待します。Net::SMTPは各カッコ(<>)で囲まれたアドレスを受け付けます。
+
+ funny user@domain      間違い
+ "funny user"@domain    正しい, 推奨
+ <"funny user"@domain>  OK
+
+=head1 参考資料
+
+L<Net::Cmd>
+
+=head1 作者
+
+Graham Barr <gbarr@pobox.com>
+
+=head1 著作権(COPYRIGHT)
+
+Copyright (c) 1995-1997 Graham Barr. All rights reserved.
+This program is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=for html <hr>
+
+I<$Id$>
+
