@@ -1,0 +1,1424 @@
+=head1 NAME
+
+Apache::ParseLog - Apache のログファイルを解析するためのオブジェクト指向 Perl 拡張
+
+=head1 SYNOPSIS
+
+    use Apache::ParseLog;
+    $base = new Apache::ParseLog();
+    $transferlog = $base->getTransferLog();
+    %dailytransferredbytes = $transferlog->bytebydate();
+    ...
+
+=head1 DESCRIPTION
+
+Apache::ParseLog は、オブジェクト指向の構成を利用して Apache のログファイルを
+簡単に解析する一つの方法を提供するものである。このモジュールを使って手に入る
+データは、あなたのアプリケーションに柔軟に利用するのに一般的に十分なものである。
+すなわち CGI やシンプルなテキストのみのレポート生成、RDBMS アクセス、
+Perl/Tk ベースの GUI アプリケーションのためのデータなどなど。
+
+=head1 FEATURES
+
+=over 4
+
+=item 1
+
+B<Easy and Portable Log-Parsing Methods>
+
+このモジュール内で行われるすべての仕事（ログを解析し、正規表現を組み立て、
+様々な変数にマッチさせ、あるいは割り当てるといった諸々のこと）によって、
+あなたは簡単にログレポートを作成することができる。（あなたのログがものすごく
+綿密な調査を必要としているのでない限り。）このモジュールを使ってどうやって
+簡単にログレポートを作成できるかを見つけるために、L<"EXAMPLES"> だけでなく
+この manpage を読んでほしい。
+
+また、このモジュールは C コンパイラは必要としないし、Perl のサポートする
+すべてのプラットフォームで動作する（はず）。
+
+=item 2
+
+B<Support for LogFormat/CustomLog>
+
+Apache Web Server 1.3.x の新しい LogFormat/CustomLog 機能（mod_log_config を利用した）を
+サポートしている。
+
+この log format は Apache の F<httpd.conf> ファイルの F<LogFormat> ディレクティブで
+記述されるものだが、このモジュール内で httpd.conf を解析し、動的に
+正規表現を生成する。これにより log format が変更になっても、あなたの既存
+のコードの修正は最小限になるだろう。
+
+=item 3
+
+B<Reports on Unique Visitor Counts>
+
+伝統的に、ヒットカウントは訪問者にリクエストされた B<files> の数をもとに算出
+される。（最も単純なものは「合計ヒット数」ということで log ファイルの行数の合計である。）
+
+このように、ヒットカウントは「どれだけの人が実際に私のサイトを訪れたのか」という
+意味では明らかにミスリーディングの可能性がある。特にあなたのサイトのページが
+画像を多く含む場合は。（だからそれぞれの画像をひっくるめて1ヒットととして
+カウントされる。訳注：これはこのモジュールでは、という意味かな？）
+
+Apache::ParseLog はこのような伝統的なデータを取得するメソッドを提供している。
+これらのデータはまた、あなたの Web サイトの動きをモニタリングするためにとても
+重要なものでもあるからである。しかしながらこのモジュールは
+また B<unique visitor counts> を取得するメソッドも提供している。
+すなわち、実際にあなたの Web サイトを訪れた「人々」（まぁ IP とかホスト名）の
+日付けごと、時間ごと、あるいは日付と時間の両方で算出した数である。
+
+こららのメソッドについての詳細は L<"LOG OBJECT METHODS"> を参照されたし。
+
+=item 4
+
+B<Pre-Compiled Regex>
+
+Perl 5.005 で導入された新しい pre-compiles 正規表現の機能を利用している。
+（もしあなたのマシンに対応バージョンのものがインストールされていれば。）
+
+pre-compiled 正規表現と新しい quote-like 演算子（qr）については
+perlop(1) と perlre(1) の manpages を参照のこと。
+
+=back
+
+=pod
+
+=head1 CONSTRUCTOR
+
+Apache::ParseLog オブジェクトを構成するには、他のモジュールとまったく
+同じように B<new()> メソッドが利用できる。
+
+C<new()> コンストラクタは Apache::ParseLog base オブジェクトを返す。
+base オブジェクトは B<log object> を生成するだけでなく基本的なサーバ情報を
+取り扱うものである。
+
+=pod
+
+=head2 New Method
+
+B<C<new([$path_to_httpd_conf[, $virtual_host]]);>>
+
+B<C<new()>> メソッドを使うと、Apache:ParserLog オブジェクトは
+3つの異なる方法で生成することができる。
+
+=over 4
+
+=item 1
+
+C<$base = new Apache::ParseLog();>
+
+この最初のメソッドは空のオブジェクトを生成する。これはオブジェクトの
+各フィールドが未定義（C<undef>）であることを意味する。すなわち、
+オブジェクトはサーバ名が何であるかを知らないしログファイルがどれかも
+しれないといった具合である。これはあなたが解析しなければいけない
+ログファイルがローカルの Apache サーバの生成したもの B<ではない> 場合に
+有用である。（例えばどこからか FTP で取得したログファイルなど。）
+
+あなたは他のメソッドを呼び出すために B<C<config>> メソッド（下記参照）を
+用いなければいけない。
+
+=item 2
+
+C<$base = new Apache::ParseLog($httpd_conf);>
+
+この2番目の方法は I<$httpd_conf> から必要な情報を展開してオブジェクトを
+生成するものである。I<$httpd_conf> は F<httpd.conf> ファイルの絶対パスの
+スカラー文字列が入る。例えば
+
+    $httpd_conf = "/usr/local/httpd/conf/httpd.conf";
+
+このメソッドは I<$httpd_conf> から、以下の Apache ディレクティブの
+情報を展開することを試みる。F<ServerName>, F<Port>, F<ServerAdmin>, 
+F<TransferLog>, F<ErrorLog>, F<AgentLog>, F<RefererLog>, および F<LogFormat> と
+ともにユーザー定義の F<CustomLog> である。
+
+もしこれらのディレクティブのうちどれかが I<$httpd_conf> の中で見つけられなかった、
+あるいはコメントアウトされていた場合は、そのディレクティブのための
+フィールドは空（C<undef>）となる。また呼び出したときに空文字列を返す
+特殊なフィールドを使うメソッドと通信した場合はエラーで終了する。
+（以下のセクションの B<log object methods> 参照。）
+
+=item 3
+
+C<$base = new Apache::ParseLog($httpd_conf, $virtual_host);>
+
+この方法は2番目の方法とよく似たオブジェクトを生成する。I<$virtual_host> で 
+VirtualHost を特定している点 B<だけ> を除けば。<VitualHost xxx> と </VirtualHost>の
+タグの中で定義されない Apache のディレクティブとルールは F<httpd.conf> ファイルの
+「標準の」サーバセクションから解析される。
+
+I<$httpd_conf> は I<$virtual_host> オブジェクトを生成するために B<必ず> 
+記述 B<しなければいけない> ことに注意。
+
+=back
+
+=pod
+
+=head1 BASE OBJECT METHODS
+
+このセクションでは、上に書いた B<C<new()>> コンストラクタによって生成された
+base オブジェクトに対して利用できるメソッドについて述べる。
+
+空の引数で生成された場合を除いて、Apache::ParserLog モジュールは
+基本的な F<httpd.conf> ファイル（第1引数として渡された）の中の基本的な
+設定を解析する。オブジェクトは B<log object> を生成するために情報を利用する。
+
+利用できるメソッドは以下の通り。（括弧の中に書かれた値を返す。）
+
+    $base->config([%fields]); # (object)
+    $base->version(); # (scalar)
+    $base->serverroot(); # (scalar)
+    $base->servername(); # (scalar)
+    $base->httpport(); # (scalar)
+    $base->serveradmin(); # (scalar)
+    $base->transferlog(); # (scalar)
+    $base->errorlog(); # (scalar)
+    $base->agentlog(); # (scalar)
+    $base->refererlog(); # (scalar)
+    $base->customlog(); # (array)
+    $base->customlogLocation($name); # (scalar)
+    $base->customlogExists($name); # (scalar boolean, 1 or 0)
+    $base->customlogFormat($name); # (scalar)
+    $base->getTransferLog(); # (object)
+    $base->getErrorLog(); # (object)
+    $base->getRefererLog(); # (object)
+    $base->getAgentLog(); # (object)
+    $base->getCustomLog(); # (object)
+
+=over 4
+
+=pod
+
+=item *
+
+C<config(%fields]);>
+
+    $base = $base->config(field1 => value1,
+                          field2 => valud2,
+                          fieldN => valueN);
+
+このメソッドは Apache::ParserLog オブジェクトを設定するものである。使えるフィールドは以下の通り。
+
+    Field Name                     Value
+    ---------------------------------------------------------
+    serverroot  => server root ディレクトリの絶対パス
+    servername  => サーバの名前。言い換えると "www.mysite.com"。
+    httpport    => httpd のポート。すなわち 80 とか。
+    serveradmin => サーバ管理者。"admin@mysite.com" とか。
+    transferlog => transfer ログの絶対パス（訳注：access ログのこと？）
+    errorlog    => error ログの絶対パス
+    agentlog    => agent ログの絶対パス
+    refererlog  => referer ログの絶対パス
+
+このメソッドは空のオブジェクトを生成（C<new()> 上記参照）したあとに
+呼び出されるべきである。しかし、I<$httpd_conf> や I<$virtual_host> を定義して
+作成したオブジェクトでも、このメソッドを呼び出してあらゆるフィールドの値を
+上書きすることができる。（あなたのマシンに HTTP サーバがまったく動いていなくて、
+どこからか転送してきたログファイルを解析しなければいけないときに便利である。）
+
+すべてのフィールドは必須ではないが、最低限一つのフィールドは特定される
+べきである。（そうでないならなぜあなたはこのメソッドを使うのだ？）
+
+このメソッドは空のオブジェクトから呼び出され、またすべてのフィールドが
+明記されている B<わけではない> とき、空のフィールドはそのまま
+空のままである。（したがって、いくつかの対応するメソッドは使えないだろう。）
+
+このメソッドがすでに（C<new($httpd_conf[, $virtual_host])> によって）設定された
+オブジェクトから呼び出された場合、この C<config> メソッドで明記されている
+フィールドは、既存のフィールド値を上書きされ、残りの明記されていない
+フィールドについては、これまでの値がそのまま引き継がれる。
+
+B<注1> このメソッドは B<新たに設定されたオブジェクトを返す>、そのため新しい
+オブジェクトを生成するため代入演算子を使うように。（以下の例を参照。）
+
+B<注2> あなたは F<CustomLog> の値を（再）設定することは B<できない>。これが
+設定できるとログフォーマットの破綻の可能性が高くなり、使い物にならない
+解析結果を提供することにだろう。
+
+Example 1
+
+    # まず空のオブジェクトを生成
+    $base = new Apache::ParseLog();
+    # あなたの Web サイトホスティングサービスから転送したファイルに対して
+    # transer と error のフィールドだけを設定
+    $logs = "/home/webmaster/logs";
+    $base = $base->config(transferlog => "$logs/transfer_log",
+                          errorlog    => "$logs/error_log");
+
+Example 2
+
+    # $httpd_conf とともにオブジェクトを生成
+    $base = new Apache::ParseLog("/usr/local/httpd/conf/httpd.conf");
+    # いくつかのフィールドを上書き
+    $logs = "/usr/local/httpd/logs";
+    $base = $base->config(transferlog => "$logs/old/trans_199807",
+                          errorlog    => "$logs/old/error_199807",
+                          agentlog    => "$logs/old/agent_199807",
+                          refererlog  => "$logs/old/refer_199807");
+
+=pod
+
+=item *
+
+C<serverroot();>
+
+    print $base->serverroot(), "\n";    
+
+F<httpd.conf> ファイルの中に書かれた Web サーバの root を含むスカラー値を返すか、
+そのオブジェクトが明記されていなかったら C<undef> を返す。
+
+=pod
+
+=item *
+
+C<servername();>
+
+    print $base->servername(), "\n";
+
+Web サーバの名前を含むスカラー値か、サーバ名が定義されていない場合は C<undef> を返す。
+
+=pod
+
+=item *
+
+C<httpport();>
+
+    print $base->httpport(), "\n";
+
+httpd に使われるポート番号を含むスカラー値か、定義されていない場合は C<undef> を返す。
+（デフォルトでは httpd は 80 番ポートを利用する。）
+
+=pod
+
+=item *
+
+C<serveradmin();>
+
+    print $base->serveradmin(), "\n";
+
+サーバ管理者の名前を含むスカラー値か、定義されていない場合は C<undef> を返す。
+
+=pod
+
+=item *
+
+C<transferlog();>
+
+     die "$!\n" unless -e $base->transferlog();
+
+transfer ログファイルの絶対パスを含むスカラー値か、未定義の場合は C<undef> を返す。
+
+=pod
+
+=item *
+
+C<errorlog();>
+
+     die "$!\n" unless -e $base->errorlog();
+
+error ログファイルの絶対パスを含むスカラー値か、未定義の場合は C<undef> を返す。
+
+=pod
+
+=item *
+
+C<agentlog();>
+
+    die "$!\n" unless -e $base->agentlog();
+
+agent ログファイルの絶対パスを含むスカラー値か、未定義の場合は C<undef> を返す。
+
+=pod
+
+=item *
+
+C<refererlog();>
+
+    die "$!\n" unless -e $base->refererlog();
+
+referer ログファイルの絶対パスを含むスカラー値か、未定義の場合は C<undef> を返す。
+
+=pod
+
+=item *
+
+C<customlog();>
+
+    @customlog = $base->customlog();
+
+I<$httpd_conf> の中で定義されている custom ログの nicknames を含む配列を返す。
+
+=pod
+
+=item *
+
+C<customlogLocation($log_nickname);>
+
+    print $base->customlogLocation($name), "\n";
+
+$name という名前の custom ログの絶対パスを含むスカラー値を返す。
+もし $name という custom ログが存在しない場合は C<undef> を返す。
+
+このメソッドはデバッグ目的のためだけに利用されるべきである。これはログを
+解析するために C<getCustomLog()> を呼び出すことができるからであり、
+これによって custom ログファイルをあなたのスクリプトで手動で開く
+必要をなくすことができる。
+
+=pod
+
+=item *
+
+C<customlogExists($log_nickname);>
+
+    if ($base->customlogExists($name)) {
+        $customlog = $base->getCustomLog($name);
+    }
+
+custom ログ I<$name>（例えば B<common> とか B<combined>）が I<$httpd_conf> ファイルの
+中で定義されており、B<かつ> そのログファイルが存在する場合に C<1> を返し、
+そうでない場合に 0 を返す。
+
+あなたは通常このメソッドを呼び出す必要は B<ない>。このメソッドは
+C<getCustomLog($name)> メソッドの内部で呼び出されているからである。
+
+=pod
+
+=item *
+
+C<customlogFormat($log_nickname);>
+
+    print $base->customlogFormat($name), "\n";
+
+custom ログ I<$name> として I<$httpd_conf> の中で定義されている "LogFarmat" の
+文字列を含むスカラー値を返す。このメソッドはデバッグ目的などの内部利用向きである。
+
+=pod
+
+=item *
+
+C<getTransferLog();>
+
+    $transferlog = $base->getTransferLog();
+
+F<TransferLog> ファイルから解析した情報にアクセスできるオブジェクトを返す。
+ログの情報にアクセスする方法については下記の L<"LOG OBJECT METHODS"> を参照。
+
+=pod
+
+=item *
+
+C<getRefererLog();>
+
+    $refererlog = $base->getRefererLog();
+
+F<RefererLog> ファイルから解析した情報にアクセスできるオブジェクトを返す。
+ログの情報にアクセスする方法は下記の L<"LOG OBJECT METHODS"> 参照。
+
+=pod
+
+=item *
+
+C<getAgentLog();>
+
+    $agentlog = $base->getAgentLog();
+
+F<AgentLog> ファイルから解析した情報にアクセスできるオブジェクトを返す。
+ログの情報にアクセスする方法については下記の L<"LOG OBJECT METHODS"> 参照。
+
+=pod
+
+=item *
+
+C<getErrorLog();>
+
+    $errorlog = $base->getErrorLog();
+
+F<ErrorLog> ファイルから解析した情報にアクセスできるオブジェクトを返す。
+ログの情報にアクセスする方法は下記の L<"LOG OBJECT METHODS"> 参照。
+
+=pod
+
+=item *
+
+C<getCustomLog($log_nickname);>
+
+    $customlog = $base->getCustomLog($name);
+
+I<$name> で指定したフォーマットの F<CustomLog> ファイルから解析した
+情報にアクセスできるオブジェクトを返す。ログの情報にアクセスする方法は
+下記の L<"LOG OBJECT METHODS"> 参照。
+
+=back
+
+=pod
+
+=head1 LOG OBJECT METHODS
+
+このセクションでは以下の base オブジェクトメソッドのいずれかから
+生成されたログオブジェクトに対して利用可能なメソッドについて述べる。
+B<getTransferLog()>, B<getErrorLog()>, B<getRereferLog()>, B<getAgentLog()>, そして 
+B<getCustomLog($log_nickname)> である。
+
+このセクションは 6つのサブセクションに分かれている。それぞれあるログオブジェクトに
+対して利用可能なメソッドについて述べる。
+
+for F<TransferLog>, F<RefererLog>, and F<AgentLog> のすべての
+メソッドは、C<getCustomLog($name)> で生成されたオブジェクトにおいても
+利用できることに注意してほしい。
+
+=pod
+
+=head2 TransferLog/CustomLog Methods
+
+以下のメソッドは F<CustomLog> オブジェクトだけでなく、
+F<TransferLog> オブジェクト(C<getTransferLog()> メソッドで生成された)で
+利用できる。これは F<LogFormat> に対応する適切な引数を記録する。
+
+=over 4
+
+=pod
+
+=item *
+
+C<hit();>
+
+    %hit = $logobject->hit();
+
+トータルヒットカウントとして少なくとも 'Total' のキーを含むハッシュを返す。
+またファイルの拡張子（すなわち html, jpg, gif, cgi, pl など）をキーとして
+それぞれのキーに対応する値をヒットカウントとして返す。
+（訳注：拡張子を含まない、というかファイル名の指定のない場合はどうなるんだろう？）
+
+=pod
+
+=item *
+
+C<host();>
+
+    %host = $logobject->host();
+
+ホスト名（あるいは名前を解決できない場合は IP）を訪問者のキーに、
+またそれぞれのヒットカウントを値とするハッシュを返す。
+
+=pod
+
+=item *
+
+C<topdomain();>
+
+    %topdomain = $logobject->topdomain();
+
+トップドメイン名（com, net など）を訪問者のキーに、またそれぞれの
+ヒットカウントを値とするハッシュを返す。
+
+ホスト名が解決できないか IP アドレスが残っていた場合は、このメソッドの
+戻り値では訪問者の数はカウントできない（次の C<secdomain()> も同じ）ことに注意。
+
+=pod
+
+=item *
+
+C<secdomain();>
+
+    %secdomain = $logobject->secdomain();
+
+セカンダリドメイン名（xxx.com, yyy.net など）をキーとして、
+それぞれのヒット数を値に持つハッシュを返す。
+
+IP を名前解決できない場合は、上の C<topdomain()> メソッドと同じルールが適用される。
+
+=pod
+
+=item *
+
+C<login();>
+
+    %login = $logobject->login();
+
+訪問者のログイン名（認証されたユーザーのログイン）をキーとし、それぞれの
+ヒット数を値とするハッシュを返す。
+
+認証を要求しないファイルのログエントリーはログイン名として "-" の文字が入る。
+
+=pod
+
+=item *
+
+C<user();>
+
+    %user = $logobject->user();
+
+訪問者のユーザー名（アクセス制限されたディレクトリの際に、
+Apache サーバの access.conf ファイルを参照して）をキーとし、それぞれの
+ヒット数を値とするハッシュを返す。
+
+アクセス制限の掛かっていないログエントリーはユーザー名として "-" の文字が入る。
+
+=pod
+
+=item *
+
+C<hitbydate();>
+
+    %hitbydate = $logobject->hitbydate();
+
+特定のファイル（html. jpg など）を訪問者が訪れたときの
+日付（mm/dd/yyyy）をキーとして、それぞれのヒット数を値とするハッシュを返す。
+
+=pod
+
+=item *
+
+C<hitbytime();>
+
+    %hitbytime = $logobject->hitbytime();
+
+それぞれのファイルが訪れられたときの時刻（00-23）をキーとし、
+それぞれのヒット数を値とするハッシュを返す。
+
+=pod
+
+=item *
+
+C<hitbydatetime();>
+
+    %hitbydatetime = $logobject->hitbydatetime();
+
+日付と時刻（mm/dd/yyyy-h）をキーとし、それぞれのヒット数を値とするハッシュを返す。
+
+=pod
+
+=item *
+
+C<visitorbydate();>
+
+    %visitorbydate = $logobject->visitorbydate();
+
+日付（mm/dd/yyyy）をキーとし、それぞれのユニークユーザー数を値とするハッシュを返す。
+
+=pod
+
+=item *
+
+C<visitorbytime();>
+
+    %visitorbytime = $logobject->visitorbytime();
+
+時刻（00-23）をキーとし、それぞれのユニークユーザー数を値とするハッシュを返す。
+
+=pod
+
+=item *
+
+C<visitorbydatetime();>
+
+    %visitorbydatetime = $logobject->visitorbydatetime();
+
+日付と時刻（mm/dd/yyyy-hh）をキーとし、それぞれのユニークユーザー数を値とする
+ハッシュを返す。
+
+=pod
+
+=item *
+
+C<method();>
+
+    %method = $logobject->method();
+
+HTTP メソッド（GET, POST, PUT など）をキーとし、それぞれのヒット数を
+値とするハッシュを返す。
+
+=pod
+
+=item *
+
+C<file();>
+
+    %file = $logobject->file();
+
+サーバの F<DocumentRoot> からの相対的なファイル名をキーとし、それぞれの
+ヒット数を値とするハッシュを返す。
+
+=pod
+
+=item *
+
+C<querystring();>
+
+    %querystring = $logobject->querystring();
+
+query 文字列をキーとし、それぞれのヒット数を値とするハッシュを返す。
+
+=pod
+
+=item *
+
+C<proto();>
+
+    %proto = $logobject->proto();
+
+利用されたプロトコル（HTTP/1.0, HTTP/1.1 など）をキーとし、それぞれの
+ヒット数を値とするハッシュを返す。
+
+=pod
+
+=item *
+
+C<lstatus();>
+
+    %lstatus = $logobject->lstatus();
+
+最終ステータス（つまり httpd がリクエストを終了した時点）の HTTP コードと
+メッセージ（例えば "404 Not Found"）をキーとし、それぞれのヒット数を
+値とするハッシュを返す。
+
+=pod
+
+=item *
+
+C<byte();>
+
+    %byte = $logobject->byte();
+
+少なくとも 'Total' をキーとして合計の転送バイトを値として含み、
+またファイルの拡張子（つまり html とか jpg, gif, cgi, pl など）をキーに、
+それぞれの転送量を値に持つハッシュを返す。
+
+=pod
+
+=item *
+
+C<bytebydate();>
+
+    %bytebydate = $logobject->bytebydate();
+
+日付（mm/dd/yyyy）をキーに、それぞれのヒット数を値に持つハッシュを返す。
+（訳注：と書いてあるが、それぞれの「転送量」の間違いではないか。）
+
+=pod
+
+=item *
+
+C<bytebytime();>
+
+    %bytebytime = $logobject->bytebytime();
+
+時刻（00-23）をキーに、それぞれのヒット数を値に持つハッシュを返す。（訳注：上に同じ。）
+
+=pod
+
+=item *
+
+C<bytebydatetime();>
+
+    %bytebydatetime = $logobject->bytebydatetime();
+
+日付と時刻（mm/dd/yyyy-hh）をキーに、それぞれのヒット数を値に持つ
+ハッシュを返す。（訳注：さらに同じ。）
+
+=back
+
+=pod
+
+=head2 ErrorLog Methods
+
+Apache のバージョン 1.2.x までは、それぞれのエラーログエントリーは
+単なるエラーだった。これの意味するところは「本当の」エラー（例えば
+File Not Found や CGI の動作不良など）とさして重要でないエラー（例えば httpd 
+プロセスの再起動）の間の区別がなかったということである。
+
+バージョン 1.3.x の開始以降、Apache httpd はそれぞれのエラーログエントリの
+「型」、すなわち "error", "notice" と "warn" を記録する。
+
+もしあなたが Apache 1.2.x を使っている場合は、C<errorbyxxx()>, 
+C<noticebyxxx()>, C<warnbyxxx()> は使うべきでない。それはこれらの
+メソッドが 1.3.x 向けのものであり、ただ単に空ハッシュを返してくるだけだからである。
+C<allbyxxx()> メソッドは望ましい結果を返してくれるだろう。
+
+以下のメソッドは F<ErrorLog> オブジェクト（C<getErrorLog()> メソッドで生成された
+で利用可能である。
+
+=over 4
+
+=pod
+
+=item *
+
+C<count();>
+
+    %errors = $errorlogobject->count();
+
+エラーログファイルに記録されているそれぞれのメッセージの数を含むハッシュを返す。
+
+キーと値は以下のようになっている。'Total' （エラーの総合計）、'error'（error 型の
+エラーの合計）、'notice'（notice 型のエラーの合計）、'warn'（warn 型のエラーの
+合計）、'dated' （日付入りのエラーの総合計）、'nodate'（日付なしのエラーの総合計）。 
+
+すると具体的にはこんな感じ。
+
+    print "Total Errors: ", $errors{'Total'}, "\n";
+    print "Total 1.3.x Errors: ", $errors{'error'}, "\n";
+    print "Total 1.3.x Notices: ", $errors{'notice'}, "\n";
+    print "Total 1.3.x Warns: ", $errors{'warn'}, "\n";
+    print "Total Errors with date: ", $errors{'dated'}, "\n";
+    print "Total Errors with no date: ", $errors{'nodate'}, "\n";
+
+Apache のバージョン 1.3.x 以前が作った F<ErrorLog> ファイルについては、
+'error', 'notice', 'warn' の値はゼロになることに注意。
+
+=pod
+
+=item *
+
+C<allbydate();>
+
+    %allbydate = $errorlogobject->allbydate();
+
+エラーが記録された日付（mm/dd/yyyy）をキーとし、それぞれのエラーの発生した数を
+値に持つハッシュを返す。
+
+=pod
+
+=item *
+
+C<allbytime();>
+
+    %allbytime = $errorlogobject->allbytime();
+
+時刻（00-23）をキーとし、エラーの発生した数を値とするハッシュを返す。
+
+=pod
+
+=item *
+
+C<allbydatetime();>
+
+    %allbydatetime = $errorlogobject->allbydatetime();
+
+日付と時刻（mm/dd/yyyy-hh）をキーとし、エラーの発生した数を値とするハッシュを返す。
+
+=pod
+
+=item *
+
+C<allmessage();>
+
+    %allmessage = $errorlogobject->allmessage();
+
+エラーメッセージをキーとし、発生した数を値とするハッシュを返す。
+
+=pod
+
+=item *
+
+C<errorbydate();> 
+
+    %errorbydate = $errorlogobject->errorbydate();
+
+日付（mm/dd/yyyy）をキーとし、それぞれのエラーの発生した数を値とするハッシュを返す。
+Apache 1.3.x のログのみ。（訳注：と書いてあるが 2.x もイケるのかも。試してないけど。）
+
+=pod
+
+=item *
+
+C<errorbytime();>
+
+    %errorbytime = $errorlogobject->errorbytime();
+
+時刻（00-23）をキーとし、エラーの発生した数を値とするハッシュを返す。 
+Apache 1.3.x のログのみ。（訳注：上に同じ。）
+
+=pod
+
+=item *
+
+C<errorbydatetime();> 
+
+    %errorbydatetime = $errorlogobject->errorbydatetime();
+
+日付と時刻（mm/dd/yyyy-hh）をキーとし、発生したエラーの数を値とする
+ハッシュを返す。Apache 1.3.x のログのみ。（訳注：上に同じ。）
+
+=pod
+
+=item *
+
+C<errormessage();>
+
+    %errormessage = $errorlogobject->errormessage();
+
+エラーメッセージをキーとし、エラーの発生した数を値とするハッシュを返す。
+Apache 1.3.x のログのみ。（訳注：上に同じ。）
+
+=pod
+
+=item *
+
+C<noticebydate();>
+
+    %noticebydate = $errorlogobject->noticebydate();
+
+日付をキーとし、エラーの発生した数を値とするハッシュを返す。
+Apache 1.3.x のログのみ。（訳注：上に同じ。）
+
+=pod
+
+=item *
+
+C<noticebytime();>
+
+    %noticebytime = $errorlogobject->noticebytime();
+
+時刻をキーとし、エラーの発生した数を値とするハッシュを返す。
+Apache 1.3.x のログのみ。（訳注：上に同じ。）
+
+=pod
+
+=item *
+
+C<noticebydatetime();>
+
+    %noticebydatetime = $errorlogobject->noticebydatetime();
+
+日付と時刻（mm/dd/yyyy-hh）をキーとし、エラーの発生した数を値とする
+ハッシュを返す。Apache 1.3.x のログのみ。（訳注：上に同じ。）
+
+=pod
+
+=item *
+
+C<noticemessage();>
+
+    %noticemessage = $errorlogobject->noticemessage();
+
+notice メッセージをキーとし、発生した数を値とするハッシュを返す。
+Apache 1.3.x のログのみ。（訳注：上に同じ。）
+
+=pod
+
+=item *
+
+C<warnbydate();>
+
+    %warnbydate = $errorlogobject->warnbydate();
+
+日付（mm/dd/yyyy）をキーとし、エラーの発生した数を値とするハッシュを返す。
+Apache 1.3.x のログのみ。（訳注：上に同じ。）
+
+=pod
+
+=item *
+
+C<warnbytime();>
+
+    %warnbytime = $errorlogobject->warnbytime();
+
+時刻（00-23）をキーとし、エラーの発生した数を値とするハッシュを返す。
+Apache 1.3.x のログのみ。（訳注：上に同じ。）
+
+=pod
+
+=item *
+
+C<warnbydatetime();>
+
+    %warnbydatetime = $errorlogobject->warnbydatetime();
+
+日付と時刻（mm/dd/yyyy-hh）をキーとし、エラーの発生した数を値とする
+ハッシュを返す。Apache 1.3.x のログのみ。（訳注：上に同じ。）
+
+=pod
+
+=item *
+
+C<warnmessage();>
+
+    %warnmessage = $errorlogobject->warnmessage();
+
+warn メッセージをキーとし、発生した数を値とするハッシュを返す。
+Apache 1.3.x のログのみ。（訳注：上に同じ。）
+
+=back
+
+=pod
+
+=head2 AgentLog/CustomLog Methods
+
+このサブセクションでは F<AgentLog> オブジェクト（C<getAgentLog()> メソッドで
+生成した）で利用できるメソッドについて述べる。これは F<LogFormat> に
+合致する C<%{User-agent}i> を記録している F<CustomLog> についても当てはまる。
+
+=over 4
+
+=pod
+
+=item *
+
+C<uagent();>
+
+    %uagent = $logobject->uagent();
+
+user agent（あなたがログファイルの中で見る「フルネーム」）をキーとし、
+それぞれのヒット数を値とするハッシュを返す。
+
+=pod
+
+=item *
+
+C<uaversion();>
+
+    %uaversion = $logobject->uaversion();
+
+user agent についての最も基本的で単純な情報（agent ログファイルの
+最初のカラム、例えば "C<Mozilla/4.06>"）をキーとし、それぞれのヒット数を
+値とするハッシュを返す。例えばパーザエンジンとそのバージョンについての
+情報を集め、実装する HTML と/または JavaScript の仕様を決めるのに有用である。
+
+=pod
+
+=item *
+
+C<browser();>
+
+    %browser = $logobject->browser();
+
+実際のブラウザ（ファイルに記録されている）をキーとし、それぞれのヒット数を
+値とするハッシュを返す。
+
+例えば Netscape Navigator/Communicator は "C<Mozilla/I<version>>" として
+記録されるだろうし、またMicrosoft Internet Explorer は同様に "C<MSIE I<version>>" である。
+
+=pod
+
+=item *
+
+C<platform();>
+
+    %platform = $logobject->platform();
+
+OS（と可能ならそのバージョンとハードウェアアーキテクチャなど） の名前を
+キーとし、それぞれのヒット数を値とするハッシュを返す。
+
+例えば UltraSPARC 上の Solaris 2.6 は "C<SunOS 5.6 sun4u>" と報告される。
+
+=pod
+
+=item *
+
+C<browserbyos();>
+
+    %browserbyos = $logobject->browserbyos();
+
+OS とブラウザの名前（I<browser (OS)> という形式で）をキーとし、
+それぞれのヒット数を値とするハッシュを返す。
+
+=back
+
+=pod
+
+=head2 CustomLog Methods
+
+このサブセクションでは F<CustomLog> オブジェクトでのみ利用可能な
+メソッドについて述べる。それぞれどの Apache ディレクティブのためのメソッドが
+どの値のために使われているのかを確認されたし。
+
+=over 4
+
+=pod
+
+=item *
+
+C<addr();>
+
+    %addr = $logobject->addr();
+
+訪れられた B<web site>（F<ServerName>) ではない） の IP アドレスを
+キーとし、それぞれのヒット数を値とするハッシュを返す。（LogFormat C<%a>）
+
+=pod
+
+=item *
+
+C<filename();>
+
+    %filename = $logobject->filename();
+
+ファイルの絶対パスをキーとし、それぞれのヒット数を値とするハッシュを
+返す。（LogFormat C<%f>）
+
+=pod
+
+=item *
+
+C<hostname();>
+
+    %hostname = $logobject->hostname();
+
+訪問者のホスト名をキーとし、それぞれのヒット数を値とするハッシュを返す。
+
+=pod
+
+=item *
+
+C<ostatus();>
+
+    %ostatus = $logobject->ostatus();
+
+最初の状態(original status)（すなわち https がリクエストを処理し始めたとき）の 
+HTTP コードとメッセージ（例えば "404 Not Found"）をキーとし、それぞれの
+ヒット数を値とするハッシュを返す。
+
+=pod
+
+=item *
+
+C<port();>
+
+    %port = $logobject->port();
+
+転送につかわれたポートをキーとし、それぞれのヒット数を値とするハッシュを返す。
+（この値はたいていそれぞれのサーバについてキーと値のペアはただ一つの組み合わせに
+なるだろう。）((LogFormat C<%p>)
+
+=pod
+
+=item *
+
+C<proc();>
+
+    %proc = $logobject->proc();
+
+それぞれのファイルの転送に対してサーバが使ったプロセス ID をキーとし、
+それぞれのヒット数を値とするハッシュを返す。(LogFormat C<%P>)
+
+=pod
+
+=item *
+
+C<sec();>
+
+    %sec = $logobject->sec();
+
+ファイル名（相対パスか絶対パスか、それとも URL か、これはあなたの
+ログフォーマットの設定による）をキーとし、その処理を終了するまでに
+掛かった最大の秒数を値とするハッシュを返す。この数値は累積したもの
+ではなく、そのファイルを処理するのに掛かった最大の秒数であることに注意。(LogFormat C<%T>)
+
+=pod
+
+=item *
+
+C<url();>
+
+    %url = $logobject->url();
+
+URL（F<DocumentRoot> からの相対パス）をキーとし、それぞれのヒット数を値と
+するハッシュを返す。
+
+=back
+=pod
+
+=head2 Special Method
+
+以下に述べる特殊メソッド C<getMethods()> は B<すべて> の B<log object> に
+ついて呼び出し元オブジェクトから利用できる。
+
+=over 4
+
+=pod
+
+=item *
+
+C<getMethods();>
+
+    @object_methods = $logobject->getMethods();
+
+その log オブジェクトで利用できるメソッド名の配列を返す。配列の
+それぞれの要素はこのセクションで述べてきたメソッドのどれか一つになっている。
+
+このメソッドを使って、I<本当に> 簡単に Apache ログを解析して報告する
+スクリプトを書くことができる。例えばこんな感じだ。
+
+    #!/usr/local/bin/perl
+    $|++; # バッファを flush
+    use Apache::ParseLog;
+    # Apache::ParseLog のオブジェクトを生成
+    $base = new Apache::ParseLog("/usr/local/httpd/conf/httpd.conf");
+    # "my_custom_log" についての CustomLog オブジェクトを取得
+    $customlog = $base->getCustomLog("my_custom_log");
+    # CustomLog オブジェクトについて利用可能なメソッドを取得
+    @methods = $customlog->getMethods();
+    # @methods 配列についてくり返し
+    foreach $method (@methods) {
+        print "$method log report\n";
+        # それぞれのメソッドの戻り値を取得
+        %{$method} = $customlog->$method();
+        # 戻ってきたハッシュについてくり返し
+        foreach (sort keys %{$method}) {
+            print "$_: ${$method}{$_}\n";
+        }
+        print "\n";
+    }
+    exit;
+
+=back
+
+=head1 MISCELLANEOUS
+
+このセクションではいくつかのその他のきっと有用なメソッドについて述べる。
+
+=pod
+
+=over 4
+
+=item *
+
+C<Version();>
+
+Apache::ParseLog モジュールを含むスカラー値を返す。
+
+=back
+
+=pod
+
+=head2 Exported Methods
+
+このサブセクションでは Apache::ParseLog で提供される B<エクスポートされた> メソッドに
+ついて述べる。（エクスポートされたメソッドについての情報は Exporter(3) を参照。）
+
+これらのエクスポートされたモジュールは（main package の）サブルーチンのように
+使える（呼び出せる）ことに注意。
+
+=over 4
+
+=pod
+
+=item *
+
+C<countryByCode();>
+
+    %countryByCode = countryByCode();
+
+国コードトップレベルドメイン名前をキー、国名を値とするハッシュ表を含むハッシュを
+返す。国別のヒット数のレポートを作成するのに使える。
+
+=pod
+
+=item *
+
+C<statusByCode();>
+
+    %statusByCode = statusByCode();
+
+RFC2068 で定義されている Apache HTTPD サーバのステータスコードをキーに、
+その意味を値とするハッシュ表を含むハッシュを返す。
+
+=pod
+
+=item *
+
+C<sortHashByValue(%hash);>
+
+    @sorted_keys = sortHashByValue(%hash);
+
+I<%hash> で指定したハッシュのソート済みのキーの配列を返す。
+ソートは I<%hash> の値について B<数値で> 降順に行う。
+
+例
+
+    # custom ログオブジェクトを取得
+    $customlog = $log->getCustomLog("combined");
+    # "file" についてのレポートを取得
+    %file = $customlog->file();
+    # %file をヒット数の降順でソート（してそのキーの配列を取得）
+    @sorted_keys = sortHashByValue(%hash);
+    foreach (@sorted_keys) {
+        print "$_: $file{$_}\n"; # print <file>: <hitcount>
+    }
+
+=back
+
+=pod
+
+=head1 EXAMPLES
+
+レポートを作成する最も基本的で簡単な方法を上の C<getMethods()> の
+セクションで一つの例として提示した。しかし、この出力のフォーマットは
+かなりそのまんまで、あまりユーザーフレンドリーではない。
+
+以下に示すものは Apache::ParseLog を使ったいくつかの別な例である。
+
+=head2 Example 1: Basic Report
+
+以下のサンプルコードは Apache 1.2.x で作成された F<TransferLog> と F<ErrorLog> を
+チェックして、レポートを標準出力に吐いている。（このコードを動かすために
+やらなければいけないことは I<$conf> を変えるだけである。）
+
+    #!/usr/local/bin/perl
+    $|++;
+    use Apache::ParseLog;
+
+    $conf = "/usr/local/httpd/conf/httpd.conf"; 
+    $base = new Apache::ParseLog($conf);
+
+    print "TransferLog Report\n\n";
+    $transferlog = $base->getTransferLog();
+
+    %hit = $transferlog->hit();
+    %hitbydate = $transferlog->hitbydate();
+    print "Total Hit Counts: ", $hit{'Total'}, "\n";
+    foreach (sort keys %hitbydate) {
+        print "$_:\t$hitbydate{$_}\n"; # <date>: <hit counts>
+    }
+    $hitaverage = int($hit{'Total'} / scalar(keys %hitbydate));
+    print "Average Daily Hits: $hitaverage\n\n";
+
+    %byte = $transferlog->byte();
+    %bytebydate = $transferlog->bytebydate();
+    print "Total Bytes Transferred: ", $byte{'Total'}, "\n";
+    foreach (sort keys %bytebydate) {
+        print "$_:\t$bytebydate{$_}\n"; # <date>: <bytes transferred>
+    }
+    $byteaverage = int($byte{'Total'} / scalar(keys %bytebydate));
+    print "Average Daily Bytes Transferred: $byteaverage\n\n";
+
+    %visitorbydate = $transferlog->visitorbydate();
+    %host = $transferlog->host();
+    print "Total Unique Visitors: ", scalar(keys %host), "\n";
+    foreach (sort keys %visitorbydate) {
+        print "$_:\t$visitorbydate{$_}\n"; # <date: <visitor counts>
+    }
+    $visitoraverage = int(scalar(keys %host) / scalar(keys %visitorbydate));
+    print "Average Daily Unique Visitors: $visitoraverage\n\n";
+    
+    print "ErrorLog Report\n\n";
+    $errorlog = $base->getErrorLog();
+
+    %count = $errorlog->count();
+    %allbydate = $errorlog->allbydate();
+    print "Total Errors: ", $count{'Total'}, "\n";
+    foreach (sort keys %allbydate) {
+        print "$_:\t$allbydate{$_}\n"; # <date>: <error counts>
+    }
+    $erroraverage = int($count{'Total'} / scalar(keys %allbydate));
+    print "Average Daily Errors: $erroraverage\n\n";
+
+    exit;
+
+=head2 Example 2: Referer Report
+
+F<RefererLog>（か referer を記録している F<CustomLog>）は1つのファイルが
+リクエストされるごとに referer を記録している。これは 10個の画像を含む
+1つのページが陸得るとされるたびに 11行が F<RefererLog> に追加されることを
+意味している。1行は実際の referer（訪問者がどこからきたか）のためのものだが、
+残りの 10行は画像についてのものであり、それらの画像は 10個の画像を持っている
+ページが I<単に 参照している> のだが、これが referer として記録される。
+これは恐らくあなたが知りたい情報よりいささか情報が多すぎるだろう。
+
+以下のサンプルコードでは F<CustomLog> を referer を含んでいるか（他のものが
+混じっているか）チェックし、サーバ内部ではない referer サイトの名前を報告する。
+
+    #!/usr/local/bin/perl
+    $|++;
+    use Apache::ParseLog;
+
+    $conf = "/usr/local/httpd/conf/httpd.conf"; 
+    $base = new Apache::ParseLog($conf);
+
+    $localserver = $base->servername();
+
+    $log = $base->getCustomLog("combined");
+    %referer = $log->referer();
+    @sortedkeys = sortHashByValue(%referer);
+
+    print "External Referers Report\n";
+    foreach (@sortedkeys) {
+        print "$_:\t$referer{$_}\n" unless m/$localserver/i or m/^\-/;
+    }
+
+    exit;
+
+=head2 Example 3: Access-Controlled User Report
+
+あなたが自分のサイト上に F<.htaccess> やそれに類するものでアクセス制限した
+ディレクトリツリーを構築しているとして、どのユーザーがそのセクションに
+どれくらいアクセスしているのかをチェックしたいと思っているとしよう。
+
+    #!/usr/local/bin/perl
+    $|++;
+    use Apache::ParseLog;
+
+    $conf = "/usr/local/httpd/conf/httpd.conf";
+    $base = new Apache::ParseLog($conf);
+
+    $log = $base->getCustomLog("common");
+    %user = $log->user();
+
+    print "Users Report\n";
+    foreach (sort keys %user) {
+        print "$_:\t$user{$_}\n" unless m/^-$/;
+    }
+
+    exit;
+
+=head1 SEE ALSO
+
+perl(1), perlop(1), perlre(1), Exporter(3)
+
+=head1 BUGS
+
+あまり有名出ないブラウザの場合は F<AgentLog> メソッドを使っても
+必ずしも有用な情報が報告されるわけではない。
+
+F<RefererLog> に対して C<referer()> メソッドを適用して得られるデータは、
+もしそのファイルが HTTP を通じてアクセスされたものでない場合は見当違いな
+ものとなるだろう。（つまり referer が "http://" という文字列で始まっていない場合。）
+
+I<$virtualhost> は特定されていて、F<ServerAdmin> と F<ServerName> に
+ついて <VirtualHost xxx> ... </VirtualHost> の中で何の指定もされて
+いないが I<httpd.conf> の全体のセクションでその値が適用されている状態で
+生成された base オブジェクトは、その全体のセクションの値を引き継がない。
+
+=head1 TO DO
+
+パフォーマンス（スピード）の向上。
+
+=head1 VERSION
+
+Apache::ParseLog 1.01 (10/01/1998).
+
+=head1 AUTHOR
+
+Apache::ParseLog was written and is maintained by Akira Hangai 
+(akira@discover-net.net)
+
+For the bug reports, comments, suggestions, etc., please email me. 
+
+=head1 COPYRIGHT
+
+Copyright 1998, Akira Hangai. All rights reserved. 
+
+This program is free software; You can redistribute it and/or modify 
+it under the same terms as Perl itself. 
+
+=head1 DISCLAIMER
+
+このパッケージは Apache のログファイルを解析するプログラムを自分自身で書く
+のに忙しい多くの Web 管理者、Web マスターの役に立つだろうという希望のもとに
+書かれている。しかし、このパッケージは生成されたデータをどのように用いようとも
+無保証であり、各自の裁量によって利用しなければいけないという条件のもとで
+配布されている。筆者はこのパッケージの利用によりどのような結果を生もうとも
+それに対して責任を有するものではない。
+
+=head1 日本語訳の免責と利用上の注意
+
+この日本語訳は原文の意味を正しく伝えることを保証しません。意味の取り違えを鵜呑みにした結果 1日つぶれてしまったとしても、それは私の責任ではありませんので悪しからず。誤訳の指摘は歓迎します。が、いつまでもフォローできるとも限りません。
+
+2003-11-11 T.Watanabe <wtnabe@mba.nifty.com>
+
+=head1 日本語訳についての追記
+
+この翻訳はT.Watanabeのご好意によりperldocjpに寄せられたものを
+川合孝典(GCD00051@nifty.ne.jp)が一部変更して登録しています。
+
