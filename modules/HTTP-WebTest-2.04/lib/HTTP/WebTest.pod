@@ -1,0 +1,2273 @@
+=head1 NAME
+名前
+
+HTTP::WebTest - Testing static and dynamic web content
+
+HTTP::WebTest - 静的及び動的なウェブコンテンツのテスト
+
+=head1 SYNOPSIS
+概要
+
+    use HTTP::WebTest;
+
+    my $webtest = new HTTP::WebTest;
+
+    # run test from file
+    # ファイルからテストを実行
+    $webtest->run_wtscript('script.wt');
+
+    # or (to pass test parameters as method arguments)
+    # もしくはメソッドの引数にテストパラメータを指定
+    $webtest->run_tests($tests);
+
+=head1 DESCRIPTION
+説明
+
+=head2 Introduction
+導入
+
+This module runs tests on remote URLs containing
+Perl/JSP/HTML/JavaScript/etc. and generates a detailed test report.
+This module can be used "as-is" or its functionality can be extended
+using plugins.  Plugins can define test types and provide additional
+report capabilities.  This module comes with a set of default plugins
+but can be easily extended with third party plugins.
+
+このモジュールは PERL/JSP/HTML/JavaScript等を含むリモートURL上の
+テストを実行し, 詳細なレポートを生成します. このモジュールは
+"そのまんま"使うことができます. またその機能をプラグインを用いて
+拡張することもできます. プラグインではテストタイプを定義し, 
+レポート機能を追加することができます. このモジュールはデフォルトの
+プラグインを含んでいますが簡単にサードパーティ製のプラグインで
+拡張することができます.
+
+The L<wt|wt> script is provided for running C<HTTP::WebTest> from the
+command line.
+
+コマンドラインから C<HTTP::WebTest> を実行するために L<wt|wt> 
+スクリプトが提供さています.
+
+The test specifications can be read from a parameter file in wtscript
+format or input as method arguments.  The test results can be
+displayed on the terminal, directed to a file, stored in a scalar
+variable.  The test results can also be emailed.  The report can be
+modified and extended using report plugins.
+
+テスト要件は wtscript フォーマット内のパラメータファイルから
+読み込まれるもしくはメソッドの引数として渡されるかです.
+テストの結果は端末上に表示, ファイルに書き込み, スカラー変数に
+格納することができます. email で送ることもできます. レポートは
+レポートプラグインを使って変更したり拡張したりできます.
+
+Each URL/web file is tested by fetching it from the web server using a
+local instance of an HTTP user agent.  The basic test is simply
+whether or not the fetch was successful.  You may also test using
+literal strings or regular expressions that are either required to
+exist or forbidden to exist in the fetched page.  You may also specify
+tests for the minimum and maximum number of bytes in the returned
+page.  You may also specify tests for the minimum and maximum web
+server response time.
+
+各 URL/ウェブファイルは HTTP ユーザエージェントのローカルインスタンス
+を使ってウェブサーバから取得してテストされます. 基本的なテストには
+単純に取得が成功したかどうかというものがあります. リテラル文字列や
+正規表現を使ってテストを行うこともできるでしょう. 取得したページ中に
+それらが存在することを要求したり禁じたりできます. 取得したページの
+サイズの最小値最大値や, ウェブサーバの応答時間の最小値最大値を
+指定することもできます.
+
+Data flow for C<HTTP::WebTest>:
+
+C<HTTP::WebTest> のデータの流れは以下の様になります:
+
+          --------------              -------------
+          |            |              |           |
+          | Input      |------------->|  WebTest  |
+          | parameters |              |           |
+          |            |              -------------
+          --------------                  |   ^
+                                          |   |
+                                          V   |
+          -------------               ------------
+          |           |    request    |          |
+          | Remote    |<--------------|   HTTP   |
+          | webserver |-------------->|   user   |
+          |           |    response   |   agent  |
+          -------------               |          |
+                                      ------------
+
+=head2 Getting started
+始めてみる
+
+This module has complex functionality, but using it to run simple
+tests is simple.  Create a file of test parameters in the
+L<wtscript format|/Running HTTP::WebTest using a parameter file> and use the
+L<wt|wt> program to process the file using the command C<wt
+filename>.  The only required parameters are C<test_name> and C<url>.
+
+このモジュールは複雑な機能を持っています. 
+しかし簡単なテストを実行するのなら単純です. 
+L<wtscript フォーマット|/Running HTTP::WebTest using a parameter file> で
+ファイルにテストパラメータを書き, L<wt|wt> プログラムを使って
+そのファイルを処理します. コマンドラインは C<wt filename> となります. 
+必須のパラメータは C<test_name> と C<url> だけです.
+
+This document describes:
+
+このドキュメントでは以下のことを記述しています:
+
+=over 4
+
+=item *
+
+
+
+How tests can be specified.  See section
+L<TEST SPECIFICATION|/TEST SPECIFICATION>.
+
+どのようにテストを記述するか.
+L<テストの記述方法|/TEST SPECIFICATION> を参照してください.
+
+=item *
+
+
+
+All test parameters supported by core C<HTTP::WebTest>
+plugins.  See section L<TEST PARAMETERS|/TEST PARAMETERS>.
+
+C<HTTP::WebTest> コアプラグインでサポートされている全ての
+テストパラメータ. L<テストパラメータ|/TEST PARAMETERS> を
+参照してください.
+
+=back
+
+See L<"perldoc wt"|wt> for documentation on the wt program.
+
+wt プログラムのドキュメントは L<"perldoc wt"|wt> を参照してください.
+
+Other useful documentation is:
+
+他に以下のドキュメントが役に立つでしょう:
+
+=over 4
+
+=item *
+
+
+
+L<perldoc HTTP::WebTest::Cookbook|HTTP::WebTest::Cookbook> - examples
+of wtscript files and examples of C<HTTP::WebTest> API usage.
+
+L<perldoc HTTP::WebTest::Cookbook|HTTP::WebTest::Cookbook> - 
+wtscript ファイルの例と C<HTTP::WebTest> API の使い方の例.
+
+=item *
+
+
+
+L<perldoc HTTP::WebTest::API|HTTP::WebTest::API> - full documentaion
+on API of C<HTTP::WebTest>.
+
+L<perldoc HTTP::WebTest::API|HTTP::WebTest::API> - C<HTTP::WebTest> の
+全APIの完全なドキュメント.
+
+=item *
+
+
+
+L<perldoc HTTP::WebTest::Plugins|HTTP::WebTest::Plugins> - for
+developers of C<HTTP::WebTest> plugins.
+
+L<perldoc HTTP::WebTest::Plugins|HTTP::WebTest::Plugins> - 
+C<HTTP::WebTest> プラグインの開発者向け
+
+=back
+
+=head1 TEST SPECIFICATION
+テストの記述方法
+
+The test specifications can be read from a parameter file (in the
+wtscript format described below) or passed as method arguments as an
+array of hashes.
+
+テスト記述は(後述のwpscriptフォーマットで書かれた)パラメータファイルから
+読み込むことができます. また, ハッシュの配列としてメソッドの引数に
+渡すこともできます.
+
+=head2 Running HTTP::WebTest using a parameter file
+パラメータファイルを使って HTTP::WebTest を実行する
+
+C<HTTP::WebTest> can read test specification from file
+in format called as C<wtscript>.
+
+C<HTTP::WebTest>> は C<wtscript> フォーマットで記述されたファイルから
+テスト記述を読み込むことができます.
+
+Tests defined by wtscript file can be
+run either using Perl API of C<HTTP::WebTest>
+
+wtscript ファイルで定義されたテストは C<HTTP::WebTest> の Perl API を
+使って実行することもできます.
+
+    use HTTP::WebTest;
+
+    my $webtest = new HTTP::WebTest;
+    $webtest->run_wtscript('script.wt');
+
+or by using program L<wt|wt> supplied with this module.
+
+また, このモジュールから提供されている L<wt|wt>プログラムから
+実行することもできます.
+
+If you are running dozens of tests, you may want to divide them into
+several parameter files.  This will organize the tests and reduce the
+size of the output and e-mail messages.  However, cookies passed to or
+received from the web server(s) are not shared between tests in
+different parameter files.
+
+数多くのテストを実行するときにはいくつかのパラメータファイルに分けたくも
+なるでしょう. これはテストを組織化し, ここの出力やE-mailメッセージを
+縮小させます. しかしウェブサーバに送る・受信するクッキーはそれぞれの
+パラメータファイル間で共有されません.
+
+=head3 File format
+ファイルフォーマット
+
+The wtscript file is a text file containing global parameters and test
+blocks containing test block parameters.  A test block begins with a
+test_name parameter and ends with an end_test directive.  The order of
+the parameters and test blocks is arbitrary.
+
+wtscript ファイルはテキストファイルです. グローバルパラメータと, 
+テストブロックパラメータと含むテストブロックとを含みます. テストブロックは
+test_name パラメータで始まり, end_test ディレクティブで終了します. 
+パラメータやテストブロックの順序は任意です.
+
+Test block parameters MUST occur between a test_name parameter and an
+end_test directive.  (Test block parameters affect only an individual
+test.) Global parameters must NOT occur between a test_name parameter
+and an end_test directive.  (This requirement does not apply to
+certain parameters that are both global and test block parameters.)
+
+テストブロックパラメータは test_name パラメータから end_test ディレクティブ
+の間におかれ *なければなりません*. (テストブロックパラメータは
+ここのテストにだけ影響します.) グローバルパラメータは test_name 
+パラメータから end_test ディレクティブの間においては *なりません*.
+(この要求はグローバル・テスト両パラメータにおけるいくつかのパラメータ
+には適用されません.)
+
+The following lines are ignored:
+
+以下の行は無視されます:
+
+=over 4
+
+=item *
+
+
+
+lines consisting of nothing but white space (blanks or tabs)
+
+白空白(ブランクもしくはタブ)以外に何も含まない行
+
+=item *
+
+
+
+lines beginning with a number sign (C<#>)
+
+ハッシュマーク(C<#>)で始まる行
+
+=item *
+
+
+
+lines beginning with white space (blanks or tabs) followed by a number
+sign
+
+白空白(ブランクもしくはタブ)で始まりハッシュマーク(C<#>)が続く行
+
+=back
+
+Parameters are either scalar (single-valued) or lists (single-valued,
+multi-valued or nested).
+
+パラメータはスカラー(１つの値) もしくはリスト(１つの値もしくは
+複数の値, そのネスト)のどちらかです.
+
+You can specify scalar parameters using forms such as:
+
+スカラーパラメータは次の形式で指定します:
+
+    name=value
+    name =
+           value
+    name = 'value'
+
+You can specify list parameters using forms such as:
+
+リストパラメータは次の形式で指定します:
+
+    name = ( first value
+             second value )
+    name=( first value => second value
+           third value => fourth value
+         )
+    name = ( first value => second value )
+    name = (
+             'first value'
+             'second value' )
+    name= (
+             first value
+             second value
+             third value => 'fourth value'
+          )
+    name =
+           ( first value
+             'second value' )
+    name = (
+             'first value'
+             'second value'
+           )
+
+Lists can be nested. For example:
+
+リストはネストすることもできます. 例:
+
+    name = ( ( first value
+               second value ) )
+
+    name = ( 'third value'
+             ( fourth value => fifth value ) )
+
+    name = (
+             ( first value
+               second value )
+             third value
+             ( fourth value => fifth value )
+           )
+
+You can specify a null (placeholder) value using '' or "".  Within
+single or double quotes, the usual Perl string quoting rules apply.
+Thus, single quotes mean that all enclosed characters are interpreted
+literally: '\n' is backslash-n rather than a newline character.
+Double quotes mean that Perl metasymbols are interpreted: "\n\t" is a
+newline and a tab.  Double quoted strings can also contain Perl
+variables that will be evaluated by Perl.  For example, if the variable
+$myvar contains the string 'foobar', "$myvar" will be replaced by foobar
+at runtime.  Perl variables can be defined by plugin
+modules or in code sections in the parameter file as described below.
+
+'' もしくは "" を使って null値(プレースホルダ値)をおくことができます. 
+シングルクオートかダブルクオートかの違いは Perl のそれと同じです. 
+つまりシングルクオートは文字通りに解釈されます. '\n' は改行文字では
+なくバックスラッシュとそれに続く n を意味します. ダブルクオートでは
+Perl のメタ文字が処理されます. "\n\t" は改行文字とタブを意味します. 
+ダブルクオート文字列では Perl 変数を含めることもできます. 
+変数は Perl によって評価されます. 例えば変数 $myvar が文字列 'foobar' 
+を格納しているのなら "$myvar" は実行時に 'foobar' と展開されます. 
+Perl 変数はプラグインモジュールやパラメータファイルのコードセクション
+(後述)で定義することができます.
+
+It is also possible to specify a Perl expression in place of a scalar
+value, one of a list parameter's values or an entire list.  Curly
+brackets are used to denote Perl code inside wtscript files.
+C<HTTP::WebTest> compiles this Perl code as anonymous subroutines
+which are called when values of corresponding test parameters are
+required.  When these subroutines are called C<HTTP::WebTest> object
+is passed to them as the first argument.
+
+スカラー値, リストパラメータの１つ, もしくはリストそのものを置く場所には
+Perl の式を置くこともできます. wpscriptファイルにおいて, 
+Perl のコードと評価させる箇所にはカールした括弧を使います. 
+C<HTTP::WebTest> は Perl コードを無名関数にコンパイルします. 
+関数はそのパラメータ値が要求されたときに呼び出されます. 
+関数が呼び出されるときにはその最初に引数として C<HTTP::WebTest> 
+オブジェクトが渡されます.
+
+Some examples of syntax:
+
+構文の例:
+
+    # scalar value
+    # スカラー値
+    name = { 1 + 1 }
+
+    # element of a list
+    # リストの要素
+    name = (
+             'first value'
+             { "second " . "value" }
+           )
+
+    # entire list (must be a reference to an array)
+    # リストそのもの(配列へのリファレンスを返してください)
+    name = { [ a => 'b', c => 'd' ] }
+
+    # accessing HTTP::WebTest object
+    # HTTP::WebTest へのアクセス
+    name = { my $webtest = shift; ..... }
+
+=head3 Examples of wtscript files
+wtscript ファイルの例
+
+The parameters below specify tests.  The tests specified by the
+C<text_forbid> parameter apply to both the "MyCompany home page" and
+the "Yahoo home page" tests.  Hence, if either returned page contains
+one of the case-insensitive strings in text_forbid, the test fails.
+If any test fails or the fetch of the URL fails, an e-mail will be
+sent to tester@mycompany.com.
+
+以下のパラメータはテストを記述しています. 
+C<test_forbid> パラメータで指定されるテストは "MyCompany home page" 
+及び "Yahoo home page" テスト両方に適用されます. 
+そのためもし返されたページが text_forbid に指定された文字列と同じ文字列を
+大文字小文字を区別しないで含んでいたら, テストは失敗となります. 
+いずれかのテストが失敗した, URL の取得に失敗した時には
+e-mail が tester@mycompany.com に送られます.
+
+    apache_exec = /usr/sbin/apache
+    ignore_case = yes
+    mail = errors
+    mail_addresses = ( tester@mycompany.com )
+    mail_server = mailhost.mycompany.com
+    text_forbid = ( Premature end of script headers
+                    an error occurred while processing this directive
+                  )
+
+    test_name = 'MyCompany home page (static)'
+        file_path = ( raycosoft_home.html => . )
+        text_require = (
+            <a href="/dept/peopledev/new_employee/"><font color="#0033cc">
+            <a href="https://www.raycosoft.com/"><font color=
+                       )
+    end_test
+
+    test_name = Yahoo home page
+        url = www.yahoo.com
+        text_require = ( <a href=r/qt>Quotations</a>...<br> )
+        min_bytes = 13000
+        max_bytes = 99000
+        min_rtime = 0.010
+        max_rtime = 30.0
+    end_test
+
+=head2 Calling HTTP::WebTest from a Perl program
+Perl プログラムから HTTP::WebTest を使う
+
+If you are using the Perl API of C<HTTP::WebTest>, the test parameters
+can be defined as an array of hashes.
+
+C<<HTTP::WebTest> の Perl API を使うときは, テストパラメータは
+ハッシュの配列の形で定義します.
+
+Each hash in the array defines tests for one URL.  Keys in the hashes
+are test parameter names and values in hashes are values of test
+parameters.  Optional global test parameters can be passed in a hash
+passed as the second argument.
+
+配列内の核ハッシュが１つのURLに対するテストとなります. 
+ハッシュのキーがテストパラメータの名前になり, ハッシュの値が
+テストパラメータの値になります. グローバルテストパラメータを使う
+時は, ２番目の引数にハッシュリファレンスとして渡します.
+
+Subroutine references can be specified instead of test parameter values.
+Referenced subroutines are called during test run when
+values of corresponding test parameters are required.  These subroutines are
+called in an object-oriented fashion, so the C<HTTP::WebTest> object is passed
+as the first argument.
+
+パラメータの値として関数のリファレンスを使うこともできます. 
+関数はテストパラメータの値が必要とされたときに呼び出されます. 
+関数はオブジェクト指向的に呼び出され, C<HTTP::WebTest> オブジェクトが
+１つ目の引数として渡されます.
+
+Tests can be run as
+
+テストは次のように実行します.
+
+    use HTTP::WebTest;
+
+    my $webtest = new HTTP::WebTest;
+    $webtest->run_tests(
+                        [ # test 1
+                          { param1 => value1,
+                            param2 => value2 },
+                          # test 2
+                          { param1 => value1,
+                            param2 => value2 },
+                        ],
+                        { global_param1 => value1,
+                          global_param2 => value2 }
+                       );
+
+=head3 Example
+例
+
+This Perl script tests Yahoo home page and sends full test report to
+C<tester@mycompany.com>.
+
+以下の Perl スクリプトでは Yahoo ホームページをテストして
+その完全なテスト結果を C<tester@mycompany.com> に送ります.
+
+    use HTTP::WebTest;
+
+    my $tests = [
+                 { test_name    => 'Yahoo home page',
+                   url          => 'http://www.yahoo.com',
+                   text_require => [ '<a href=r/qt>Quotations</a>...<br>' ],
+                   min_bytes    => 13000,
+                   max_bytes    => 99000,
+                 }
+                ];
+
+    my $params = { mail_server    => 'mailhost.mycompany.com',
+                   mail_addresses => [ 'tester@mycompany.com' ],
+                   mail           => 'all',
+                   ignore_case    => 'yes',
+                 };
+
+    my $webtest = new HTTP::WebTest;
+    $webtest->run_tests($tests, $params);
+
+=head1 PLUGIN MODULES
+プラグインモジュール
+
+=head2 Core plugin modules
+コアプラグインモジュール
+
+C<HTTP::WebTest> is implemented in a modular structure that allows
+programmers to easily add modules to run additional tests or define
+additional simple tests without writing a module.  C<HTTP::WebTest>
+provides a number of core plugin modules which are loaded by default:
+
+C<HTTP::WebTest> モジュール構造を用いて実装されています. 
+これによりプログラマが簡単に新しいテストを実行するモジュールを追加したり, 
+モジュールを書かずともテストを追加定義することができます. 
+C<HTTP::WebTest> のいくつかのコアプラグインモジュールはデフォルトで
+ロードされます:
+
+=over 4
+
+=item L<HTTP::WebTest::Plugin::ContentSizeTest|HTTP::WebTest::Plugin::ContentSizeTest>
+
+This plugin checks the size of the fetched web page.
+
+このプラグインは取得したウェブページのサイズを調べます.
+
+=item L<HTTP::WebTest::Plugin::Cookies|HTTP::WebTest::Plugin::Cookies>
+
+This plugin controls sending and receiving cookies.
+
+このプラグインはクッキーの送受信を制御します.
+
+=item L<HTTP::WebTest::Plugin::DefaultReport|HTTP::WebTest::Plugin::DefaultReport>
+
+This plugin manages the test report.
+
+このプラグインはテストレポートを管理します.
+
+=item L<HTTP::WebTest::Plugin::Loader|HTTP::WebTest::Plugin::Loader>
+
+This plugin supports adding external plugin modules.
+
+このプラグインは外部プラグインモジュールの追加を補助します.
+
+=item L<HTTP::WebTest::Plugin::ResponseTimeTest|HTTP::WebTest::Plugin::ResponseTimeTest>
+
+This plugin tests the response times of the web server.
+
+このプラグインはウェブサーバの応答時間を調べます.
+
+=item L<HTTP::WebTest::Plugin::SetRequest|HTTP::WebTest::Plugin::SetRequest>
+
+This plugin initializes the HTTP requests.
+
+このプラグインは HTTP リクエストの初期化を行います.
+
+=item L<HTTP::WebTest::Plugin::StatusTest|HTTP::WebTest::Plugin::StatusTest>
+
+This plugin checks the status of the HTTP responses.
+
+このプラグインは HTTP レスポンスのステータスを調べます.
+
+=item L<HTTP::WebTest::Plugin::TextMatchTest|HTTP::WebTest::Plugin::TextMatchTest>
+
+This plugin tests whether the content of the HTTP response matches or doesn't
+match selected text or regular expressions.
+
+このプラグインは HTTP レスポンスの内容が指定したテキストまたは
+正規表現を含むか, もしくは含まないかを調べます.
+
+=back
+
+Information about test parameters supported by core plugins is
+summarized below in the section L<TEST PARAMETERS|/TEST PARAMETERS>.
+
+コアプラグインがサポートしているパラメータに関する情報は, 
+後述の L<テストパラメータ|/TEST PARAMETERS> セクションに要約があります.
+
+=head2 Other plugin modules bundled with HTTP::WebTest
+HTTP::WebTest に付属するその他のプラグインモジュール
+
+Following plugin modules come with HTTP::WebTest but they are not
+loaded by default.  To use such plugin module load it using global
+test parameter C<plugins>.
+
+HTTP::WebTest には以下のモジュールも付属しています. しかし
+これらはデフォルトではロードされません. これらのプラグインモジュールを
+使うときにはグローバルテストパラメータ C<plugins> を使ってください.
+
+=over 4
+
+=item L<HTTP::WebTest::Plugin::Click|HTTP::WebTest::Plugin::Click>
+
+This plugin supports using names of links and buttons on HTML pages to
+build additional tests.
+
+このプラグインは追加テストを作るために HTML ページのリンクやボタンの名前の
+使用を提供します.
+
+=item L<HTTP::WebTest::Plugin::Delay|HTTP::WebTest::Plugin::Delay>
+
+This plugin module allows the user to specify pauses in the test sequence.
+
+このプラグインはテストの流れを一時的に停止させることができます.
+
+=item L<HTTP::WebTest::Plugin::HarnessReport|HTTP::WebTest::Plugin::HarnessReport>
+
+This report plugin can generate test reports that are compatible with
+L<Test::Harness|Test::Harness>.
+
+このレポートプラグインは L<Test::Harness|Test::Harness> 互換の
+レポートを生成します.
+
+=item L<HTTP::WebTest::Plugin::Hooks|HTTP::WebTest::Plugin::Hooks>
+
+This plugin allows the user to define callback parameters that are
+evaluated at runtime.  This allows the user to define additional tests
+without writing a plugin module.
+
+このプラグインは実行時に評価されるコールバックパラメータを定義します. 
+これによりプラグインモジュールを書くことなしに新しいテストを定義することが
+できます.
+
+=back
+
+Information about test parameters supported by add-on plugin modules
+is summarized below in section L<TEST PARAMETERS|/TEST PARAMETERS>.
+
+アドインプラグインがサポートしているパラメータに関する情報は, 
+後述の L<テストパラメータ|/TEST PARAMETERS> セクションに要約があります.
+
+=head2 Plugin modules released separately from HTTP::WebTest
+HTTP::WebTest とは別にリリースされているプラグインモジュール
+
+Following additional C<HTTP::WebTest> plugins are avialable separately
+from CPAN.
+
+以下の C<HTTP::WebTest> プラグインは別個に CPAN で提供されています.
+
+=over 4
+
+=item L<HTTP::WebTest::Plugin::Apache|HTTP::WebTest::Plugin::Apache>
+
+This plugin supports testing web files using a local instance of Apache.
+
+このプラグインは Apache のローカルインスタンスを使ってウェブファイルを
+調べます.
+
+=item L<HTTP::WebTest::Plugin::TagAttTest|HTTP::WebTest::Plugin::TagAttTest>
+
+This plugin allows to forbid or require tags and/or attributes in a web page.
+
+このプラグインはウェブページ内のタグや属性を禁止・要求できます.
+
+=item L<HTTP::WebTest::Plugin::DateTest|HTTP::WebTest::Plugin::DateTest>
+
+Evaluate the "age" of embedded date strings in response body.
+
+レスポンス本体の日付文字列に埋め込まれた "年齢" を評価します.
+
+=item L<HTTP::WebTest::Plugin::XMLReport|HTTP::WebTest::Plugin::XMLReport>
+
+Report plugin for HTTP::WebTest, generates output in XML format.
+
+XML 形式で出力するレポートプラグインです.
+
+=back
+
+=head2 Writing plugin modules
+プラグインモジュールを書くには
+
+See L<perldoc HTTP::WebTest::Plugins|HTTP::WebTest::Plugins> for
+information about writing L<HTTP::WebTest|HTTP::WebTest> plugin modules.
+
+L<HTTP::WebTest|HTTP::WebTest> プラグインモジュールを書くための情報は, 
+L<perldoc HTTP::WebTest::Plugins|HTTP::WebTest::Plugins> を参照してください.
+
+=head1 ADD-ONS
+アドオン
+
+Besides L<additional plugins|/Plugin modules released separately from HTTP::WebTest> other L<HTTP::WebTest|HTTP::WebTest> add-ons are available from CPAN:
+
+L<追加プラグイン|/Plugin modules released separately from HTTP::WebTest> 
+以外にも, 他の L<HTTP::WebTest|HTTP::WebTest> アドオンが CPAN で
+提供されています:
+
+=over 4
+
+=item L<HTTP::WebTest::XMLParser|HTTP::WebTest::XMLParser>
+
+Parser of XML representation of wtscript.
+
+XML で書かれた wtcript のパーサー.
+
+=back
+
+=head1 TEST PARAMETERS
+テストパラメータ
+
+Most parameters can be used as both global and test block
+parameters.  If you specify such parameter outside a test block, that value
+is the default value for all test blocks.  The global value can be
+overriden in each test block by specifying the parameter within the test
+block.
+
+大抵のテストパラメータはグローバルでもテストブロックでも使うことができます. 
+テストブロックの外で指定したパラメータは全てのテストブロックのデフォルト値
+になります. テストブロックで指定したパラメータはグローバル値を上書きします.
+
+Parameters marked as I<GLOBAL PARAMETER> can be used only as global
+and cannot be overriden in test blocks.
+
+I<GLOBAL PARAMETER> とマークされているパラメータはグローバル
+パラメータとしてのみ使えます. テストブロックでの上書きはできません.
+
+Parameters marked as I<NON-CORE PARAMETER> are defined in add-on
+plugin modules which must be loaded explicitly using the parameter
+C<plugins>.
+
+I<NON-CORE PARAMETER> とマークされているパラメータはアドオンプラグイン
+モジュールで定義されるものです. これらは C<plugins> パラメータで
+明示的にロードしなければなりません.
+
+=head2 accept_cookies
+
+Option to accept cookies from the web server.
+
+ウェブサーバからクッキーを受けつかるかの設定.
+
+These cookies exist only while the program is executing and do not
+affect subsequent runs.  These cookies do not affect your browser or
+any software other than the test program.  These cookies are only
+accessible to other tests executed during test sequence execution.
+
+クッキーはプログラムの実行中にだけ存在し, それ以降は影響を与えません. 
+これらのクッキーはあなたのブラウザやテストプログラム以外のソフトウェア
+には影響しません. クッキーは１つのテストシーケンス中で実行している
+他のテストからだけアクセスできます.
+
+See also the <send_cookies> parameter.
+
+<send_cookies> パラメータも参照してください.
+
+=head3 Allowed values
+使用可能な値
+
+C<yes>, C<no>
+
+
+=head3 Default value
+デフォルト値
+
+C<yes>
+
+
+=head2 auth
+
+A list which contains two elements: userid/password pair to be used
+for web page access authorization.
+
+ウェブページへのアクセス認証に使うユーザ名/パスワードの２つの要素をもつ
+リストを指定します.
+
+=head2 click_button
+
+I<NON-CORE PARAMETER> from L<HTTP::WebTest::Plugin::Click>
+
+
+Given name of submit button (i.e. C<<input type="submit"E<gt>> tag or
+C<<input type="image"E<gt>> inside of C<<formE<gt>> tag) on previously
+requested HTML page, builds test request to the submitted page.
+
+前に要求した HTML ページのサブミットボタンの名前(つまり C<<formE<gt>> 内の
+C<<input type="submit"E<gt>> タグや C<<input type="image"E<gt>>)を
+与えることで, サブミット先のページへのテストリクエストを作ります.
+
+Note that you still need to pass all form parameters yourself using
+C<params> test parameter.
+
+このパラメータを使っても, C<params> テストパラメータで全ての
+パラメータを指定しなければならないことに注意してください.
+
+=head3 Example
+例
+
+See example in L<HTTP::WebTest::Cookbook|HTTP::WebTest::Cookbook>.
+
+L<HTTP::WebTest::Cookbook|HTTP::WebTest::Cookbook> にある例を
+参照してください.
+
+=head2 click_link
+
+I<NON-CORE PARAMETER> from L<HTTP::WebTest::Plugin::Click>
+
+
+Given name of link (i.e. C<<aE<gt>> tag) on previosly requested HTML
+page, builds test request to the linked page.
+
+前に要求した HTML ページのリンクの名前(つまり C<<aE<gt>> タグ)を
+与えることで, サブミット先のページへのテストリクエストを作ります.
+
+=head3 Example
+例
+
+See example in L<HTTP::WebTest::Cookbook|HTTP::WebTest::Cookbook>.
+
+L<HTTP::WebTest::Cookbook|HTTP::WebTest::Cookbook> にある例を
+参照してください.
+
+=head2 cookie
+
+Synonym to C<cookies>.
+
+C<cookies> の同義語です.
+
+It is deprecated parameter and may be removed in future versions of
+L<HTTP::WebTest|HTTP::WebTest>.
+
+このパラメータは廃止されています. 今後のバージョンの
+L<HTTP::WebTest|HTTP::WebTest> で削除されるでしょう.
+
+=head2 cookies
+
+This is a list parameter that specifies cookies to send to the web
+server:
+
+ウェブサーバに送るクッキーを指定したリストを指定します:
+
+    cookies = ( cookie1_spec
+                cookie2_spec
+                ...
+                cookieN_spec )
+
+Currently there are two ways to specify a cookie.
+
+現在のところ２種類の記述方法があります.
+
+=over 4
+
+=item * Named style
+
+* 名前付きスタイル
+
+A cookie is specified by a set of C<param =E<gt> value> pairs:
+
+クッキーは C<param =E<gt> value> ペアの集合で指定します:
+
+    (
+      param => value
+      ...
+    )
+
+List of all supported C<param =E<gt> value> pairs:
+
+サポートされている C<param =E<gt> value>  ペアは以下の通りです:
+
+=over 4
+
+=item version => VERSION
+
+Version number of cookie spec to use, usually 0.
+
+使用するクッキー指定方法のバージョン番号. 通常は 0 を指定します.
+
+=item name => NAME (REQUIRED)
+
+name of cookie.  cannot begin with a $ character.
+
+クッキーの名前. 文字 $ で始まる名前は使えません.
+
+=item value => VALUE (REQUIRED)
+
+Value of cookie.
+
+クッキーの値.
+
+=item path => PATH (REQUIRED)
+
+url path name for which this cookie applies.  must begin with a /
+character.  see also path_spec.
+
+このクッキーが適用される url パス. 文字 / で始まらなければなりません. 
+path_spec も参照してください.
+
+=item domain => DOMAIN (REQUIRED)
+
+Domain for which cookie is valid.  Must either contain two periods or
+be equal to C<.local>.
+
+クッキーを有効にするドメイン. ２つのピリオドを含むか C<.local> と
+等しくなければなりません.
+
+=item port => PORT
+
+List of allowed port numbers that the cookie may be returned to.  If
+not specified, cookie can be returned to any port.  Must be specified
+using the format C<N> or C<N, N, ..., N> where N is one or more
+digits.
+
+クッキーを返すことを許可するポート番号のリスト. 
+指定しなければ全てのポートに対して返すようになります. 
+C<N> もしくは C<N, N, ..., N> というフォーマットして指定してください
+(N は１つ以上の数字です).
+
+=item path_spec => PATH_SPEC
+
+Ignored if version is less than 1.  Option to ignore the value of
+path.  Default value is 0.
+
+version が 1 より小さいときは無視されます. 
+path の値を無視するかどうかを設定します. デフォルトは 0 です.
+
+=over 4
+
+=item * 1
+
+Use the value of path.
+
+path の値を使う.
+
+=item * 0
+
+Ignore the specified value of path.
+
+path に指定された値を無視する.
+
+=back
+
+=item secure => SECURE
+
+Option to require secure protocols for cookie transmission.  Default
+value is 0.
+
+クッキーの転送にセキュアなプロトコルを要求する. 
+デフォルトは 0.
+
+=over 4
+
+=item * 1
+
+Use only secure protocols to transmit this cookie.
+
+このクッキーはセキュアなプロトコルでのみ使われる.
+
+=item * 0
+
+Secure protocols are not required for transmission.
+
+転送時にセキュアなプロトコルを必要としない.
+
+=back
+
+=item maxage => MAXAGE
+
+Number of seconds until cookie expires.
+
+クッキーが期限切れとなるまでの秒数.
+
+=item discard => DISCARD
+
+Option to discard cookie when the program finishes.  Default is 0.
+(The cookie will be discarded regardless of the value of this
+element.)
+
+プログラムが終了するときにクッキーを破棄するかの設定. 
+デフォルトは 0. 
+(クッキーはこの要素の値に関わらず破棄されます.)
+
+=over 4
+
+=item * 1
+
+Discard cookie when the program finishes.
+
+プログラム終了時にクッキーを破棄する.
+
+=item * 0
+
+Don't discard cookie.
+
+クッキーを破棄しない.
+
+=back
+
+=item rest => NAME_VALUE_LIST
+
+Defines additional cookie attributes.
+
+クッキーの属性を追加定義する.
+
+Zero, one or several name/value pairs may be specified.  The name
+parameters are words such as Comment or CommentURL and the value
+parameters are strings that may contain embedded blanks.
+
+0個, 1個, それ以上の名前/値ペアを指定します. 
+名前は Comment や CommentURL といった単語を, 値には文字列(空白を
+含むこともできます)を指定します.
+
+=back
+
+Example (wtscript file):
+
+例 (wtscript ファイル):
+
+    cookies = ( ( name   => Cookie1
+                  value  => cookie value )
+
+                ( name   => Cookie2
+                  value  => cookie value
+                  path   => /
+                  domain => .company.com ) )
+
+                ( name   => Cookie2
+                  value  => cookie value
+                  rest   => ( Comment => this is a comment ) )
+
+Example (Perl script):
+
+例 (Perl スクリプト):
+
+    my $tests = [
+                  ...
+                  {
+                    test_name => 'cookie',
+                    cookies   => [ [
+                                     name  => 'Cookie1',
+                                     value => 'Value',
+                                   ],
+                                   [
+                                     name  => 'Cookie2',
+                                     value => 'Value',
+                                     path  => '/',
+                                   ] ],
+                    ...
+                  }
+                  ...
+                ]
+
+=item * Row list style
+
+* 行リストスタイル
+
+This style of cookie specification is deprecated and may be removed in
+future versions of L<HTTP::WebTest|HTTP::WebTest>.
+
+この形式での指定は廃止されています. 
+今後のバージョンの L<HTTP::WebTest|HTTP::WebTest> で削除されるでしょう.
+
+Each cookie is specified by following list:
+
+各クッキーは以下のリストの形で指定されます:
+
+    ( VERSION
+      NAME
+      VALUE
+      PATH
+      DOMAIN
+      PORT
+      PATH_SPEC
+      SECURE
+      MAXAGE
+      DISCARD
+      NAME1
+      VALUE1
+      NAME2
+      VALUE2
+      ...
+    )
+
+Any element not marked below as REQUIRED may be defaulted by
+specifying a null value or ''.
+
+以下で REQUIRED とマークされている要素はnull値もしくは
+'' がデフォルトになります.
+
+=over 4
+
+=item * VERSION (REQUIRED)
+
+Version number of cookie spec to use, usually 0.
+
+使用するクッキー指定方法のバージョン番号. 通常は 0 を指定します.
+
+=item * NAME (REQUIRED)
+
+Name of cookie.  Cannot begin with a $ character.
+
+クッキーの名前. 文字 $ で始まる名前は使えません.
+
+=item * VALUE (REQUIRED)
+
+Value of cookie.
+
+クッキーの値.
+
+=item * PATH (REQUIRED)
+
+URL path name for which this cookie applies.  Must begin with a /
+character.  See also path_spec.
+
+このクッキーが適用される url パス. 文字 / で始まらなければなりません. 
+path_spec も参照してください.
+
+=item * DOMAIN (REQUIRED)
+
+Domain for which cookie is valid.  Must either contain two periods or
+be equal to C<.local>.
+
+クッキーを有効にするドメイン. ２つのピリオドを含むか C<.local> と
+等しくなければなりません.
+
+=item * PORT
+
+List of allowed port numbers that the cookie may be returned to.  If
+not specified, cookie can be returned to any port.  Must be specified
+using the format C<N> or C<N, N, ..., N> where N is one or more
+digits.
+
+クッキーを返すことを許可するポート番号のリスト. 
+指定しなければ全てのポートに対して返すようになります. 
+C<N> もしくは C<N, N, ..., N> というフォーマットして指定してください
+(N は１つ以上の数字です).
+
+=item * PATH_SPEC
+
+Ignored if version is less than 1.  Option to ignore the value of
+path.  Default value is 0.
+
+version が 1 より小さいときは無視されます. 
+path の値を無視するかどうかを設定します. デフォルトは 0 です.
+
+=over 4
+
+=item * 1
+
+Use the value of path.
+
+path の値を使う.
+
+=item * 0
+
+Ignore the specified value of path.
+
+path に指定された値を無視する.
+
+=back
+
+=item * SECURE
+
+Option to require secure protocols for cookie transmission.  Default
+value is 0.
+
+クッキーの転送にセキュアなプロトコルを要求する. 
+デフォルトは 0.
+
+=over 4
+
+=item * 1
+
+Use only secure protocols to transmit this cookie.
+
+このクッキーはセキュアなプロトコルでのみ使われる.
+
+=item * 0
+
+Secure protocols are not required for transmission.
+
+転送時にセキュアなプロトコルを必要としない.
+
+=back
+
+=item * MAXAGE
+
+Number of seconds until cookie expires.
+
+クッキーが期限切れとなるまでの秒数.
+
+=item * DISCARD
+
+Option to discard cookie when the program finishes.  Default is 0.
+(The cookie will be discarded regardless of the value of this
+element.)
+
+プログラムが終了するときにクッキーを破棄するかの設定. 
+デフォルトは 0. 
+(クッキーはこの要素の値に関わらず破棄されます.)
+
+=over 4
+
+=item * 1
+
+Discard cookie when the program finishes.
+
+プログラム終了時にクッキーを破棄する.
+
+=item * 0
+
+Don't discard cookie.
+
+クッキーを破棄しない.
+
+=back
+
+=item * name/value
+
+Zero, one or several name/value pairs may be specified.  The name
+parameters are words such as Comment or CommentURL and the value
+parameters are strings that may contain embedded blanks.
+
+0個, 1個, それ以上の名前/値ペアを指定します. 
+名前は Comment や CommentURL といった単語を, 値には文字列(空白を
+含むこともできます)を指定します.
+
+=back
+
+An example cookie would look like:
+
+例えば次のようになります:
+
+    cookies = ( ( 0
+                  WebTest cookie #1
+                  cookie value
+                  /
+                  .mycompany.com
+                  ''
+                  0
+                  0
+                  200
+                  1
+                ) )
+
+=back
+
+See RFC 2965 for details (ftp://ftp.isi.edu/in-notes/rfc2965.txt).
+
+詳細は RFC 2965 (ftp://ftp.isi.edu/in-notes/rfc2965.txt) を
+参照してください.
+
+=head2 default_report
+
+I<GLOBAL PARAMETER>
+
+
+This parameter controls whether the default report plugin is used for
+test report creation.  Value C<yes> means that default report plugin
+will be used, value C<no> means that it will not.
+It can also be used to disable all output 
+(i.e. if this parameter has value C<no> and no other report plugins
+are loaded).
+
+このパラメータではデフォルトレポートプラグインを使ってテストレポートを
+生成するかどうかを制御します. 値 C<yes> はデフォルトレポートプラグイン
+の使用を意味します. 値 C<no> のと気は使用しません. 
+これによってなにも出力しないようにもできます
+(すなわちこのパラメータを値 C<no> にして他のレポートプラグインをロード
+しなかったとき).
+
+=head3 Allowed values
+使用可能な値
+
+C<yes>, C<no>
+
+
+=head3 Default value
+デフォルト値
+
+C<yes>
+
+
+=head2 delay
+
+I<NON-CORE PARAMETER> from L<HTTP::WebTest::Plugin::Delay>
+
+
+Duration of pause (in seconds) before running test.
+
+テストを実行する前に停止する時間(秒単位で).
+
+=head3 Allowed values
+使用可能な値
+
+Any number greater that zero.
+
+0以降の数値
+
+=head2 end_test
+
+This is not really a parameter, it is part of
+L<wtscript format|/Running HTTP::WebTest using a parameter file>.
+It marks the end of test block.
+
+これは実際にはパラメータではありません. 
+L<wtscript フォーマット|/Running HTTP::WebTest using a parameter file>
+の一部です.
+これはテストブロックの終了を示します.
+
+=head2 fh_out
+
+I<GLOBAL PARAMETER>
+
+
+A filehandle (or anything else that supports C<print>) to use for test
+report output.  This parameter is ignored if test parameter
+C<output_ref> is specified also.
+
+テストレポートを出力するために使うファイルハンドル(もしくは
+C<print> をサポートする何か). このパラメータは
+テストパラメータ C<output_ref> が指定されているときには無視されます.
+
+This parameter can be used only when passing the test parameters
+as arguments from a calling Perl script.
+
+このパラメータは Perl スクリプトのテストパラメータ引数として
+渡されたときのみ使われます.
+
+=head2 form_name
+
+I<NON-CORE PARAMETER> from L<HTTP::WebTest::Plugin::Click>
+
+
+Give form name attribute (i.e. C<<form name="foo"E<gt>>) on previously
+requested HTML page, builds test request to the submitted page.
+
+前に要求した HTML ページのフォームの名前(つまり
+C<<form name="foo"E<gt>> )を
+与えることで, サブミット先のページへのテストリクエストを作ります.
+
+Note that you still need to pass all form parameters yourself using
+C<params> test parameter.
+
+このパラメータを使っても, C<params> テストパラメータで全ての
+パラメータを指定しなければならないことに注意してください.
+
+=head2 handle_redirects
+
+If set to C<yes> then HTTP-WebTest automatically follows redirects.
+It means that you never see HTTP responses with status codes 301 and
+302.  This feature is disabled if this test parameter is set to C<no>.
+
+C<yes> の時 HTTP-WebTest が自動的にリダイレクトをたどります. 
+これによってステータスコード 301 及び 302 の HTTP レスポンスを
+みることはなくなります. この機能を無効にするにはこのテストパラメータに
+C<no> を設定します.
+
+=head3 Allowed values
+使用可能な値
+
+C<yes>, C<no>
+
+
+=head3 Default value
+デフォルト値
+
+C<yes>
+
+
+=head2 http_headers
+
+A list of HTTP header/value pairs.  Can be used to override default
+HTTP headers or to add additional HTTP headers.
+
+HTTP ヘッダ/値ペアのリスト. デフォルトの HTTP ヘッダを上書きしたり
+HTTP ヘッダを追加したりできます.
+
+=head3 Example
+例
+
+    http_headers = ( Accept => text/plain, text/html )
+
+=head2 ignore_case
+
+Option to do case-insensitive string matching for C<text_forbid>,
+C<text_require>, C<regex_forbid> and C<regex_require> test parameters.
+
+C<text_forbid>, C<text_require>, C<regex_forbid> 及び C<regex_require>
+テストパラメータで大文字小文字を区別しないマッチングを行うかどうかを
+設定します.
+
+=head3 Allowed values
+使用可能な値
+
+C<yes>, C<no>
+
+
+=head3 Default value
+デフォルト値
+
+C<no>
+
+
+=head2 mail
+
+I<GLOBAL PARAMETER>
+
+
+Option to e-mail output to one or more addresses specified by
+C<mail_addresses> test parameter.
+
+C<mail_addresses> テストパラメータで指定されている１つまたはそれ以上の
+アドレスに e-mail で出力を送るかの設定.
+
+=head2 mail_addresses
+
+I<GLOBAL PARAMETER>
+
+
+A list of e-mail addresses where report will be send (if sending
+report is enabled with C<mail> test parameter).
+
+レポートを送る e-mail アドレスのリスト(C<mail> テストパラメータで
+レポートの送信が有効にされているときだけ送られます).
+
+=over 4
+
+=item * all
+
+Send e-mail containing test results.
+
+テスト結果を含んだ e-mail を送ります.
+
+=item * errors
+
+Send e-mail only if one or more tests fails.
+
+１つまたはそれ以上のテストが失敗したときにだけ e-mail を送ります.
+
+=item * no
+
+Do not send e-mail.
+
+e-mail を送信しません.
+
+=head3 Default value
+デフォルト値
+
+C<no>
+
+
+=back
+
+=head2 mail_failure_subject
+
+I<GLOBAL PARAMETER>
+
+
+Sets C<Subject> header for test report e-mails when some tests
+fail.  In this string some character sequences have special meaning:
+
+失敗したテストがあったときに e-mail テストレポートの C<Subject>
+ヘッダを設定します. この文字列には特別な意味を持つ文字並びが
+あります.
+
+=over 4
+
+=item %f
+
+the number of failed tests
+
+失敗したテストの数
+
+=item %s
+
+the number of successful tests
+
+成功したテストの数
+
+=item %t
+
+the total number of tests
+
+テストの総数
+
+=item %%
+
+replaced with single C<%>
+
+１つの C<%> に置換されます
+
+=back
+
+=head3 Default Value
+デフォルト値
+
+C<WEB TESTS FAILED! FOUND %f ERROR(S)>
+
+
+=head2 mail_from
+
+I<GLOBAL PARAMETER>
+
+
+Sets From: header for test report e-mails.
+
+e-mail テストレポートの From: ヘッダを設定します.
+
+=head3 Default Value
+デフォルト値
+
+Name of user under which test script runs.
+
+テストスクリプトを実行したユーザの名前.
+
+=head2 mail_server
+
+I<GLOBAL PARAMETER>
+
+
+Fully-qualified name of of the mail server (e.g., mailhost.mycompany.com).
+
+メールサーバの完全修飾ドメイン名(例えば mailhost.mycompany.com).
+
+=head3 Default value
+デフォルト値
+
+C<localhost>
+
+
+=head2 mail_success_subject
+
+I<GLOBAL PARAMETER>
+
+
+Sets C<Subject> header for test report e-mails when all tests are
+passed successfully.  In this string some character sequences have
+special meaning (see C<mail_failure_subject> parameter for their
+description).
+
+全てのテストが成功した時のテストレポートe-mailの C<Subject> ヘッダの
+設定. この文字列には特別な意味を持つ文字並びがあります 
+(C<mail_failure_subject> パラメータを参照してください).
+
+=head3 Default Value
+デフォルト値
+
+C<Web tests succeeded>
+
+
+=head2 max_bytes
+
+Maximum number of bytes expected in returned page.
+
+返されたページの予期される最大バイト数.
+
+=head3 Allowed values
+使用可能な値
+
+Any integer greater that zero and greater than C<min_bytes> (if
+C<min_bytes> is specified).
+
+0 より大きいかつ C<min_bytes> より大きい(C<min_bytes> が指定
+されているとき)整数値.
+
+=head2 max_rtime
+
+Maximum web server response time (seconds) expected.
+
+ウェブサーバからの予期される最大レスポンスタイム(秒).
+
+=head3 Allowed values
+使用可能な値
+
+Any number greater that zero and greater than C<min_rtime> (if
+C<min_rtime> is specified).
+
+0 より大きいかつ C<min_rtime> より大きい(C<min_rtime> が指定
+されているとき)整数値.
+
+=head2 method
+method
+
+HTTP request method.
+
+HTTP リクエストメソッド.
+
+See RFC 2616 (HTTP/1.1 protocol).
+
+RFC 2616 (HTTP/1.1 プロトコル)を参照してください.
+
+=head3 Allowed values
+使用可能な値
+
+C<GET>, C<POST>
+
+
+=head3 Default value
+デフォルト値
+
+C<GET>
+
+
+=head2 min_bytes
+
+Minimum number of bytes expected in returned page.
+
+返されたページの予期される最小バイト数.
+
+=head3 Allowed values
+使用可能な値
+
+Any integer less than C<max_bytes> (if C<max_bytes> is specified).
+
+C<max_bytes> より小さい(C<max_bytes> が指定されているとき)整数値.
+
+=head2 min_rtime
+
+Minimum web server response time (seconds) expected.
+
+ウェブサーバからの予期される最小レスポンスタイム(秒).
+
+=head3 Allowed values
+使用可能な値
+
+Any number less than C<max_rtime> (if C<max_rtime> is specified).
+
+C<max_rtime> より小さい(C<max_rtime> が指定されているとき)整数値.
+
+=head2 on_finish
+
+I<NON-CORE PARAMETER> from L<HTTP::WebTest::Plugin::Hooks>
+
+
+The value of this test parameter is ignored.  However, it is evaluted
+before the test sequence is run, so it can be used to run finalization
+code when the test sequence is finished.
+
+このテストパラメータの値は無視されます. 
+しかしテストシーケンスが実行される前に(訳注:後にの間違い？)評価されます. 
+つまりテストシーケンスが終わったときに終了用のコードを実行させるために
+使うことができます.
+
+=head3 Example
+例
+
+See example in L<HTTP::WebTest::Cookbook|HTTP::WebTest::Cookbook>.
+
+L<HTTP::WebTest::Cookbook|HTTP::WebTest::Cookbook> にある例を
+参照してください.
+
+=head2 on_request
+
+I<NON-CORE PARAMETER> from L<HTTP::WebTest::Plugin::Hooks>
+
+
+The value of this test parameter is ignored.  However, it is evaluted
+before the HTTP request is done, so it can be used to do
+initalization before the request.
+
+このテストパラメータの値は無視されます. 
+しかし HTTP リクエストを行う前に評価されます. 
+つまりリクエスト前に初期化を行うために使うことができます.
+
+=head2 on_response
+
+I<NON-CORE PARAMETER> from L<HTTP::WebTest::Plugin::Hooks>
+
+
+This is a list parameter which is treated as test result.  It is
+evaluted when the HTTP response for the test request is received.
+
+テスト結果として処理されるリストパラメータを設定します. 
+これはテストリクエストに対する HTTP レスポンスを受信したときに
+評価されます.
+
+It can be used to define custom tests without writing new plugins.
+It can also be used to run some code when the HTTP response for the test
+request is received.
+
+このパラメータは新しいプラグインを書くことなしにカスタムテストを
+定義するために使うことができます. テストリクエストに対する
+HTTP レスポンスを受信したときに何らかのコードを実行するために使うことも
+できます.
+
+=head3 Allowed values
+使用可能な値
+
+    ( YESNO1, COMMENT1
+      YESNO2, COMMENT2
+      ....
+      YESNON, COMMENTN )
+
+Here C<YESNO>, C<COMMENT> is a test result.  C<YESNO> is either
+C<yes> if test is successful or C<no> if it is not.  C<COMMENT> is a
+comment associated with this test.
+
+C<YESNO>, C<COMMENT> はテスト結果です. C<YESNO> は
+成功時なら C<yes>, そうでなければ C<no> のどちらかです. 
+C<COMMENT> はこのテストに関連するコメントです.
+
+=head3 Example
+例
+
+See example in L<HTTP::WebTest::Cookbook|HTTP::WebTest::Cookbook>.
+
+L<HTTP::WebTest::Cookbook|HTTP::WebTest::Cookbook> にある例を
+参照してください.
+
+=head2 on_start
+
+I<NON-CORE PARAMETER> from L<HTTP::WebTest::Plugin::Hooks>
+
+
+The value of this test parameter is ignored.  However, it is evaluted
+before the test sequence is run, so it can be used to do initalization
+before the test sequence run.
+
+このテストパラメータの値は無視されます. 
+しかしテストシーケンスが実行される前に評価されます. 
+つまりテストシーケンスが実行される前に初期化を行うために使うことができます.
+
+=head3 Example
+例
+
+See example in L<HTTP::WebTest::Cookbook|HTTP::WebTest::Cookbook>.
+
+L<HTTP::WebTest::Cookbook|HTTP::WebTest::Cookbook> にある例を
+参照してください.
+
+=head2 output_ref
+
+I<GLOBAL PARAMETER>
+
+
+A reference to a scalar that accumulates text of test report.  If this
+test parameter is specified then value of test parameter C<fh_out> is
+ignore.
+
+テストレポートのテキストを蓄積させるためのスカラーへのリファレンスを
+指定します. このパラメータが指定されて多時は C<fh_out> テスト
+パラメータの値は無視されます.
+
+This parameter can be used only when passing the test parameters
+as arguments from a calling Perl script.
+
+このパラメータは Perl スクリプトのテストパラメータ引数として
+渡されたときのみ使われます.
+
+=head2 params
+
+A list of name/value pairs to be passed as parameters to the URL.
+(This element is used to test pages that process input from forms.)
+
+URL にパラメータとして渡す名前/値ペアのリスト.
+(この要素はフォームからの入力を処理するページのテストのために使います.)
+
+If the method key is set to C<GET>, these pairs are URI-escaped and
+appended to the requested URL.
+
+method キーに C<GET> が設定されているのならこれらのペアは
+URI-エスケープされてリクエストURLに追加されます.
+
+Example (wtscript file):
+
+例 (wtscript ファイル):
+
+    url = http://www.hotmail.com/cgi-bin/hmhome
+    params = ( curmbox
+               F001 A005
+               from
+               HotMail )
+
+generates the HTTP request with URI:
+
+生成される HTTP リクエスト URI:
+
+    http://www.hotmail.com/cgi-bin/hmhome?curmbox=F001%20A005&from=HotMail
+
+If the method key is set to C<POST>, as long as all values are scalars
+they are URI-escaped and put into content of the HTTP request.
+C<application/x-www-form-urlencoded> content type is set for such HTTP
+request.
+
+もしメソッドキーが C<POST> に設定されているときは同じように
+URI-エスケープされ, HTTP リクエストの本体で送られます.
+この時,  HTTP リクエストに C<application/x-www-form-urlencoded> 
+コンテンツタイプが設定されます.
+
+If the method key is set to C<POST>, some values may be defined as
+lists.  In this case L<HTTP::WebTest|HTTP::WebTest> uses
+C<multipart/form-data> content type used for C<Form-based File Upload>
+as specified in RFC 1867.  Each parameter with list value is treated
+as file part specification with the following interpretation:
+
+method キーが C<POST> に設定されているのなら値をリストで定義する
+こともできます. この時 L<HTTP::WebTest|HTTP::WebTest> は RFC 1867 で
+仕様化されている C<フォームベースのファイルアップロード> のために
+C<multipart/form-data> コンテンツタイプを使います. リストの核パラメータは
+以下の処理を通してファイルパートの指定として扱われます.
+
+    ( FILE, FILENAME, HEADER => VALUE... )
+
+where
+
+それぞれの意味は以下の通りです.
+
+=over 4
+
+=item * FILE
+
+The name of a file to open. This file will be read and its content
+placed in the request.
+
+読み込むファイルの名前. このファイルの中身がリクエストに使われます.
+
+=item * FILENAME
+
+The optional filename to be reported in the request.  If it is not
+specified than basename of C<FILE> is used.
+
+リクエストで報告する任意のファイル名. 指定されなかったときは
+C<FILE> のベースネームが使われます.
+
+=item * HEADER => VALUE
+
+Additional optional headers for file part.
+
+ファイルパートの任意の追加ヘッダ.
+
+=back
+
+Example (wtscript file):
+
+例 (wtscript ファイル):
+
+    url = http://www.server.com/upload.pl
+    method = post
+    params = ( submit => ok
+               file   => ( '/home/ilya/file.txt', 'myfile.txt' ) )
+
+It generates HTTP request with C</home/ilya/file.txt> file included
+and reported under name C<myfile.txt>.
+
+これは C<myfile.txt> という名前で C</home/ilya/file.txt> の中身を
+送る HTTP リクエストを生成します.
+
+=head2 pauth
+
+A list which contains two elements: userid/password pair to be used
+for proxy server access authorization.
+
+２つの要素, プロキシサーバにアクセスするための認証のユーザ名/パスワードの
+ペアを含むリスト.
+
+=head2 plugins
+
+I<GLOBAL PARAMETER>
+
+
+A list of module names.  Loads these modules and registers them as
+L<HTTP::WebTest|HTTP::WebTest> plugins.  If the name of the plugin starts with
+C<::>, it is prepended with C<HTTP::WebTest::Plugin>.  So
+
+モジュール名のリスト. これらのモジュールはロードされ,
+L<HTTP::WebTest|HTTP::WebTest> プラグインとして登録されます. もし
+プラグインの名前が C<::> から始まる時は C<HTTP::WebTest::Plugin> が前に
+付加されます. つまり,
+
+    plugins = ( ::Click )
+
+is equal to
+
+は次と等価です.
+
+    plugins = ( HTTP::WebTest::Plugin::Click )
+
+=head2 proxies
+
+A list of service name/proxy URL pairs that specify proxy servers to
+use for requests.
+
+リクエストに使うためのプロキシサーバを指定する
+サービス名/プロキシURLのペアのリスト.
+
+=head3 Example
+例
+
+    proxies = ( http => http://http_proxy.mycompany.com
+                ftp  => http://ftp_proxy.mycompany.com )
+
+=head2 regex_forbid
+
+List of regular expressions that are forbidden to exist in the
+returned page.
+
+返されたページの中に存在することを禁止する正規表現のリスト.
+
+For more information, see L<perldoc perlre|perlre> or see Programming
+Perl, 3rd edition, Chapter 5.
+
+詳細に関しては, L<perldoc perlre|perlre> もしくはプログラミング言語
+Perl 第３版 第５章 を参照してください.
+
+See also the C<text_forbid> and C<ignore_case> parameters.
+
+C<text_forbid> 及び C<ignore_case> パラメータも参照してください.
+
+=head2 regex_require
+
+List of regular expressions that are required to exist in the
+returned page.
+
+返されたページの中に存在することを要求する正規表現のリスト.
+
+For more information, see L<perldoc perlre|perlre> or see Programming Perl,
+3rd edition, Chapter 5.
+
+詳細に関しては, L<perldoc perlre|perlre> もしくはプログラミング言語
+Perl 第３版 第５章 を参照してください.
+
+See also the C<text_require> and C<ignore_case> parameters.
+
+C<text_require> 及び C<ignore_case> パラメータも参照してください.
+
+=head2 relative_urls
+
+If set to C<yes> than C<HTTP-WebTest> supports relative URLs.  See
+test parameter C<url> for more information.
+
+C<yes> を設定することで C<HTTP-WebTest> が相対URL をサポートするように
+なります. より多くの情報は C<url> テストパラメータを参照してください.
+
+=head3 Allowed values
+使用可能な値
+
+C<yes>, C<no>
+
+
+=head3 Default value
+デフォルト値
+
+C<no>
+
+
+=head2 send_cookies
+
+Option to send cookies to web server.  This applies to cookies
+received from the web server or cookies specified using the C<cookies>
+test parameter.
+
+ウェブサーバのクッキーを送るかを設定します. これはウェブサーバから
+受け取ったクッキーにも C<cookies> テストパラメータで指定された
+クッキーにも適用されます.
+
+This does NOT give the web server(s) access to cookies created with a
+browser or any user agent software other than this program.  The
+cookies created while this program is running are only accessible to
+other tests in the same test sequence.
+
+これはウェブサーバにブラウザや他のこのプログラム以外のユーザエージェント
+ソフトウェアが作ったクッキーへのアクセスを禁じるものではありません. 
+このプログラムの実行中に生成されたクッキーは同じテストシーケンス内の
+他のテストからのみアクセス可能です.
+
+See also the <accept_cookies> parameter.
+
+<accept_cookies> パラメータも参照してください.
+
+=head3 Allowed values
+使用可能な値
+
+C<yes>, C<no>
+
+
+=head3 Default value
+デフォルト値
+
+C<yes>
+
+
+=head2 show_cookies
+
+Option to display any cookies sent or received.
+
+送受信したクッキーを表示するかを設定します.
+
+=head3 Allowed values
+使用可能な値
+
+C<yes>, C<no>
+
+
+=head3 Default value
+デフォルト値
+
+C<no>
+
+
+=head2 show_headers
+
+Include request and response headers in the test report.
+
+テストレポートのリクエストヘッダ及びレスポンスヘッダを含めるかを
+設定します.
+
+=head3 Allowed values
+使用可能な値
+
+C<yes>, C<no>
+
+
+=head3 Default value
+デフォルト値
+
+C<no>
+
+
+=head2 show_html
+
+Include content of HTTP response in the test report.
+
+テストレポートに HTTP レスポンスを含めるかを設定します.
+
+=head3 Allowed values
+使用可能な値
+
+C<yes>, C<no>
+
+
+=head3 Default value
+デフォルト値
+
+C<no>
+
+
+=head2 status_code
+
+Given numeric HTTP Status Code, tests response returned that value.
+
+数値で HTTP ステータスコードを与えると, レスポンスで
+その値が返されるかをテストします.
+
+=head3 Default value
+デフォルト値
+
+C<200> (OK).
+
+
+=head2 terse
+
+Option to display shorter test report.
+
+短いテストレポートを表示するかを設定します.
+
+=over 4
+
+=item * summary
+
+* summary (要約)
+
+Only a one-line summary for each URL
+
+各 URL の１行要約のみ
+
+=item * failed_only
+
+Only tests that failed and the summary
+
+失敗したテストと要約のみ
+
+=item * no
+
+Show all tests and the summary
+
+全てのテストと要約を表示
+
+=head3 Default value
+デフォルト値
+
+C<no>
+
+
+=back
+
+=head2 test_name
+
+Name associated with this URL in the test report and error messages.
+
+URL に関連づけられた名前. テストレポートやエラーメッセ時で使われます.
+
+=head2 text_forbid
+
+List of text strings that are forbidden to exist in the returned
+page.
+
+返されたページの中に存在することを禁止するテキスト文字列のリスト.
+
+See also the C<regex_forbid> and C<ignore_case> parameters.
+
+C<regex_forbid> 及び C<ignore_case> パラメータも参照してください.
+
+=head2 text_require
+
+List of text strings that are required to exist in the returned
+page.
+
+返されたページの中に存在することを要求するテキスト文字列のリスト.
+
+See also the C<regex_require> and C<ignore_case> parameters.
+
+C<regex_require> 及び C<ignore_case> パラメータも参照してください.
+
+=head2 timeout
+
+Set the timeout value in seconds.
+
+タイムアウト値を秒で設定します.
+
+=head3 Default value
+デフォルト値
+
+C<180>
+
+
+=head2 url
+
+URL to test.
+
+テストするURL.
+
+If test parameter C<relative_urls> is set to C<yes> than URL for each
+test is treated as relative to the URL in the previous test.  URL in
+the first test is treated as relative to C<http://localhost>.
+
+テストパラメータ C<relative_urls> が C<yes> に設定されているときは
+１つ前のテストの URL からの相対URLとして処理されます. 最初のテストでは
+C<http://localhost> からの相対として処理されます.
+
+If test parameter C<relative_urls> is set to C<no> than each URL is
+treated as absolute.  In this case if schema part of URL is omitted
+(i.e. URL doesn't start with C<http://>, C<ftp://>, etc) then
+C<http://> is implied.
+
+テストパラメータ C<relative_urls> が C<no> に設定されているときは
+絶対URLとして処理されます. この時, URL のスキーマ部分が省略されている
+時(つまりURLがC<http://>, C<ftp://> 等で始まっていない時)は 
+C<http://> が付加されます.
+
+=head2 user_agent
+
+Set the product token that is used to identify the user agent on
+the network.
+
+ネットワーク上でユーザエージェントを識別するために使われる
+製品トークンを設定します.
+
+=head3 Default value
+デフォルト値
+
+C<HTTP-WebTest/NN>
+
+
+where C<NN> is version number of HTTP-WebTest.
+
+C<NN> は HTTP-WebTest のバージョン番号です.
+
+=head1 RESTRICTIONS / BUGS
+制限 / バグ
+
+This module have been tested only on Unix (e.g., Solaris, Linux, AIX,
+etc.) but it should work on Win32 systems.
+
+このモジュールは Unix (例えば Solaris, Linux, AIX 等)でのみテスト
+されていますが WIn32 でも動作するでしょう.
+
+If you want to test https:// web sites you may have to install
+additional modules to enable SSL support in L<LWP>.  In short you may
+have to install L<Crypt::SSLeay> module.  For details see README.SSL
+file in L<LWP> distro.
+
+https:// ウェブサイトをテストするには L<LWP> で SSL サポートを
+有効にするための追加モジュールのインストールが必要でしょう. 
+簡単にいってしまえば L<Crypt::SSLeay> モジュールをインストール
+する必要があります. 詳細は L<LWP> 配布パッケージ内の README.SSL を
+参照してください.
+
+=head1 AUTHORS
+著者
+
+Richard Anderson <richard@richard-anderson.org> wrote
+C<HTTP::WebTest 1.xx>, using some ideas from the CPAN Monkeywrench module.
+
+Richard Anderson <richard@richard-anderson.org>,
+C<HTTP::WebTest 1.xx> を作成, CPAN Monkeywrench モジュールから
+アイデアをひらめく.
+
+Ilya Martynov <ilya@martynov.org> implemented the plug-in concept, the
+extended API and completely rewrote C<HTTP::WebTest>.
+
+Ilya Martynov <ilya@martynov.org> プラグイン構想の実装, 
+拡張 API 及び C<HTTP::WebTest> の完全な書き直し.
+
+Please don't email authors directly.  Use the SourceForge
+C<HTTP::WebTest> mail list (see SUPPORT, next section).
+
+著者に直接 email を送らないでください. SourceForge の 
+C<HTTP::WebTest> メーリングリストを使ってください
+(次のセクション, サポートを参照してください).
+
+=head1 SUPPORT
+サポート
+
+Please email bug reports, suggestions, questions, etc. to the SourceForge
+C<HTTP::WebTest> maillist.
+You can sign up at
+http://lists.sourceforge.net/lists/listinfo/http-webtest-general .
+The email address is C<http-webtest-general@lists.sourceforge.net>.
+
+バグレポート, 提案, 質問などは SourceForge の C<HTTP::WebTest> 
+メーリングリストに email を送ってください. 
+http://lists.sourceforge.net/lists/listinfo/http-webtest-general で
+登録できます. email アドレスは C<http-webtest-general@lists.sourceforge.net>
+です.
+
+=head1 COPYRIGHT
+著作権
+
+Copyright (c) 2000-2001 Richard Anderson.  All rights reserved.
+
+
+Copyright (c) 2001-2003 Ilya Martynov.  All rights reserved.
+
+
+This program is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+このプログラムはフリーソフトです. このプログラムは Perl 自身と同じ条件下で
+再配布・改変可能です.
+
+=head1 SEE ALSO
+関連項目
+
+L<HTTP::WebTest::Cookbook|HTTP::WebTest::Cookbook>
+
+
+L<HTTP::WebTest::API|HTTP::WebTest::API>
+
+
+L<HTTP::WebTest::Plugins|HTTP::WebTest::Plugins>
+
+
+L<wt|wt>
+
+
