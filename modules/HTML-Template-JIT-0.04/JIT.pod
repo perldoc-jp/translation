@@ -1,0 +1,196 @@
+=pod
+
+=head1 名前
+
+HTML::Template::JIT - HTML::Templateのためのジャストインタイムなコンパイラ
+
+=head1 概要
+
+  use HTML::Template::JIT;
+
+  my $template = HTML::Template::JIT->new(filename => 'foo.tmpl',
+                                          jit_path => '/tmp/jit',
+                                         );
+  $template->param(banana_count => 10);
+  print $template->output();
+
+=head1 説明
+
+このモジュールは、HTML::Templateのためのジャストインタイムなコンパイラです。
+このモジュールは、二段階に働きます。
+
+=over 4
+
+=item ロード
+
+new() が呼ばれると、このモジュールは、チェックを行い、
+既にコンパイルされたテンプレートのバージョンが最新かどうかをを判断します。
+コンパイルされてあれば、コンパイルされたバージョンをロードし、
+param() と output() を呼ぶためのハンドルを返します。
+
+=item コンパイル
+
+テンプレートがコンパイルされる必要があるなら - 変更されたか、まだコンパイルされていないために -、
+HTML::Template::JIT は、HTML::Template と Inline::Cを使っている
+HTML::Template::JIT::Compiler を呼び出し、
+テンプレートをネイティブな機械(語)命令にコンパイルします。
+
+コンパイルされた形式は、ディスクのjit_path ディレクトリに保存され、
+ロード段階にコントロールが返します。
+
+=back
+
+これは、HTML::Templateのキャッシュモードの働きによく似ているかもしれませんが、
+いくつかの、重要な違いがあります：
+
+=over 4
+
+=item *
+
+コンパイル段階に、長時間かかります。システム依存であり、
+大きなテンプレートをコンパイルするのに、数秒かかることもあります。
+
+=item *
+
+結果として、コンパイルされたテンプレートは、普通の、キャッシュされたテンプレートよりも、
+だいぶ速いです。作者のベンチマークによると、HTML::Template::JITは、
+既にコンパイルされたテンプレートは、4から8倍、HTML::Templateのキャッシュモードよりも速く実行します。
+
+=item *
+
+結果として、コンパイルされたテンプレートは、普通のキャッシュテンプレートよりも、
+少ないメモリを使います。もしも、全てのテンプレートが既にコンパイルされているのなら、
+テンプレートを使うのに、HTML::Templateをロードする必要すらありません!
+
+=back
+
+=head1 使いかた
+
+使いかたは、普通の、HTML::Templateの使いかたと同じですが、new()のオプションにいくつか追加
+があります。new のオプションは以下の通りです:
+
+=over 4
+
+=item jit_path
+
+これは、モジュールが、コンパイルされたモジュール
+(訳注：テンプレートがコンパイルされてモジュールになったもののことか?)を貯めるのに使います。
+このディレクトリは、読み書き両方ができる必要があります。このディレクトリは、
+テンプレートが変更され、リコンパイルされるにつれ、やがて、増えていくので、定期的に掃除したいかもしれません。
+HTML::Template::JITは、将来のバージョンでは、後でそれ自身をうまく掃除するようになるでしょう。
+
+=item no_compile
+
+このオプションはモジュールに、テンプレートを決してコンパイルしないように伝えます。
+もし、テンプレートのコンパイル済みのバージョンが見つからなければ、
+HTML::Template::JIT::Compiler をロードするのではなく、croak()を行います。
+テンプレートを前にコンパイルしていて、ユーザがコンパイラの実行ラグを受けない手段を講じたいなら、
+このオプションを使いたいでしょう。
+
+=item jit_debug
+
+STDERRに漠然としたデバッグの束を吐き出します。次のことに、留意してください。
+このオプションを使うために、パスにC<indent>ユーティリティの作業用のバージョンを持つ必要があります。
+HTML::Template::JIT がC<indent>を、Cのコードを読みやすいように生成するのに使います。
+
+=item print_to_stdout
+
+HTML::Templateの特別なバージョンの print_to オプションは、
+変数に貯めるのではなく、標準出力に出力することを可能にします。
+このオプションに、1をセットすると、output() は、
+テンプレートのコンテンツを、直接、STDOUTに出力します。デフォルトは0です。
+
+注意：print_to_stdoutを使うことで、結果として、巨大なテンプレートでは、重要なメモリの節約になります。
+しかしながら、作者のテストでは、HTML::Template::JIT の普通の使いかたと比較すると、
+全体としてのパフォーマンスが、わずかに落ちました。
+
+=back
+
+=head1 警告
+
+このバージョンはかなり限られています。下のオプションはサポートしません。
+
+   cache (all modes)
+   associate
+   print_to
+   scalarref (and friends)
+   arrayref  (and friends)
+   die_on_bad_params
+
+includeされたファイルは、新鮮さのために、コンパイルされたテンプレートをチェックするときに
+変更がチェックされません。
+
+CODE-ref params は、サポートされません。
+
+query() メソッドは、サポートされません。
+
+これは、それほど、速くありません。 - 
+いつか、普通のHTML::Templateよりもおよそ10倍の速さに到達したい。
+
+あなたのCコンパイラがCの文字列の中に、UTF-8を受け入れない限り、
+このモジュールがは、UTF-8で動くことを期待しません。
+Cの標準の妨害だと考えています。それで、そのかわりに、
+ここで、多少の仕事をする必要があると考えています。
+
+開発が進むにつれ、いつかは、これらの全ての制限に対処したいと思っています。
+
+=head1 バグ
+
+バグを見つけたら、メーリングリストに参加して、バグについて教えてください。
+HTML::Template メーリングリストに、下のURLを訪れて、参加できます。
+
+  http://lists.sourceforge.net/lists/listinfo/html-template-users
+
+もちろん、私に直接(sam@tregar.com)に、バグをメールで、送ることも出来ますが、
+私は、バグレポートをメーリングリストへ転送する権利を取っておきます。
+
+バグレポートを提出するときは、全ての詳細を含んでいることを確かめてください。
+モジュールのバージョンと、問題をデモンストレートする
+テストスクリプトとテストテンプレートドキュメントを含んでください。
+
+=head1 著者
+
+(原文まま)
+
+Sam Tregar <sam@tregar.com>
+
+=head1 ライセンス
+
+(原文まま)
+
+HTML::Template::JIT : Just-in-time compiler for HTML::Template
+
+Copyright (C) 2001 Sam Tregar (sam@tregar.com)
+
+This module is free software; you can redistribute it and/or modify it
+under the terms of either:
+
+a) the GNU General Public License as published by the Free Software
+Foundation; either version 1, or (at your option) any later version,
+or
+
+b) the "Artistic License" which comes with this module.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See either
+the GNU General Public License or the Artistic License for more details.
+
+You should have received a copy of the Artistic License with this
+module, in the file ARTISTIC.  If not, I'll be glad to provide one.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+USA
+
+=head1 翻訳について
+
+翻訳者：加藤敦 (atusi@pure.ne.jp)
+
+Perlドキュメント日本語訳 Project にて、
+Perlモジュール、ドキュメントの翻訳を行っております。
+
+ http://sourceforge.jp/projects/perldocjp/
+ http://freeml.com/ctrl/html/MLInfoForm/perldocjp@freeml.com
+ http://www.perldoc.jp
