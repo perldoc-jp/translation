@@ -1,0 +1,309 @@
+=head1 名前
+
+Time::HiRes - 高精度のalarm, sleep, gettimeofday, インターバル・タイマー
+
+=head1 概要
+
+  use Time::HiRes qw( usleep ualarm gettimeofday tv_interval );
+
+  usleep ($microseconds);
+
+  ualarm ($microseconds);
+  ualarm ($microseconds, $interval_microseconds);
+
+  $t0 = [gettimeofday];
+  ($seconds, $microseconds) = gettimeofday;
+
+  $elapsed = tv_interval ( $t0, [$seconds, $microseconds]);
+  $elapsed = tv_interval ( $t0, [gettimeofday]);
+  $elapsed = tv_interval ( $t0 );
+
+  use Time::HiRes qw ( time alarm sleep );
+
+  $now_fractions = time;
+  sleep ($floating_seconds);
+  alarm ($floating_seconds);
+  alarm ($floating_seconds, $floating_interval);
+
+  use Time::HiRes qw( setitimer getitimer
+              ITIMER_REAL ITIMER_VIRTUAL ITIMER_PROF ITIMER_REALPROF );
+
+  setitimer ($which, $floating_seconds, $floating_interval );
+  getitimer ($which);
+
+=head1 説明
+
+C<Time::HiRes> モジュールはC<usleep>,C<ualarm>, C<gettimeofday>, そして 
+C<setitimer>/C<getitimer> システムコーム、言い換えれば高精度の時刻と
+タイマーへのへのPerlインターフェースを実装します。
+使い方については下記のL</使用例>セクションとテスト・スクリプトをご覧ください；
+基になっているC<nanosleep> あるいは C<usleep>, C<ualarm>, C<gettimeofday>, 
+そして C<setitimer>/C<getitimer>については、あなたのシステムのドキュメントを
+ご覧ください。
+
+あなたのシステムにC<gettimeofday()>やそのエミュレーションがなければ、
+C<gettimeofday()>や引数1つの形でのC<tv_interval()>は使えません。
+あなたのシステムにC<nanosleep()>, C<usleep()>, そして C<select()>,の全てが
+なければ、C<Time::HiRes::usleep()> や C<Time::HiRes::sleep()>は使えません。
+あなたのシステムにC<ualarm()> and C<setitimer()> の両方がなければ
+C<Time::HiRes::ualarm()> や C<Time::HiRes::alarm()>が使えません。
+
+C<use>ステートメントのなかで実装されていない関数をインポートしようとすれば、
+コンパイル時に失敗します。
+
+あなたの１秒以下のsleepがC<usleep()>ではなくC<nanosleep()>で実装されていれば、
+C<nanosleep()>はシグナルを使わないので、１秒以下のsleepとシグナルを混在させる
+ことができます。しかしこれは移植性を欠きます。そしてまず最初にnanosleepを
+持っているのか、C<&Time::HiRes::d_nanosleep>の値がtrueであるかチェック
+しなければなりません。それから特有なことがないか慎重にC<nanosleep()> C API
+ドキュメントを読まなければなりません。（C<nanosleep()>を呼び出す別の
+インターフェースはありません;十分に小さな値で単にC<Time::HiRes::sleep()>や
+C<Time::HiRes::usleep()>を呼ぶだけです。)
+
+sleepとシグナルを混在させるためにC<nanosleep>を使わなければ、
+Perlがナノ秒の正確さを要求される仕事のために使うべきツールであるか
+という疑問があります。
+
+このモジュールから以下の関数をインポートすることができます。
+デフォルトでエクスポートされる関数はありません。
+
+=over 4
+
+=item gettimeofday ()
+
+配列コンテキストではエポックからの秒とマイクロ秒2つの要素の配列を返します。
+スカラー・コンテキストでは、C<Time::HiRes::time()>のように秒を
+浮動小数点数で返します（下記参照）。
+
+=item usleep ( $useconds )
+
+指定されたマイクロ秒数、sleepします。実際にsleepしたマイクロ秒数を
+返します。C<usleep>システム・コールとは違い、1秒以上sleepすることができます。
+下記のC<Time::HiRes::sleep()>もご覧ください。
+
+=item ualarm ( $useconds [, $interval_useconds ] )
+
+C<ualarm>コールを発行します;C<$interval_useconds>はオプションで、
+指定されなければ0になり、その結果はC<alarm>のような動きをします。
+
+=item tv_interval 
+
+tv_interval ( $ref_to_gettimeofday [, $ref_to_later_gettimeofday] )
+
+2つの時刻の時間を浮動小数点の秒数を返します。2つの時刻はC<gettimeofday()>で
+返されたものでなければなりません。2番目の引数が省略されると、
+現在の時刻が使われます。
+
+=item time ()
+
+浮動小数点でエポックからの秒数を返します。この関数はインポートする
+ことができます、その結果、Perlのコアで提供される差し込み式にC<time>を
+置き換えることになります;下記のL</使用例>をご覧ください。
+
+B<注意 1>: この高精度のtimeは、あなたのプラットホームがコアのC<time()>を
+得るために、より高精度の時刻を切り上げたり、切り捨てたり、一番近い秒に
+するのいずれかによって、コアのC<time()>よりも多かったり、少なかったり
+することがあります。しかし当然、その差は0.5秒を越えることはありえません。
+
+B<注意 2>: 2001年9月9日 日曜日 GMTの午前 1:46:40より、
+エポックからのC<time()>秒は、1_000_000_000を超えています。
+Perlでのデフォルトの浮動小数点のフォーマットとエポックからの秒数が
+あいまって明らかなバグを作り出します:C<Time::HiRes::time()>の値を
+出力すると、保証された6桁(マイクロ秒)ではなく5桁の数字しか得ることが
+できません。ご心配なく。マイクロ秒は存在します(もちろんあなたの
+プラットホームが、そのような粒度をサポートしているものと想定しています)。
+何が起きているかといえば、Perlの浮動小数点のデフォルトのフォーマットでは
+15桁の数字しか出力しません。この場合、小数点の前に0桁の数字があり、
+その後ろに5桁あります。マイクロ秒を見るためにはC<"%.6f">でC<printf>/C<sprintf>の
+どちらかを使うか、リスト・コンテキストでC<gettimeofday()>を使うことができます。
+この場合には、秒とマイクロ秒の2つを別の値として与えてくれます。
+
+=item sleep ( $floating_seconds )
+
+指定された秒数、sleepします。実際にsleepした秒数を(浮動小数点の値で)
+返します。この関数はインポートする
+ことができます、その結果、Perlのコアで提供される差し込み式にC<sleep>を
+置き換えることになります;下記のL</使用例>をご覧ください。
+
+=item alarm ( $floating_seconds [, $interval_floating_seconds ] )
+
+指定され秒数後、C<SIGALRM>シグナルが送られます。C<ualarm()>を使って
+実装されています。C<$interval_floating_seconds>引数は
+オプションで指定されないと0になります。その結果、C<alarm()>のような
+動きになります。この関数はインポートする
+ことができます。その結果、Perlのコアで提供される差し込み式にC<alarm>を
+置き換えることになります;下記のL</使用例>をご覧ください。
+
+B<注意 1>: オペレーティング・システムとPerlのリリースの
+組み合わせによってはC<SIGALRM>が中断させるのではなく、C<select()>を
+再開始させることもあります。これはC<alarm()>の後にC<select()>を
+すると、C<alarm()>に指定した時間通りにではなく、
+C<alarm()>とC<select()に指定された時間の合計が掛かるかも
+しれないことを意味します。
+
+=item setitimer ( $which, $floating_seconds [, $interval_floating_seconds ] )
+
+インターバル・タイマーを開始させます;一定の時間後、シグナルが届き、
+ある間隔でシグナルが届き続けるかもしれません。タイマーを止めるには、
+C<$floating_seconds>を0にしてください。C<$interval_floating_seconds>に
+0が指定されると(あるいは指定されないと)、タイマーは次にシグナルが届いた
+B<後に>止められます。
+
+インターバル・タイマーを使うことはC<alarm()>, C<sleep()>、C<usleep()>に
+よって邪魔されるかもしれません。標準的には「相互作用は特定されていません」
+つまりはI<何が>起きるかわかりません:動くかもしれませんし、そうでないかもしれません。
+
+スカラー・コンテキストではタイマーでの残り時間が返されます。
+
+リスト・コンテキストでは、残り時間とインターバルが返されます。
+
+通常3つあるいは4つのインターバル・タイマーが利用可能です:C<$which>は
+C<ITIMER_REAL>, C<ITIMER_VIRTUAL>, C<ITIMER_PROF>, あるいは C<ITIMER_REALPROF>に
+することができます。どれが利用できるかは以下のことに依存します:本当のUNIX
+プラットホームは通常最初の3つを持っています。しかし(例えば)Win32とCygwinは
+C<ITIMER_REAL>しかもっていません。SolarisはC<ITIMER_REALPROF>を持っているようです
+(これはマルチスレッドなプログラムをプロファイルするために使われます)。
+
+C<ITIMER_REAL>は結果としてC<alarm()>のような動きにします。
+時間はI<実時間>;つまり壁時計の時間で計られます。
+タイマーが時間切れになるとC<SIGALRM>が送られます。
+
+C<ITIMER_VIRTUAL>は(プロセス)I<仮想の時間>で時間を計ります；
+つまりプロセスが実行しているときだけです。マルチプロセッサ/ユーザ/CPU の
+システムではこれは実時間あるいは壁時計の時間とは多かったり、少なかったりします。
+(この時間はI<ユーザー時間(user time)>とも呼ばれます。タイマーが
+時間切れになるとC<SIGVTALRM>が送られます。
+
+C<ITIMER_PROF> はプロセス仮想時間、あるいは(I/Oのように)プロセスの半分で
+オペレーティング・システムが走っている時間を計ります。
+(この時間はI<システム時間(system time)>とも呼ばれます。)
+タイマーが時間切れになると、C<SIGPROF>が送られます。C<SIGPROF>は
+システム・コールを中断させることができます。
+
+マルチスレッドなプログラムでのインターバル・タイマーの意味は
+システムによります。そしてシステムによっては、さらに他の
+インターバル・タイマーをサポートしているかもしれません。
+あなたのC<setitimer()>のドキュメントをご覧ください。
+
+=item getitimer ( $which )
+
+C<$which>で指定されたインターバル・タイマーでの残り時間を返します。
+
+スカラー・コンテキストでは、残り時間が返されます。
+
+リスト・コンテキストでは残り時間とインターバルの両方が返されます。
+インターバルは常に、C<setitimer()>を使ったときに入れたものです。
+
+=back
+
+=head1 使用例
+
+  use Time::HiRes qw(usleep ualarm gettimeofday tv_interval);
+
+  $microseconds = 750_000;
+  usleep $microseconds;
+
+  # 2.5秒後、その後は0.1行ごとにシグナル・アラーム
+  ualarm 2_500_000, 100_000;    
+
+  # エポックからの秒とマイクロ秒を取得
+  ($s, $usec) = gettimeofday;
+
+  # 経過時間の計測
+  # (2つのgettimeofdayの戻り値を引くことによっても可能です)
+  $t0 = [gettimeofday];
+  # ここで何か処理の固まりを実行
+  $t1 = [gettimeofday];
+  # さらに処理の固まりを実行
+  $t0_t1 = tv_interval $t0, $t1;
+
+  $elapsed = tv_interval ($t0, [gettimeofday]);
+  $elapsed = tv_interval ($t0); # equivalent code
+
+  #
+  # time, alarm そして sleepを浮動小数点での秒がわかる
+  # もので置き換え
+  #
+  use Time::HiRes;
+  $now_fractions = Time::HiRes::time;
+  Time::HiRes::sleep (2.5);
+  Time::HiRes::alarm (10.6666666);
+
+  use Time::HiRes qw ( time alarm sleep );
+  $now_fractions = time;
+  sleep (2.5);
+  alarm (10.6666666);
+
+  # プロセス仮想時間で最初に10秒、その後は2.5秒ごとに
+  # やってくるインターバルタイマーを装備する
+
+  use Time::HiRes qw ( setitimer ITIMER_VIRTUAL time );
+
+  $SIG{VTALRM} = sub { print time, "\n" };
+  setitimer(ITIMER_VIRTUAL, 10, 2.5);
+
+=head1 C API
+
+拡張を書く人には上記のperl APIに加えて、C APIを利用することが
+利用できます。以下のCの関数がmodglobalハッシュで利用することが
+できます:
+
+  関数名           Cプロトタイプ
+  ---------------  ----------------------
+  Time::NVtime     double (*)()
+  Time::U2time     void (*)(UV ret[2])
+
+関数は両方とも(C<gettimeofday>のような)同じ情報を返します。
+しかしその表現が違います。C<NVtime> と C<U2time>という名前は主に
+オペレーティング・システムに依存していないために選択されています。
+(VMSのようにいくつかのプラットホームではそのエミュレーションを
+備えていますが、C<gettimeofday>はUnix中心的です。)
+
+CからC<NVtime>を使ったときの例を以下に示します:
+
+  double (*myNVtime)();
+  SV **svp = hv_fetch(PL_modglobal, "Time::NVtime", 12, 0);
+  if (!svp)         croak("Time::HiRes is required");
+  if (!SvIOK(*svp)) croak("Time::NVtime isn't a function pointer");
+  myNVtime = INT2PTR(double(*)(), SvIV(*svp));
+  printf("The current time is: %f\n", (*myNVtime)());
+
+=head1 DIAGNOSTICS(診断)
+
+=head2 negative time not invented yet
+
+(=マイナスの時刻はまだ発明されていません)
+引数としてマイナスの時刻を使おうとしました。
+
+=head2 internal error: useconds < 0 (unsigned ... signed ...)
+
+何かひどい障害がおきました -- マイナスになるはずのないマイクロ秒数は
+マイナスになってしまいました。コンパイラが壊れているのかも？
+
+=head1 注意
+
+コアのC<time()>が切り捨てるのではなく、四捨五入するかもしれないことに
+注意してください。これはコアのC<time()>がC<gettimeofday()>や
+C<Time::HiRes::time()>よりも1秒遅い時間を報告するかもしれないという
+ことを意味します。
+
+=head1 作者
+
+D. Wegscheid <wegscd@whirlpool.com>
+R. Schertler <roderick@argon.org>
+J. Hietaniemi <jhi@iki.fi>
+G. Aas <gisle@aas.no>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright (c) 1996-2002 Douglas E. Wegscheid.  All rights reserved.
+
+Copyright (c) 2002,2003,2004 Jarkko Hietaniemi.  All rights reserved.
+
+This program is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=head1 翻訳者
+
+川合孝典(GCD00051@nifty.ne.jp)
+
