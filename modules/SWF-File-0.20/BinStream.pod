@@ -1,0 +1,276 @@
+=head1 NAME
+
+SWF::BinStream - バイナリストリームの読み書き
+
+=head1 SYNOPSIS
+
+  use SWF::BinStream;
+
+  $read_stream = SWF::BinStream::Read->new($binary_data, \&adddata);
+  $byte = $read_stream->get_UI8;
+  $signedbyte = $read_stream->get_SI8;
+  $string = $read_stream->get_string($length);
+  $bits = $read_stream->get_bits($bitlength);
+  ....
+
+  sub adddata {
+      if ($nextdata) {
+      shift->add_stream($nextdata);
+      } else {
+      die "The stream ran short ";
+      }
+  }
+
+  $write_stream = SWF::BinStream::Write->new;
+  $write_stream->set_UI8($byte);
+  $write_stream->set_SI8($signedbyte);
+  $write_stream->set_string($string);
+  $write_stream->set_bits($bits, $bitlength);
+  $binary_data=$write_stream->flush_stream;
+  ....
+
+=head1 DESCRIPTION
+
+I<SWF::BinStream>モジュールは、バイト単位、ビット単位で読み書きできるバイナリストリームを提供します。SWFファイルのようなビット単位で圧縮されたファイルを扱うのに適しています。
+
+=head2 SWF::BinStream::Read
+
+読み込み用のストリームを提供します。まずストリームにデータを追加し、
+バイト／ビット単位で読み出します。ストリーム内のデータがなくなると、
+ユーザー定義のコールバックルーチンを呼び出します。
+I<get_UI16>, I<get_SI16>, I<get_UI32>, I<get_SI32>は、数を
+VAXバイトオーダーで読み出します。
+I<get_bits>, I<get_sbits>は、MSBからLSBに向かってビット列を読み出します。
+I<get_UI*>, I<get_SI*>, I<get_string>は、ビット読み込み途中のバイトがあれば
+読み飛ばし、次のバイトから読み出します。
+ビット読み込み途中の残りのビットを手動で読み飛ばすにはI<flush_bits>を使ってください。
+
+=head2 METHODS
+
+=over 4
+
+=item SWF::BinStream::Read->new( [ $initialdata, \&callback_in_short, $version ] )
+
+読み込みストリームを作成します。省略可能な3つの引数を取ります。
+最初の引数は、ストリームに最初に保持するデータです。
+2番目の引数は、ストリーム中のデータがなくなったときに呼ばれるコールバックルーチンのリファレンスです。
+コールバックルーチンは、ストリームオブジェクトと、必要なバイト数を引数に取ります。
+3番目の引数はSWFのバージョン番号で、デフォルトは5です。いくつかのSWFタグはバージョンによって構成が変わるため、適切なバージョンを指定する必要があります。
+
+=item $stream->Version
+
+SWFバージョンを返します。
+
+=item $stream->add_codec( $codec_name )
+
+ストリームにデコーダを追加します。
+今のところ、'Zlib'デコーダのみ使えます。
+
+=item $stream->add_stream( $binary_data )
+
+ストリームにデータを追加します。
+
+=item $stream->Length
+
+ストリームに残っているデータ長を返します。
+
+=item $stream->tell
+
+ストリームから何バイト読みとったかを返します。
+
+=item $stream->get_string( $num )
+
+文字列を$numバイト読みとります。
+
+=item $stream->get_UI8
+
+符号なし1バイト整数を読みとります。
+
+=item $stream->get_SI8
+
+符号つき1バイト整数を読みとります。
+
+=item $stream->get_UI16
+
+符号なし2バイト整数を読みとります。
+
+=item $stream->get_SI16
+
+符号つき2バイト整数を読みとります。
+
+=item $stream->get_UI32
+
+符号なし4バイト整数を読みとります。
+
+=item $stream->get_SI32
+
+符号つき4バイト整数を読みとります。
+
+=item $stream->get_bits( $num )
+
+$numビットの符号なし整数を読みとります。
+
+=item $stream->get_sbits( $num )
+
+$numビットの符号つき整数を読みとります。
+
+=item $stream->flush_bits
+
+ビット読み込み途中の1バイトの残りのビットを読み飛ばし、次のバイトから読むようにします。
+ビット読み込み途中のバイトがなければ何もしません。
+
+=back
+
+=head2 SWF::BinStream::Write
+
+書き込みストリームを提供します。バイト／ビットデータを書き込み、結果の文字列を
+I<flush_stream>を用いて取り出します。I<autoflush>メソッドを使って、
+自動的にストリーム内容を取り出してコールバックルーチンに渡すことができます。
+I<set_UI16>, I<set_SI16>, I<set_UI32>, I<set_SI32>は、数をVAXバイトオーダーで
+ストリームに書き込みます。
+I<set_bits>, I<set_sbits>はビットをMSBからLSBに向かって書き込みます。
+I<set_UI*>, I<set_SI*>, I<set_string>は、ビット書き込み途中のバイトの残りを0で埋め、
+次のバイトから書き始めます。
+手動でバイト境界から書き始める必要があるときはI<flush_bits>を使ってください。
+
+=head2 METHODS
+
+=over 4
+
+=item SWF::BinStream::Write->new([$version])
+
+書き込みストリームを作成します。
+省略可能な引数にSWFのバージョン番号をとります。デフォルトは5です。いくつかのSWFタグはバージョンによって構成が変わるため、適切なバージョンを指定する必要があります。
+
+=item $stream->Version
+
+SWFバージョンを返します。
+
+=item $stream->add_codec( $codec_name )
+
+ストリームのエンコーダを追加します。
+今のところ'Zlib'エンコーダのみ使えます。
+
+=item $stream->autoflush( $size, \&callback_when_flush )
+
+I<$size>バイト以上書き込んだらストリームをフラッシュしてコールバックルーチンを呼ぶよう、
+ストリームに要求します。
+コールバックルーチンは、ストリーム自身とフラッシュされたストリーム内容を引数に取ります。
+
+=item $stream->flush_stream( [$size] )
+
+ストリームをフラッシュして、フラッシュされた内容を返します。
+I<$size>を指定すると、I<$size>バイトだけフラッシュして返します。
+指定がなかったり、ストリーム内のデータが指定した数より少なければ、
+ビット書き込み途中のバイトも含めてすべてのデータをフラッシュします。
+
+=item $stream->flush_bits
+
+ビット書き込み途中のバイトの残りのビットを0で埋め、次のバイトから書き込むようにします。
+
+=item $stream->Length
+
+ストリーム中に何バイト残っているかを返します。
+
+=item $stream->tell
+
+ストリームに何バイト書き込んだかを返します。
+
+=item $stream->mark( [$key, [$obj]] )
+
+現在のI<tell>値を、$keyに関連づけて$objとともに保持します。
+$keyのみを引数にして呼ぶと、スカラコンテキストでは$keyに関連づけられたI<tell>値を、
+リストコンテキストではI<tell>値とオブジェクトのリストを、それぞれ返します。
+引数なしで呼ぶと、マークのリスト( KEY1, [ TELL_NUMBER1, OBJ1 ], KEY2, ...)を
+返します。
+
+=item $stream->sub_stream
+
+一時的なサブストリームを作成します。サブストリームをI<flush_stream>すると、
+データとマークを親のストリームに書き込んでサブストリームは解放されます。
+
+例）様々な長さのデータを、その長さを書き込んでから書き込む。
+
+  $sub_stream=$parent_stream->sub_stream;
+  write_data($sub_stream);
+  $parent_stream->set_UI32($sub_stream->Length);
+  $sub_stream->flush_stream;
+
+=item $stream->set_string( $str )
+
+文字列を書き込みます。
+
+=item $stream->set_UI8( $num )
+
+符号なし1バイト整数を書き込みます。
+
+=item $stream->set_SI8( $num )
+
+符号つき1バイト整数を書き込みます。
+
+=item $stream->set_UI16( $num )
+
+符号なし2バイト整数を書き込みます。
+
+=item $stream->set_SI16( $num )
+
+符号つき2バイト整数を書き込みます。
+
+=item $stream->set_UI32( $num )
+
+符号なし4バイト整数を書き込みます。
+
+=item $stream->set_SI32( $num )
+
+符号つき4バイト整数を書き込みます。
+
+=item $stream->set_bits( $num, $nbits )
+
+$numを$nbits長の符号なし整数として書き込みます。
+
+=item $stream->set_sbits( $num, $nbits )
+
+$numを$nbits長の符号つき整数として書き込みます。
+
+=item $stream->set_bits_list( $nbitsbit, @list )
+
+I<@list>を、符号なし整数のビットリストとして書き込みます。
+I<@list>中の数を表現できる最小のビット数(nbits)を求め、それを
+I<$nbitsbit>長の符号なし整数としてまず書き込みます。
+その後、I<@list>の数をそれぞれnbits長の符号なし整数として書き込みます。
+
+=item $stream->set_sbits_list( $nbitsbit, @list )
+
+I<@list>を、符号つき整数のビットリストとして書き込みます。
+I<@list>中の数を表現できる最小のビット数(nbits)を求め、それを
+I<$nbitsbit>長の符号なし整数としてまず書き込みます。
+その後、I<@list>の数をそれぞれnbits長の符号つき整数として書き込みます。
+
+=back
+
+=head2 UTILITY FUNCTIONS
+
+=over 4
+
+=item &SWF::BinStream::Write::get_maxbits_of_bits_list( @list )
+
+=item &SWF::BinStream::Write::get_maxbits_of_sbits_list( @list )
+
+I<@list>中の数を表現できる最小のビット数を求めます。
+-_bits_listが符号なし用、-_sbits_listが符号つき用です。
+
+=back
+
+=head1 COPYRIGHT
+
+Copyright 2000 Yasuhiro Sasama (ySas), <ysas@nmt.ne.jp>
+
+This library is free software; you can redistribute it
+and/or modify it under the same terms as Perl itself.
+
+=head1 翻訳者
+
+笹間康弘 (ysas@nmt.ne.jp)
+
+=cut
+
