@@ -1,0 +1,215 @@
+=head1 名前
+
+SVG::Parser - SVG用XMLパーザー
+
+=head1 概要
+
+  #!/usr/bin/perl -w
+  use strict;
+  use SVG::Parser;
+
+  die "Usage: $0 <file>\n" unless @ARGV;
+
+  my $xml;
+  {
+      local $/=undef;
+      $xml=<>;
+  }
+
+  my $parser=new SVG::Parser(-debug => 1);
+  my $svg=$parser->parse($xml);
+  print $svg->xmlify;
+
+  もう１つ:
+
+  #!/usr/bin/perl -w
+  use strict; 
+  use SVG::Parser qw(SAX=XML::LibXML::Parser::SAX Expat SAX);
+
+  die "Usage: $0 <file>\n" unless @ARGV;
+  my $svg=SVG::Parser->new()->parsefile($ARGV[0]);
+  print $svg->xmlify;
+
+
+
+=head1 説明
+
+SVG::ParserはSVGドキュメント用XMLパーザーです。XMLを入力として取り、その出力として
+SVGオブジェクトを生成します。
+
+SVG::ParserはXML::SAXとXML::Parser (Expat)パーザーの両方をサポートします。
+デフォルトではSAXが優先されます。これらのために必要なことはSVG::Parserのための
+関数がインストールされていることだけです。
+
+優先されるパーザーのリストはインポート・リストで指定されます - SVG::Parserは
+正常にロードできた最初のパーザーを利用します。パーザーをまたいでの互換性を
+提供するため、いくつかの基本的な方法があります。より高度なパーザーの機能を必要とする
+アプリケーションは、同じパーザー・モジュールを直接使わなければなりません；
+L<SVG::Parser::Expat> と L<SVG::Parser::SAX>をご覧ください。
+
+=head2 メソッド
+
+SVG::Parserは、その親パーザー・クラスによってサポートされている
+すべてのメソッドを提供します。さらに、それは以下のものも提供します。
+
+=over 4
+
+=item * new([%attrs])
+
+新しいSVG::Parserオブジェクトを生成します。オプションの属性を引数として指定することが
+できます;頭に'-'が付かない属性は、全て親のコンストラクタに渡されます。
+例：
+
+   my $parser=new SVG::Parser(%parser_options);
+
+パーザーのオプションは、どちらのタイプのパーザーが選択されたかに依存します。
+
+頭に'-'が付いた属性はSVG::Parserによって処理されます。現在は、'-debug'だけが
+理解される属性です。これは単純ですが、おそらくは有用な解析処理のデバッグ・トレースを
+標準エラー出力に生成します。例：
+
+   my $parser=new SVG::Parser(-debug => 1);
+
+あるいは:
+
+   my $parser=SVG::Parser->new(-debug => 1);
+
+'--'が付いた属性は、解析の結果として返されるSVGオブジェクトを生成するとき、
+SVGコンストラクタに渡されます:
+
+   my $parser=new SVG::Parser(
+    -debug => 1,
+    --indent => "\t",
+        --raiseerror => 1
+   );
+
+この方法で渡された属性名から頭の'-'が削られます。そのため、これはSVGモジュールで
+'-indent'と'-raiseerror'属性を設定します。適切なSVGオプションのリストについては
+L<SVG>をご覧ください。
+
+I<注意: 技術的には、new()コンストラクタはXML::SAX::ExpatかSVG::Parser::SAXの
+どちらかによって提供されます。SVG::Parserそれ自身ではありません。
+しかし、それはどちらの場合でも同じように処理します。>
+
+=item * parse($xml)
+
+XMLドキュメントを解析し、出力するXMLを再生成する前にSVGの内容を操作するできる
+ようにするSVGオブジェクトを返します。例：
+
+    my $svg=$parser->parse($svgxml);
+
+利用するさい、parse()メソッドがXML::ParserとXML::SAXとでは違うため、
+SVG::Parserは独自のparse()メソッドを提供します。これは、入力として
+ファイルハンドルや文字列が与えられたとき、正しい第一引数で親パーザーを
+呼び出します。
+
+追加の引数が親パーザー・クラスに渡されます。しかしXML::ParserとXML::SAXパーザーは
+異なるフォーマットでオプションを取るので、利用が制限されます。SVG::Parserは
+現在、パーザー・オプションを何も置き換えません。
+
+入力XMLを解析するための他の方法についてはL<XML::Parser>, L<XML::SAX>, そして
+L<XML::Parser::PerlSAX>を、ご覧ください。
+
+=item * parse_file($filehandle|$filename)
+
+=item * parsefile($filehandle|$filename)
+
+parse_file() メソッド (XML::SAX)と parsefile() メソッド (XML::Parser)とは
+名前も利用方法違うので、SVG::Parserは両方のメソッドの独自のバージョンを提供し、
+渡された引数がファイルハンドルなのかファイル名なのかを判断し、適切な親パーサー・
+メソッドの呼び出しを発行します。
+
+両方のメソッドは、どちらの親パーザー・クラスが使われていても、
+同じようにうまく動きます：
+
+    my $svg=$parser->parse_file($svgxml);
+    my $svg=$parser->parsefile($svgxml);
+    my $svg=$parser->parse_file(*SVGIN);
+    my $svg=$parser->parsefile(*SVGIN);
+    ...etc...
+
+これらのメソッドはSVG::Parser::Expat や SVG::Parser::SAXを直接、使うときにも
+同じように機能します。
+
+=back
+
+=head2 EXPORTS
+
+何もありません。しかしインポート・リストでSVG::Parserにパッケージ名を渡すことにより
+選択されたパーザーのリストを指定することが出来ます。これによりSVGパーザー・アプリケーション
+は、ターゲットのプラットホームで利用することができるXMLパーザーが何かを知ることなく
+利用できる最善のパーザーを利用することが出来るようになります。SAXが一般にはExpatよりも
+好まれますが、Expatベースのパーザーが遅いPerlベースのSAXパーザーであるXML::SAX::PurePerl
+(L<XML::SAX::PurePerl>を参照) よりも好まれるかもしれません。
+
+各パーザーの指定は、２つのサポートされているSVGパーザー SVG::Parser::Expat あるいは
+SVG::Parser::SAXの1つによって構成され、オプションとして'='と明示的なパーザー・パッケージを
+つけます。例：
+
+    use SVG::Parser qw(SVG::Parser::SAX SVG::Parser::Expat);
+
+SVGパーザー名全体を指定する代わりに、簡単に'Expat' と 'SAX'を利用することができます。
+例：
+
+    use SVG::Parser qw(SAX Expat);
+
+上記の両方の例はデフォルトの動きになります。SAXよりもExpatを選ぶためには、以下の
+どちらかを使ってください:
+
+    use SVG::Parser qw(SVG::Parser::Expat SVG::Parser::SAX);
+    use SVG::Parser qw(Expat SAX);
+
+特定のXML::ParserサブクラスでExpatを使うためには:
+
+    use SVG::Parser qw(SVG::Parser::Expat=My::XML::Parser::Subclass);
+
+XML::LibXML SAX パーザーでSAXを使うためには:
+
+    use SVG::Parser qw(SVG::Parser::SAX=XML::LibXML::SAX::Parser);
+
+SVG::Parserに、選択の順序を減らしながら多くの可能なパーザーを試させるため、
+多くの指定を並べることができます:
+
+    use SVG::Parser qw(
+        SAX=My::SAXParser
+        Expat=My::Best::ExpatParser
+        SAX=XML::LibXML::SAX::Parser
+        Expat=My::Other::ExpatParser
+        Expat
+        SAX
+    )
+
+これはコマンドラインからも機能します。例えば:
+
+    perl -MSVG::Parser=SAX mysvgapp.pl
+    perl -MSVG::Parser=Expat,SAX mysvgapp.pl
+    perl -MSVG::Parser=SAX=XML::LibXML::SAX::Parser,Expat mysvgapp.pl
+
+親のExpatやSAXパーザー・クラスへのインポート・リストで追加のアイテムを渡すため、
+パーザーの指定で、追加の'='セパレータを使ってください。XML::SAXの場合、
+必要とされる最小のバージョン番号は以下のようにします:
+
+    # LibXML SAXパーザーのバージョン1.40以上が必要です、なければPerlのものを使います
+    use SVG::Parser qw(
+        SAX=XML::LibXML::SAX::Parser=1.40
+        SAX=XML::SAX::PurePerl
+    );
+
+コマンドラインから同様に:
+
+    perl -MSVG::Parser=SAX=XML::LibXML::SAX::Parser=1.40,SAX=XML::SAX::PurePerl mysvgapp.pl
+
+=head2 利用例
+
+ディストリビューションのexamplesディレクトリでのC<svgparse>, C<svgparse2>, and C<svgparse3>
+をご覧ください。さらにSVG::Parser::ExpatとSVG::Parser::SAXモジュールを直接使っている
+例としてC<svgexpatparse> と C<svgsaxparser> も、ご覧ください。
+
+=head1 作者
+
+Peter Wainwright, peter.wainwright@cybrid.net
+
+=head1 参考資料
+
+L<SVG>, L<SVG::Parser::Expat>, L<SVG::Parser::SAX>, L<XML::Parser>, L<XML::SAX>
+
