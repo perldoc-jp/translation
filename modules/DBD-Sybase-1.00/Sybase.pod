@@ -1,0 +1,1199 @@
+=head1 名前
+
+DBD::Sybase - DBIモジュールのためのSybaseデータベース・ドライバ
+
+=head1 概要
+
+    use DBI;
+
+    $dbh = DBI->connect("dbi:Sybase:", $user, $passwd);
+
+    # 詳細に付いてはDBIのドキュメントをご覧下さい
+
+=head1 説明
+
+DBD::Sybase はDBIモジュールと一緒に機能し、Sybaseデータベースへの
+アクセスを提供するPerlモジュールです。
+
+=head1 Sybaseへの接続
+
+=head2 インターフェース・ファイル
+
+DBD::SybaseモジュールはSybase I<Open Client Client Library> APIの上に
+構築されています。このライブラリは論理サーバ名（例えばSYBASE）とサーバが
+稼動している物理マシン／ポート番号とを結びつけるために、
+Sybaseインターフェース・ファイル（Win32マシンではI<sql.ini>）を使っています。
+OpenClientライブラリはI<インタフェース>・ファイルやその他の必要なファイル
+(localeファイルのような)の場所を見つけるために環境変数B<SYBASE>を使っています。
+B<SYBASE>環境変数はSybaseインストールへのパスです（例えば'/usr/local/sybase')。
+スクリプトの中で設定する必要があれば、C<BEGIN{}>ブロックで設定しなければ
+いけません:
+
+   BEGIN {
+       $ENV{SYBASE} = '/opt/sybase/11.0.2';
+   }
+
+   $dbh = DBI->connect('dbi:Sybase:', $user, $passwd);
+
+
+=head2 サーバ名の指定
+
+DBD::Sybaseが接続するサーバのデフォルトはI<SYBASE>です。
+しかし２つの方法で指定することが出来ます。
+
+I<DSQUERY>環境変数で設定することが出来ます:
+
+
+    $ENV{DSQUERY} = "ENGINEERING";
+    $dbh = DBI->connect('dbi:Sybase:', $user, $passwd);
+
+もしくはconnect()の第1引数にサーバ名を渡すことが出来ます：
+
+    $dbh = DBI->connect("dbi:Sybase:server=ENGINEERING", $user, $passwd);
+
+=head2 他の接続特有のパラメータの指定
+
+ときどき他の接続プロパティを指定することは、必要（あるいは有益）です。
+現在は以下のものがサポートされています:
+
+=over 4
+
+=item server
+
+接続するサーバを指定します
+
+     $dbh = DBI->connect("dbi:Sybase:server=BILLING",
+                         $user, $passwd);
+
+デフォルトのサーバはI<SYBASE>、あるいは設定されていればI<$DSQUERY>環境変数の
+値です。
+
+=item database
+
+デフォルトのデータベースとなるデータベースを指定します。
+
+     $dbh = DBI->connect("dbi:Sybase:database=sybsystemprocs",
+                         $user, $passwd);
+
+これは以下のものと同じです:
+
+    $dbh = DBI->connect('dbi:Sybase:', $user, $passwd);
+    $dbh->do("use sybsystemprocs");
+
+
+=item charset
+
+クライアントが使う文字セットを指定します。
+
+     $dbh = DBI->connect("dbi:Sybase:charset=iso_1",
+                         $user, $passwd);
+
+=item language
+
+クライアントが使う言語を指定します。
+
+     $dbh = DBI->connect("dbi:Sybase:language=us_english",
+                         $user, $passwd);
+
+これが機能するためには、その言語が(langinstallあるいはsp_addlanguageに
+よって)サーバーにインストールされていなければならないことに注意してください。
+もしその言語がインストールされていなければ、セッションはサーバーの
+デフォルトの言語になってしまいます。
+
+=item packetSize
+
+ネットワークのパケットサイズを指定します。大きなパケットサイズを指定すると
+ネットワーク・スループットを上げることが出来ます。この機能を有効にする方法に
+ついてはSybaseのドキュメントをご覧下さい。 
+
+     $dbh = DBI->connect("dbi:Sybase:packetSize=8192",
+                         $user, $passwd);
+
+=item interfaces
+
+代わりのI<インターフェース>ファイルの位置を指定します:
+
+     $dbh = DBI->connect("dbi:Sybase:interfaces=/usr/local/sybase/interfaces",
+                         $user, $passwd);
+
+=item loginTimeout
+
+DBI->connect() がSybaseサーバからのレスポンスを待つ秒数を指定します。
+指定された秒数までにサーバが反応しないと、DBI->connect()の呼び出しは
+タイムアウトエラーで失敗します。デフォルトは60秒です。通常はこれで
+十分ですが、忙しいサーバでは、時にはこの値を大きくしなければならないことが
+あります:
+
+     $dbh = DBI->connect("dbi:Sybase:loginTimeout=240", # wait up to 4 minutes
+                         $user, $passwd);
+
+
+=item timeout
+
+Open Client呼び出しが接続をタイムアウトし、死んでいるとマークするまでの秒数を
+指定します。ある接続で、一度タイムアウトエラーが受け取られると、さらに処理する
+ためにはその接続を閉じて、再びオープンしなければなりません。
+
+この値を0または負の数に設定すると、タイムアウトが無制限になります。
+Open ClientのドキュメントでCS_TIMEOUTもご覧ください。
+
+     $dbh = DBI->connect("dbi:Sybase:timeout=240", # 4分まで待ちます
+                         $user, $passwd);
+
+=item scriptName
+
+sp_who（つまりsysprocessesテーブルでのI<program_name>カラム）で表示される、
+この接続の名前を指定します。
+
+    $dbh->DBI->connect("dbi:Sybase:scriptName=myScript", $user, $password);
+
+=item hostname
+
+sp_who（つまりsysprocessesテーブルでのI<program_name>カラム）で
+表示される、この接続の名前を指定します。 
+
+    $dbh->DBI->connect("dbi:Sybase:hostname=kiruna", $user, $password);
+
+=item tdsLevel
+
+サーバへの接続のときに使われるTDS プロトコル・レベルを指定します。正しい値は
+CS_TDS_40、 CS_TDS_42、 CS_TDS_46、 CS_TDS_495、CS_TDS_50です。
+通常、これは自動的にクライアントとサーバでネゴシエートされます。しかし
+場合によっては、クライアントによって、より低いレベルに設定する必要があります。
+
+    $dbh->DBI->connect("dbi:Sybase:tdsLevel=CS_TDS_42", $user, $password);
+
+B<注意>：tdsLevelを CS_TDS_495 より低く設定すると、?-形式のプレースホルダや
+連続の非自動コミットモード（CHAINED non-AutoCommit mode）など、いくつかの機能が
+失われます。
+
+=item encryptPassword
+
+CT-Libによってサポートされるクライアント・パスワードの暗号化を
+利用することを指定します。値を1に指定すると暗号化されたパスワードを使用します。
+
+    $dbh->DBI->connect("dbi:Sybase:encryptPassword=1", $user, $password);
+
+=back
+
+これらの異なるパラメータは（serverも含めて）、各エントリをセミコロン(;)で
+区切ってまとめて文字列にすることができます:
+
+    $dbh = DBI->connect("dbi:Sybase:server=ENGINEERING;packetSize=8192;language=us_english;charset=iso_1",
+                        $user, $pwd);
+
+
+=head1 複数の結果セットの取り扱い
+
+SybaseのTransact SQLは１つのSQLステートメントから複数の結果セットを
+返すことができます。例えば以下の問い合わせ:
+
+    select b.title, b.author, s.amount
+      from books b, sales s
+     where s.authorID = b.authorID
+     order by b.author, b.title
+    compute sum(s.amount) by b.author
+
+これは、著者(author)とタイトル(title)による売上（sales)を一覧表示し、
+著者毎の総売上を計算する2種類のタイプの行を返します。DBIの仕様では
+この状況を実際には扱っていませんし、危険でもありません
+
+    exec my_proc @p1='this', @p2='that', @p3 out
+
+C<my_proc>はいかなる数の結果も返すことができとします（つまり数が
+わからないC<SELECT>ステートメントを実行することができます）。
+
+私はこれを各結果セットの最後で空の行を返し、さらに取り出すことが
+できるデータがあるかどうかをチェックするために見ることができる
+$sthに特別なSybaseの属性を設定することにより扱うように決めました。
+その属性がB<syb_more_results>で、C<fetch()>ループを再開始する
+必要があるならば、チェックするべきです。
+
+すべての結果が取り出されたことを保証するには、以下のような
+基本的なC<fetch>ループを書くことができます:
+
+     do {
+         while($d = $sth->fetch) {
+            ... データで何かします
+         }
+     } while($sth->{syb_more_results});
+
+現在の結果セットの型は$sth->{syb_result_type}で取得することが
+できます。これは$SYBASE/include/cspublic.hで定義されている
+数値を返します:
+
+        #define CS_ROW_RESULT           (CS_INT)4040
+        #define CS_CURSOR_RESULT        (CS_INT)4041
+        #define CS_PARAM_RESULT         (CS_INT)4042
+        #define CS_STATUS_RESULT        (CS_INT)4043
+        #define CS_MSG_RESULT           (CS_INT)4044
+        #define CS_COMPUTE_RESULT       (CS_INT)4045
+
+特にストアド・プロシージャの戻りステータスはCS_STATUS_RESULT (4043)で
+返され、通常はストアド・プロシージャの実行で返される最後の
+結果セットです。
+
+スクリプトに以下のステートメントを追加すれば、
+
+    use DBD::Sybase;
+
+プログラムの中では、数値の代わりに読み易いシンボルの値（CS_xxx_RESULT）を
+使うことができます。
+
+B<出力>パラメータB<だけ>を返すストアド・プロシージャの扱いについては
+C<syb_output_param> func() 呼び出しもご覧ください。
+
+=head1 $sth->execute() 失敗モードの動き
+
+B<これはバージョン0.21で変更されました!>
+
+DBD::Sybaseは1個のまとまりで複数ステートメントのSQLコマンドを
+扱うことができます。例えば以下のようにいくつかの行を1つにまとめて
+挿入することができます:
+
+   $sth = $dbh->prepare("
+   insert foo(one, two, three) values(1, 2, 3)
+   insert foo(one, two, three) values(4, 5, 6)
+   insert foo(one, two, three) values(10, 11, 12)
+   insert foo(one, two, three) values(11, 12, 13)
+   ");
+   $sth->execute;
+
+上記のINSERTのうち1つでも失敗すると、$sth->executeはC<undef>を
+返します。B<しかしながら>失敗しなかった挿入は、C<AutoCommit>がオフで
+なければ、まだデータベースにあります。
+
+以下のようにステートメントを書くこともできます：
+
+   $sth = $dbh->prepare("
+   insert foo(one, two, three) values(1, 2, 3)
+   select * from bar
+   insert foo(one, two, three) values(10, 11, 12)
+   ");
+   $sth->execute;
+
+2番目のC<insert>が失敗するものであれば、$sth->executeはC<undef>を
+B<返しません>。C<bar>から行が取り出された後に、エラーが設定されます。
+
+これが直感的にわかりやすいものではないことはわかっているのですが、
+Sybase APIによって制限を受けているのです。
+
+一方、上記の例が合理的でないがわかっています、しかしこの独特の順序を
+示す必要があったのです... まさにこの動きを示すt/fail.tテスト・スクリプトを
+見ることもできます。
+
+=head1 Sybase特有の属性
+
+このドライバ特有のハンドル属性がいくつかあります。これらの属性は
+通常のDBI属性とぶつからないよう、すべてB<syb_>で始まります。
+
+=head2 データベース・ハンドル属性
+
+以下のSybase特有の属性をデータベース・ハンドルのレベルで設定することが
+できます:
+
+=over 4
+
+=item syb_show_sql (bool)
+
+設定されると、現在のステートメントが$dbh->errstrによって返される文字列に
+入ります。 
+
+=item syb_show_eed (bool)
+
+設定されると、展開されたエラー情報が$dbh->errstrによって返される文字列に
+入ります。展開されたエラー情報には、例えば重複した挿入が失敗した
+インデックスなどが入ります。 
+
+=item syb_err_handler (subroutine ref)
+
+この属性は、通常のエラーハンドラがその仕事をする前に呼び出される、
+特定のエラーハンドラ・コールバック（つまりPerlのサブルーチン）を
+設定するために使われます。このサブルーチンが0を返せばエラーは無視されます。
+これはTransact-SQLでのPRINTステートメントを扱ったり、Backup Server、showplan出力、
+dbcc出力などからのメッセージを扱ったりするのに便利です。 
+ 
+サブルーチンは以下の9つのパラメータで呼び出されます：
+ 
+  o Sybaseエラー番号
+  o 深刻度(sevirity)
+  o 状態（state）
+  o SQLバッチでの行番号
+  o （利用可能であれば）サーバ名
+  o （利用可能であれば）ストアド・プロシージャ名
+  o メッセージ・テキスト
+  o 現在のSQLコマンドバッファ
+  o エラー種類を判定することが出来るよう(Client Libraryエラー
+    のための)"client"あるいは(SQL文法エラーなどのようなサーバー・
+    エラーのための)"server"のどちらか。
+  
+
+あえてやっている例として、Sybaseドキュメントからエラーとメッセージの
+明確なハンドラーを以下に示します:
+
+  例:
+  
+  sub err_handler {
+      my($err, $sev, $state, $line, $server,
+        $proc, $msg, $sql, $err_type) = @_;
+ 
+      my @msg = ();
+      if($err_type eq 'server') {
+         push @msg,
+           ('',
+            'Server message',
+            sprintf('Message number: %ld, Severity %ld, State %ld, Line %ld',
+                    $err,$sev,$state,$line),
+            (defined($server) ? "Server '$server' " : '') .
+            (defined($proc) ? "Procedure '$proc'" : ''),
+            "Message String:$msg");
+      } else {
+         push @msg,
+           ('',
+            'Open Client Message:',
+            sprintf('Message number: SEVERITY = (%ld) NUMBER = (%ld)',
+                    $sev, $err),
+            "Message String: $msg");
+      }
+      print STDERR join("\n",@msg);
+      return 0; ## CS_SUCCEED
+  }
+ 
+より簡単で、より焦点を絞った例として、以下のエラー・ハンドラは
+showplanメッセージをトラップします:
+ 
+   %showplan_msgs = map { $_ => 1}  (3612 .. 3615, 6201 .. 6299, 10201 .. 10299);
+   sub err_handler {
+      my($err, $sev, $state, $line, $server,
+        $proc, $msg, $sql, $err_type) = @_;
+  
+       if($showplan_msgs{$err}) { # showplanメッセージの場合
+         print SHOWPLAN "$err - $msg\n";
+         return 0;    # This is not an error
+       }
+       return 1;
+   }
+  
+そして、これを以下のように使います:
+ 
+    $dbh = DBI->connect('dbi:Sybase:server=troll', 'sa', '');
+    $dbh->{syb_err_handler} = \&err_handler;
+    $dbh->do("set showplan on");
+    open(SHOWPLAN, ">>/var/tmp/showplan.log") || die "Can't open showplan log: $!";
+    $dbh->do("exec someproc");    # この処理のshowplanトレースを取得
+    $dbh->disconnect;
+
+B<注意> - 以下のようにDBI->connect()呼び出しの中でエラー・ハンドラを設定すると
+
+    $dbh = DBI->connect('dbi:Sybase:server=troll', 'sa', '', 
+                    { syb_err_handler => \&err_handler });
+
+err_handler() ルーチンがconnectそのものの間でエラーになったときにも
+呼び出されます。これはDBD::Sybase 0.95でのB<新しい>動きです。
+
+=item syb_flush_finish (bool)
+
+$dbh->{syb_flush_finish}が設定されると、現在のコマンドのために残っている
+結果は、dbh->finishがそれらを実際に取り出すことによって失われます。
+デフォルトの動きはct_cancel(CS_CANCEL_ALL)を発行することです。しかし
+これは接続がハングしたり、何らかの原因で失敗するかによってI<現れます>。
+（私自身は見たことがないのですが） 
+
+=item syb_dynamic_supported (bool)
+
+これは読込のみ属性で、接続しているデータサーバが?-形式のプレースホルダを
+サポートしていればTRUEを返します。DBD::Sybaseを使ってMS-SQLサーバに
+接続すると、通常はプレースホルダをサポートしません。 
+
+=item syb_chained_txn (bool)
+
+設定されると、AutoCommitがオフのとき連続した(CHAINED)トランザクションを
+使います。そうでなければ明示的にBEGIN TRANを発行する必要があります。
+デフォルトはオフです。
+
+この属性は通常、connect()呼び出しの間にだけ使われます:
+
+    $dbh = DBI->connect('dbi:Sybase:', $user, $pwd, {syb_chained_txn => 1});
+
+他のときにB<AutoCommit>をオフにして使うと、現在のハンドルで
+B<強制的にコミットが行われます>。
+
+=item syb_quoted_identifier (bool)
+
+設定されると、通常にはSybaseの予約語とぶつかってしまう識別子がC<"識別子">を
+使ってクォートされます。この場合、文字列はシングル・クォートでクォート
+されなければなりません。
+
+この属性のデフォルトはB<オフ>です。
+
+
+=item syb_rowcount (int)
+
+この属性を0以外の値に設定すると、I<SELECT>によって返されたり、
+I<UPDATE>やI<DELETE>によって影響を受ける行をその行数の値までに制限します。
+0に設定し直すと制限をなくすことができます。
+
+この属性のデフォルト値はB<0>です。
+
+=item syb_do_proc_status (bool)
+
+この属性を設定すると$sth->execute()に実行されるSQLの中で
+実行されたストアド・プロシージャのステータスを取得させます。
+ステータスが0でなければ、$sth->execute()は、その操作が失敗
+したことを報告します(つまりC<undef>を返します)。
+しかし、これはRaiseErrorが設定されていても、これは
+エラーをB<起こしません>。そのように動かすためには、
+ストアド・プロシージャでの以下のステートメントを通して
+あなたはユーザー・エラー・コードを発生させる必要があります
+
+    raiserror <num> <errmsg> 
+
+この属性を設定してもそれが設定された後、作成されたものに対してだけで、
+既存の$sthハンドルには影響をB<与えません>。既存の$sthハンドルの動きを
+変更するするためには、$sth->{syb_do_proc_status}を使ってください。
+
+この属性のデフォルトはB<オフ>です。
+
+=item syb_use_bin_0x
+
+設定されると、BINARY と VARBINARYの値には結果の前に'0x'が付きます。
+デフォルトはオフです。
+
+=item syb_binary_images
+
+設定されると、IMAGEデータはそのままの(raw)バイナリ形式で返されます。
+そうでなければデータは長い16進文字列に変換されます。デフォルトはオフです。
+
+=item syb_oc_version (string)
+
+このバイナリが現在使用しているクライアント・ライブラリ(Client Library)のバージョンの
+識別文字列を返します。これは読込のみの属性です。
+
+例:
+
+    troll (7:59AM):348 > perl -MDBI -e '$dbh = DBI->connect("dbi:Sybase:", "sa"); print "$dbh->{syb_oc_version}\n";' 
+    Sybase Client-Library/11.1.1/P/Linux Intel/Linux 2.2.5 i586/1/OPT/Mon Jun  7 07:50:21 1999
+
+これは障害を報告するときに大変有効です。
+
+=item syb_failed_db_fatal (bool)
+
+これが設定されると、指定されたI<データベース>が存在しない、
+あるいはアクセスできないconnect()リクエストは失敗します。
+これが効力を持つためにはDBI->connect()の中で渡される
+属性ハッシュで設定される必要があります。
+
+デフォルト: オフ
+
+=item syb_no_child_con (bool)
+
+この属性が設定されるとDBD::Sybaseは1つのデータベースハンドルに
+対する複数に同時のアクティブなステートメント・ハンドル(つまり
+既存のステートメント・ハンドルから完全に結果を処理することなく
+複数の$dbh->prepare()を呼ぶこと)をB<許しません>。これは
+(特に現在のデータベースで)接続属性が異なるもう1つの接続を
+してしまったために、正しくないあるいは期待していた
+ものと違う結果が見つかった状況をデバッグするために使うことができます。
+
+デフォルト: オフ
+
+=item syb_bind_empty_string_as_null (bool)
+
+B<0.95での新機能>
+
+この属性が設定されると、$sth->execute()呼び出しへのパラメータ
+として渡される空文字列(つまり"")がNULL値に変換されます。もし
+この属性が設定されていなければ、空文字列は1つの空白に変換されます。
+
+デフォルト: オフ
+
+=item syb_cancel_request_on_error (bool)
+
+B<0.95での新機能>
+
+この属性が設定されると、複数ステートメントの要求(例えばストアド・プロシージャの
+実行)で失敗すると、$sth->execute()に失敗を返させ、この要求からのその他の
+結果は捨てられてしまいます。
+
+デフォルトの値(B<on>)は、バージョン0.94までのDBD::Sybaseの動きを
+変更します。
+
+デフォルト: オン
+
+=back
+
+=head2 ステートメント・ハンドル属性
+
+以下の読込のみの属性がステートメント・レベルで利用することができます:
+
+=over 4
+
+=item syb_more_results (bool)
+
+上記の複数のリザルトセットの取り扱いについての説明をご覧ください。
+
+=item syb_result_type (int)
+
+現在の結果セットの結果のデータ型を数値で返します。ストアド・プロシージャを
+実行したときに、現在どの型が取り出し可能かを判断するときに便利です。
+（通常の行SELECT、出力パラメータ、ステータス結果など...） 。
+
+=item syb_do_proc_status (bool)
+
+説明については上記の(データベース・ハンドル属性の下)をご覧ください。
+
+=item syb_no_bind_blob (bool)
+
+設定すると問い合わせでの全てのIMAGEやTEXT列は、$sth->fetch(および
+全てのバリエーション)を呼び出したときにB<返されません>。
+
+その代わり、IMAGE や TEXTデータを取り出すため
+
+    $sth->func($column, \$data, $size, 'ct_get_data');
+
+を利用することができます。もし$sizeが0であると、要素全体が取り出され、
+そうでなければデータのチャンクを取り出すため、これを繰り返し呼ぶことができます:
+
+    while(1) {
+        $sth->func($column, \$data, 1024, 'ct_get_data');
+        last unless $data;
+        print OUT $data;
+    }
+
+取り出されたデータは、まだSybaseのTEXTSIZEオプションに(Sybaseリファレンス・
+マニュアスでのSETコマンドを参照)に従います。これはDBIの B<LongReadLen>属性で
+扱うことができます。しかしC<$dbh->{LongReadLen}>は
+影響をあたえる$sth->execute()が呼ばれる前にI<設定されなければなりません>。
+(LongReadLenはMS-SQLサーバーでDBD::Sybaseを使うときには効力がないことに
+注意してください)
+
+B<注意>: このようにして取り出されたIMAGEやTEXT列は、selectのリストの
+I<一番後ろ>I<でなければなりません。>
+
+Sybase OpenClientマニュアルでのct_get_data() API 呼び出しの説明そして
+このドキュメントのどこかにある"IMAGEとTEXT列の作業"もご覧ください。
+
+=back
+
+=head1 DATETIME出力フォーマットの制御
+
+デフォルトではDBD::SybaseはI<DATETIME>とI<SMALLDATETIME>列を
+I<Nov 15 1998 11:13AM>の形式で返します。これは$dbh->func()メソッドを通して
+アクセスすることができる、特別なI<_date_fmt()>関数を通じて変更することが
+できます。
+
+書き方は以下の通り:
+
+    $dbh->func($fmt, '_date_fmt');
+
+$fmtは適用したいフォーマットを表わす文字列です。
+
+フォーマットはSybaseの標準変換ルーチンをベースとしています。利用可能なフォーマット
+のうち以下のサブセットが実装されています:
+
+=over 4
+
+=item LONG
+
+Nov 15 1998 11:30:11:496AM
+
+=item SHORT
+
+Nov 15 1998 11:30AM
+
+=item DMY4_YYYY
+
+15 Nov 1998
+
+=item MDY1_YYYY
+
+11/15/1998
+
+=item DMY1_YYYY
+
+15/11/1998
+
+=item DMY2_YYYY
+
+15.11.1998
+
+=item YMD3_YYYY
+
+19981115
+
+=item HMS
+
+11:30:11
+
+=back
+
+=head1 ストアド・プロシージャからの出力パラメ−タ取り出し
+
+Sybaseはストアド・プロシージャにB<出力>パラメータの定義を渡すことができます。
+これはC（またはPerl）でパラメータをリファレンスで渡すのにちょっと似ています。
+
+Transact-SQLでは以下のようにします
+
+   declare @id_value int, @id_name char(10)
+   exec my_proc @name = 'a string', @number = 1234, @id = @id_value OUTPUT, @out_name = @id_name OUTPUT
+   -- これで@id_value と @id_nameは'my_proc'が@idと@out_nameに設定した値に設定されます
+
+
+それではどのようにしてDBD::Sybaseを使って@paramを取り出すのでしょうか？
+
+もしストアド・プロシージャがB<出力>パラメータB<だけ>を返すのであれば、
+以下のように略して書くことができます。
+
+    $sth = $dbh->prepare('...');
+    $sth->execute;
+    @results = $sth->func('syb_output_params');
+
+これはそのプロシージャ呼び出しでのすべての出力パラメータのための配列を返し、
+他の結果を無視します。何も出力パラメータがないか、何らかの理由でストアド・
+プロシージャが失敗すると配列はundefになります。
+
+さらに汎用的な方法は以下のようになります：
+
+   $sth = $dbh->prepare("declare \@id_value int, \@id_name
+      exec my_proc @name = 'a string', @number = 1234, @id = @id_value OUTPUT, @out_name = @id_name OUTPUT");
+   $sth->execute;
+   do {
+      while($d = $sth->fetch) {
+         if($sth->{syb_result_type} == 4042) { # PARAM結果の場合
+            $id_value = $d->[0];
+            $id_name  = $d->[1];
+         }
+      }
+   } while($sth->{syb_more_results});
+
+こうすると出力パラメータは特殊な結果セットの１つの行として返されます。
+
+
+=head1 １つの$dbhでの複数のアクティブなステートメント
+
+1つのデータベース・ハンドルで複数のアクティブなステートメントを開くことは
+可能です。これは$dbhに既にアクティブなステートメント・ハンドルがあれば
+$dbh->prepare()の中で新しく物理的な接続を開くことによって実現されます。
+
+この機能は他のドライバとの互換性を高めるために実装されていますが、
+Sybaseドライバに直接コーディングしているのであれば、使うべきではありません。
+
+もしAutoCommitがB<オフ>であると、1つの$dbhでの複数のステートメント・ハンドルは
+B<サポートされません>。この状況で持ちあがる様々なデッドロックの問題を避ける
+ためです。そして異なる物理的な接続を参照しているとき、同時に複数の
+ステートメント・ハンドルを使っていてはトランザクションとしての本当の
+整合性が得られないためです。
+
+
+=head1 IMAGEとTEXT列の作業
+
+DBD::SybaseはIMAGEやTEXTデータ(いわゆる"blob"データ)を標準のSQL
+ステートメントを通して格納し取り出すことができます。B<LongReadLen>ハンドル
+属性は各データようそのために返されるIMAGEやTEXTデータの最大サイズを
+制御します。
+
+標準のSQLを使うとき、デフォルトではIMAGEデータは16進文字列に変換されます。
+しかしI<syb_binary_images>ハンドル属性を使って、この動きを変更することが
+できます。あるいはその変換をおこなうため、以下のようなことをすることも
+できます
+
+    $binary = pack("H*", $hex_string);
+
+IMAGEとTEXT データ型は?-形式のプレースホルダを使ってパラメータとして
+渡すことはB<できません>。そしてプレースホルダはIMAGEやTEXT列を
+参照することができません(これはSybaseによって使われているTDSプロトコル
+の制限であり、DBD::Sybaseの制限ではありません。）
+
+IMAGE/TEXTデータにアクセスし更新するもう一つの方法としては、
+natice OpenClient APIを使うことがあります。これは$h->func()を
+通して行われ、残念ながら少し複雑です。
+
+=head2 ct_get_data()/ct_send_data()によるIMAGE/TEXTデータの取り扱い
+
+=over 4
+
+=item $len = ct_fetch_data($col, $dataref, $numbytes)
+
+ct_get_data()呼び出しはIMAGE/TEXTデータをそのままの形式、
+一部分、あるいはチャンクで取り出ことができます。
+この関数を使うためにはI<syb_no_bind_blob>ステートメント・ハンドル
+属性をI<TRUE>に設定しなければなりません。
+
+ct_get_data() は3つのパラメータを取ります:問い合わせの列番号(1始まり)、
+スカラー・リファレンス、そしてバイト数。もしバイト数が0であれば、
+出来るだけ多くのバイトを読み込みます。
+
+これが機能するためには、IMAGE/TEXT列がselectリストでB<最後>でなければ
+B<ならない>ことに注意してください。
+
+呼び出しシーケンスは以下の通りです:
+
+    $sth = $dbh->prepare("select id, img from some_table where id = 1");
+    $sth->{syb_no_bind_blob} = 1;
+    $sth->execute;
+    while($d = $sth->fetchrow_arrayref) {
+       # データは2番目の列
+       $len = $sth->func(2, \$img, 0, 'ct_get_data');
+    }
+
+ct_get_data()は実際に取り出されたバイト数を返します。 
+そのためチャンクで取り出すときには以下のように行うことができます:
+
+   while(1) {
+      $len = $sth->func(2, $imgchunk, 1024, 'ct_get_data');
+      ... $imgchunkで何かします ...
+      last if $len != 1024;
+   }
+
+さらに説明すると:SybaaeはIMAGE/TEXTデータを通常のテーブルデータとは
+別に2Kのブロックをつなげて格納します。IMAGE/TEXT列を更新するためには
+Sybaseは"テキスト・ポインタ(text pointer)"といわれる、このチェーンの
+先頭を見つける必要があります。ct_send_data() APIが使われたときI<where>節がないので、
+まず正しいデータのためのI<テキスト・ポインタ>を取り出す必要があり、
+それはct_data_info(CS_GET)呼び出しを通して行われます。その後の
+ct_send_data()呼び出しには、そのときデータを更新するかが、そのとき
+わかります。
+
+=item $status = ct_data_info($action, $column, $attr)
+
+ct_data_info()はあなたが更新したいと思っているIMAGE/TEXTデータ項目の
+ためのCS_IODESC構造体を取り出したり更新するために使われます。
+$actionは"CS_SET"あるいは"CS_GET"のどちらでなければいけません。$columnは
+アクティブなselectステートメントの列番号です(CS_SET処理では無視されます)。
+そして$attrは構造体に値を設定するために使われるハッシュ・リファレンスです。
+
+ct_data_info() はあなたが更新したいと思っているIMAGE/TEXTデータ項目のための
+CS_IODESC構造体に取り出すため、先にCS_GETを呼ばなければなりません。そして
+構造体の要素I<total_txtlen>の値を挿入しようとしているIMAGE/TEXTデータの
+長さ(バイト長)で更新しなければなりません。そしてオプションで処理の完全な
+ログを有効にするため、I<log_on_update>をB<TRUE>にすることができます。
+
+そのIMAGE/TEXTデータのために、取り出されたCS_IODESCがNULLであると、
+ct_data_info(CS_GET) はI<失敗します>。更新する必要があるのにNULL値であれば、
+CS_IODESCエントリを取り出す前に標準SQLを使って、NULL以外の値に更新しなければ
+なりません(例えば空文字列など)。データ項目がNULLである以上、
+I<テキスト・ポインタ>がB<何もない>ので、これは実際には道理にかなっています。
+
+例については下記のct_send_data()をご覧ください。
+
+=item ct_prepare_send()
+
+ct_prepare_send()はIMAGE/TEXT書き込み処理を初期化するために呼ばれなければ
+なりません。例については下記のct_send_data()エントリをご覧ください。
+
+=item ct_finish_send()
+
+ct_finish_send()はIMAGE/TEXT書き込み処理をfinish/commitするために呼ばれます。
+例については下記のct_send_data()エントリをご覧ください。
+
+=item ct_send_data($image, $bytes)
+
+$imageの$bytesバイトをデータベースへ送信します。これが機能するためにはリクエストは
+ct_prepare_send()とct_data_info()を使って設定される必要があります。ct_send_data()は
+成功するとB<TRUE>を、失敗のときにはB<FALSE>を返します。
+
+この例では、I<id>列が1である、I<img>列のデータを更新したいと
+思います:
+
+  # 最初にそのデータのためのCS_IODESCデータを見つける必要があります
+  $sth = $dbh->prepare("select img from imgtable where id = 1");
+  $sth->execute;
+  while($sth->fetch) {    # データについては気にしないでください!
+      $sth->func('CS_GET', 1, 'ct_data_info');
+  }
+
+  # OK - CS_IODESCの値を持っています。そこで更新を行います:
+  $sth->func('ct_prepare_send');
+  # (挿入する)新しいデータ項目の大きさを設定し、
+  # 操作のログを残させません
+  $sth->func('CS_SET', 1, {total_txtlen => length($image), log_on_update => 0}, 'ct_data_info');
+  # それからデータを転送します(今回は1つのチャンクで)
+  $sth->func($image, length($image), 'ct_send_data');
+  # 操作をコミットします
+  $sth->func('ct_finish_send');
+
+ct_send_data()はチャンクでデータを伝送することができます。しかし
+挿入を始める前にイメージの合計サイズを知る必要があります。例えば:
+
+  # データベース・エントリをファイルの新しいバージョンで更新します:
+  my $size = -s $file;
+  # 最初にそのデータのためのCS_IODESCデータを見つける必要があります
+  $sth = $dbh->prepare("select img from imgtable where id = 1");
+  $sth->execute;
+  while($sth->fetch) {    # don't care about the data!
+      $sth->func('CS_GET', 1, 'ct_data_info');
+  }
+
+  # OK - CS_IODESCの値を持っています。そこで更新を行います:
+  $sth->func('ct_prepare_send');
+  # (挿入する)新しいデータ項目のサイズを設定し、
+  # 操作のログを残させません
+  $sth->func('CS_SET', 1, {total_txtlen => $size, log_on_update => 0}, 'ct_data_info');
+
+  # ファイルをオープンし、それを1024バイトのチャンクでdbに格納します。
+  open(IN, $file) || die "Can't open $file: $!";
+  while($size) {
+      $to_read = $size > 1024 ? 1024 : $size;
+      $bytesread = read(IN, $buff, $to_read);
+      $size -= $bytesread;
+
+      $sth->func($buff, $bytesread, 'ct_send_data');
+  }
+  close(IN);
+  # 処理をコミットします
+  $sth->func('ct_finish_send');
+
+
+=back
+       
+
+=head1 AutoCommit、トランザクションそしてTransact-SQL
+
+$h->{AutoCommit}がオフのとき、あなたが発行するデータを変更する
+すべてのSQLステートメント（INSERT/UPDATE/DELETE)は、$dbh->commitを
+呼び出したときにだけ有効になります。
+
+DBD::Sybaseは$h->{syb_chaind_txn}属性とアクセスされているサーバ
+のバージョンによって、これを２つの違った方法を通して実装しています。
+
+$h->{syb_chained_txn}がI<オフ>であれば、DBD::Sybaseドライバは
+最初の$dbh->prepareの前、そして$dbh->commit()または$dbh->rollback()の
+後に、B<BEGIN TRAN>を送信します。これはうまく機能しますが、
+I<CREATE TABLE>（または他のDDL）ステートメントが入っていると
+うまくいきません。これらのCREATE TABLEステートメントは
+ストアド・プロシージャのどこか（例えばC<sp_helprotect>は走るときに、
+２つの一時テーブルを作成します）に、埋め込まれていることがあります。
+この制限はC<ddl in tran>オプション（データベース・レベルで。
+C<sp_dboption>を通して）を設定することで回避することがI<出来ます>。
+これはトランザクションの間ずっとあるシステム・テーブルに対してロックを
+かけるために重大な影響を与えるかもしれないということに注意しなければ
+いけません。
+
+もし$h->{syb_chained_txn} がI<オン>であれば、DBD::SybaseはI<CHAINED>
+オプションを設定します。これはSybaseが何も自動的にはコミットしない
+ということを示します。再びデータの変更を永続化するためには$dbh->commit()を
+呼び出す必要があります。この場合、Sybaseは実行されるSQLコード中で
+I<BEGIN TRAN>ステートメントを発行させません。そこでI<BEGIN TRAN>
+ステートメントが入ったストアド・プロシージャを実行する必要があれば、
+$h->{syb_chained_txn} = 0または $h->{AutoCommit} = 1としなければなりません。
+
+=head1 ?プレースホルダと$sth->executeへのバインド・パラメータの使い方
+
+元になっているライブラリとデータベース･エンジンがそれをサポートしている
+限り、DBD::SybaseはSQLステートメントの中での?プレースホルダの利用を
+サポートしています。これはSybaseがI<Dynamic SQL>と読んでいるものを使う
+ことによって行っています。?プレースホルダは以下のように書くことを可能に
+しています:
+
+        $sth = $dbh->prepare("select * from employee where empno = ?");
+
+        # employeeからempno == 1024である行を取り出します:
+        $sth->execute(1024);
+        while($data = $sth->fetch) {
+            print "@$data\n";
+        }
+
+       # 今度はempno = 2000である行を取り出します:
+        
+        $sth->execute(2000);
+        while($data = $sth->fetch) {
+            print "@$data\n";
+        }
+
+?プレースホルダを使うとSybaseは処理を進め、SQLステートメントに対応する
+一時的なストアド・プロシージャを作成します。そこで問い合わせに組み込まれる
+$sth->executeや$dbh->doに変数を渡し、いくつかの行が返されます。
+
+DBD::Sybaseは?-形式のプレースホルダを扱うために、元になっている
+Sybase APIを使用します。select/insert/update/deleteステートメントの
+ため、DBD::SybaseはClient Library関数のct_dynamic()ファミリを呼び出します。
+これはDBD::Sybaseに問い合わせへの各パラメータのデータ型の情報を与えます。
+
+1つの結果セットを返すステートメントのためにだけ?-形式のプレースホルダを
+使うことができます。そして?プレースホルダはB<WHERE>節、B<UPDATE>ステートメントの
+B<SET>節、あるいはB<INSERT>ステートメントのB<VALUES>節にのみ書くことができます。
+
+DBIドキュメントではNULL値とプレースホルダに関しては以下のように言っています:
+
+=over 4
+
+       'undef'(NULL)をプレースホルダにバインドすることは
+       NULLの'product_code'を持っている行を選択するわけではありません!
+       この理由については、あなたのデータベース・エンジンのSQLマニュアル
+       あるいはSQLの書籍をごらんください。明確にNULLを選択するためには
+       "'WHERE product_code IS NULL'"と書いてください。そして汎用的に
+       するためには以下のようにしなければなりません:
+
+         ... WHERE (product_code = ? OR (? IS NULL AND product_code IS NULL))
+
+       そして両方のプレースホルダに同じ値をバインドしてください。
+
+=back
+
+これはSybaseデータベース・サーバーではうまくいきません。上記のことを
+試すと以下のエラーを取得するでしょう:
+
+=over 4
+
+The datatype of a parameter marker used in the dynamic prepare statement could not be resolved.
+（参考訳:動的prepareステートメントで使われているパラメータマーカーのデータ型が解決できませんでした）
+
+=back
+
+この特殊な問題は?プレースホルダを使うとき、パラメータの解決のため
+prepare()操作がデータベース・サーバーに送信されることです。これは
+各プレースホルダのためのデータ型を取り出します。残念ながらC<? is null>という書き方は
+?プレースホルダを既存のテーブル列に結び付けません。そのためデータベース・サーバは
+データ型を見つけることが出来ません。この一連の処理はSybaseライブラリの
+内側で起きるため、DBD::Sybaseには回避することができません。
+
+Sybaseは他のシステムがC<foo = NULL>という書き方を扱うのと同じ方法で、通常通り
+C<foo = NULL>という書き方を扱うということに注意してください。そこでSybase
+データベースに問い合わせるとき、正しい結果を取得するため上記のような複雑な
+書き方は必要ありません。
+
+元になっているAPIはストアド・プロシージャのためには?-形式のプレースホルダを
+サポートしていません。しかしこのドキュメントのどこかにある
+B<ストアド・プロシージャとプレースホルダ>というタイトルのセクションをごらんください。
+
+?-styleプレースホルダはTEXTやIMAGEデータ項目をサーバに渡すためには
+B<使えません>。これはTDSプロトコルの制約であり、DBD::Sybaseのものでは
+ありません。
+
+パフォーマンスの問題もあります：OpenClientは?プレースホルダがある
+prepare()呼び出しのたびにストアド・プロシージャをtempdbに作成します。
+これらのオブジェクトを生成することはtempdbデータベースのなかの
+システム・テーブルを更新する必要があります。このため同時に実行される
+複数のクライアントからの数多くのprepare()ステートメントは
+パフォーマンス・ホットスポットを作成するかもしれません。
+Sybase11.9.x以降では、サーバ・メモリ・キャッシュに保持され、システム・テーブルに
+全く影響を与えない"軽量の"一時的なストアド・プロシージャを作成するので、
+この問題は修正されています。
+
+しかしながら、あなたのアプリケーションがSybaseに対して走るのであれば、
+通常は埋め込まれたSQLでの？プレースホルダを使うよりも、
+アプリケーションがSybaseに特定のプロシージャを書きこむほうが
+良好であることがわかりました。
+
+好奇心から、私は、?プレースホルダをprepareするときのオーバーヘッドが
+何かを見るためそのままのSQLのprepareやストアド・プロシージャのprepareと
+比較し、いくつかの簡単な時間調整を行いました。11.0.3.3サーバー(linux)に
+対して、プレールホルダのprepareは著しく遅く、オーバーヘッドを超えるためには
+prepareされたステートメントを30回する必要があります。12.0 サーバー(solaris)
+に対しては、プレースホルダのprepre()はI<少しだけ>そのままのSQLよりも
+早くなります。これは私がI<本当に>わからないことです。しかし数字は
+非常にはっきりしています。
+
+すべてのケースでストアド・プロシージャのprepare()呼び出しが
+I<明らかに>そして一貫して早く走りました。
+
+しかしながらこのテストでは並行の問題を計測しようとしていません。
+
+?形式のプレースホルダが入ったinsertを行った後、最後のI<IDENTITY>の値を
+取り出すことはできません。これはSybaseの制限/バグであり、DBD::Sybaseの
+問題ではありません。例えばテーブルI<foo>がidentity列をもっていると:
+
+
+  $dbh->do("insert foo(col1, col2) values(?, ?)", undef, "string1", "string2");
+  $sth = $dbh->prepare('select @@identity') 
+    || die "Can't prepare the SQL statement: $DBI::errstr";
+  $sth->execute || die "Can't execute the SQL statement: $DBI::errstr";
+
+  #データを取り戻し
+  while (my $row = $sth->fetchrow_arrayref()) {
+    print "IDENTITY value = $row->[0]\n";
+  }
+
+これは常にidentityの値として0を返します。これは明らかに間違いです。
+この動きは?形式のプレースホルダの取り扱いが、そのストアド・プロシージャが
+実行されたとき一時的に格納されたプロシージャを使って実装されているためです。
+
+明示的にinsertしたり、実行された後C<@@identity>を取り出そうとする
+ストアド・プロシージャを使っても同じ動きになってしまいます。
+
+Dynamic SQLについての詳細についてはOpenClient C プログラマーズガイド
+(OpenClient C Programmer's Guide)をご覧ください。ガイドはオン・ラインでも
+見ることができます。 http://sybooks.sybase.com/ 
+
+=head1 ストアド・プロシージャとプレースホルダ
+
+B<注意: この機能は実験的です>
+
+DBD::Sybaseのこのバージョンでは?形式のプレースホルダをストアド・プロシージャ
+呼び出しへのパラメータとして使う機能を導入しています。必要なことは
+そのストアド・プロシージャコールが"exec"で始まること、そして
+prepere()されているバッチにあるステートメントであることです:
+
+例えば、これはストアド・プロシージャ呼び出しを名前付きパラメータでprepareしています:
+
+    my $sth = $dbh->prepare("exec my_proc \@p1 = ?, \@p2 = ?");
+    $sth->execute('one', 'two');
+
+位置によるパラメータも使うことができます:
+
+    my $sth = $dbh->prepare("exec my_proc ?, ?");
+    $sth->execute('one', 'two');
+
+同じprepareの中で位置によるパラメータと名前付きのパラメータを混在させてはI<いけません>。
+
+通常の方法でI<OUTPUT>パラメータを指定することができます。しかし出力結果を
+取得するためにbind_param_inout()を使うことはB<出来ません> - 代わりに
+fetch() そして/あるいは $sth->func('syb_output_params')を呼び出す必要があります:
+
+    my $sth = $dbh->prepare("exec my_proc \@p1 = ?, \@p2 = ?, \@p3 = ? OUTPUT ");
+    $sth->execute('one', 'two', 'three');
+    my (@data) = $sth->func('syb_output_params');
+
+DBD::Sybaseは各パラメータについて正しいパラメータの型を理解しようとは
+しません(ほとんどのケースでこれは可能でしょう。しかし
+今のところ私がその問題を避けようとするほどに十分な例外もあります)。
+DBD::SybaseはデフォルトではパラメータをSQL_CHARとしてます。そして
+明確な型の値でbind_param()を使って、これを何か違うものに設定しなければ
+なりません。型はそのとき覚えられます。そのため各パラメータについて
+明示的な呼び出しを一度だけ使う必要があります:
+
+    my $sth = $dbh->prepare("exec my_proc \@p1 = ?, \@p2 = ?");
+    $sth->bind_param(1, 'one', SQL_CHAR);
+    $sth->bind_param(2, 2.34, SQL_FLOAT);
+    $sth->execute;
+    ....
+    $sth->execute('two', 3.456);
+    etc...
+
+SQL_NUMERICやSQL_DECIMALデータをバインドするとき、桁数や精度が
+目標のパラメータ定義を超えると致命的な変換エラーになるかもしれません。
+
+例えば、以下のストアド・プロシージャの定義について考えてみましょう:
+
+    declare proc my_proc @p1 numeric(5,2) as...
+
+そして以下のprepare/executeの一部について考えてください:
+
+    my $sth = $dbh->prepare("exec my_proc \@p1 = ?");
+    $sth->bind_param(1, 3.456, SQL_NUMERIC);
+
+これは以下のエラーを起こします:
+
+DBD::Sybase::st execute failed: Server message number=241 severity=16 state=2 line=0 procedure=dbitest text=Scale error during implicit conversion of NUMERIC value '3.456' to a NUMERIC field.
+(参考:
+DBD::Sybase::st execute failed: Server message number=241 severity=16 state=2 line=0 procedure=dbitest 
+text=数値'3.456'のNUMERICフィールドへの暗黙の変換で桁数エラー。)
+
+あなたはSybase(そしてDBD::Sybase)に、I<arithabort>オプションを設定することにより、
+この種のエラーを無視するように伝えることができます:
+
+    $dbh->do("set arithabort off");
+
+setコマンドとarithabortオプションについてのより多くの情報については
+Sybase Adaptive Server Enterprise Reference ManualでのI<set>コマンドを
+ご覧ください。
+
+=head1 バグ
+
+接続を閉じることなしに、バインド変数を持った呼び出し（つまり?形式の
+プレースホルダ）をたくさん行うとtempdbデータベースの領域が足りなくなって
+しまうかもしれません。私のシステムではtempdbデータベースは8MBあり、
+?パラメータを持つ760回のprepare()ステートメントで領域が一杯になりました。
+これはSybaseがprepare()呼び出しのたびに、ストアド・プロシージャを
+作成するためです。そこで本当に必要なときにだけ(つまりprepareされた同じ
+ステートメントを何回も実行するとき）、?形式のプレースホルダを使うことを
+提案します。
+
+新しいprimary_key_info()メソッドは、テーブルを作成したときに宣言での
+"プライマリ・キー"制約が入っているテーブルのためだけにデータを返します。
+
+私は簡単なバグ・トラッキングデータベースを http://gw.peppler.org/cgi-bin/bug.cgi に
+持っています。既にわかっているバグを見たり、新しいものを報告するために使うことが
+できます。peppler.orgはK56ダイアルアップ回線を介してネットにつながっていることに
+気をつけてください。このために遅いかもしれません。
+
+=head1 MS-SQLでのDBD::Sybaseの利用
+
+MS-SQLはSybase 4.2として始まりました。そしてSybaseとMS-SQLの間には
+多くの類似点があります。そのためSybase OpenClientライブラリあるいは
+FreeTDSライブラリ(http://www.freetds.orgを参照)のいずれかを使って
+MS-SQLデータサーバへの問い合わせを可能になっています。
+
+しかしSybaseライブラリをMS-SQLサーバへの問い合わせのために使うことには
+いくらか制限があります。特に?形式のプレースホルダはサポートされていません
+(FreeTDSライブラリを使っている場合、そのライブラリの将来のリリースでは
+サポートされますが）。そしていくつかのB<syb_>属性はサポートされていない
+かもしれません。
+
+SybaseはTEXTSIZE属性(いわゆるB<LongReadLen>)のデフォルトを32Kに
+しています。しかしMS-SQL7は正しくそうしてはいないようです。
+その結果、TEXT/IMAGEデータ列を持っているテーブルに問い合わせるとき
+大量のメモリの要求を引き起こします。回避するためには$dbh->{LongReadLen}を
+通して(もしそれがうまくいったら - 私は確認をしていません) あるいは
+$dbh->do("set textsize <somesize>");を通してTEXTSIZEを何らかの
+きちんとした値に設定してください。
+
+=head1 nsql
+
+nsql()呼び出しはSybase::DBlibにある同じ名前の関数をそのまま
+移植したものです。
+
+利用方法:
+
+   @data = $dbh->func($sql, $type, $callback, 'nsql');
+
+これは$sqlに入っている問い合わせを実行し、@dataに全てのデータを返します。
+$typeパラメータは配列形式で(つまり'ARRAY'で$typeが渡します。これが
+デフォルトです)あるいは列名をキーとしたハッシュ形式で($typeが'HASH'で
+渡します)各行が返されることを指定することができます。
+
+もし$callbackが指定されると、それはperl subへのリファレンスとして取られ、
+問い合わせにより返される各行が、そのルーチンによって返されるI<代わりに>
+このサブルーチンに渡されます(例えば大きな結果セットを処理することが
+できます)。
+
+C<nsql>はデッドロック・リトライ・ロジックを可能にするため3つの特別な属性も
+チェックします (I<注意> これらの属性はいずれも、現時点では他のどこにも
+何も影響を与えません):
+
+=over 4
+
+=item syb_deadlock_retry I<count>
+
+これに0以外の値を設定するとデッドロックの検知とnsql()の中でのリトライ・ロジックが
+可能になります。デッドロック・エラーが検知されると(エラーコード1205)、
+バッチ全体がI<syb_deadlock_retry>回になるまで再実行されます。デフォルトは0(オフ)です。
+
+=item syb_deadlock_sleep I<seconds>
+
+デッドロックのリトライの間にスリープする秒数。デフォルトは60です。
+
+=item syb_deadlock_verbose (bool)
+
+デッドロック･リトライ･ロジックの詳細なログを可能にします。デフォルトはオフです。
+
+=back
+
+デッドロックの検知はDBD::Sybaseの将来のバージョンでは$dbh->do()メソッドに
+追加されるでしょう。
+
+
+=head1 参考資料
+
+L<DBI>
+
+Sybase OpenClient C マニュアル
+
+Sybase Transact SQL マニュアル
+
+=head1 作者(=AUTHOR)
+
+DBD::Sybase by Michael Peppler
+
+=head1 著作権(=COPYRIGHT)
+
+The DBD::Sybase module is Copyright (c) 1997-2003 Michael Peppler.
+The DBD::Sybase module is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
+
+=head1 謝辞
+
+DBIについてTim Bunceへ、心から!
+
+L<DBI/ACKNOWLEDGEMENTS>もご覧ください。
+
