@@ -1,0 +1,264 @@
+=head1 名前
+
+File::Searcher -- ファイルを検索し、マッチするファイルの検索/置換を行います
+
+=head1 概要
+
+        use File::Searcher;
+        my $search = File::Searcher->new('*.cgi');
+        $search->add_expression(name=>'street',
+            search=>'1234 Easy St.',
+            replace=>'456 Hard Way',
+            options=>'i');
+        $search->add_expression(name=>'department',
+            search=>'(Dept\.|Department)(\s+)(\d+)',
+            replace=>'$1$2$3',
+            options=>'im');
+        $search->add_expression(name=>'place',
+            search=>'Portland, OR(.*?)97212',
+            replace=>'Vicksburg, MI${1}49097',
+            options=>'is');
+        $search->start;
+        # $search->interactive; File::Searcher::Interactiveをご覧ください
+        @files_matched = $search->files_matched;
+        print "Files Matched\n";
+        print "\t" . join("\n\t", @files_matched) . "\n";
+        print "Total Files:\t" . $search->file_cnt . "\n";
+        print "Directories:\t" . $search->dir_cnt . "\n";
+        my @files_replaced = $search->expression('street')->files_replaced;
+        my @files_replaced = $search->expression($expression)->files_replaced;
+        my %matches = $search->expression('street')->matches;
+        my %replacements = $search->expression('street')->replacements;
+
+=head1 説明
+
+C<File::Searcher>はPerl正規表現にマッチするファイルのために
+ディレクトリ・ツリーを追っていくことを可能にします。マッチするものが
+見つかると、集計が格納され、もしそのファイルがテキスト・ファイルであれば、
+一連の検索と置換を行うことができます。C<File::Searcher>はバックアップ/アーカイブ
+することを可能にし、レポートとマッチと置換の統計情報のためのOOなアクセス方法を
+持っています。
+
+=head1 利用方法
+
+=head2 一般的な使い方
+
+  # コンストラクタ - オプションで
+
+  my $search = File::Searcher->new(
+    file_expression=>'*.txt', # filesがなければ必須
+    files=>\@files,                 # file_expressionがなければ必須
+    start_directory=> '/path/to/dir',       # デフォルトは './'
+    backup_extension=> '~',             # デフォルトは '.bak'
+    do_backup=> '0',                # デフォルトは 1 バックアップファイルを作成
+    recurse_subs=> '0',             # デフォルトは 1 サブディレクトリを検索
+    do_replace=> '1',               # デフォルトは 0 マッチするものを置換しない
+    log_mode=> '111',               # 未実装
+    archive=>'my_archive.tgz',          # デフォルトは /start_directory/(system time).tgz
+    do_archive=> '1', # デフォルトは 0 マッチするファイルをアーカイブしない
+ );
+
+  # コンストラクタ - ファイル式で
+
+  my $search = File::Searcher->new('*.txt');
+
+  # コンストラクタ - 絶対パスの配列へのリファレンスで
+
+  my $search = File::Searcher->new(\@files);
+
+コンストラクタには3つの手法があります;オプションで、ファイル式で、あるいは
+絶対パスの配列へのリファレンスで。コンストラクタの中でオプションを指定
+しなければ、アクセッサ・メソッドによって設定することができます。
+
+   $search->start_directory('/path/to/dir');
+   $search->backup_extension('~');
+   $search->do_backup(0);
+   $search->recurse_subs(0);
+   $search->do_replace(1);
+   $search->archive('my_archive.tgz');
+   $search->do_archive(0);
+
+次に、一連の式がオプションで設定されます。式は検索に追加された順に検索
+されます。
+
+   $search->add_expression(
+      name=>'street', # 必須
+      search=>'1234 Easy St.',
+      replace=>'456 Hard Way',
+      case_insensitive=>1,
+   );
+
+    $search->add_expression(
+      name=>'department',
+      search=>'(Dept\.|Department)(\s+)(\d+)',
+      replace=>'$1$2$3',
+      case_insensitive=>1,
+      multiline=>1,
+    );
+
+   $search->add_expression(
+      name=>'place',
+      search=>'Portland, OR(.*?)97212',
+      replace=>'Vicksburg, MI${1}49097',
+      singleline=>1,);
+
+式のオプションは2つの方法で設定することができます:
+
+
+   # 1つの文字列で
+   ...add_expression(..., options=> 'ismx');
+
+   # 名前付きパラメータで
+   ...add_expression(..., singleline=>1, multiline=>1,case_insensitive=>1, extended=>1);
+
+   # 検索の実行
+
+   $search->start;
+
+=head2 拡張機能
+
+拡張された機能のために、ファイルのマッチがC<on_file_match>に合ったときと、
+検索式がC<on_expression_match>に合ったとき、処理するための
+サブルーチンのリファレンスを設定してください。
+
+
+   $search->on_file_match(sub{
+   my ($file) = @_;
+    return 0 unless $file->writable_r; # 本当の識別子で書き込み可能?
+    return 0 unless $file->stats->size_bytes < 100;
+    chmod(0777, $file->path);
+    return 1;
+   });
+   # もう一つの方法としては
+   # $search->on_file_match(\&my_sub);
+
+
+C<on_file_match> はプロパティのメソッドを持ったファイル・オブジェクトを
+受け取ります(path, readable_e, writable_e, executable_e, readable_r, writable_r,
+executable_r, owned_e, owned_r, exist, exist_non_zero, zero_size, file,
+directory, link_, pipe_, socket_, block, character, setuid_bit,
+setgid_bit, sticky_bit, opened_tty, text, binary)。
+もしそれがファイルであれば、statsメソッド(device_code, inode_number,
+mode_flags, link_cnt, user_id, group_id, device_type, size_bytes,
+time_access_seconds, time_modified_seconds, time_status_seconds,
+block_system, block_file, time_access_string, time_modified_string,
+time_status_string, mode_string)も持ちます。
+ファイルの処理を続けるときには1を返してください(つまり式にマッチするかを
+見ます)、次のファイルに移るためには0を返してください。
+
+   $search->on_expression_match( sub{
+    my ($match,$expression) = @_;
+    return -100 if scalar($expression->files_replaced) > 7;
+    return -10 if length($match->post) < 120;
+    return 1 if $match->match =~ /special(.*?)case/;
+    return 10 unless $match->contents =~ /special/;
+    # こんなことを、このモジュールはするわけです、でも!
+    my $file_contents = $match->contents;
+    eval("\$contents =~ s/$match->search/$match->replace/g$match->options;");
+    return $contents;
+   });
+
+   # もう一つの方法
+   # $search->on_expression_match(\&my_sub);
+
+C<on_expression_match>はメソッド(match, pre, post, last, start_offset, 
+end_offset,contents)を持ったC<match>オブジェクトと
+式オプション(search, replace, options, %replacements, %matches, @files_replaced)に
+アクセスするC<expression>オブジェクトを受け取ります。
+
+   -100を返す 式を無視し、すべてのファイルで二度とそれを検索しません
+   -10を返す  次のファイルに飛ばす
+   -1を返す  次のマッチに飛ばす(おそらくは次のファイル)
+   1を返す  マッチを処理する($searchオブジェクトで指定したとおりに)
+   10を返す  ファイルでの全てのマッチを処理する
+   100を返す  すべてのファイルでの発生を処理する
+   ファイル内容の(スカラで)$content(=内容)を返す  (指定されているファイルにだけ)内容を上書きし、次のファイルに移る
+
+
+=head2 レポート
+
+何が起きたかを見るため、検索とそれぞれの式のため、結果にアクセスしてください。
+
+   # 検索結果レポート
+
+   @files_matched = $search->files_matched;
+   print "Files Matched\n";
+   print "\t" . join("\n\t", @files_matched) . "\n";
+   print "Text Files:\t" . $search->file_text_cnt . "\n";
+   print "Binary Files:\t" . $search->file_binary_cnt . "\n";
+   print "Uknown Files:\t" . $search->file_unknown_cnt . "\n";
+   print "Total Files:\t" . $search->file_cnt . "\n";
+   print "Directories:\t" . $search->dir_cnt . "\n";
+   print "Hard Links:\t" . $search->link_cnt . "\n";
+   print "Sockets:\t" . $search->socket_cnt . "\n";
+   print "Pipes:\t" . $search->pipe_cnt . "\n";
+   print "Uknown Entries:\t" . $search->unknown_cnt . "\n";
+   print "\n";
+
+   # 式の結果レポート
+
+
+   foreach my $expression (@{$search->get_expressions}){
+
+      my @files_replaced = $search->expression($expression)->files_replaced;
+      my %matches = $search->expression($expression)->matches;
+      my %replacements = $search->expression($expression)->replacements;
+
+      print "Search/Replace:\t" .>
+      $search->expression($expression)->search .
+      "\t" . $search->expression($expression)->replace . "\n";
+
+      print "\tNo Replacements Made\n" and next if @files_replaced < 1;
+      print "\tFile\t\t\t\t\tMatches\tReplacements\n";
+
+      foreach my $file (@files_replaced){
+         print "\t$file\t\t$matches{$file}\t$replacements{$file}\n";
+      }
+        print "\n";
+   }
+
+
+
+
+=head1 注意
+
+非常に複雑な正規表現はおそらく、あなたが思うようには上手く動かない
+でしょう。
+
+=head1 バグ
+
+教えてください...
+
+=head1 TO DO
+
+=over 4
+
+=item * より多くの高度の機能
+
+=item * より多くのレポート(行番号など)
+
+=item * おそらくClass::Generateを取り除く
+
+=back
+
+=head1 参考資料
+
+File::Searcher::Interactive, L<File::Find|Class::Classless>,
+File::Copy, File::Flock, Class::Struct::FIELDS, Class::Generate, Cwd,
+Time::localtime, Archive::Tar
+
+=head1 著作権(=COPYRIGHT)
+
+Copyright 2000, Adam Stubbs
+This library is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself. Please email me if you find this
+module useful.
+
+=head1 作者(=AUTHOR)
+
+Adam Stubbs, C<astubbs@advantagecommunication.com>
+Version 0.91, Last Updated Tue Sep 25 23:08:50 EDT 2001
+
+=head1 翻訳者
+
+川合孝典(GCD00051@nifty.ne.jp)

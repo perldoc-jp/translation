@@ -1,0 +1,405 @@
+=head1 名前
+
+File::Remote - リモートのファイルを透過的に読み込み/書き込み/編集する
+
+=head1 概要
+
+   #
+   # File::Remoteの2つの使い方
+   #
+   # 第一に関数ベースのスタイル。ここで特別なワザを使うことが
+   # できます :　Perl組込関数を上書きするためのreplaceタグ
+   #
+   use File::Remote qw(:replace);   # 特別なワザ :replaceタグ
+
+   # リモートのファイルから読み込む
+   open(REMOTE, "host:/remote/file") or die $!;
+   print while (<REMOTE>);
+   close(REMOTE);
+
+   # ローカルなファイルに書き込みもうまくいきます!
+   open(LOCAL, ">>/local/file");
+   print LOCAL "This is a new line.\n";
+   close(LOCAL); 
+ 
+   mkdir("host:/remote/dir", 0755);
+   unlink("host:/remote/file");
+   unlink("/local/file");       # これもうまくいきます!
+   symlink("host:/remote/src", "host:/remote/dest");
+
+   chown("root", "other", "host:/remote/dir/file");
+   chmod(0600, "host:/remote/dir/file");
+
+   #  
+   # 次にオブジェクト指向スタイル、もし組み込み関数と混乱したく
+   # なければ。
+   #
+   use File::Remote;
+   my $remote = new File::Remote;
+ 
+   # 標準のファイル・ハンドル
+   $remote->open(FILE, ">>host:/remote/file") or die $!;
+   print FILE "Here's a line that's added.\n";
+   $remote->close(FILE);
+ 
+   # 新しいファイルを作成し、その権限を変更する
+   $remote->mkdir("host:/remote/dir");
+   $remote->touch("host:/remote/dir/file");
+ 
+   # ファイルを移動させる
+   $remote->copy("/local/file", "host:/remote/file") or warn $!;
+   $remote->move("host:/remote/file", "/local/file");
+ 
+   # ファイル全体を読み込み、出力する
+   my @file = $remote->readfile("host:/remote/file");
+   $remote->writefile("/local/file", @file);
+ 
+   # 接尾語つきでファイルをバックアップ
+   $remote->backup("host:/remote/oldfile", "save");
+ 
+   # セキュアな接続方法を利用する
+   my $secure = new File::Remote (rsh => "/usr/local/bin/ssh",
+                                  rcp => "/usr/local/bin/scp");
+   $secure->unlink("/local/file");
+   $secure->rmdir("host:/remote/dir");
+
+=head1 説明
+
+このモジュールは、それらがローカルか、リモートにあるかに関わらず、
+ファイルを扱うことの面倒をみます。ネットワーク上の物理的な場所を気に
+することなくファイルを作成し、編集することを可能にします。もし関数に
+渡されたファイルを作成し、編集することができます。もし関数に渡された
+ファイルがC<host:/path/to/file>という形式であれば、C<File::Remote>は
+リモートでファイルを編集するために、rsh/rcp(あるいはssh/scp、どのように
+設定しているかに依存します)を利用します。そうでなければ、ファイルが
+ローカルにあるものと想定し、呼び出しをPerlのコアの関数に直接渡します。
+
+このモジュールが素晴らしいのは、リモートとローカルの両方のファイルを
+透過的に扱うので、I<全ての>ファイル呼び出しにこれを使うことができる
+ことです。つまり、あなたのコードでリモートのファイルかをチェックする
+必要がまったくないということです。さらにC<:replace>をつけることで、
+関数指向のインターフェースを使えば、実際にPerlのファイル組込関数を再定義
+することができます。つまりあなたの既存のPerlスクリプトが自動的に、
+再構築することなく、リモートのファイルを扱うことができるのです(!)。
+
+C<File::Remote>でプログラムするためには、オブジェクト指向スタイルと
+関数指向スタイルの2つの方法があります。両方の方法は同様に上手く機能します。
+これは趣味の問題です。オブジェクト指向に方法の1つの利点は、
+別のサーバから異なる方法(例えばrshとssh)で同時に読み込んだり、書き込んだり
+することができることです:
+
+   # オブジェクト指向の方法
+   use File::Remote;
+   my $remote = new File::Remote;
+   my $secure = new File::Remote (rsh => "/bin/ssh", rcp => "/bin/scp");
+
+   # 一撃で安全にファイルをコピーし、書き込み、削除します...
+   $remote->open(LOCAL, "/local/file") or die "Open failed: $!\n";
+   $secure->open(REMOTE, "host:/remote/file") or die "Open failed: $!\n";
+   print REMOTE "$_" while (<LOCAL>);
+
+   $remote->close(LOCAL);
+   $secure->close(REMOTE);
+
+   # そして安全にファイルを移動しましょう
+   $secure->move("/local/file", "host:/remote/file");
+   $secure->copy("host:/remote/file", "/local/file");
+
+関数指向インタフェースを使うためには、実際にPerl組み込み関数を置き換える
+C<:replace>という特別なタグをインポートしなければいけません:
+
+   # Perlのファイル・メソッドをFile::Remoteで置換します
+   use File::Remote qw(:replace);
+
+   open(FILE, ">host:/remote/file") or die "Open failed: $!\n";
+   print FILE "Hello, world!\n";
+   close(FILE) or die "Close failed: $!\n";
+
+   mkdir("/local/new/dir", "2775");
+   mkdir("host:/remote/new/dir");
+   chown("root", "other", "/local/new/dir");
+   unlink("host:/remote/file");
+
+これは非常に簡単です;C<File::Remote>は、ローカルファイルへの呼び出しを
+Perlのコア関数に直接渡します。"透過的に"全てのことを行うことができ、
+ファイルの場所について気にすることはありません。さらに、何もコードを
+書きなおす必要なく、リモートのファイルを扱うことができることできる
+という利点もあります。
+
+C<File::Remote>メソッドの名前はPerlの組込関数とぶつかるので、
+もしC<:standard>タグで関数指向スタイルを使うのであれば、
+余分な'r'が関数名の前に追加されます。従ってC<<$remote->open>>は
+C<:standard>関数指向版では'ropen'になります:
+
+   # 関数指向の方法
+   use File::Remote qw(:standard);  # 標準関数名を使用
+   setrsh("/share/bin/ssh");
+   setrcp("/share/bin/scp");
+
+   # 機能は同じ、でも前に"r"がついています
+   ropen(FILE, "host:/remote/file") or die "Open failed: $!\n";
+   print while (<FILE>);
+   rclose(FILE) or die "Close failed: $!\n";
+
+   runlink("host:/remote/file");
+   rmkdir("host:/remote/dir");
+   rchmod("0700", "host:/remote/dir");
+
+でもちょっと厄介です。個人的にはC<:replace>タグを利用することを
+お勧めします。
+
+=head1 関数
+
+C<File::Remote>で使うことが出来る関数を以下に示します。
+関数指向スタイルではC<:replace>タグを使わなければ、各関数名の始まりに
+余分な'r'を付けなければならないということを忘れないでください。
+file引数は、すべての関数でローカルにもリモートにもできます。
+
+=head2 new(opt => val, opt => val)
+
+これが呼び出しでオブジェクト指向方法を使うときのメインの
+コンストラクタです。これを使う必要があるのは、オブジェクト指向
+呼び出し形式を利用するときだけです。その動作を変更する3つの引数を
+渡すことができます:
+
+   rsh  -  rshまたはsshプログラムへのパス
+   rcp  -  rcpまたはscpプログラムへのパス
+   tmp  -  テンポラリ・ディレクトリへのパス
+
+そこで、例えば:
+
+   use File::Remote;
+   my $secure = File::Remote->new(rsh => '/usr/local/bin/ssh',
+                                  rcp => '/usr/local/bin/scp',
+                                  tmp => '/var/run');
+   $secure->copy($src, $dest);
+
+上記のものは、そのメソッドを呼び出すと接続のためにsshとscpを使うよう、
+C<$secure>オブジェクトを設定します。
+
+=head2 setrsh(prog) ; setrcp(prog) ; settmp(dir)
+
+これらは関数指向の呼び出し方式のため、上記のフラグの設定することと機能的に
+同じです。そのためOO方式ではなく、差し込み式の置き換え関数による
+方式(これのほうが私は好きなのですが)を使いたいと決心したならば:
+
+   use File::Remote qw(:replace);
+
+   setrsh('/usr/local/bin/ssh'); 
+   setrcp('/usr/local/bin/scp'); 
+   settmp('/var/run'); 
+
+   copy($src, $dest);
+
+この一連の呼び出しは、オブジェクト指向形式の代わりに関数指向形式を
+使うだけで、全く同じ効果があります。
+
+=head2 open(HANDLE, file) ; close(HANDLE)
+
+Perlの組み込み関数と全く同じようにファイルのopen、closeに使われます。これらの
+関数は文字列ファイルハンドル、typeglobリファレンスの両方を、つまり適切な
+いかなるPerlのopen呼び出しも受け入れます:
+
+   open(FILE, ">> $file");
+   open(*FILE, ">$file");
+   open(\*FH, "< $file");
+
+5.6以降を除けば、これらは動作するはずです:
+
+   open(my $fh, $file);
+
+これはC<File::Remote>を使うときには動作しません。これに打ち勝つような
+パッチを歓迎します。
+
+=head2 touch(file)
+
+UNIX touchコマンドと同様に、ファイルの更新時刻を更新する、あるいは存在
+しなければ作成します。
+
+=head2 mkdir(dir [, mode]) ; rmdir(dir [, recurse])
+
+オプションの8進数のモード[mode]でディレクトリを作成;オプションで再帰的に
+ディレクトリ・ツリーを削除します。デフォルトでは、rmdirは再帰的に動作し、
+mkdirによる新しいディレクトリはumaskに依存します。
+
+=head2 copy(file1, file2)
+
+File::Copyの同じ名前の関数と同様に単純にファイルをコピーします。
+(:aliasesタグをインポートすれば)'cp'とすることもできます。
+
+=head2 move(file1, file2)
+
+File::Copyのようにファイルを移動します。
+(:aliasesタグをインポートすれば)'mv'とすることもできます。
+
+=head2 chmod(mode, file) ; chown(owner, group, file)
+
+ファイルの権限や所有者を変更します。
+
+=head2 unlink(file)
+
+ファイルを削除します。これを'rm'とすることもできます。(aliasesタグをインポートすれば)。
+
+=head2 link(file1, file2)
+
+2つのファイルの間にハード・リンクを作成します。この関数での注意は、
+ファイルは両方ともローカル、あるいはリモートになければならない
+ということです。
+
+=head2 symlink(file1, file2)
+
+ハード・リンクではなくシンボリック・リンクを作成するだけでlinkと
+同じように動作します。
+
+=head2 readlink(file)
+
+Perl組込関数のように、シンボリック・リンクがどこをさしているかを読み込みます。
+
+=head2 backup(file, [file|suffix])
+
+これはファイルをバックアップします。それを操作しているのであれば便利です。
+オプションの2番目の引数ファイル名や拡張子なしに呼び出すと、拡張子'bkup'が
+ファイルに追加されます。fileはローカルにもリモートにもできます;これは
+実際にはcopy()への単なるフロント・エンドです。
+
+=head2 readfile(file) , writefile(file, @data)
+
+これはFile::Slurpと同様にファイル全体を一撃で読み込み、書き込みます。
+readfile() はファイルの配列を返し、writefileは成功か失敗かを返す
+だけです。
+
+=head2 append(file, @data) , prepend(file, @data)
+
+writefile()に似ていますが、これらはファイルを上書きしません。
+これらは後もしくは頭にデータを追加します。
+
+=head1 使用例
+
+以下に、このモジュールの使い方の例をいくつか示します:
+
+=head2 1. あなたのサーバ上の/etc/passwdに新しいユーザを追加
+
+/etc/passwdを編集しなければならないものとは別のホストで実行される
+webベースのnewuserプログラムのようなものを持っているのであれば、
+これは便利でしょう:
+
+   # 関数指向の方法
+   use File::Remote qw(:replace);
+
+   $passwd = "server:/etc/passwd";
+   backup($passwd, 'old');      # 安全のためバックアップ
+   open(PASSWD, ">>$passwd") or die "Couldn't write $passwd: $!\n";
+   print PASSWD "$newuser_entry\n";
+   close(PASSWD);
+
+
+=head2 2. 安全に大量のファイルをコピー
+
+おそらくは、実際のコードではよりきれいにするため、ループと変数名を
+使うでしょうけれど...
+
+   # オブジェクト指向の方法
+   use File::Remote
+   my $secure = File::Remote->new(rsh => "/share/bin/ssh",
+                                  rcp => "/share/bin/scp",
+                                  tmp => "/var/tmp");
+
+   # ファイルの移動
+   $secure->move("client:/home/bob/.cshrc", "client:/home/bob/.cshrc.old");
+   $secure->copy("/etc/skel/cshrc.user", "client:/home/bob/.cshrc");
+   $secure->copy("/etc/skel/kshrc.user", "client:/home/bob/.kshrc");
+   
+
+=head2 3. 本当に速い転送のため rsync w/ sshを使う
+
+ここでは他のプロセスから巨大なデータストリームを取得し、リアルタイムに
+それを出力しなければならいものとします。リモートのファイルは
+close()が呼ばれるまで更新されないということに注意してください。
+
+   # 関数指向で:replaceタグなし。そのため全ての関数は
+   # 前に'r'がつきます
+   use File::Remote qw(:standard);
+
+   setrsh("/local/bin/ssh");
+   setrcp("/local/bin/rsync -z -e /local/bin/ssh");
+   settmp("/my/secure_tmp"); 
+
+   $file = "server:/local/dir/some/huge/file";
+   ropen(REMOTE, ">>$file") or die "Couldn't write $file: $!\n";
+   while(<DATASTREAM>) {
+      print REMOTE $_;
+   }
+   rclose(REMOTE);      # ファイルが最終的に更新されます
+
+もう一度、私はC<:standard>タグが隙ではありません、しかしあなたが望めば
+それはあります。呼び出し形式での違いは文法だけです - 3つは全て機能的に
+同じです。
+
+=head1 注意
+
+C<File::Remote> UNIXシステム上でのみ動作します。
+
+C<File::Remote>への主な注意点は、操作したいファイルがあるホストへ
+rsh/rcpやssh/scpアクセスを持たなければならないことです。
+これに関連してセキュリティ上、明確になっていないことについて、
+特にファイア・ウォールの外にいるのであれば、十分に考えてみてください。
+
+リモートファイルは、そのファイルハンドルに対してclose()が呼ばれるまで
+同調されないので、自動フラッシュ($|)を有効にしても、リモートの
+ファイル・ハンドルには何の効果もありません。
+
+C<File::Remote>はリモートのパイプをサポートしていません。
+
+スピードのため、デフォルトではrsh/rcpやそれらと同等のものが実行可能であるかの
+チェックは行いません。これを変更したければ、ソースをご覧ください。
+
+=head1 困ったこと
+
+C<:replace>とC<-w>を使うと、以下のような警告を得るでしょう:
+
+   Name "main::FILE" used only once: possible typo
+
+これらはPerl 5が裸のファイルハンドルを使いおきています。そして無視しても
+安全です。もし本当に困るのであれば、以下のように解決することができます:
+
+   use File::Remote qw(:replace);
+
+   { local $^W; open(FILE, $file) } # それを行う
+   open(*FILE, $file);          # 方法は1つ以上
+   open(\*FILE, $file);         # あります
+
+これらのいずれかを使うことにより警告はなくなります。これらを
+消す方法を知っているのであれば、是非聞いてみたいのですが...
+
+=head1 バグ
+
+リモート・ファイルへのopen()の内部実装のために、増え続ける
+リモート・ファイル(その"tail")を読み込むことはできません。
+基本的に読み込みのためにオープンしたとき、リモート・ファイルの
+スナップショットが取られます。この制限を打ち破るパッチを歓迎します。
+
+system()呼び出しに頼り、%ENVに依存しているため、汚染(taint)されていたり、
+setuidされたPerlスクリプトではC<File::Remote>は動かないかもしれません。
+これを回避するためには、あなたのスクリプトの先頭にC<undef %ENV>を単純に
+追加してください。これはいずれにしてもやるべきです。
+
+バグレポートや提案があれば、私に指示してください(以下を参照)。
+どうか明確にし、あなたが使っているC<File::Remote>のバージョンを入れるよう
+お願いします。
+
+=head1 バージョン
+
+$Id$
+
+=head1 作者
+
+Copyright (c) 1998-2001 Nathan Wiger, Nateware <nate@nateware.com>.
+All Rights Reserved.
+
+This module is free software; you may copy this under the terms of
+the GNU General Public License, or the Artistic License, copies of
+which should have accompanied your Perl kit.
+
+=head1 翻訳者
+
+川合 孝典(GCD00051@nifty.ne.jp)
