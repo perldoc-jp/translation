@@ -1,0 +1,232 @@
+=head1 名前
+
+Cache::Cache -- Cacheインターフェース
+
+=head1 説明
+
+Cacheモジュールは、指定された期間データを永続化させることで開発者を
+助けるように設計されています。このモジュールは、リモート・マシンや
+データベースへの繰り返され、冗長で高価な呼び出しを節約するために
+データをローカルに格納するためにWebアプリケーションで、よく使われます。
+また人々はCache::Cacheがわかりやすいインターフェースを
+アプリケーションの実行やCGIスタイルのスクリプトの呼び出しを、
+またがってデータを共有する時の、わかりやすいインタフェースのために
+使ったり、単純にファイルシステムや共有メモリの抽象化を簡単に利用する
+ことを知っています。
+
+Cache::Cacheインターフェースはget, set, remove, size, purge, そしてclear 
+インスタンス・メソッドと、メソッドの呼び出しを越えてデータを永続化する
+ための、それらに対応する静的メソッドサポートをサポートしているクラスに
+よって実装されます。
+
+=head1 利用方法
+
+最初に、あなたの必要にとって一番よいキャッシュの実装を選択してください。
+最も単純なキャッシュはMemoryCacheです。これは複数の連続したリクエストを
+サービスし、冗長で高価な問い合わせを行うことを避けたい、データベースに
+アクセスするApache/mod_perlアプリケーションのようなアプリケーションに
+適しています。プロセス間でデータを共有したいのであれば、
+おそらくSharedMemoryCacheが適しているでしょう。しかしシステムによって
+違いのあるベースとなるIPCメカニズムに強く結び付けられ、大きなオブジェクトや
+多くのオブジェクトには向いていません。SharedMemoryCacheが受け入れられない
+ときには、FileCacheが同じ機能を、同じくらいのパフォーマンスで提供します。
+しかもオブジェクトの数やそれらの大きさによって制限されません。
+もしキャッシュのベースとなるファイル・システムの大きさを厳密に制限したい
+のであればSizeAwareFileCacheで実現できます。同様にSizeAwareMemoryCacheと
+SizeAwareSharedMemoryCacheは大きさ管理機能を、それぞれ
+MemoryCacheとSharedMemoryCacheに追加します。
+
+キャッシュの使い方は簡単です。以下のサンプル・コードはファイルシステムを
+ベースとしてキャッシュのインスタンスを作り、利用しています。
+
+  use Cache::FileCache;
+
+  my $cache = new Cache::FileCache( );
+
+  my $customer = $cache->get( $name );
+
+  if ( not defined $customer )
+  {
+    $customer = get_customer_from_db( $name );
+    $cache->set( $name, $customer, "10 minutes" );
+  }
+
+  return $customer;
+
+
+=head1 定数
+
+=over
+
+=item I<$EXPIRES_NEVER>
+
+設定されたキャッシュの中の要素は、決して期限切れになりません。
+
+=item I<$EXPIRES_NOW>
+
+設定されたキャッシュの中の要素は、即、期限切れになります。
+
+=back
+
+=head1 メソッド
+
+=over
+
+=item B<Clear( )>
+
+このタイプの全てのキャッシュから全てのオブジェクトを削除します。
+
+=item B<Purge( )>
+
+このタイプの全てのキャッシュから期限切れになっている全てのオブジェクトを
+削除します。
+
+=item B<Size( )>
+
+このタイプの全てのキャッシュでの全てのオブジェクトの大きさの合計を返します。
+
+=item B<new( $options_hash_ref )>
+
+Cache::Cacheの新しいインスタンスを組み立てます。I<$options_hash_ref>は
+構成オプションが入ったハッシュへのリファレンスです;下記のオプションの
+セクションをご覧ください。
+
+=item B<clear(  )>
+
+このキャッシュ・インスタンスに関連付けられた名前空間から、
+全てのオブエジェクトを削除します。
+
+=item B<get( $key )>
+
+I<$key>に関連付けられたデータを返します。
+
+=item B<get_object( $key )>
+
+I<$key>に関連付けられたキャッシュされたデータを格納するために
+使われている、ベースになっているCache::Objectオブジェクトを返します。
+そのオブジェクトが期限切れであったとしても、キャッシュされたオブジェクトの
+削除を引き起こしません。
+
+=item B<purge(  )>
+
+名前空間から、このキャッシュ・インスタンスに関連付けられている、
+期限が切れている全てのオブジェクトを削除します。
+
+=item B<remove( $key )>
+
+キャッシュからI<$key>に関連付けられているデータを削除します。
+
+=item B<set( $key, $data, [$expires_in] )>
+
+キャッシュの中でI<$data>をI<$key>に関連付けます。I<$expires_in>は
+データが削除されるまでの時間を秒数で、あるいは定数$EXPIRES_NOWや
+$EXPIRES_NEVERで示します。デフォルトは$EXPIRES_NEVERになります。
+この変数は"[number] [unit]"、例えば"10 minutes"という拡張された
+書式にすることもできます。適切な単位はs, second, seconds, sec, 
+m, minute, minutes, min, h, hour, hours, w, week, weeks,
+M, month, months, y, year, そして yearsです。
+さらに$EXPIRES_NOWは"now"で、$EXPIRES_NEVERは"never"で表すことも
+できます。
+
+=item B<set_object( $key, $object )>
+
+I<$key>をCache::Object I<$object>に関連付けます。set_objectを使うこと
+は（setとは逆である）期限の切れたオブジェクトの自動的な削除は
+引き起こしません。
+
+=item B<size(  )>
+
+このキャッシュ・インスタンスに関連付けられた名前空間でのすべての
+オブジェクトの大きさの合計を返します。
+
+=item B<get_namespaces( )>
+
+このタイプのキャッシュに関連付けられた全ての名前空間を返します。
+
+=back
+
+=head1 オプション
+
+以下のいずれかのキーを持っているハッシュへのリファレンスで渡されることにより
+オプションが設定されます:
+
+=over
+
+=item I<namespace>
+
+このキャッシュに関連付けられる名前空間。明示的に指定されなければ
+デフォルトは"Default"です。
+
+=item I<default_expires_in>
+
+キャッシュに置かれたオブジェクトのデフォルトの期限切れ時間。明示的に
+設定されなければデフォルトは$EXPIRES_NEVERです。
+
+=item I<auto_purge_interval>
+
+自動削除の間隔を設定します。（expires_inと同じ書式で）このオプションに
+特定の時間が設定されると、間隔を越えた最初のsetのとき、purge( )ルーチンが
+呼び出されます。そして間隔はリセットされます。
+
+=item I<auto_purge_on_set>
+
+もしこのオプションがtrueであれば、自動削除間隔ルーチンがsetの度に
+チェックされます。
+
+=item I<auto_purge_on_get>
+
+もしこのオプションがtrueであれば、自動削除間隔ルーチンがgetの度に
+チェックされます。
+
+=back
+
+=head1 プロパティ
+
+=over
+
+=item B<(get|set)_namespace( )>
+
+このキャッシュ・インスタンスの名前空間
+
+=item B<get_default_expires_in( )>
+
+このキャッシュ・インスタンに置かれたオブジェクトのデフォルトの期限切れ時間
+
+=item B<get_keys( )>
+
+このキャッシュ・インスタンスに関連付けられた名前空間でのオブジェクトを
+指定するキーのリスト
+
+=item B<get_identifiers( )>
+
+このメソッドではなく、B<get_keys( )>を使うようにしてください。
+
+=item B<(get|set)_auto_purge_interval( )>
+
+自動削除間隔にアクセスします。このオプションが（expires_inと同じ書式で）
+特定の時間に設定されていれば、その間隔の後の最初のgetのとき、
+purge( )ルーチンが呼び出されます。そして間隔はリセットされます。
+
+=item B<(get|set)_auto_purge_on_set( )>
+
+このプロパティがtrueであれば、自動削除間隔ルーチンがsetの度にチェックされます。
+
+=item B<(get|set)_auto_purge_on_get( )>
+
+このプロパティがtrueであれば、自動削除間隔ルーチンがgetの度にチェックされます。
+
+=back
+
+=head1 参考資料
+
+Cache::Object, Cache::MemoryCache, Cache::FileCache,
+Cache::SharedMemoryCache, and Cache::SizeAwareFileCache
+
+=head1 作者
+
+Original author: DeWitt Clinton <dewitt@unto.net>
+
+Last author:     $Author$
+
+Copyright (C) 2001, 2002 DeWitt Clinton
+
