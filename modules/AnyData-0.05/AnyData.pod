@@ -1,0 +1,689 @@
+=pod
+
+=head1 名前
+
+  AnyData -- 多くのフォーマットのデータへの簡単なアクセス
+
+=head1 概要
+
+ $table = adTie( 'CSV','my_db.csv','o',            # テーブルの作成
+                 {col_names=>'name,country,sex'}
+               );
+ $table->{Sue} = {country=>'de',sex=>'f'};         # 行の挿入
+ delete $table->{Tom};                             # 1つの行の選択
+ $str  = $table->{Sue}->{country};                 # 1つの行の削除
+ while ( my $row = each %$table ) {                # テーブル全体のループ
+   print $row->{name} if $row->{sex} eq 'f';
+ }
+ $rows = $table->{{age=>'> 25'}}                   # 複数の行を選択
+ delete $table->{{country=>qr/us|mx|ca/}};         # 複数の行を削除
+ $table->{{country=>'Nz'}}={country=>'nz'};        # 複数の行を更新
+ my $num = adRows( $table, age=>'< 25' );          # マッチする行のカウント
+ my @names = adNames( $table );                    # カラム名の取得
+ my @cars = adColumn( $table, 'cars' );            # カラムをまとめる
+ my @formats = adFormats();                        # 利用できるパーサーのリスト
+ adExport( $table, $format, $file, $flags );       # 指定されたフォーマットで保存
+ print adExport( $table, $format, $flags );        # そのフォーマットで画面に出力
+ print adDump($table);                             # 画面にテーブルをダンプ
+ undef $table;                                     # テーブルをクローズ
+
+ adConvert( $format1, $file1, $format2, $file2 );  # フォーマット間で変換
+ print adConvert( $format1, $file1, $format2 );    # 画面に変換
+
+
+=head1 説明
+
+このモジュールとその姉妹モジュールDBD::AnyDataの裏にあるどちらかといえば
+風変わりアイデアは、全てのデータはソースやフォーマットに関係なく、
+同じ簡単なメソッドのセットでアクセスしたり、変更することができるべきだ
+ということです。このモジュールは多次元の、数多くの異なるフォーマットの
+データにtieされたハッシュ・インターフェースを提供します。DBD::AnyData
+モジュールは、それらの同じフォーマットのためのDBI/SQLインタフェースを
+追加しています。 
+
+どちらのモジュールもすべてのI/Oのために適切なflocking()、
+そして（ほとんどの場合）ファイル全体を取り込むのではなく
+レコード毎のアクセスも含む組み込みの保護機能を提供します。 
+
+現在のところサポートされているフォーマットには汎用的なフォーマットで
+あるフラットファイル（CSV、固定長など）、特定のフォーマット
+（passwdファイル、httpdログなど）、そしてその他の種類のフォーマットの
+数々（XML、Mp3、HTMLテーブル）が含まれます。AnyDataそれ自身に
+組み込むことができ、そのためにtieされたハッシュとDBI/SQL
+インタフェースのどちらからもアクセスすることができる追加の
+フォーマット・パーサーを作ることを簡単にするオープンなAPIがあるので、
+サポートされるフォーマットの数は増え続けていきます。 
+
+=head1 必要なもの
+
+AnyData.pm モジュールそれ自身はpure Perlで、標準にPerlと一緒に入ってくる
+モジュール以外に何も依存していません。フォーマットあるいは高度な機能の中
+には追加のモジュールを必要とするものもあります：リモートのftp/http機能を
+使うためには、LWPバンドルをインストールしなければなりません；XMLフォーマットを
+使うには、XML::ParserとXML::Twigをインストールしなければなりません；HTMLテーブルフォーマットを
+読むためにはHTML::ParserとHTML::TableExtractをインストールする必要があります。
+しかしHTMLテーブルを出力するには標準のCGIモジュールだけで使うことができます。
+DBI/SQLコマンドを使うためには、DBI、DBD::AnyData、SQL::StatementそしてDBD::Fileを
+インストールしなければなりません。
+
+=head1 使い方
+
+ AnyData モジュールは8つのメソッド（関数）をインポートします:
+
+  adTie()     -- 新しいテーブルを作るか、既にあるテーブルを開きます
+  adExport()  -- 既にあるテーブルを指定されたフォーマットで保存します
+  adConvert() -- あるフォーマットから別のフォーマットにデータを変換します
+  adFormats() -- 利用できるフォーマットの一覧
+  adNames()   -- テーブルのカラム名を取得します
+  adRows()    -- テーブルもしくは問い合わせの行の数を取得します
+  adDump()    -- 行の配列としてフォーマットされたデータを表示します
+  adColumn()  -- １つのカラムに値をまとめる
+
+ adTie() コマンドは特別にtieされたハッシュを返します。tieされたハッシュは 
+ データをアクセスそして／あるいは変更するために使うことができます。詳細は下記をご覧ください。
+
+XML、HTMLテーブルそしてARRAYフォーマットを除いて、adTie()コマンドは変更されると
+ そのときに直接ファイルにすべての変更を保存します。
+ XMLとHTMLテーブルではメモリ上で変更し、明示的にadExport()でファイルに保存しなければなりません。
+
+=head2 adTie()
+
+ my $table = adTie( $format, $data, $open_mode, $flags );
+
+adTie()コマンドはtieされた多次元のハッシュへのリファレンスを作成します。
+その非常に単純な形式では、単にファイルを指定されたフォーマットで
+tieされたハッシュに読み込むだけです： 
+
+ my $table = adTie( $format, $file );
+
+ $formatはサポートされているフォーマットの名前 'CSV'、'Fixed'、'Passwd'などです。
+ $fileはローカル・ファイルへの相対または絶対パス名です。
+
+ e.g. my $table = adTie( 'CSV', '/usr/me/myfile.csv' );
+
+      これはファイル'myfile.csv'からCSV（カンマ区切り(=comma separated values)）
+      フォーマットでデータを読み込むことにより、$tableというtieされたハッシュを作成します。
+
+adTie()からの結果であるハッシュ・リファレンスは以下のようにアクセス、変更することができます：
+
+ use AnyData;
+ my $table = adTie( $format, $file );
+ $table->{$key}->{$column}                       # 値の選択
+ $table->{$key} = {$col1=>$val1,$col2=>$val2...} # 行の更新
+ delete $table->{$key}                           # 行の削除
+ while(my $row = each %$table) {                 # 行全てのループ
+   print $row->{$col1} if $row->{$col2} ne 'baz';
+ }
+
+adTieにより返されるもの(例では$table)はオブジェクトではなく、
+tieされたハッシュです。つまりexists、values、keysのようなハッシュ操作を
+使うことができるということです。これがtieされたハッシュへの*リファレンス*で
+あることを忘れないでください。そのため書き方は以下のようになります
+
+    for( keys %$table ) {...}
+    for( values %$table ) {...}
+
+テーブルが本当に大きければ、おそらくkeysとvaluesを使いたくないでしょう、
+というのもそれらはテーブルの各行からのデータが入った配列をメモリ上に
+作るからです。代わりに上記のように'each'を使ってください。というのも
+それはメモリにテーブル全体をおくのではなくファイル全体を通して
+1レコード毎に繰り返すからです。 
+
+より高度な検索をハッシュにかけることも可能です。下記の"複数行の操作"をご覧ください。
+
+簡単なadTime($format, $file)に加えて、adTie()コマンドで追加の情報を指定する
+他の方法があります。全体の書き方は以下の通りです： 
+
+ my $table = adTie( $format, $data, $open_mode, $flags );
+
+ $dataパラメータはhttpまたはftpでアクセスすることができるリモート・ファイルから
+ データを読むことが可能です。下記の"リモート・ファイル"をご覧ください。ファイルを
+ まったく必要とせずに文字列や配列をデータとして扱うことも可能です。下記の
+ "文字列や配列で動かす"をご覧ください。
+
+オプションの$modeパラメータは何も与えられなければデフォルトは'r'です。以下のいずれかに
+しなければなりません
+
+ 'r' read      # 読み込みのみアクセス
+ 'u' update    # read/write アクセス
+ 'c' create    # ファイルがすでになければ新しいファイルを作成
+ 'o' overwrite # すでにファイルがあれば上書きして、新しいファイルを作成
+
+$flags パラメータによりカラム名のような追加の情報を指定することができます。下記の
+セクション"詳細情報"をご覧ください。
+
+XML、HTMLtableそしてARRAYフォーマットの例外を除いて、adTie()コマンドは
+全てのデータの変更を変更されたときに直接ファイルに保存します。XMLと
+HTMLtableではメモリ上で変更をおこない、adExport()で明示的にファイルに
+出力しなければなりません。 
+
+=head2 adConvert()
+
+ adConvert( $format1, $data1, $format2, $file2, $flags1, $flags2 );
+
+ または
+
+ print adConvert( $format1, $data1, $format2, undef, $flags1, $flags2 );
+
+ または
+
+ my $aryref = adConvert( $format1, $data1, 'ARRAY', undef, $flags1 );
+
+ このメソッドはサポートされているフォーマットのデータを他のサポートされている
+ フォーマットに変換します。結果のデータは（$file2がパラメータとして与えられれば）
+ ファイルに保存されるか、（$file2が与えられなければ）例えば画面に新しい
+ フォーマットで出力するようなために文字列として返されるか、あるいは$format2が
+ 'ARRAY'であれば配列リファレンスとして返されます。
+
+ いくつかの例:
+
+   # CSV ファイルをXMLファイルに変換
+   #
+   adConvert('CSV','foo.csv','XML','foo.xml');
+
+   # CSVファイルをHTMLテーブルに変換し、画面に出力
+   #
+   print adConvert('CSV','foo.csv','HTMLtable');
+
+   # XML文字列をCSVファイルに変換
+   #
+   adConvert('XML', ["<x><motto id='perl'>TIMTOWTDI</motto></x>"],
+             'CSV','foo.csv'
+            );
+
+   # 配列リファレンスをXMLファイルに変換
+   #
+   adConvert('ARRAY', [['id','motto'],['perl','TIMTOWTDI']],
+             'XML','foo.xml'
+            );
+
+   # XMLファイルを配列リファレンスに変換
+   #
+   my $aryref = adConvert('XML','foo.xml','ARRAY');
+
+ 詳細は下記の"文字列と配列を使う"をご覧ください。
+
+=head2 adExport()
+
+ adExport( $table, $format, $file, $flags );
+
+ または
+
+ print adExport( $table, $format );
+
+ または
+
+ my $aryref = adExport( $table, 'ARRAY' );
+
+ このメソッドは既にあるtieされたハッシュを他のフォーマットに変換し、
+ そして/またはtieされたハッシュを指定されたフォーマットでファイルに保存します。
+
+ いくつかの例:
+
+   すべて先に my $table= adTie(...);が呼ばれているものとします
+
+   # テーブルをXMLファイルにエクスポート
+   #
+   adExport($table','XML','foo.xml');
+
+   #  テーブルをHTML文字列にエクスポートし、画面に出力
+   #
+   print adExport($table,'HTMLtable');
+
+   # テーブルを配列リファレンスにエクスポート
+   #
+   my $aryref = adExport($table,'ARRAY');
+
+ 詳細は下記の"文字列と配列を使う"をご覧ください。
+
+=head2 adNames()
+
+ my $table = adTie(...);
+ my @column_names = adNames($table);
+
+このメソッドは指定されたテーブルのためのカラム名の配列を返します。
+
+=head2 adRows()
+
+ my $table = adTie(...);
+ adRows( $table, %search_hash );
+
+このメソッドはadTie()で作成されたAnyDataのtieされたハッシュを取り、
+検索ハッシュ(search hash)にマッチするテーブルの行を数えます。
+
+例えば以下の簡単なスクリプトはrequestカラムに指定されたページが
+入っているファイルでの行の数を返します。 
+
+  my $hits = adTie( 'Weblog', 'access.log');
+  print adRows( $hits , request => 'mypage.html' );
+
+検索ハッシュ(search hash)には複数の検索条件を入れることができます。
+下記の複数行の操作についてのセクションをご覧ください。 
+
+検索ハッシュ(search_hash)が省略されると、すべての行の数を返します。 
+
+=head2 adColumn()
+
+ my @col_vals = adColumn( $table, $column_name, $distinct_flag );
+
+このメソッドは指定されたカラムから値の配列を返します。
+もしdistinct_flagがあれば、重複はリストから削除されます。 
+
+例えば、以下の簡単なスクリプトはテーブルの'player'カラムでの
+ユニークな値のリストを返します。 
+
+  my $game = adTie( 'Pipe','games.db' );
+  my @players  = adColumn( $game, 'player', 1 );
+
+=head2 adDump()
+
+  my $table = adTie(...);
+  print adDump($table);
+
+このメソッドはテーブルの生のデータを出力します。カラム名は鍵括弧の中に
+出力され、コロンで区切られ、最初の行に出力されます。そして各行は角括弧の
+中の値のリストで出力されます。 
+
+=head2 adFormats()
+
+  print "$_\n for adFormats();
+
+このメソッドは利用できるフォーマット・パーサ　例えば'CSV'、'XML'などを
+表します。これは../AnyData/Formatディレクトリを探すために@INCを見ます。
+そしてそこにあったフォーマット解析ファイルの名前を出力します。パーサーが
+さらにモジュールを必要とし（例えばXMLはXML::Parserを必要とします）、
+追加のモジュールをインストールしていなければ、このコマンドでリストされて
+いても、そのフォーマットは動きません。そうでなければすべてのフォーマットは
+このドキュメントで説明している通りに動くはずです。 
+
+=head1 詳細情報
+
+=head2 カラム名
+
+カラム名は以下の3つの方法で決まります:
+
+ * 事前  -- フォーマット・パーサーがあらかじめカラム名を与えている
+            (例えば　Passwd は自動的に'username','homedir', 'GID'などの
+           名前のカラムを持っています)。
+
+ * ユーザ -- ユーザがキー'cols'で関連付けられたカンマ区切りの、
+           文字列でカラム名を指定する:
+
+           my $table = adTie( $format,
+                              $file,
+                              $mode,
+                              {cols=>'name,age,gender'}
+                            );
+
+ * 自動 -- あらかじめ決められたカラム名のリストがなく
+           ユーザが定義しなければ、ファイルの先頭行が
+           カラム名のリストとして扱われます；
+           その行は指定されたフォーマットに従って解析されます
+           (例えば CSV カラム名はカンマ区切りリスト、Tabカラム名は
+           タブで区切られたリスト);
+
+カラム名があらかじめ決まっていないフォーマットで新しいファイルを作るとき、
+ユーザは上記のようにして手動で設定*しなければなりません*。
+
+いくつかのフォーマットはカラム名を代入するために特別な決まりを持っています
+（XML、Fixed、HTMLtables)。下記のそれらのフォーマットのセクションをご覧ください。
+
+=head2 キー・カラム
+
+AnyDataモジュールは各行を一意に識別できる１つのキー・カラムを持っているテーブルと
+同様にキーを持たないテーブルをサポートしています。一意となるキーを持っているテーブルに
+ついては、キーは3つの方法で設定することができます:
+
+ * 事前 -- フォーマット・パーサーが自動的にあらかじめキー・カラム
+           を割り当てます。Passwdファイルは自動的に
+           キー・カラムとして'username'を持っています。
+
+
+ * ユーザ -- ユーザがキー・カラム名を指定します：
+
+           my $table = adTie( $format,
+                              $file,
+                              $mode,
+                              {key=>'country'}
+                            );
+
+
+ * 自動 -- 何もあらかじめ決まっているキー・カラムがなく、ユーザが定義
+           しなければ、最初のカラムがデフォルトのキー・カラムに
+           なります
+
+=head2 フォーマット特有の詳細
+
+ 完全な詳細については、AnyData::Format::Fooのドキュメントをご覧ください。
+ FooにはadFormats()コマンドでリストされるフォーマットのいずれかが入ります。
+ 例えば 'CSV'、'XML'など。
+
+ 特定のパーサーのさらに重要な詳細のいくつかだけを以下に示します。
+
+=over
+
+=item 固定長(Fixed)フォーマット
+
+固定長レコードのための固定長（Fixed）フォーマットを使うときには、
+フィールドの長さを示すパターンを常に指定しなければなりません。
+固定長(Fixed length)定義でレコードをunpackするために、これは
+unpack()関数に渡される文字列でなければなりません:
+
+ my $t = adTie( 'Fixed', $file, 'r', {pattern=>'A3 A7 A9'} );
+
+固定長(Fixed)ファイルの先頭行にカラムの名前をいれたければ、
+固定長ではなくカラムが区切られたフォーマットでなければなりません。
+これは先頭行でのカラム名の表示にそれ自身のフォーマットを使う他の
+フォーマットとは異なります。これはカラムの長さよりもカラム名の長さの
+ほうが長いかもしれないために必要です。
+
+=item XMLフォーマット
+
+ XMLフォーマットはカラム名をフラグとして指定することを許していません。
+ 代わりに"レコード・タグ(record tag)"を指定し、カラム名はそのタグの
+ 内容から決められるようにします。レコード・タグが指定されなければ、
+ レコード・タグはXMLツリーのルートの最初の子供だと想定されます。子供と
+ その構造は、もしあればDTDから判定され、DTDがなければ最初のレコードから
+ 判定されます。 
+
+簡単なXMLでは何もフラグは必要ありません： 
+
+ <table>
+    <row row_id="1"><name>Joe</name><location>Seattle</location></row>
+    <row row_id="2"><name>Sue</name><location>Portland</location></row>
+ </table>
+
+レコード・タグはデフォルトでは"row"という最初の子供になります。カラム名は
+レコード・タグの属性とレコード・タグの下に入っているすべてのタグから生成
+されます。そのためこの例でのカラム名は"row_id"、"name","location"に
+なります。
+
+もしレコード・タグが最初の子供でなければ、指定する必要があります。例えば： 
+
+ <db>
+   <table table_id="1">
+     <row row_id="1"><name>Joe</name><location>Seattle</location></row>
+     <row row_id="2"><name>Sue</name><location>Portland</location></row>
+   </table>
+   <table table_id="2">
+     <row row_id="1"><name>Bob</name><location>Boise</location></row>
+     <row row_id="2"><name>Bev</name><location>Billings</location></row>
+   </table>
+ </db>
+
+この場合、それがツリーの最初の子供ではないので、"row"をレコード・タグとして
+指定する必要があります。カラム名は(もし親がルートでなければ)rowの親の属性、
+rowの属性、サブのタグから作られます。つまり"table_id"、"row_id"、"name"、
+"location"になります。
+
+XMLに出力するとき、出力を制御するためにDTDを指定することができます。例えば、
+CSVまたは配列(Array)からテーブルをインポートしたとき、XMLとして出力する
+ことができます。どのカラムがタグになり、どれが属性となるか、そしてタグの
+ネストもDTDで指定することができます。
+
+XMLフォーマット・パーサーは、それ自身はXML::Parserをベースとしている、
+Michel RodriguezのXML::Twigの上に構築されています。これらのモジュールの
+パラメータは、adTie()や他のコマンドのためのフラグで渡すことができます。
+これにはXMLをどのように出力するかを指定するための"prettyPrint"フラグや
+同様のProtocolEncodingも含まれます。ProtocolEncodingのデフォルトは
+'ISO-8859-1'で、他のすべてのフラグはXML::TwigとXML::Parserのデフォルトが
+保たれています。詳細についてはそれらのモジュールのドキュメントを
+ご覧ください;
+
+ 注意：他のフォーマットとは違い、XMLフォーマットは変更をそれが入った時点では
+ 保存せず、adExport()コマンドで明示的に保存するよう要求したときにのみ変更が
+ 保存されます。
+
+=item HTMLテーブル(HTMLtable) フォーマット 
+
+ このフォーマットはMatt Siskの素晴らしいHTML::TableExtractをベースとしています。
+
+ HTMLページから既にあるテーブルから読み込んだり、任意のデータソースから
+ 新しいHTMLテーブルを作るために使うことができます。
+
+ HTMLテーブルにあるどのテーブルを使うのかは、column_names、depth、countフラグで
+ 制御することができます。
+
+ column_nameフラグが渡されると、行のセルとしてそれらの名前を持った
+ 最初のテーブルが選択されます。
+
+ depthとcountパラメータが渡されると、それはHTML::TableExtractドキュメントで
+ 指定されているようにテーブルを探します。
+
+ column_names、depth、countフラグが何も指定されなければ、そのファイルで最初に
+ つかったテーブルが選択され、その最初の行がそのテーブルのためのカラム名を
+ 決めるために使われます。
+
+ HTMLテーブル(HTMLtable)にエクスポートするとき、テーブル全体（table_flag)、
+ カラム名が入った先頭行(top_row_flags)、そしてデータ行（data_row_flags）の
+ プロパティを指定するフラグを渡すことができます。これらのフラグはCGI.pmでの
+ テーブルを作成する書き方に従います。例えば :
+
+ print adExport( $table, 'HTMLtable', {
+     table_flags    => {Border=>3,bgColor=>'blue'};
+     top_row_flags  => {bgColor=>'red'};
+     data_row_flags => {valign='top'};
+ });
+
+ table_flagsは何も指定されなければ、デフォルトでは
+ {Border=>1,bgColor=>'white'}になります。
+
+ top_row_flagsは何も指定されなければデフォルトでは{bgColor=>'#c0c0c0'} に
+ なります;
+
+ data_row_flagsは何も指定されなければ空になります。
+
+ 言い換えれば、何もフラグが指定されなければ、テーブルはボーダーが1で
+ カラム・ヘッダがグレー、データ行は白になります。
+
+ 注意：このモジュールは選択されたテーブルを除いて、HTMLファイルの中のものを
+ *何も*保存しません。そのため選択したテーブル以外のものがファイルに入っているのであれば、
+ adTie()あるいは$dbh->func(...,'ad_import')を使ってテーブルを読み込み、
+ adExport()あるいは$dbh->func(...,'ad_export')で別のファイルにテーブルを
+ 出力したくなるでしょう。HTMLtableフォーマットを使っているときには、
+ これがデータへの変更を保存するための唯一の方法です。adTie()コマンドは
+ ファイルに*書き込みません*。
+
+=back
+
+=head2 複数行の操作
+
+adTie()から返されるAnyDataハッシュはキーとして1つの値またはキーと比較される
+ハッシュへのリファレンスのどちらも使うことができます。もしハッシュへのキーが
+1つの値であれば、ハッシュは1つの行に対して動作します。しかしハッシュへの
+キー自体がハッシュ・リファレンスであればハッシュは行のグループに対して
+動作します。
+
+ my $num_deleted = delete $table->{Sue};
+
+この例はキー・カラムの値が'Sue'である１つの行を削除します。もし複数行が
+そのカラムに値'Sue'を持っていれば、先頭の行だけが削除されます。
+これは単純な文字列をキーとして使っており、そのため1つの行に対してのみ動作します。 
+
+ my $num_deleted = delete $table->{ {name=>'Sue'} };
+
+この例はカラム'name'が'Sue'であるすべての行を削除します。キーとして
+ハッシュ・リファレンスを使っているので、これは複数の行に動作します。
+
+この例で使われているハッシュ・リファレンスは１つのカラムの比較ですが、
+ハッシュ・リファレンスには複数カラムの比較も入れることができます。
+以下の例ではcountry, gender, そして age カラムの値が指定されたものと
+同じである全ての行を削除します:
+
+  my $num_deleted = delete $table->{{ country => 'us',
+                                       gender => 'm',
+                                          age => '25'
+                                   }}
+
+
+単純な文字列に加えて、その値には正規表現や数値やアルファベットの比較も
+指定することができます。以下の例ではすべての北アメリカでの25未満の
+男性('male'）を削除します:
+
+  my $num_deleted = delete $table->{{ country => qr/mx|us|ca/,
+                                      gender  => 'm',
+                                      age     => '< 25'
+                                   }}
+
+もし数値あるいは文字の比較が使われるならば、値とは空白で分けられた比較演算子が
+入った文字列でなければなりません。例えば'> 4'や'lt b'など。
+
+この種のハッシュ・リファレンスは複数行を削除するだけでなく、行を更新するために
+使うことができます。事実、テーブルを更新するためにはハッシュ・リファレンスキーを
+使わなければ*なりません*。更新は１つの文字列キーではできない唯一の操作です。
+
+検索ハッシュ・リファレンスはSELECTステートメントでも使うことができます。
+その場合には、比較条件にマッチする行の配列へのリファレンスを返します： 
+
+ my $male_players = $table->{{gender=>'m'}};
+ for my $player( @$male_players ) { print $player->{name},"\n" }
+
+これは大きなテーブルで使うときには注意が必要です。選択されたすべての行をメモリ上の
+配列に集めるからです。ここでも'each'が大きなテーブルのためのよりよい方法です。
+以下のでは例と同じことをやっていますが、一度にメモリへ1行以上引っ張り込むことが
+ありません： 
+
+ while( my $row= each %$table ) {
+   print $row->{name}, "\n" if $row->{gender}=>'m';
+ }
+
+複数行のための検索条件はadRows()関数でも使うことができます:
+
+  my $num_of_women = adRows( $table, gender => 'w' );
+
+これはメモリ上にテーブル全体をひっぱてきません。1度には1レコードを数えます。
+
+=head2 リモート・ファイルを使う
+
+adTie()やadConvert()の最初のファイル・パラメータが"http://"や"ftp://"で始まっていれば、
+ファイルはリモートのURLとして扱われ、ファイルを取り出すために裏でLWPモジュールが
+呼び出されます。もしファイルが認証が必要な領域にあれば、それを$flagsパラメータで
+与えることができます。
+
+例えば:
+
+  # リモート・ファイルを読み込み、tieされたハッシュでアクセスする
+  #
+  my $table = adTie( 'XML', 'http://www.foo.edu/bar.xml' );
+
+  # 同じことをusername/password　をつけて
+  #
+  my $table = ( 'XML', 'ftp://www.foo.edu/pub/bar.xml', 'r'
+                { user => 'me', pass => 'x7dy4'
+              );
+
+  # リモート・ファイルを読み込み、それをHTMLテーブルに変換し、出力
+  #
+  print adConvert( 'XML', 'ftp://www.foo.edu/pub/bar.xml', 'HTMLtable' );
+
+=head2 文字列と配列の使い方
+
+文字列と配列は入力データのソースとしても出力データのターゲットとしても使うことができます。
+文字列は配列リファレンス(言い換えれば角括弧の内側)の唯一の要素として渡されなければ
+なりません。配列はカラム名の配列へのリファレンスが最初の要素、その後ろは行の値の
+配列へのリファレンスである配列へのリファレンスでなければなりません。 
+
+例えば:
+
+  my $table = adTie( 'XML', ["<x><motto id='perl'>TIMTOWTDI</motto></x>"] );
+
+  これは与えられた文字列をXMLフォーマットとして使い、結果としてのテーブルへの
+  tieされたハッシュを返します。
+
+  my $table = adTie( 'ARRAY', [['id','motto'],['perl','TIMTOWTDI']] );
+
+  これはカラム名"id"と"motto"を使い、行の値を与え、
+  結果のテーブルにtieされたハッシュを返します。
+
+任意のフォーマットの空のtieされたハッシュを作るために空の配列を使うことができます。
+例えば：
+
+  my $table = adTie('XML',[],'c');
+
+  これは新しい空のtieされているハッシュを作ります;
+
+文字列と配列の使い方のさらなる例はadConvert()とadExport()をご覧ください。
+
+=head2 Tie、Flock、 I/O　そして原始性(Atomicity) 
+
+AnyDataはflockの制約の元でファイル・ロックを提供します--他のプロセスが
+そのファイルに同じようにflockを使ってアクセスし、flockをサポートしている
+プラットホームでしか機能しません。詳細についてはflock()マニュアル・ページを
+ご覧ください。
+
+以下にオープン・モードで与えたものが実際に何をするかを示します:
+
+ r = 読み込みのみ  (LOCK_SH)  O_RDONLY
+ u = 更新          (LOCK_EX)  O_RDWR
+ c = 作成          (LOCK_EX)  O_CREAT | O_RDWR | O_EXCL
+ o = 上書          (LOCK_EX)  O_CREAT | O_RDWR | O_TRUNC
+
+"my $table = adTie(...)"のように使うとき、ロックつきでファイルを
+オープンし、1)ハッシュ変数($table)がスコープから外れる 
+2)ハッシュが未定義になる(例えば "undef $table")　あるいは 3)ハッシュが
+他のtieに再割り当てされるまでロックをかけます。全てのケースで、
+ファイルが閉じられ、ロックが解放されます。
+
+もしadTieがtieされたハッシュ変数を作ることなく呼ばれると、ファイルは
+閉じられ、ロックはadTieが呼び終わるとすぐに解放されます。
+
+ 例えば:  print adTie('XML','foo.xml')->{main_office}->{phone}.
+
+ これは共有ロックを取得し、ファイルをオープンし、要求された値の１つを取り出し、
+ ファイルをクローズし、ロックを解放します。
+
+以下の２つの例は同じ事をしていますが、最初の例ではファイルを一度オープンし、
+すべての削除をおこない、すべて終わるまで占有ロックを続け、ファイルをクローズ
+しています。2番目の例では、ファイルのオープン、クローズを３回しています。
+削除のたびに一度占有ロックをし、それぞれの削除の間は、その占有ロックを
+解放しています:
+
+ 1. my $t = adTie('Pipe','games.db','u');
+    delete $t->{"user$_"} for (0..3);
+    undef $t; # ファイルをクローズし、ロックを解放します
+
+ 2. delete adTie('Pipe','games.db','u')->{"user$_"} for (0..3);
+    # ハッシュ･変数が作られないのでundefは必要ありません
+
+=head2 削除とパッキング
+
+時間を節約し、ファイルの末尾を除いてどこでも書き込むことを防ぐため、deleteコマンドを
+したときには削除や更新が行われません。ユーザが削除しているときに削除された
+レコードの位置がハッシュに格納され、ファイルがディスクに保存されるときにだけ、
+データベース全体をパックすることにより物理的に削除されます。
+更新はファイルの末尾に新しいレコードを挿入し、古いレコードに削除のマークを
+つけることにより行われます。通常のイベントのコースでは、このすべてが
+トランスペアレントで、これについてまったく心配する必要はありません。しかし
+あなたが更新または削除した後、ファイルを保存する前にサーバーがダウンして
+しまったら、削除された行はデータベースに残り、更新については複数の行が
+あるかもしれません--古い更新されていない行と新しく更新された行という。
+このような種類のイベントを恐れるのであれば、上記のセクションで表したような
+原始的な削除と更新を使ってください。まだ削除と保存の間にクラッシュする
+ほんの小さな可能性はありますが、この場合、影響があるのはほとんど1つの行です。
+（削除の取り扱いについて提案してくれたMatthew Wicklineに感謝します）
+
+=head1 さらなるヘルプ
+
+さらなる例についてはモジュールに含まれるREADMEファイルとtest.plをご覧ください。
+
+特定のフォーマットの詳細については、 AnyData/Format/*.pm PODをご覧ください。
+
+さらなるサポートについては、 comp.lang.perl.modulesをお使いください
+
+=head1 謝辞
+
+Special thanks to Andy Duncan, Tom Lowery, Randal Schwartz, Michel Rodriguez, 
+Jochen Wiedmann, Tim Bunce, Aligator Descartes, Mathew Persico, Chris Nandor, 
+Malcom Cook and to many others on the DBI mailing lists and the clp* newsgroups.
+
+=head1 作者と著作権(=AUTHOR & COPYRIGHT)
+
+ Jeff Zucker <jeff@vpservices.com>
+
+ This module is copyright (c), 2000 by Jeff Zucker.
+ It may be freely distributed under the same terms as Perl itself.
+
+=head1 翻訳者
+
+川合孝典(GCD00051@nifty.ne.jp)
+
