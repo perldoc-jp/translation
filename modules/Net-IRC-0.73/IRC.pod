@@ -1,0 +1,451 @@
+=head1 NAME
+
+Net::IRC - Internet Relay ChatプロトコルのPerlインターフェース
+
+=head1 SYNOPSIS
+
+    use Net::IRC;
+
+    $irc = new Net::IRC;
+    $conn = $irc->newconn(Nick    => 'some_nick',
+                          Server  => 'some.irc.server.com',
+                          Port    =>  6667,
+                          Ircname => 'Some witty comment.');
+    $irc->start;
+
+=head1 DESCRIPTION
+
+Net::IRCへようこそ．これは進行中のプロジェクトです．Net::IRCは最初Perl
+で素早くIRCスクリプトを書くためのツールとして計画されましたが，Perlによ
+るIRCプロトコル(RFC 1459)の包括的な実装に成長しました．EFnetのIRCチャン
+ネル#perlの数人のメンバによって開発され，チャンネル#net-ircにおいて維持
+管理されています．
+
+Net::IRCは4つのモジュールによって構成されています．
+
+=over
+
+=item *
+
+Net::IRC
+
+他のモジュール全てのラッパーで，Connectionオブジェクト(下記参照)を生成
+するメソッドを持ち，全ての利用可能なファイルハンドルに対しイベントルー
+プを行って接続を管理します．読み込み可能な(あるいは書き込み可能な，及び
+select()で使うあらゆる種類の)ソケットやファイルは，他のパッケージやユー
+ザコード内にあるユーザ作成のハンドラ用サブルーチンに渡されます．
+
+=item *
+
+Net::IRC::Connection
+
+このプロジェクトでとても多くの時間を割いた部分です．一つのConnectionの
+インスタンスは一つのIRCサーバへの一つのコネクションです．このモジュール
+自身が持っているのは，ユーザが利用可能な全てのIRCコマンドを個々に発行す
+るメソッド(明らかな理由により，Net::IRCはサーバを書くためには設計されて
+いません)，ユーザが設定可能なハンドラ用関数を設定し，取り出し，呼び出す
+メソッド(詳細は後ほど)，そして豊富な気の利いたコメントです．やあ，私が
+言えるのは，私たちはみんなうんざりしてたってことです．
+
+=item *
+
+Net::IRC::Event
+
+IRCサーバがあなたのクライアントに知らせる内容(サーバレスポンス，チャン
+ネルでの会話，参加や退出など)を保持するための構造体のような感じのオブジ
+ェクトです．これは，誰がそのイベントを開始したか，誰が影響を受けたか，
+イベントタイプ，そのイベントに与えられるその他全ての引数を記録します．
+また，この引数のみがハンドラ用関数に渡されます．
+
+=item *
+
+Net::IRC::DCC
+
+DCCプロトコルを用いて接続や送信，受信を行うConnection.pmに類似のオブジ
+ェクトです．DCC.pmのインスタンスは，C<IRC-E<gt>newconn>が
+C<Connection-E<gt>new>を呼び出すのと同じ方法で，
+C<Connection-E<gt>new_{send,get,chat}>によって呼び出されます．This will
+make more sense later, we promise.
+
+=back
+
+Net::IRC作成の中心のコンセプトはハンドラ(あるいはフックやコールバックな
+ど，あなたの好きな呼び方で)にあります．私たちはこれをTk流の完全なイベン
+トドリブンモデルになるように努めました．つまり，クライアントがIRCで出会
+うであろう全種類のイベントに対して，自作のサブルーチンを呼び出すことが
+できます．さらに，ハンドラには3レベルの優先順位があります．
+
+=over
+
+=item *
+
+デフォルトハンドラ
+
+これらは直接Net::IRCの中に書き込まれていて変更することができないので，
+クライアントがサーバと通信可能にしておくための必要最低限のこと以上は行
+いません．またオプションで受信したものを指定したファイルハンドル(デフォ
+ルトはSTDOUT)に(もちろんきちんとフォーマットして)出力することができます．
+デフォルトハンドラはユーザが同じイベントに自作のハンドラを一つも定義し
+ていない場合にのみ呼び出されます．
+
+=item *
+
+ユーザ定義可能なグローバルハンドラ
+
+プログラム内で扱われるIRCコネクションI<全て>に対して標準の動作を自作の
+サブルーチンで置き換えることができます．ユーザ定義可能なグローバルハン
+ドラはユーザが同じイベントにコネクションハンドラを設定していない場合に
+のみ呼び出されます．
+
+=item *
+
+ユーザ定義可能なコネクションハンドラ
+
+これは単純に，個々のコネクションに対して，あるタイプのイベントを受け取
+ったときに行うことを伝えます．もしそのイベントに対して何か定義されれば，
+グローバルハンドラに取って代わります．
+
+=back
+
+さらに良いことには，デフォルトハンドラを置き換えてしまうかわりに，その
+前や後に自作のハンドラを呼び出すようにすることもできます．In short,
+it's not perfect, but it's about as good as you can get and still be
+documentable, given the sometimes horrendous complexity of the IRC
+protocol.
+
+=head1 GETTING STARTED
+
+=head2 Initialization
+
+Net::IRCのスクリプトを開始するためには2つのものが必要です．一つは
+Net::IRCオブジェクトで，もう一つはNet::IRC::Connectionオブジェクトです．
+Connectionオブジェクトはサーバへの接続という嫌な仕事をしてくれ，そのた
+めにIRCオブジェクトは入出力を処理します．そのことを行うために，例えば次
+のようにしてください．
+
+    use Net::IRC;
+
+    $irc = new Net::IRC;
+
+    $conn = $irc->newconn(Nick    => 'some_nick',
+                          Server  => 'some.irc.server.com');
+
+newconn()に使用可能なパラメータは次の通りです．
+
+=over
+
+=item *
+
+Nick
+
+IRC上で他の人に見えるニックネーム．たいてい最大9文字に制限されています．
+ニックネームに使用可能な文字はC<[\w{}[]\`^|-]>です．nickを指定しないと
+usernameと同じに設定されます．
+
+=item *
+
+Server
+
+接続するIRCサーバ．広く使われる複数のIRCネットワーク全域で何十ものIRCサ
+ーバがありますが，最も古くて最も一般的なものはEFNet(Eris Free Net)で，
+ホームは#perlです．http://www.irchelp.org/で一般的なサーバの一覧を参照
+するか，友達に聞いてください．
+
+=item *
+
+Port
+
+サーバに接続するポート．習慣上，デフォルトは6667です．
+
+=item *
+
+Username
+
+システムでidentdが動いていない場合，好きなユーザ名をuser@hostに設定する
+ことができます．identdを動かしていないクライアントからの接続を許さない
+IRCサーバがあることに注意してください．
+
+=item *
+
+Ircname
+
+短い(おそらく60文字程度の)テキスト．元々は実名を表示するために意図され
+ましたが，人々はたいてい簡潔で当を得た引用文やURLに使っています．デフォ
+ルトはあなたのGECOS項目の内容です．
+
+=item *
+
+Password
+
+もしbotを書いて使おうとしているIRCサーバがパスワードで保護されていても
+問題ありません．"C<Password => 'foo'>"とするだけで設定されます．
+
+=back
+
+=head2 Handlers
+
+いったん初期化がすっかり終わった後は，もしコネクションを保って資源を無
+駄使いする以上のことをそのbotにして欲しければ，ハンドラを設定する必要が
+あります．ハンドラは特定のイベントが起こったときに呼び出されるサブルー
+チンへのリファレンスです．ハンドラ用サブルーチンのサンプルは次の通りで
+す．
+
+    # botが接続に成功したときに行うこと
+    sub on_connect {
+        my $self = shift;
+
+        print "Joining #IRC.pm...";
+        $self->join("#IRC.pm");
+        $self->privmsg("#IRC.pm", "Hi there.");
+    }
+
+ハンドラ用関数に渡される引数は常に同じです．
+
+=over
+
+=item $_[0]:
+
+そのハンドラを呼び出しているConnectionオブジェクト．
+
+=item $_[1]:
+
+そのハンドラが何に対してレスポンスを返しているのかを説明するEventオブジ
+ェクト(下記参照)．
+
+=back
+
+理解できたでしょうか？もしできなかったら，配布パッケージに含まれている
+irctestスクリプトの中の例を見てください．とにかく，いったんハンドラ用サ
+ブルーチンを定義したら，グローバルハンドラ(全てのConnectionオブジェクト
+に影響)かローカルハンドラ(個々のConnectionにのみ影響)のどちらかとしてそ
+れらをハンドラのリストに追加する必要があります．それは次のようにします．
+
+    $self->add_global_handler('376', \&on_connect);     # グローバル
+    $self->add_handler('msg', \&on_msg);                # ローカル
+
+付け加えると，376は"end of MOTD"に対するサーバの番号で，これはクライア
+ントが接続した後にサーバが送信するイベントです．起こりうる全てのニュー
+メリックコードの一覧についてはEvent.pmを参照してください．'msg'イベント
+はIRC上の誰かがそのクライアントにプライベートメッセージを送信したときに
+毎回呼ばれます．起こりうるイベントの大きな一覧についてはNet::IRC::Event
+のドキュメント内にあるB<Event List>セクションを参照してください．
+
+=head2 Getting Connected
+
+全てのハンドラを設定し終えると，次に挙げるコマンドにより，全ての開いて
+いるコネクションから入力を受け取り適切なハンドラに渡す無限ループに入り
+ます．
+
+    $irc->start;
+
+Note that new connections can be added and old ones dropped from within your
+handlers even after you call this. Just don't expect any code below the call
+to C<start()> to ever get executed.
+
+もしNet::IRCをperl/Tkのような別のイベントベースのモジュールに結びつけた
+い場合，素晴らしく便利なC<do_one_loop()>メソッドが提供されています．
+C<$irc-E<gt>do_one_loop()>を呼ぶとIRC.pmのイベントループを一度だけ実行
+し，全ての利用可能なファイルハンドルを適切なハンドラ用サブルーチンに渡
+し，そして元のプログラムに制御を返します．
+
+=head1 METHOD DESCRIPTIONS
+
+このセクションはIRC.pmのメソッドのみを扱います．Net::IRC::Connection，
+Net::IRC::Event，Net::IRC::DCCのメソッドの一覧はそれぞれのモジュールの
+ドキュメント内にあります．それらを読むためには
+C<perldoc Net::IRC::Connection>(あるいはEventやDCCやその他)としてください．説明の中で特に指定されなければ，関数は引数を取りません．
+
+ところで，もう少し安定すればNet::IRCが将来においていつかAutoLoaderを使
+うことを期待してください．
+
+=over
+
+=item *
+
+addconn()
+
+C<do_one_loop()>のselectループに指定されたオブジェクトのソケットを追加
+します．これは主にConnectionオブジェクトとDCCオブジェクト(と0.5以前との
+互換性)のために使用されます．ほとんどの(read: all)目的にはC<addfh()>(下
+記参照)を使うことができます．
+
+引数を少なくとも1つ取ります．
+
+=over
+
+=item 0.
+
+selectループに追加される必要があるソケットを持つオブジェクト．
+
+=item 1.
+
+B<オプショナル:>1つ以上の r, w, e から成る文字列．C<addfh()>にそのまま
+渡されます．より詳しくは下記の説明を参照してください．
+
+=back
+
+=item *
+
+addfh()
+
+これは，ユーザのソケットまたはファイルハンドルと，それを扱うサブルーチ
+ンを引数に取り，それをC<do_one_loop()>のselect()可能なファイルハンドル
+のリストにマージします．これは他のイベントベースのシステム(例えばTk)と
+の統合を以前のリリースよりずいぶん易しくします．
+
+引数を少なくとも2つ取ります．
+
+=over
+
+=item 0.
+
+監視するソケットやファイルハンドル．
+
+=item 1.
+
+サブルーチンへのリファレンス．同時に指定されたファイルハンドルが
+C<select()>により利用可能であると判断されると，そのファイルハンドルはこ
+の(おそらくユーザ作成の)サブルーチンに渡されます．そしてそれに対して読
+み込みや書き込みなどスクリプトに適した処理を行うことができます．
+
+=item 2.
+
+B<オプショナル:>文字r, w, e(それぞれ読み込み，書き込み，エラーを表します)を組み合わた文字列で，そのファイルハンドルで待ち受ける条件を指定します．例えばファイルハンドル$fhに対して読み込みと書き込みの両方をselect()するには次のようにします．
+
+    $irc->addfh( $fh, \&callback, "rw" );
+
+=back
+
+=item *
+
+do_one_loop()
+
+全ての開いているファイルハンドルをC<select()>して，利用可能なものを全て
+適切なハンドラ用サブルーチンに渡します．また
+C<Net::IRC::Connection-E<gt>schedule()>により予定されたイベントを時間通
+りに実行する役目も負っています．
+
+=item *
+
+new()
+
+新しいNet::IRCオブジェクトを作成して返すまったく普通のコンストラクタ．
+
+=item *
+
+newconn()
+
+新しいConnectionオブジェクトを作成して返します．引数は全て
+C<Net::IRC::Connection-E<gt>new()>に直接渡されます．一般的な引数の例は
+B<Synopsis>やB<Getting Started>のセクションにあります．
+
+=item *
+
+removeconn()
+
+C<do_one_loop()>のselect()可能なファイルハンドルのリストから指定された
+オブジェクトのソケットを削除します．これは主にConnectionオブジェクトと
+DCCオブジェクト(と0.5以前との互換性)のために使用されます．ほとんどの
+(read: all)目的にはC<removefh()>(下記参照)を使うことができます．
+
+引数を1つ取ります．
+
+=over
+
+=item 0.
+
+selectループから削除される必要があるソケットやファイルハンドルを持つオ
+ブジェクト．
+
+=back
+
+=item *
+
+removefh()
+
+C<do_one_loop()>のselect()可能なファイルハンドルのリストから指定された
+ファイルハンドルを削除します．
+
+引数を1つ取ります．
+
+=over
+
+=item 0.
+
+削除するソケットやファイルハンドル．
+
+=back
+
+=item *
+
+start()
+
+C<do_one_loop()>を繰り返し呼び出す無限に続くイベントループを開始し，全
+ての開いているコネクションから新しいイベントを読み出し，それを該当する
+ハンドラに渡します．
+
+=item *
+
+timeout()
+
+メインのイベントループに対する現在のC<select()>のタイムアウトを秒(少数
+も使えます)で設定もしくは返します．より詳しくはC<select()>関数のドキュ
+メントを見てください．
+
+オプショナルの引数を1つ取ります．
+
+=over
+
+=item 0.
+
+B<オプショナル:>そのIRCオブジェクトのC<select()>のタイムアウトに対する
+新しい値．
+
+=back
+
+=head1 AUTHORS
+
+=over
+
+=item *
+
+Greg Bacon E<lt>gbacon@adtran.comE<gt>とDennis Taylor
+E<lt>dennis@funkplanet.comE<gt>によって考えられ，初めに開発されました．
+
+=item *
+
+Nat "King" Torkingtonによりアイデアと大量のコードが寄付されました．
+
+=item *
+
+現在はNet::IRC開発者メーリングリストのメンバーによって開発されています．
+詳細はhttp://www.execpc.com/~corbeau/irc/list.htmlを参照してください．
+
+=back
+
+=head1 URL
+
+Net::IRCプロジェクトに関する最新のソースと情報は
+http://netirc.betterbox.net/にあります．
+
+=head1 SEE ALSO
+
+=over
+
+=item *
+
+perl(1).
+
+=item *
+
+RFC 1459: The Internet Relay Chat Protocol
+
+=item *
+
+http://www.irchelp.org/ : 優秀なIRCリソースの源
+
+=back
+
+=head1 Translators
+
+井上 謙次 <deq@oct.zaq.ne.jp>
