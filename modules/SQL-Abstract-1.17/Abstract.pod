@@ -1,8 +1,8 @@
-=head1 NAME
+=head1 名前
 
-SQL::Abstract - Generate SQL from Perl data structures
+SQL::Abstract - Perlのデータ構造からSQL文を生成する
 
-=head1 SYNOPSIS
+=head1 概要
 
     use SQL::Abstract;
 
@@ -16,24 +16,30 @@ SQL::Abstract - Generate SQL from Perl data structures
 
     my($stmt, @bind) = $sql->delete($table, \%where);
 
-    # Then, use these in your DBI statements
+    # それから、これらをDBIステートメントで使う
     my $sth = $dbh->prepare($stmt);
     $sth->execute(@bind);
 
-    # Just generate the WHERE clause
+    # WHERE句を生成するだけ
     my($stmt, @bind)  = $sql->where(\%where, \@order);
 
-    # Return values in the same order, for hashed queries
-    # See PERFORMANCE section for more details
+    # ハッシュされたクエリー用に同じ順番で値を返す。
+    # 詳細は”パフォーマンス”セクションを参照
     my @bind = $sql->values(\%fieldvals);
 
-=head1 DESCRIPTION
+=head1 説明
 
 This module was inspired by the excellent L<DBIx::Abstract>.
 However, in using that module I found that what I really wanted
 to do was generate SQL, but still retain complete control over my
 statement handles and use the DBI interface. So, I set out to
 create an abstract SQL generation module.
+
+このモジュールは、素晴らしきL<DBIx::Abstract>からインスピレーションを
+受けている。だがそのモジュールを使ってみたところ、私が本当にやりたか
+ったのは、ステートメントハンドルに対する完全な支配とDBIの利用を変える
+ことなく、SQL文を生成することだとわかった。そこで私は、抽象的にSQL文を
+生成するモジュールの作成に取りかかった。
 
 While based on the concepts used by L<DBIx::Abstract>, there are
 several important differences, especially when it comes to WHERE
@@ -44,8 +50,20 @@ on the data structures you provide it. The big advantage is that
 you don't have to modify your code every time your data changes,
 as this module figures it out.
 
+L<DBIx::Abstract>で使われている考え方に基づいているとはいえ、
+いくつかの重要な違いがある。とくにWHERE句においてそれは顕著だ。
+私はそこで使われていた考え方を修正し、Perlデータ構造から
+SQL文をより簡単に、そしてまあ端的に言えば、より直感的に生成できる
+ようにした。基本となる考えは、このモジュールがあたなの意図した通り、
+あなたが与えたデータ構造に基づいて行うということだ。このモジュールを
+使う大きな利点は、あなたのデータに変更が生じても、コードを修正しなくて
+いいということだ。このモジュールがそれを理解してくれているから。
+
 To begin with, an SQL INSERT is as easy as just specifying a hash
 of C<key=value> pairs:
+
+まず、SQLのINSERTはC<key=value>ペアのハッシュを指定するだけと
+簡単だ：
 
     my %data = (
         name => 'Jimbo Bobson',
@@ -57,9 +75,13 @@ of C<key=value> pairs:
 
 The SQL can then be generated with this:
 
+するとSQL文は次のようにして生成される：
+
     my($stmt, @bind) = $sql->insert('people', \%data);
 
 Which would give you something like this:
+
+これはこのようなものとなる：
 
     $stmt = "INSERT INTO people
                     (address, city, name, phone, state)
@@ -69,6 +91,8 @@ Which would give you something like this:
 
 These are then used directly in your DBI code:
 
+これらは直接DBIコードに使える：
+
     my $sth = $dbh->prepare($stmt);
     $sth->execute(@bind);
 
@@ -76,6 +100,10 @@ In addition, you can apply SQL functions to elements of your C<%data>
 by specifying an arrayref for the given hash value. For example, if
 you need to execute the Oracle C<to_date> function on a value, you
 can say something like this:
+
+加えて、ハッシュの値に配列リファレンスを指定することで、
+SQL関数をC<%data>の要素として適用できる。例えば、ある値に対して
+OracleのC<to_date>関数を実行するなら、次のようにする：
 
     my %data = (
         name => 'Bill',
@@ -86,6 +114,9 @@ The first value in the array is the actual SQL. Any other values are
 optional and would be included in the bind values array. This gives
 you:
 
+配列の最初の値は実際のSQLだ。それ以外の値はオプションで、バインド値の
+配列に含まれることになるだろう。これは以下のようになる：
+
     my($stmt, @bind) = $sql->insert('people', \%data);
 
     $stmt = "INSERT INTO people (name, date_entered) 
@@ -94,6 +125,8 @@ you:
 
 An UPDATE is just as easy, all you change is the name of the function:
 
+UPDATEは簡単。ただ関数の名前を変えるだけだ：
+
     my($stmt, @bind) = $sql->update('people', \%data);
 
 Notice that your C<%data> isn't touched; the module will generate
@@ -101,11 +134,22 @@ the appropriately quirky SQL for you automatically. Usually you'll
 want to specify a WHERE clause for your UPDATE, though, which is
 where handling C<%where> hashes comes in handy...
 
+C<%data>には触れていないことに注目；モジュールはあなたのために
+適切にもひねくれたSQL文を自動生成する。普通、UPDATEにはWHERE句を
+指定したいだろう。だがこれは、C<%where>ハッシュを使うことで
+簡単にできる……
+
 This module can generate pretty complicated WHERE statements
 easily. For example, simple C<key=value> pairs are taken to mean
 equality, and if you want to see if a field is within a set
 of values, you can use an arrayref. Let's say we wanted to
 SELECT some data based on this criteria:
+
+このモジュールは、とても複雑なWHERE文を簡単に生成できる。例えば、
+単純なC<key=value>ペアは等価という意味にとられる。そして、ある
+フィールドが値のセットの中にあるかどうか知りたいなら、配列の
+リファレンスを使えばいい。この基準に基づいて、あるデータを
+SELECTしてみよう：
 
     my %where = (
        requestor => 'inna',
@@ -117,6 +161,8 @@ SELECT some data based on this criteria:
 
 The above would give you something like this:
 
+上の例は次のようになる：
+
     $stmt = "SELECT * FROM tickets WHERE
                 ( requestor = ? ) AND ( status != ? )
                 AND ( worker = ? OR worker = ? OR worker = ? )";
@@ -124,10 +170,14 @@ The above would give you something like this:
 
 Which you could then use in DBI code like so:
 
+それからこんなふうにDBIで使えばいいだろう：
+
     my $sth = $dbh->prepare($stmt);
     $sth->execute(@bind);
 
 Easy, eh?
+
+簡単でしょ、ね？
 
 =head1 FUNCTIONS
 
@@ -136,11 +186,20 @@ and a constructor you use first. The arguments are specified in a
 similar order to each function (table, then fields, then a where 
 clause) to try and simplify things.
 
+関数はシンプルだ。主要なSQL操作のそれぞれに一つ対応していて、それと
+最初に使うコンストラクタがある。どの関数に対しても同じような順番
+（テーブル、それからフィールド、それからwhere句）で引数を指定する
+ので、ことは簡単になる。
+
 =head2 new(case => 'lower', cmp => 'like', logic => 'and', convert => 'upper')
 
 The C<new()> function takes a list of options and values, and returns
 a new B<SQL::Abstract> object which can then be used to generate SQL
 through the methods below. The options accepted are:
+
+C<new()>はオプションと値のリストをとり、新規のB<SQL::Abstract>
+オブジェクトを返す。これは以下のメソッドを通じて、SQL文を生成するのに
+使える。利用可能なオプションは：
 
 =over
 
@@ -149,6 +208,9 @@ through the methods below. The options accepted are:
 If set to 'lower', then SQL will be generated in all lowercase. By
 default SQL is generated in "textbook" case meaning something like:
 
+'lower'にセットすると、SQLが全て小文字で生成される。デフォルトでは、
+SQLは次のような"textbook"型で生成される：
+
     SELECT a_field FROM a_table WHERE some_field LIKE '%someval%'
 
 =item cmp
@@ -156,25 +218,39 @@ default SQL is generated in "textbook" case meaning something like:
 This determines what the default comparison operator is. By default
 it is C<=>, meaning that a hash like this:
 
+既定の比較演算子を何にするか決定する。デフォルトはC<=>で、
+次のようなハッシュの場合：
+
     %where = (name => 'nwiger', email => 'nate@wiger.org');
 
 Will generate SQL like this:
+
+以下のSQL文を生成する：
 
     WHERE name = 'nwiger' AND email = 'nate@wiger.org'
 
 However, you may want loose comparisons by default, so if you set
 C<cmp> to C<like> you would get SQL such as:
 
+しかし、デフォルトで曖昧な比較をしたいかもしれない。そんなときは
+C<cmp>にC<like>をセットすれば以下のようなSQLを得られる：
+
     WHERE name like 'nwiger' AND email like 'nate@wiger.org'
 
 You can also override the comparsion on an individual basis - see
 the huge section on L</"WHERE CLAUSES"> at the bottom.
+
+また個々の基準も基づいてこの比較をオーバライドできる。ドキュメントの
+終わりにある長大なL</"WHERE句">を参照されたし。
 
 =item logic
 
 This determines the default logical operator for multiple WHERE
 statements in arrays. By default it is "or", meaning that a WHERE
 array of the form:
+
+配列内にある複数のWHERE文を繋ぐ既定の論理演算子を決定する。
+デフォルトでは"or"になり、次のような形態のWHERE配列は：
 
     @where = (
         event_date => {'>=', '2/13/99'}, 
@@ -183,14 +259,21 @@ array of the form:
 
 Will generate SQL like this:
 
+以下のSQL文を生成する：
+
     WHERE event_date >= '2/13/99' OR event_date <= '4/24/03'
 
 This is probably not what you want given this query, though (look
 at the dates). To change the "OR" to an "AND", simply specify:
 
+だがこれは、あなたの望む問い合わせになっていないかもしれない
+（日付を参照する場合など）。"OR"を"TO"に変更するのは簡単だ：
+
     my $sql = SQL::Abstract->new(logic => 'and');
 
 Which will change the above C<WHERE> to:
+
+これでC<WHERE>は次のように変更される：
 
     WHERE event_date >= '2/13/99' AND event_date <= '4/24/03'
 
@@ -201,10 +284,16 @@ function for both column and value. This is mostly used with an argument
 of C<upper> or C<lower>, so that the SQL will have the effect of
 case-insensitive "searches". For example, this:
 
+カラムと値の両方に対して指定されたSQL関数を使う比較に自動で変換する。
+ほとんどの場合C<upper>かC<lower>と一緒に使われる。それによりSQL文は、
+大小文字を区別しない”検索”の効果を発揮する。例えば、これは：
+
     $sql = SQL::Abstract->new(convert => 'upper');
     %where = (keywords => 'MaKe iT CAse inSeNSItive');
 
 Will turn out the following SQL:
+
+次のようなSQL文になる：
 
     WHERE upper(keywords) like upper('MaKe iT CAse inSeNSItive')
 
@@ -212,11 +301,19 @@ The conversion can be C<upper()>, C<lower()>, or any other SQL function
 that can be applied symmetrically to fields, actually (B<SQL::Abstract> does not
 validate this option; it will just pass through what you specify verbatim).
 
+比較はC<upper()>、C<lower()>になるし、他のどんなSQL関数でも、フィールドに対し
+対称的に適用される。（実のところ、B<SQL::Abstract>はこのオプションの妥当性を
+チェックしない；あなたが指定した通りに渡されるだけだ。）
+
 =item bindtype
 
 This is a kludge because many databases suck. For example, you can't
 just bind values using DBI's C<execute()> for Oracle C<CLOB> or C<BLOB> fields.
 Instead, you have to use C<bind_param()>:
+
+これはクラッジだ。というのも、多くのデータベースがじゃぶるから。例えば、
+OracleのC<CLOB>やC<BLOB>フィールドに対しては、DBIのC<execute()>に値を
+バインドできない。代わりに、C<bind_param()>を使わねばならない：
 
     $sth->bind_param(1, 'reg data');
     $sth->bind_param(2, $lots, {ora_type => ORA_CLOB});
@@ -224,9 +321,16 @@ Instead, you have to use C<bind_param()>:
 The problem is, B<SQL::Abstract> will normally just return a C<@bind> array,
 which loses track of which field each slot refers to. Fear not.
 
+そこで問題は、B<SQL::Abstract>が通常C<@bind>を返すだけで、それぞれの要素が
+参照しているフィールドの軌跡は失われるということだ。でも心配ご無用。
+
 If you specify C<bindtype> in new, you can determine how C<@bind> is returned.
 Currently, you can specify either C<normal> (default) or C<columns>. If you
 specify C<columns>, you will get an array that looks like this:
+
+newメソッドの中でC<bindtype>を指定すると、C<@bind>の返し方を決められる。
+現在のところ、C<normal>（デフォルト）かC<columns>のどちらかを指定できる。
+C<columns>を指定すれば、次のような配列を得るだろう：
 
     my $sql = SQL::Abstract->new(bindtype => 'keys');
     my($stmt, @bind) = $sql->insert(...);
@@ -238,6 +342,9 @@ specify C<columns>, you will get an array that looks like this:
     );
 
 You can then iterate through this manually, using DBI's C<bind_param()>.
+
+それから手動でこの配列を回し、DBIのC<bind_param()>を使えばよい。
+
     
     $sth->prepare($stmt);
     my $i = 1;
@@ -252,13 +359,19 @@ You can then iterate through this manually, using DBI's C<bind_param()>.
         }
         $i++;
     }
-    $sth->execute;      # execute without @bind now
+    $sth->execute;      # あとは@bindなしでexecuteする
 
 Now, why would you still use B<SQL::Abstract> if you have to do this crap?
 Basically, the advantage is still that you don't have to care which fields
 are or are not included. You could wrap that above C<for> loop in a simple
 sub called C<bind_fields()> or something and reuse it repeatedly. You still
 get a layer of abstraction over manual SQL specification.
+
+こんな面倒なことをしなければらないのに、なぜB<SQL::Abstract>を使うかって？
+基本的にこのモジュールを利用する利点は、どのフィールドが含まれているのか
+いないのかを気にしなくてよいというところにあるのだ。C<bind_fields()>とか
+何とかと呼ばれる単純なサブルーチン内で、上のC<for>ループをラップしたり、
+再利用したりするだろう。SQL手動設定に対して、依然あなたは抽象レイヤを得る。
 
 =back
 
@@ -268,11 +381,19 @@ This is the simplest function. You simply give it a table name
 and either an arrayref of values or hashref of field/value pairs.
 It returns an SQL INSERT statement and a list of bind values.
 
+これは一番単純な関数だ。単にテーブル名と、値の配列リファレンスないしは、
+フィールド/値ペアのハッシュリファレンスを与えるだけでいい。
+SQLのINSERT文とバインド値のリストが返される。
+
 =head2 update($table, \%fieldvals, \%where)
 
 This takes a table, hashref of field/value pairs, and an optional
 hashref WHERE clause. It returns an SQL UPDATE function and a list
 of bind values.
+
+この関数はテーブル、フィールド/値ペアのハッシュリファレンス、そして
+オプションであるWHERE句ハッシュリファレンスをとる。SQLのUPDATE文と
+バインド値のリストを返す。
 
 =head2 select($table, \@fields, \%where, \@order)
 
@@ -280,10 +401,17 @@ This takes a table, arrayref of fields (or '*'), optional hashref
 WHERE clause, and optional arrayref order by, and returns the
 corresponding SQL SELECT statement and list of bind values.
 
+この関数はテーブル、フィールド（あるいは'*'）の配列リファレンス、
+オプションのWHERE句ハッシュリファレンス、そしてオプションのorder by
+配列リファレンスをとる。対応するSQLのSELECT文とバインド値を返す。
+
 =head2 delete($table, \%where)
 
 This takes a table name and optional hashref WHERE clause.
 It returns an SQL DELETE statement and list of bind values.
+
+この関数はテーブル名とオプションとなるWHERE句
+ハッシュリファレンスをとる。SQLのDELETE文とバインド値を返す。
 
 =head2 where(\%where, \@order)
 
@@ -293,6 +421,11 @@ rest of your SQL is going to look like, but want an easy way
 to produce a WHERE clause, use this. It returns an SQL WHERE
 clause and list of bind values.
 
+この関数は、ただWHERE句を生成するために使われる。例えば、
+任意のデータ構造があり、SQLの残りがどのようになるか知っていて、
+WHERE句をつくる簡単な方法が欲しいとき、これを使う。SQLのWHERE句
+とバインド値を返す。
+
 =head2 values(\%data)
 
 This just returns the values from the hash C<%data>, in the same
@@ -300,55 +433,89 @@ order that would be returned from any of the other above queries.
 Using this allows you to markedly speed up your queries if you
 are affecting lots of rows. See below under the L</"PERFORMANCE"> section.
 
+この関数は、上記の他の問い合わせから返されるのと同じ順番で、
+ハッシュ変数C<%data>からその値を返す。たくさんの行に効果を
+及ぼす場合、これを使えば問い合わせを一気にスピードアップできる
+だろう。L</"パフォーマンス">を参照のこと。
+
 =head2 generate($any, 'number', $of, \@data, $struct, \%types)
 
 Warning: This is an experimental method and subject to change.
 
+警告：これは実験的なメソッドであり、変更の対象である。
+
 This returns arbitrarily generated SQL. It's a really basic shortcut.
 It will return two different things, depending on return context:
+
+任意に生成されたSQL文を返す。本当に基本的なショートカットだ。
+戻り値のコンテキストにより、二つの違ったものを返す：
 
     my($stmt, @bind) = $sql->generate('create table', \$table, \@fields);
     my $stmt_and_val = $sql->generate('create table', \$table, \@fields);
 
 These would return the following:
 
-    # First calling form
+次のものを返す：
+
+    # 一番目の呼び出し方
     $stmt = "CREATE TABLE test (?, ?)";
     @bind = (field1, field2);
 
-    # Second calling form
+    # 二番目の呼び出し方m
     $stmt_and_val = "CREATE TABLE test (field1, field2)";
 
 Depending on what you're trying to do, it's up to you to choose the correct
 format. In this example, the second form is what you would want.
 
+やろうとしていることに応じて、あなた自身で正しい形式を選択すること。
+この例の場合、二番目の形式があなたのやりたいことだろう。
+
 By the same token:
+
+同じようにして：
 
     $sql->generate('alter session', { nls_date_format => 'MM/YY' });
 
 Might give you:
+
+こうなるだろう：
 
     ALTER SESSION SET nls_date_format = 'MM/YY'
 
 You get the idea. Strings get their case twiddled, but everything
 else remains verbatim.
 
-=head1 WHERE CLAUSES
+しかし他の全ては逐語的なままだ。
+
+=head1 WHERE句
 
 This module uses a variation on the idea from L<DBIx::Abstract>. It
 is B<NOT>, repeat I<not> 100% compatible. B<The main logic of this
 module is that things in arrays are OR'ed, and things in hashes
 are AND'ed.>
 
+このモジュールはL<DBIx::Abstract>からアイディアを借りている。が、
+100%互換があるわけではB<ない>。繰り返すが、互換性は100%ではI<ない>。
+B<このモジュールで主となる論理は、配列はORになり、ハッシュ内にある
+ものはANDになる、ということだ。>
+
 The easiest way to explain is to show lots of examples. After
 each C<%where> hash shown, it is assumed you used:
+
+最も簡単に説明するには、多くの例を見せることだ。それぞれC<%where>
+ハッシュを提示した後、それを以下のように使ったものとする：
 
     my($stmt, @bind) = $sql->where(\%where);
 
 However, note that the C<%where> hash can be used directly in any
 of the other functions as well, as described above.
 
+ただし、C<%where>ハッシュは他のどの関数ででも、上記に
+あるような形で直接利用できることに注意。
+
 So, let's get started. To begin, a simple hash:
+
+さあ始めよう。まずはシンプルなハッシュからだ：
 
     my %where  = (
         user   => 'nwiger',
@@ -357,6 +524,8 @@ So, let's get started. To begin, a simple hash:
 
 Is converted to SQL C<key = val> statements:
 
+C<key = val>のSQL文に変換される：
+
     $stmt = "WHERE user = ? AND status = ?";
     @bind = ('nwiger', 'completed');
 
@@ -364,20 +533,31 @@ One common thing I end up doing is having a list of values that
 a field can be in. To do this, simply specify a list inside of
 an arrayref:
 
+処理を終えるのに共通なのは、あるフィールドが代入可能な値の
+リストを持っているということだ。そのためには、単に配列
+リファレンス内にリストを指定するだけでよい。
+
     my %where  = (
         user   => 'nwiger',
         status => ['assigned', 'in-progress', 'pending'];
     );
 
 This simple code will create the following:
+
+この単純なコードは、次の結果になる：
+
     
     $stmt = "WHERE user = ? AND ( status = ? OR status = ? OR status = ? )";
     @bind = ('nwiger', 'assigned', 'in-progress', 'pending');
 
 Note this is NOT compatible with C<DBIx::Abstract>.
 
+これはC<DBIx::Abstract>と互換性がB<ない>ことに注意。
+
 If you want to specify a different type of operator for your comparison,
 you can use a hashref:
+
+異なるタイプの比較演算子を指定したいなら、ハッシュリファレンスを使う：
 
     my %where  = (
         user   => 'nwiger',
@@ -386,11 +566,16 @@ you can use a hashref:
 
 Which would generate:
 
+こうなる：
+
     $stmt = "WHERE user = ? AND status != ?";
     @bind = ('nwiger', 'completed');
 
 The hashref can also contain multiple pairs, in which case it is expanded
 into an AND of its elements:
+
+また、ハッシュリファレンスには複数のペアを含められる。その場合、その要素は
+ANDに拡張される：
 
     my %where  = (
         user   => 'nwiger',
@@ -402,6 +587,8 @@ into an AND of its elements:
 
 To get an OR instead, you can combine it the arrayref idea:
 
+そうではなくORにしたいなら、配列リファレンスと組み合わせるという手がある：
+
     my %where => (
          user => 'nwiger'
          priority  => [ {'=', 2}, {'=', 1} ],
@@ -409,11 +596,16 @@ To get an OR instead, you can combine it the arrayref idea:
 
 Which would generate:
 
+こうなる：
+
     $stmt = "WHERE user = ? AND ( priority = ? ) OR ( priority = ? )";
     @bind = ('nwiger', '2', '1');
 
 You can also use the hashref format to compare a list of fields using the
 C<IN> comparison operator, by specifying the list as an arrayref:
+
+また、ハッシュリファレンス形式を使うことでC<IN>比較演算子を使ったフィールド
+リストの比較が可能だ。これには配列リファレンスとしてリストを指定する：
 
     my %where  = (
         status   => 'completed',
@@ -422,11 +614,16 @@ C<IN> comparison operator, by specifying the list as an arrayref:
 
 Which would generate:
 
+こうなる：
+
     $stmt = "WHERE status = ? AND reportid IN (?,?,?)";
     @bind = ('completed', '567', '2335', '2');
 
 You can use this same format to use other grouping functions, such
 as C<BETWEEN>, C<SOME>, and so forth. For example:
+
+これと同じ形式で、C<BETWEEN>、C<SOME>などといったグループ化関数を
+利用できる。例えば：
 
     my %where  = (
         user   => 'nwiger',
@@ -437,11 +634,17 @@ as C<BETWEEN>, C<SOME>, and so forth. For example:
 
 Would give you:
 
+こうなる：
+
     WHERE user = ? AND completion_date NOT BETWEEN ? AND ?
 
 So far, we've seen how multiple conditions are joined with C<AND>. However,
 we can change this by putting the different conditions we want in hashes
 and then putting those hashes in an array. For example:
+
+ここまでで、いかにして複数の条件がC<AND>で結びつくかをみてきた。しかし、
+異なる条件を無名ハッシュ内に置いて、それからそれらのハッシュを配列にする
+ことで、この動作を変えることができる。例えば：
 
     my @where = (
         {
@@ -456,12 +659,17 @@ and then putting those hashes in an array. For example:
 
 This data structure would create the following:
 
+このデータ構造は次のようになる：
+
     $stmt = "WHERE ( user = ? AND ( status = ? OR status = ? ) )
                 OR ( user = ? AND status = ? ) )";
     @bind = ('nwiger', 'pending', 'dispatched', 'robot', 'unassigned');
 
 Finally, sometimes only literal SQL will do. If you want to include
 literal SQL verbatim, you can specify it as a scalar reference, namely:
+
+最後に、時には文字通りのSQL文だけが必要となるだろう。もし字句通りに
+SQLを含ませたいなら、スカラーリファレンスとしてこれを指定する。つまり：
 
     my $inn = 'is not null';
     my %where = (
@@ -471,14 +679,22 @@ literal SQL verbatim, you can specify it as a scalar reference, namely:
 
 This would create:
 
+こうなる：
+
     $stmt = "WHERE priority < ? AND requestor is not null";
     @bind = ('2');
 
 Note you only get one bind parameter back, since the verbatim SQL
 is passed back as part of the statement.
 
+一つのバインドパラメータだけが返ってくることに注意。その字句通りのSQLは
+文の一部として渡されているからだ。
+
 Of course, just to prove a point, the above can also be accomplished
 with this:
+
+もちろん、これで全く正しいのだが、上の例は以下のような方法でも
+達成される：
 
     my %where = (
         priority => { '<', 2 },
@@ -487,6 +703,8 @@ with this:
 
 TMTOWTDI.
 
+やり方はいろいろあるということ。
+
 These pages could go on for a while, since the nesting of the data
 structures this module can handle are pretty much unlimited (the
 module implements the C<WHERE> expansion as a recursive function
@@ -494,13 +712,25 @@ internally). Your best bet is to "play around" with the module a
 little to see how the data structures behave, and choose the best
 format for your data based on that.
 
+これらの話題はまだしばらく続いたことだろう。というのも、このモジュールが
+扱えるデータ構造の入れ子は、ほとんど際限がないからだ（内部でこの
+モジュールは、C<WHERE>拡張を再帰関数として実装している）。
+一番いいのは、このモジュールをいじりまわしてみることだ。データ構造が
+いかに振舞うかを少しみて、それからそれに基づいてベストなフォーマット
+を選択すればよい。
+
 And of course, all the values above will probably be replaced with
 variables gotten from forms or the command line. After all, if you
 knew everything ahead of time, you wouldn't have to worry about
 dynamically-generating SQL and could just hardwire it into your
 script.
 
-=head1 PERFORMANCE
+そしてもちろん、上で例としてあげた値は全て、フォームやコマンドラインから
+入ってくる変数で置き換えられるかもしれない。結局、予め全てがわかっている
+のなら、動的にSQLを生成する心配をする必要はないだろうし、たんに
+スクリプトにハードコーディングしておけばよいことだろう。
+
+=head1 パフォーマンス
 
 Thanks to some benchmarking by Mark Stosberg, it turns out that
 this module is many orders of magnitude faster than using C<DBIx::Abstract>.
@@ -508,10 +738,18 @@ I must admit this wasn't an intentional design issue, but it's a
 byproduct of the fact that you get to control your C<DBI> handles
 yourself.
 
+Mark Stosbergによるベンチマークに感謝。そこで明らかになったのは、
+このモジュールがC<DBIx::Abstract>を使うより桁違いに速いということだ。
+これが意図した結果ではなかったということを、私は認めざるをえない。
+しかし、それは、C<DBI>ハンドルをあなた自身で制御しはじめるという事実の
+副産物である。
+
 To maximize performance, use a code snippet like the following:
 
-    # prepare a statement handle using the first row
-    # and then reuse it for the rest of the rows
+パフォーマンスを最大にするために、以下のようなコードの断片を使う：
+
+    # 最初の行を使ってステートメントハンドルを準備する
+    # そして残りの行に対してはそれを再利用する
     my($sth, $stmt);
     for my $href (@array_of_hashrefs) {
         $stmt ||= $sql->insert('table', $href);
@@ -525,11 +763,20 @@ the same structure, you only have to generate the SQL the first time
 around. On subsequent queries, simply use the C<values> function provided
 by this module to return your values in the correct order.
 
+これがうまくいくのは、C<$href>内のキーがB<SQL::Abstract>の内部でソート
+されているからである。よって、データが同じ構造を保っている限り、最初に
+SQL文を生成するだけでよい。引き続く問い合わせでは、このモジュールが
+提供するC<values>関数を使えば、正しい順番で値を返してくれる。
+
 =head1 FORMBUILDER
 
 If you use my C<CGI::FormBuilder> module at all, you'll hopefully
 really like this part (I do, at least). Building up a complex
 query can be as simple as the following:
+
+もしあなたが拙作のC<CGI::FormBuilder>モジュールを使うなら、この
+パートを本当に喜んでくれることだろう（少なくとも私はそうだ）。
+単純にも以下のようにするだけで複雑な問い合わせが構築できる：
 
     #!/usr/bin/perl
 
@@ -548,12 +795,22 @@ Of course, you would still have to connect using C<DBI> to run the
 query, but the point is that if you make your form look like your
 table, the actual query script can be extremely simplistic.
 
+もちろん、依然として問い合わせのためにはC<DBI>を使って接続しなければ
+ならないとはいえ、あなたのフォームをテーブルと同じようにしておけば、
+実際の問い合わせスクリプトは極端に簡単になる。
+
 If you're B<REALLY> lazy (I am), check out C<HTML::QuickTable> for
 a fast interface to returning and formatting data. I frequently 
 use these three modules together to write complex database query
 apps in under 50 lines.
 
-=head1 ACKNOWLEDGEMENTS
+もしあなたがB<ほんっとうに>怠惰であるなら（私はそうだが）、
+C<HTML::QuickTable>を確認してほしい。これはデータの戻しと
+フォーマット化のための素早いインターフェースだ。私は時折これら
+三つのモジュールを一緒に使って、50行以下で複雑なデータベース
+問い合わせアプリケーションを書くことがある。
+
+=head1 謝辞
 
 There are a number of individuals that have really helped out with
 this module. Unfortunately, most of them submitted bugs via CPAN
@@ -562,22 +819,34 @@ Mark Stosberg (benchmarking), Chas Owens (initial "IN" operator
 support), Philip Collins (per-field SQL functions), and Eric Kolve
 (hashref-AND support). Thanks!
 
-=head1 BUGS
+このモジュールを完成させるにあたって、多くの人々に本当に助けて
+もらった。残念なことに、ほとんどはCPANを通じてサブミットされたので、
+誰なのかはわからない！ しかし、私が実際に知っている人として、
+Mark Stosberg（ベンチマーク）、Chas Owens（最初の"IN"演算子をサポート）、
+Philip Collins（フィールド毎のSQL関数）、そしてEric Kolve
+（ハッシュリファレンスによるANDのサポート）がいる。ありがとう！
+
+=head1 バグ
 
 If found, please DO NOT submit anything via C<rt.cpan.org> - that
 just causes me a ton of work. Email me a patch (or script demonstrating
 the problem) at the below address, and include the VERSION string you'll
 be seeing shortly.
 
-=head1 SEE ALSO
+もし見つけても、C<rt.cpan.org>からサブミットはB<しないで>頂きたい。
+――それは多くの仕事を私にもたらしてしまう。パッチ（あるいは問題を発生
+させるデモ用スクリプト）をEmailで送ってもらいたい。アドレスは以下のとおり。
+それとそのすぐ下に見えるバージョン情報も含めて頂きたい。
+
+=head1 参考
 
 L<DBIx::Abstract>, L<DBI|DBI>, L<CGI::FormBuilder>, L<HTML::QuickTable>
 
-=head1 VERSION
+=head1 バージョン
 
 $Id$
 
-=head1 AUTHOR
+=head1 作者
 
 Copyright (c) 2001-2004 Nathan Wiger <nate@sun.com>. All Rights Reserved.
 
