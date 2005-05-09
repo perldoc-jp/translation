@@ -1,0 +1,370 @@
+=head1 名前
+
+Parallel::ForkManager - A simple parallel processing fork manager
+
+Parallel::ForkManager - 簡単な並列処理によるforkマネージャー
+
+=head1 概要
+
+  use Parallel::ForkManager;
+
+  $pm = new Parallel::ForkManager($MAX_PROCESSES);
+
+  foreach $data (@all_data) {
+    # Forks and returns the pid for the child:
+    my $pid = $pm->start and next;
+
+    ... do some work with $data in the child process ...
+    ... 子プロセスにより$dataに関するいくつかの処理を行う ...
+
+    $pm->finish; # Terminates the child process
+  }
+
+=head1 説明
+
+This module is intended for use in operations that can be done in parallel
+where the number of processes to be forked off should be limited. Typical
+use is a downloader which will be retrieving hundreds/thousands of files.
+
+このモジュールは稼動中において並列処理されることを意図している.
+その際,プロセスの分岐数は制限されるべきものである.
+典型的な使われ方としてはファイルの数百/数千を取得するダウンローダーとしてである.
+
+The code for a downloader would look something like this:
+
+ダウンローダーのコードとしてはこのようになるでしょう:
+
+
+  use LWP::Simple;
+  use Parallel::ForkManager;
+
+  ...
+
+  @links=(
+    ["http://www.foo.bar/rulez.data","rulez_data.txt"],
+    ["http://new.host/more_data.doc","more_data.doc"],
+    ...
+  );
+
+  ...
+
+  # Max 30 processes for parallel download
+  # 最大30プロセスで並列的にダウンロードを行います
+  my $pm = new Parallel::ForkManager(30);
+
+  foreach my $linkarray (@links) {
+    $pm->start and next; # do the fork
+    $pm->start and next; # forkさせます
+
+    my ($link,$fn) = @$linkarray;
+    warn "Cannot get $fn from $link"
+      if getstore($link,$fn) != RC_OK;
+
+    $pm->finish; # do the exit in the child process
+    $pm->finish; # 子プロセスをexitします
+  }
+  $pm->wait_all_children;
+
+First you need to instantiate the ForkManager with the "new" constructor.
+You must specify the maximum number of processes to be created. If you
+specify 0, then NO fork will be done; this is good for debugging purposes.
+
+まず初めにForkManagerの"new"コンストラクタを具体化する必要があります.
+コンストラクタを作成する際に、プロセス数の最大値を指定しなければなりません.
+もしプロセス数を0と指定した場合はforkはされないでしょう;これはデバッグを行う為のよい方法です.
+
+Next, use $pm->start to do the fork. $pm returns 0 for the child process,
+and child pid for the parent process (see also L<perlfunc(1p)/fork()>).
+The "and next" skips the internal loop in the parent process. NOTE:
+$pm->start dies if the fork fails.
+
+次に,forkする為に$pm->startを使います. $pmは子プロセスの為に0にを返し,
+親プロセスの為に子pidを返します (または、 L<perlfunc(1p)/fork()>を見て下さい).
+"and next"は親プロセスにおける内部の繰り返しをスキップします. 注意:
+$pm->startはforkが失敗すれば死にます.
+
+$pm->finish terminates the child process (assuming a fork was done in the
+"start").
+
+$pm->finishは子プロセスを終了させます ("start"でforkを開始したと仮定した場合).
+
+NOTE: You cannot use $pm->start if you are already in the child process.
+If you want to manage another set of subprocesses in the child process,
+you must instantiate another Parallel::ForkManager object!
+
+注意:あなたがすでに子プロセスに居るのならば、$pm->startを使うことはできません.
+子プロセスをもう1セット、サブプロセスとして管理したいのならば,
+別のParallel::ForkManagerオブジェクトを具体化する必要があります.
+
+=head1 メソッド
+
+=over 5
+
+=item new $processes
+
+Instantiate a new Parallel::ForkManager object. You must specify the maximum
+number of children to fork off. If you specify 0 (zero), then no children
+will be forked. This is intended for debugging purposes.
+
+新しいParallel::ForkManagerオブジェクトを具体化します. 
+子プロセスを分岐させる最大数を指定しなければなりません.
+0を指定した場合は分岐される子はありません.
+これはデバッグ目的のために意図されます.
+
+=item start [ $process_identifier ]
+
+This method does the fork. It returns the pid of the child process for
+the parent, and 0 for the child process. If the $processes parameter
+for the constructor is 0 then, assuming you're in the child process,
+$pm->start simply returns 0.
+
+このメソッドはforkを実行します.
+子プロセスのpidを親プロセスに返し,子プロセスには0を返します.
+$processesパラメータがコンストラクタに0として渡された場合,
+あなたがすでに子プロセスに居ると仮定され,
+$pm->startは単に0を返します.
+
+An optional $process_identifier can be provided to this method... It is used by
+the "run_on_finish" callback (see CALLBACKS) for identifying the finished
+process.
+
+任意で$process_identifier（プロセス識別子）をメソッドに提供することができます...
+これは"run_on_finish"で終了したプロセスを特定し回収する為に使われます.
+(CALLBACKSの項目を見て下さい)
+
+=item finish [ $exit_code ]
+
+Closes the child process by exiting and accepts an optional exit code
+(default exit code is 0) which can be retrieved in the parent via callback.
+If you use the program in debug mode ($processes == 0), this method doesn't
+do anything.
+
+親プロセスが回収の際に取得できるように子プロセスを閉じる為に終了や終了の為のコードを受け入れます.
+(規定の 終了コードは 0 です) 
+このプログラムをデバッグモードで使用する場合 ($processes == 0 の場合), 
+このメソッドは何もしません.
+
+=item set_max_procs $processes
+
+Allows you to set a new maximum number of children to maintain. Returns
+the previous setting.
+
+新しく子プロセス数の最大値を設定することができます.
+前回の設定が返されます.（実際には今回設定した値が返されます）
+
+=item wait_all_children
+
+You can call this method to wait for all the processes which have been
+forked. This is a blocking wait.
+
+forkされた全ての子プロセスを待つ為にこのメソッドを呼ぶことができます.
+これは待ちを妨げます.
+
+=back
+
+=head1 CALLBACKS
+
+You can define callbacks in the code, which are called on events like starting
+a process or upon finish.
+
+プロセスの開始時または終了時のイベントのが呼ばれるときに
+コードの中に回収を定義することができます.
+
+The callbacks can be defined with the following methods:
+
+回収は以下のメソッドで定義することができます:
+
+=over 4
+
+=item run_on_finish $code [, $pid ]
+
+You can define a subroutine which is called when a child is terminated. It is
+called in the parent process.
+
+子プロセスが終了する際に呼ばれるサブルーチンを定義することができます.
+これは親プロセスから呼ばれます.
+
+The paremeters of the $code are the following:
+
+$codeのパラメータは以下です:
+
+  - pid of the process, which is terminated
+  - 終了するプロセスのpid
+  - exit code of the program
+  - プログラムの終了コード
+  - identification of the process (if provided in the "start" method)
+  - プロセスの識別 ("start"メソッドで提供される場合)
+  - exit signal (0-127: signal name)
+  - 終了シグナル (0-127: シグナル名)
+  - core dump (1 if there was core dump at exit)
+  - コアダンプ (1 はコアダンプによる終了です)
+
+=item run_on_start $code
+
+You can define a subroutine which is called when a child is started. It called
+after the successful startup of a child in the parent process.
+
+子プロセスが開始する際に呼ばれるサブルーチンを定義することができます.
+親プロセスの中で子プロセスが正常に開始された後に呼ばれます.
+
+The parameters of the $code are the following:
+
+$codeのパラメータは以下です:
+
+  - pid of the process which has been started
+  - 開始されたプロセスのpid
+  - identification of the process (if provided in the "start" method)
+  - プロセスの識別 ("start"メソッドで提供される場合)
+
+=item run_on_wait $code, [$period]
+
+You can define a subroutine which is called when the child process needs to wait
+for the startup. If $period is not defined, then one call is done per
+child. If $period is defined, then $code is called periodically and the
+module waits for $period seconds betwen the two calls. Note, $period can be
+fractional number also. The exact "$period seconds" is not guarranteed,
+signals can shorten and the process scheduler can make it longer (on busy
+systems).
+
+子プロセスが開始時に待ちを必要とする場合に呼ばれるサブルーチンを定義することができます.
+$periodが定義されていない場合,一つの子プロセス単位で呼びます.
+$periodが定義されている場合,$codeは定期的に呼ばれ,モジュールは$period秒の間に
+２度呼ばれるのをモジュールは待ちます
+注意,$periodは断片的な数であるかもしれません.
+正確な"$period seconds"であることは保障しません,
+シグナルは短縮することができ,プロセススケジューラーでは長くすることができます (忙しいシステムでは).
+
+The $code called in the "start" and the "wait_all_children" method also.
+
+$codeは"start"や"wait_all_children"メソッドにより呼ぶことができる.
+
+No parameters are passed to the $code on the call.
+
+パラメータがない場合は呼び出しの際に$codeはパスすることができる.
+
+=back
+
+=head1 例
+
+=head2 Parallel get
+
+This small example can be used to get URLs in parallel.
+
+並列的にURLを取得する為に使用される簡単な例です.
+
+  use Parallel::ForkManager;
+  use LWP::Simple;
+  my $pm=new Parallel::ForkManager(10);
+  for my $link (@ARGV) {
+    $pm->start and next;
+    my ($fn)= $link =~ /^.*\/(.*?)$/;
+    if (!$fn) {
+      warn "Cannot determine filename from $fn\n";
+    } else {
+      $0.=" ".$fn;
+      print "Getting $fn from $link\n";
+      my $rc=getstore($link,$fn);
+      print "$link downloaded. response code: $rc\n";
+    };
+    $pm->finish;
+  };
+
+=head2 Callbacks
+
+Example of a program using callbacks to get child exit codes:
+
+子プロセスがの終了コードを回収するのを使用する場合の例です:
+
+  use strict;
+  use Parallel::ForkManager;
+
+  my $max_procs = 5;
+  my @names = qw( Fred Jim Lily Steve Jessica Bob Dave Christine Rico Sara );
+  # hash to resolve PID's back to child specific information
+
+  my $pm =  new Parallel::ForkManager($max_procs);
+
+  # Setup a callback for when a child finishes up so we can
+  # get it's exit code
+  # 子プロセスが終了する際に終了コードを取得する為の設定
+  $pm->run_on_finish(
+    sub { my ($pid, $exit_code, $ident) = @_;
+      print "** $ident just got out of the pool ".
+        "with PID $pid and exit code: $exit_code\n";
+    }
+  );
+
+  $pm->run_on_start(
+    sub { my ($pid,$ident)=@_;
+      print "** $ident started, pid: $pid\n";
+    }
+  );
+
+  $pm->run_on_wait(
+    sub {
+      print "** Have to wait for one children ...\n"
+    },
+    0.5
+  );
+
+  foreach my $child ( 0 .. $#names ) {
+    my $pid = $pm->start($names[$child]) and next;
+
+    # This code is the child process
+    # このコードは子プロセスです
+    print "This is $names[$child], Child number $child\n";
+    sleep ( 2 * $child );
+    print "$names[$child], Child $child is about to get out...\n";
+    sleep 1;
+    $pm->finish($child); # pass an exit code to finish
+  }
+
+  print "Waiting for Children...\n";
+  $pm->wait_all_children;
+  print "Everybody is out of the pool!\n";
+
+=head1 バグ と 制限
+
+Do not use Parallel::ForkManager in an environment, where other child
+processes can affect the run of the main program, so using this module
+is not recommended in an environment where fork() / wait() is already used.
+
+Parallel::ForkManagerはこのような環境では使うことができません,
+別の子プロセスがメインプログラムに影響を与える場合,
+したがってこのモジュールを使用するのはfork() / wait()が既に使用される環境で推薦されません。
+
+If you want to use more than one copies of the Parallel::ForkManager, then
+you have to make sure that all children processes are terminated, before you
+use the second object in the main program.
+
+一つ以上のParallel::ForkManagerを使用したい場合,主プログラムで第二のオブジェクトを使用する前に,
+全ての子プロセスが終了するのを確実にしなければなりません,
+
+You are free to use a new copy of Parallel::ForkManager in the child
+processes, although I don't think it makes sense.
+
+あなたは子プロセスに自由にParallel::ForkManagerの新しいコピーを使用することができます,
+私はそれを理解できるとは思いませんが.
+
+=head1 COPYRIGHT
+
+Copyright (c) 2000 Szab&#243;, Bal&#225;zs (dLux)
+
+All right reserved. This program is free software; you can redistribute it
+and/or modify it under the same terms as Perl itself.
+
+=head1 作者
+
+  dLux (Szab&#243; Bal&#225;zs) <dlux@kapu.hu>
+  original URL(http://hacks.dlux.hu/Parallel-ForkManager/)
+
+=head1 クレジット
+
+  Noah Robin <sitz@onastick.net> (documentation tweaks)
+  Chuck Hirstius <chirstius@megapathdsl.net> (callback exit status, example)
+  Grant Hopwood <hopwoodg@valero.com> (win32 port)
+  Mark Southern <mark_southern@merck.com> (bugfix)
+
+=head1 翻訳者
+
+ atsushi kobayashi(nekokak@users.sourceforge.jp)
