@@ -1,0 +1,187 @@
+=head1 NAME
+
+CGI::WebGzip - Perl extension for GZipping script output
+CGI::WebGzip - 文字出力をGZipにより圧縮するPerl拡張
+
+=head1 SYNOPSIS
+
+  # Usual code working with STDOUT:
+  # 標準出力に使用される標準的なコードです:
+  use CGI::WebGzip;
+  print "Content-type: text/html\n\n";
+  print "Hello, world!";
+
+
+  # Lesser compression (by default 9, now - 5)
+  # より小さい圧縮 (by default 9, now - 5)
+  use CGI::WebGzip(5);
+
+
+  # Set callback function which would be called after compressing,
+  # but before any output. You may set cookie in this function to
+  # display them later on the page (using JavaScript).
+  # どんな出力の前にでも,圧縮された後に呼ばれるcallback関数設定して下さい.
+  # あなたはこの関数の中でCookieをセットすことができる
+  # 後でJavaScriptを使用してCookieを表示して下さい.
+  use CGI::WebGzip;
+  BEGIN {
+      CGI::WebGzip::setCallback(sub {
+          my ($nL, $oL) = (length $_[0], length $_[2]);
+          print sprintf "Set-Cookie: page_size=%d,%d; path=/\n", $oL, $nL;
+          return 1;
+      });
+  }
+
+
+  # Working together with CGI::WebOut.
+  # CGI::WebOutと一緒に動かす場合.
+  use CGI::WebGzip;
+  use CGI::WebOut;
+  print "Hello, world!";
+
+
+  # Work in FastCGI environment.
+  # FastCGI環境で動かす場合.
+  require CGI::WebGzip;
+  while (read request) {
+     CGI::WebGzip::import;  # captures output
+     ...
+     CGI::WebGzip::flush(); # releases output
+  }
+
+
+=head1 OVERVIEW
+
+In PHP, you may write: C<ob_start("ob_gzhandler")> and get all the output
+GZip-ed automatically. CGI::WebGzip does the same thing. Is you include this module
+in the beginning of your program, it whill capture all the output. When
+the script ends, CGI::WebGzip compresses captured data and send it to browser.
+
+PHPではあなたはこのように書くことができます:C<ob_start("ob_gzhandler")> そして
+GZipにより圧縮された出力を自動ですべて取得することができます.
+CGI::WebGzipは同じことをします.
+あなたのプログラムの開始時にこのモジュールを取り込むことにより,
+その間の全ての出力を得ることができます.
+スクリプトが終了するとCGI::WebGzipは取得したデータを圧縮しそれをブラウザに送ります.
+
+If browser is incompatible with GZip encoding, output will not be captured,
+and data will not be compressed.
+
+もしブラウザがGZipエンコーディングを実装していない場合,出力を得ず,
+データを圧縮しないでしょう.
+
+=head1 DESCRIPTION
+
+=over 9
+
+=item use CGI::WebGzip([compression_level])
+
+Captures all the script output for deflating. Default compression level
+is 9 (maximum). Value 0 means no compression.
+
+取得した全てのスクリプトの出力を縮小させます.
+デフォルトの圧縮レベルは9です（最大値）.
+圧縮レベル0は圧縮しないことを意味します.
+
+=item void flush()
+
+Flushes the compressed buffer immediately and releases STDOUT capture.
+Usable in FastCGI environment together with manual C<import()> call
+(see synopsis above).
+
+圧縮されたバッファを標準出力に即座に流します.
+FastCGIが用いられている環境では手動でC<import()>呼び出しとともに行います(上に書かれたSYNOPSISを見るように).
+
+=item bool getAbility()
+
+Returns undef if browser we are in CGI mode, browser supports compression
+and Compress::Zlib is found. Otherwise returns non-empty diagnostic message.
+
+CGIモードでブラウザが圧縮をサポートしかつCompress::Zlibが存在する場合undefを返す.
+そうでなければ空でない診断メッセージを返します
+
+=item bool isCompressibleType($type)
+
+Returns true if page of this MIME type can be compressed.
+
+このMIMEタイプを圧縮することができるのならばtrueを返す.
+
+=item CODE setCallback(CODE $func)
+
+Sets the callback function called AFTER compression process, but BEFORE
+any output. You may print additional headers in this function (for example,
+set cookies). If this function returns false, compressed data would not be
+printed later (presume function does it itself). Arguments:
+
+どんな出力の前にも,圧縮処理の後に呼ばれるcallback関数設定して下さい.
+この関数で追加ヘッダをつけることができる(例えば,cookiesをセットする).
+
+  bool callback(string $compressedBody, string $headers, string $originalBody)
+
+Returns previous callback reference.
+
+前のcallbackの参照を返します.
+
+=item int setLevel($level)
+
+Sets another compression level. Returns previous.
+
+別の圧縮レベルをセットします.
+前の圧縮レベルを返します.
+
+=item string getStatus()
+
+You may determine if the compression was performed by this function. It
+returns undef if data has been compressed or non-empty diagnostic message otherwise.
+
+この関数により圧縮が実行されたかを確認することができる.
+データが圧縮されたかまたは空でない診断メッセージがなければundefを返す.
+
+=item ($compressedBody, $modifiedHeaders, $status) ob_gzhandler(string $body [,string $headers])
+
+Returns compressed data (additionally analysing headers, if present).
+In scalar context returns C<$compressedBody> only.
+Input headers can be modified, thus this function returns C<$modifiedHeaders>.
+In C<$status> compression feruse message is returned (or undef if everything is OK).
+This function can be used exactly as PHPs C<ob_gzhandler()>.
+
+圧縮されたデータを返す(その上で現在のヘッダを分析する)
+スカラーコンテキストはC<$compressedBody>だけを返す
+入力ヘッダーを変更することができます,したがってこの関数はC<$modifiedHeaders>を返します。
+C<$status>は圧縮したメッセージを返す(undefもしくは全てOK).
+この関数はまさにPHPのC<ob_gzhandler()>として使用することができます.
+
+=item string deflate_gzip($text, $level);
+
+Compresses the input string and returns result.
+
+入力文字列を圧縮して結果を返します.
+
+=back
+
+=head2 EXPORT
+
+None by default.
+
+デフォルトでは何もない.
+
+=head2 DEPENDENCIES
+
+CGI::WebGzip depends on Compress::Zlib only. If this library is not found, no
+error messages are generated.
+
+CGI::WebGzipはCompress::Zlibだけに依存しています.
+もしこのライブラリが見つからない場合でもエラーメッセージは生成されません.
+
+=head1 AUTHOR
+
+Dmitry Koterov <koterov at cpan dot org>
+
+=head1 SEE ALSO
+
+L<Compress::Zlib>, L<CGI::WebOut>
+
+=head1 翻訳者
+
+ atsushi kobayashi(nekokak@users.sourceforge.jp)
+
