@@ -1,0 +1,147 @@
+=head1 NAME
+
+PerlIO::gzip - Perl extension to provide a PerlIO layer to gzip/gunzip
+
+PerlIO::gzip - PerlIOレイヤーをgzip/gunzipに提供するPerl拡張
+
+=head1 SYNOPSIS
+
+  use PerlIO::gzip;
+  open FOO, "<:gzip", "file.gz" or die $!;
+  print while <FOO>; # そしてそれは解凍されるでしょう...
+
+  binmode FOO, ":gzip(none)" # ここから圧縮されたストリームを読み始める
+
+=head1 DESCRIPTION
+
+PerlIO::gzip provides a PerlIO layer that manipulates files in the format used
+by the C<gzip> program.  Compression and Decompression are implemented, but
+not together.  If you attempt to open a file for reading and writing the open
+will fail.
+
+PerlIO::gzipはC<gzip>プログラムで使用される形式でファイルを操作するPerlIOレイヤーを提供します.
+圧縮と解凍が実装されますが一緒に実装されるというわけではありません.
+
+=head1 EXPORT
+
+PerlIO::gzip exports no subroutines or symbols, just a perl layer C<gzip>
+
+PerlIO::gzipはどんなサブルーチンもシンボルもこのperlレイヤーC<gzip>ですらexportしません
+
+=head1 LAYER ARGUMENTS
+
+The C<gzip> layer takes a comma separated list of arguments. 4 exclusive
+options choose the header checking mode:
+
+C<gzip>レイヤーはカンマでくぎられたリストの引数を取得します.
+４つの排他的なオプションはモードをチェックするヘッダーを選択します.
+
+=over 4
+
+=item gzip
+
+The default.  Expects a standard gzip file header for reading, writes a
+standard gzip file header.
+
+デフォルトです. 読み込む為の標準のgzipファイルヘッダーを予想し,標準gzipファイルヘッダに書き込みます.
+
+=item none
+
+Expects or writes no file header; assumes the file handle is immediately a
+deflate stream (eg as would be found inside a C<zip> file)
+
+どのようなヘッダファイルでも予想または書き込みをしません;ファイルハンドルは即座に
+圧縮されたストリームと仮定します(例えば zipファイルで見つけられるように)
+
+=item auto
+
+Potentially dangerous. If the first two bytes match the C<gzip> header
+"\x1f\x8b" then a gzip header is assumed (and checked) else a deflate stream
+is assumed.  No different from gzip on writing.
+
+潜在的に危険を含んでいます.最初の２バイトがgzipヘッダ"\x1f\x8b"に一致するならば
+gzipヘッダと想定され（チェックされ）その他に圧縮されたストリームが想定される.
+gzipでの書き込みと異なりません.
+
+=item autopop
+
+Potentially dangerous. If the first two bytes match the C<gzip> header
+"\x1f\x8b" then a gzip header is assumed (and checked) else the layer is
+silently popped.  This results in gzip files being transparently
+decompressed, other files being treated normally.  Of course, this has sides
+effects such as File::Copy becoming gunzip, and File::Compare comparing
+the uncompressed contents of files.
+
+潜在的に危険を含んでいます.最初の２バイトがgzipヘッダ"\x1f\x8b"に一致するならば
+gzipヘッダと想定され（チェックされ）その他にレイヤーは黙って取り出されます.
+他のファイルが通常扱われるように結果としてgzipファイルは透過的に圧縮される.
+もちろん,これはgunzipにふさわしいFile::Copyのようにまた,
+ファイルの解凍されたコンテンツを比較するFile::Compareでは副作用を起こします.
+
+In autopop mode Opening a handle for writing (or reading and writing) will
+cause the gzip layer to automatically be popped.
+
+autopopモードで書き込みハンドルをオープンする(または読込と書き込みで)のは
+gzipレイヤーを自動的に取り出すでしょう.
+
+=back
+
+Optionally you can add this flag:
+
+任意でこのフラグを追加することができます:
+
+=over 4
+
+=item lazy
+
+For reading, defer header checking until the first read.  For writing, don't
+write a header until the first buffer empty of compressed data to disk.
+(and don't write anything at all if no data was written to the handle)
+
+読み込むには,始めの読込までヘッダをチェックするのを延期してください。
+書き込むには,ディスクに圧縮されたデータを最初のバッファまで,ヘッダを書き込まないで下さい
+(そしてデータが全くハンドルに書かれなかったなら何も書き込まないで下さい)
+
+By default, gzip header checking is done before the C<open> (or C<binmode>)
+returns, so if an error is detected in the gzip header the C<open> or
+C<binmode> will fail.  However, this will require reading some data, or writing
+a header.  With lazy set on a file opened for reading the check is deferred
+until the first read so the C<open> should always succeed, but any problems
+with the header will cause an error on read.
+
+デフォルトで,gzipヘッダのチェックはC<open> (または C<binmode>)の前に実施され返される,
+したがって誤りがgzipヘッダに検出されるとC<open>またはC<binmode>は失敗するでしょう.
+しかしながら,これはいくらかのデータを読み込むまたは書き込むことを必要とするでしょう.
+読み込む為に開かれたファイル上に怠惰な設定がある状態で,始めの読込のチェックが延期されるので,
+C<open>はいつでも成功するべきです,しかし,ヘッダーに関するどんな問題も読込の時にエラーを引き起こすでしょう.
+
+  open FOO, "<:gzip(lazy)", "file.gz" or die $!; #  危険.
+  while (<FOO>) {
+    print;
+  } # ワオ.駄目ですね. あなたはエラーとEOFを見分けていません.
+
+If you're not careful you won't spot the errors - like the example above
+you'll think you got end of file.
+
+慎重で無いのならば上の例でファイルの終わりを見つけたと思ったようにあなたはエラーを見つけないでしょう
+
+lazy is ignored if you are in autopop mode.
+
+autopopモードであれば怠惰は無視される.
+
+=back
+
+=head1 AUTHOR
+
+Nicholas Clark, E<lt>nick@talking.bollo.cxE<gt>
+
+=head1 SEE ALSO
+
+L<perl>, L<gzip>, L<rfc 1952|http://www.ietf.org/rfc/rfc1952.txt> (the gzip
+file format specification), L<rfc 1951|http://www.ietf.org/rfc/rfc1951.txt>
+(DEFLATE compressed data format specification)
+
+=head1 翻訳者
+
+ atsushi kobayashi(nekokak@users.sourceforge.jp)
+
