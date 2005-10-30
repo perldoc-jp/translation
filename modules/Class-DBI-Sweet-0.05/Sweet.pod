@@ -1,0 +1,466 @@
+=head1 NAME
+
+    Class::DBI::Sweet - Making sweet things sweeter
+
+=head1 SYNOPSIS
+
+    package MyApp::DBI;
+    use base 'Class::DBI::Sweet';
+    MyApp::DBI->connection('dbi:driver:dbname', 'username', 'password');
+
+    package MyApp::Article;
+    use base 'MyApp::DBI';
+
+    use DateTime;
+
+    __PACKAGE__->table('article');
+    __PACKAGE__->columns( Primary   => qw[ id ] );
+    __PACKAGE__->columns( Essential => qw[ title created_on created_by ] );
+
+    __PACKAGE__->has_a(
+        created_on => 'DateTime',
+        inflate    => sub { DateTime->from_epoch( epoch => shift ) },
+        deflate    => sub { shift->epoch }
+    );
+
+
+    # Simple search
+
+    MyApp::Article->search( created_by => 'sri', { order_by => 'title' } );
+
+    MyApp::Article->count( created_by => 'sri' );
+
+    MyApp::Article->page( created_by => 'sri', { page => 5 } );
+
+    MyApp::Article->retrieve_all( order_by => 'created_on' );
+
+
+    # More powerful search with deflating
+
+    $criteria = {
+        created_on => {
+            -between => [
+                DateTime->new( year => 2004 ),
+                DateTime->new( year => 2005 ),
+            ]
+        },
+        created_by => [ qw(chansen draven gabb jester sri) ],
+        title      => {
+            -like  => [ qw( perl% catalyst% ) ]
+        }
+    };
+
+    MyApp::Article->search( $criteria, { rows => 30 } );
+
+    MyApp::Article->count($criteria);
+
+    MyApp::Article->page( $criteria, { rows => 10, page => 2 } );
+
+    MyApp::Article->retrieve_next( $criteria,
+                                     { order_by => 'created_on' } );
+
+    MyApp::Article->retrieve_previous( $criteria,
+                                         { order_by => 'created_on' } );
+
+    MyApp::Article->default_search_attributes(
+                                         { order_by => 'created_on' } );
+
+    # Automatic joins for search and count
+
+    MyApp::CD->has_many(tracks => 'MyApp::Track');
+    MyApp::CD->has_many(tags => 'MyApp::Tag');
+    MyApp::CD->has_a(artist => 'MyApp::Artist');
+    MyApp::CD->might_have(liner_notes
+        => 'MyApp::LinerNotes' => qw/notes/);
+
+    MyApp::Artist->search({ 'cds.year' => $cd }, # $cd->year subtituted
+                                  { order_by => 'artistid DESC' });
+
+    my ($tag) = $cd->tags; # Grab first tag off CD
+
+    my ($next) = $cd->retrieve_next( { 'tags.tag' => $tag },
+                                       { order_by => 'title' } );
+
+    MyApp::CD->search( { 'liner_notes.notes' => { "!=", undef } } );
+
+    MyApp::CD->count(
+           { 'year' => { '>', 1998 }, 'tags.tag' => 'Cheesy',
+               'liner_notes.notes' => { 'like' => 'Buy%' } } );
+
+    # Multi-step joins
+
+    MyApp::Artist->search({ 'cds.tags.tag' => 'Shiny' });
+
+    # Retrieval with pre-loading
+
+    my ($cd) = MyApp::CD->search( { ... },
+                       { prefetch => [ qw/artist liner_notes/ ] } );
+
+    $cd->artist # Pre-loaded
+
+    # Caching of resultsets (*experimental*)
+
+    __PACKAGE__->default_search_attributes( { use_resultset_cache => 1 } );
+
+=head1 DESCRIPTION
+
+Class::DBI::Sweet provides convenient count, search, page, and
+cache functions in a sweet package. It integrates these functions with
+C<Class::DBI> in a convenient and efficient way.
+
+Class::DBI::Sweetは便利なcount、search、page、cache機能をsweetなパッケージに提供します。
+Class::DBI::Sweetはこれらの機能を便利で効率的な方法によりC<Class::DBI>に統合します。
+
+=head1 RETRIEVING OBJECTS
+
+All retrieving methods can take the same criteria and attributes. Criteria is
+the only required parameter.
+
+全ての検索メソッドが同じ評価基準と属性を取得することができます。
+評価基準が唯一必要なパラメータです。
+
+=head2 criteria
+
+Can be a hash, hashref, or an arrayref. Takes the same options as the
+L<SQL::Abstract> C<where> method. If values contain any objects, they
+will be deflated before querying the database.
+
+criteriaはhashまたはhashrefまたはarrayrefのどれかであることができます。
+L<SQL::Abstract>のC<where>メソッドと同じオプションを設定します。
+もし値に何かオブジェクトを含んでいるのであれば、データベースにクエリーを投げる前に
+deflateします。
+
+=head2 attributes
+
+=over 4
+
+=item case, cmp, convert, and logic
+
+These attributes are passed to L<SQL::Abstact>'s constuctor and alter the
+behavior of the criteria.
+
+これらの属性はL<SQL::Abstact>のconstuctorに渡され、評価基準の振る舞いを変えます。
+
+    { cmp => 'like' }
+
+=item order_by
+
+Specifies the sort order of the results.
+
+検索結果の並び替えを指定します。
+
+    { order_by => 'created_on DESC' }
+
+=item rows
+
+Specifies the maximum number of rows to return. Currently supported RDBMs are
+Interbase, MaxDB, MySQL, PostgreSQL and SQLite. For other RDBMs, it will be
+emulated.
+
+検索結果のROWの最大数を指定します。
+現在、サポートされているRDBMsはInterbase、MaxDB、MySQL、PostgreSQLそしてSQLiteです。
+他のRDBMsについてはエミュレートされるでしょう。
+
+    { rows => 10 }
+
+=item offset
+
+Specifies the offset of the first row to return. Defaults to 0 if unspecified.
+
+検索結果の最初のROWのオフセットを指定します。
+もし、不特定ならば0をデフォルトとします。
+
+    { offset => 0 }
+
+=item page
+
+Specifies the current page in C<page>. Defaults to 1 if unspecified.
+
+C<page>メソッドで現在のページを指定します。
+もし、不特定ならば1をデフォルトとします。
+
+    { page => 1 }
+
+=item prefetch
+
+Specifies a listref of relationships to prefetch. These must be has_a or
+might_haves or Sweet will throw an error. This will cause Sweet to do
+a join across to the related tables in order to return the related object
+without a second trip to the database. All 'Essential' columns of the
+foreign table are retrieved.
+
+prefetchメソッドとのリレーションをlistrefで指定します。
+これらによりhas_aまたはmight_havesまたはSweetがエラーを投げなければなりません。
+関連するオブジェクトを返す為に、特別にデータベースを始動させること無しに関連するテーブルとを
+つなぐことをSweetはするでしょう。
+異なるテーブルの全ての'Essential'カラムが検索されます。
+
+    { prefetch => [ qw/some_rel some_other_rel/ ] }
+
+Sweet constructs the joined SQL statement by aliasing the columns in
+each table and prefixing the column name with 'sweet__N_' where N is a
+counter starting at 1.  Note that if your database has a column length limit
+(for example, Oracle's limit is 30) and you use long column names in
+your application, Sweet's addition of at least 9 extra characters to your
+column name may cause database errors.
+
+Sweetの構造は内部ではそれぞれのカラム名の前に、
+Nは1で始まるカウンタでという前提で'sweet__N_'を置き、
+カラムをエイリアスによって結合します。
+あなたのアプリケーションで長い名前のカラムを使用するのであれば、
+あなたが使用するデータベースがカラムの長さに限界がないか注意してください。
+（例えばOracleでは３０が限界です）
+Sweetは少なくとも９個の特別な文字をあなたのカラム名に追加し、データベースのエラーを
+発生させるかもしれません。
+
+=item use_resultset_cache
+
+Enables the resultset cache. This is a little experimental and massive gotchas
+may rear their ugly head at some stage, but it does seem to work pretty well.
+
+検索結果のキャッシュを可能にします。
+これは少し実験的です、そして大規模なgotchasは何らかの段階で危険な危機を起こすかもしれません。
+しかし、それはかなり良く動作するように思えます。
+
+For best results, the resultset cache should only be used selectively on
+queries where you experience performance problems.  Enabling it for every
+single query in your application will most likely cause a drop in performance
+as the cache overhead is greater than simply fetching the data from the
+database.
+
+最良な結果の為に、あなたがパフォーマンスの問題を体験するところで
+resultsetは選択的に使用されるべきでしょう。
+あなたのアプリケーションにおけるあらゆるクエリーにおいてそれを可能にすると、
+キャッシュオーバーヘッドが単にデータベースからデータを取ってくるよりも
+性能の低下を引き起こすでしょう。
+
+=item profile_cache
+
+Records cache hits/misses and what keys they were for in ->profiling_data.
+Note that this is class metadata so if you don't want it to be global for
+Sweet you need to do
+
+どのようなキーに関してキャッシュヒット/キャッシュミスがあったかを
+->profiling_dataによって記録します。
+もしあなたがSweetにそれがグローバルであって欲しくないのであれば、
+これがクラスメタデータであるのに注意してください。
+
+    __PACKAGE__->profiling_data({ });
+
+in either your base class or your table classes to taste.
+
+どちらかは、あなたのBaseクラスかあなたのテーブルクラスのお好みによります。
+
+=item disable_sql_paging
+
+Disables the use of paging in SQL statements if set, forcing Sweet to emulate
+paging by slicing the iterator at the end of ->search (which it normally only
+uses as a fallback mechanism). Useful for testing or for causing the entire
+query to be retrieved initially when the resultset cache is used.
+
+もし、設定されるならばページングでSQLステートメントを使用することはできません
+->searchメソッドの終わりにslicingイテレータによりSweetにページングを見習わせます
+（通常、後退的なメカニズムとしてそれが使用されるだけです）
+resultsetキャッシュが使用されている時に、テストするか、または全体のクエリが初めに検索されるのに
+役に立ちます
+
+=back
+
+=head2 count
+
+Returns a count of the number of rows matching the criteria. C<count> will
+discard C<offset>, C<order_by>, and C<rows>.
+
+評価基準に一致したRowの数の個数を返却します。
+C<count>メソッドはC<offset>、C<order_by>、and C<rows>を捨てます。
+
+    $count = MyApp::Article->count(%criteria);
+
+=head2 search
+
+Returns an iterator in scalar context, or an array of objects in list
+context.
+
+スカラーコンテキストのイテレータまたはリストコンテキストのオブジェクトの配列を返却します。
+
+    @objects  = MyApp::Article->search(%criteria);
+
+    $iterator = MyApp::Article->search(%criteria);
+
+=head2 search_like
+
+As search but adds the attribute { cmp => 'like' }.
+
+{ cmp => 'like' }属性を追加して検索します。
+
+=head2 page
+
+Retuns a page object and an iterator. The page object is an instance of
+L<Data::Page>.
+
+ページオブジェクトかイテレータを返却します。
+ページオブジェクトはL<Data::Page>のインスタンスオブジェクトです。
+
+    ( $page, $iterator )
+        = MyApp::Article->page( $criteria, { rows => 10, page => 2 );
+
+    printf( "Results %d - %d of %d Found\n",
+        $page->first, $page->last, $page->total_entries );
+
+=head2 pager
+
+An alias to page.
+
+pageメソッドのエイリアスです。
+
+=head2 retrieve_all
+
+Same as C<Class::DBI> with addition that it takes C<attributes> as arguments,
+C<attributes> can be a hash or a hashref.
+
+C<Class::DBI>がとるC<attributes>の引数と同じで、C<attributes>はハッシュもしくは
+ハッシュリファレンスであることができます。
+
+    $iterator = MyApp::Article->retrieve_all( order_by => 'created_on' );
+
+=head2 retrieve_next
+
+Returns the next record after the current one according to the order_by
+attribute (or primary key if no order_by specified) matching the criteria.
+Must be called as an object method.
+
+order_by属性（またはもしorder_byを指定しないのであればプライマリキー）で評価基準を合わせながら
+現在のレコードを記録して次のレコードを返却します
+これはオブジェクトメソッドとして呼び出さなければなりません。
+
+=head2 retrieve_previous
+
+As retrieve_next but retrieves the previous record.
+
+retrieve_nextメソッドと同じようなものですが、retrieve_previousメソッドは前のレコードを検索します
+
+=head1 CACHING OBJECTS
+
+Objects will be stored deflated in cache. Only C<Primary> and C<Essential>
+columns will be cached.
+
+オブジェクトはキャッシュでdeflateした状態で保存されるでしょう。
+C<Primary>とC<Essential>カラムだけがキャッシュされます。
+
+=head2 cache
+
+Class method: if this is set caching is enabled. Any cache object that has a
+C<get>, C<set>, and C<remove> method is supported.
+
+クラスメソッドです：これが設定されるのであればキャッシュが可能となります。
+どのキャッシュオブジェクトでもC<get>、C<set>、C<remove>メソッドがサポートされます。
+
+    __PACKAGE__->cache(
+        Cache::FastMmap->new(
+            share_file => '/tmp/cdbi',
+            expire_time => 3600
+        )
+    );
+
+=head2 cache_key
+
+Returns a cache key for an object consisting of class and primary keys.
+
+クラスとプライマリキーから構成されるオブジェクトにキャッシュキーを返却します。
+
+=head2 Overloaded methods
+
+=over 4
+
+=item _init
+
+Overrides C<Class::DBI>'s internal cache. On a cache hit, it will return
+a cached object; on a cache miss it will create an new object and store
+it in the cache.
+
+C<Class::DBI>の内部キャッシュをオーバーライドしています。
+キャッシュヒットした場合、キャッシュオブジェクトが返却されます。
+キャッシュミスした場合、新しいオブジェクトが作成され、キャッシュに保存されます。
+
+=item create
+
+All caches for this table are marked stale and will be re-cached on next
+retrieval.
+
+このテーブルの為の全てのキャッシュが古いと判断される場合、次の検索の時点で際キャッシュされます。
+
+=item retrieve
+
+On a cache hit the object will be inflated by the C<select> trigger and
+then served.
+
+キャッシュヒットによりオブジェクトはC<select>トリガーによりinflateされ次に役立てられるでしょう。
+
+=item update
+
+Object is removed from the cache and will be cached on next retrieval.
+
+オブジェクトはキャッシュから削除され、次の検索時に再度キャッシュされます。
+
+=item delete
+
+Object is removed from the cache.
+
+オブジェクトはキャッシュから削除されます。
+
+=back
+
+=head1 UNIVERSALLY UNIQUE IDENTIFIERS
+
+If enabled a UUID string will be generated for primary column. A CHAR(36)
+column is suitable for storage.
+
+もしUUID文字列がプライマリのカラムに作成することを可能にするとCHAR(36)カラムが
+格納に妥当です。
+
+    __PACKAGE__->sequence('uuid');
+
+=head1 AUTHORS
+
+Christian Hansen <ch@ngmedia.com>
+
+Matt S Trout <mstrout@cpan.org>
+
+Andy Grundman <andy@hybridized.org>
+
+=head1 THANKS TO
+
+Danijel Milicevic, Jesse Sheidlower, Marcus Ramberg, Sebastian Riedel,
+Viljo Marrandi
+
+=head1 SUPPORT
+
+#catalyst on L<irc://irc.perl.org>
+
+L<http://lists.rawmode.org/mailman/listinfo/catalyst>
+
+L<http://lists.rawmode.org/mailman/listinfo/catalyst-dev>
+
+=head1 LICENSE
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=head1 SEE ALSO
+
+L<Class::DBI>
+
+L<Data::Page>
+
+L<Data::UUID>
+
+L<SQL::Abstract>
+
+L<Catalyst>
+
+L<http://cpan.robm.fastmail.fm/cache_perf.html>
+A comparison of different caching modules for perl.
+
+=head1 翻訳者
+
+atsushi kobayashi(nekokak@users.sourceforge.jp)
