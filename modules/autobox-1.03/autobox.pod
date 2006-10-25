@@ -1,0 +1,610 @@
+=encoding utf8
+
+=head1 名前
+
+autobox - 組み込み型をファーストクラスオブジェクトとして利用
+
+=head1 概要
+
+    use autobox;
+
+    # call methods on builtin values and literals
+    # 組み込みの値やリテラルからメソッド呼び出し
+
+    # integers
+    # 整数
+
+	my $range = 10->to(1); # [ 10, 9, 8, 7, 6, 5, 4, 3, 2, 1 ]
+
+    # floats
+    # 浮動小数点数
+
+	my $error = 3.1415927->minus(22/7)->abs();
+
+    # strings
+    # 文字列
+
+	my $uri = 'www.%s.com/foo.pl?arg=%s'->f($domain, $arg->escape());
+	my $links = 'autobox'->google();
+
+	my $word = 'rubicund';
+	my $definition = $word->lookup_on_dictionary_dot_com();
+
+	my $greeting = "Hello, World"->upper(); # "HELLO, WORLD"
+
+	$greeting->to_lower(); # greeting is now "hello, world"
+	$greeting->for_each(\&character_handler);
+
+    # ARRAY refs
+    # 配列リファレンス
+
+	my $schwartzian = [ @_ ]->map(...)->sort(...)->map(...);
+	my $sd = [ 1, 8, 3, 3, 2, 9 ]->standard_deviation();
+
+    # HASH refs
+    # ハッシュリファレンス
+
+	{ alpha => 'beta', gamma => 'vlissides' }->for_each(...);
+
+    #XXX CODE refs
+    #XXX CODE リファレンス
+
+	my $plus_five = (\&add)->curry()->(5);
+	my $minus_three = sub { $_[0] - $_[1] }->reverse->curry->(3);
+
+    # can(), isa() and VERSION() work as expected
+    # can(), isa() 及び VERSION() は想定通りに動作します
+
+	if ("Hello, World"->can('foo')) ...
+	if (3.1415927->isa('Number')) ...
+	if ([ ... ]->VERSION() > 0.01) ...
+
+=head1 説明
+
+The autobox pragma endows Perl's core datatypes with the capabilities of
+first-class objects. This allows methods to be called on ARRAY refs,
+HASH refs, CODE refs and raw scalars in exactly the same manner as blessed
+references. The autoboxing is transparent: boxed values are not blessed
+into their (user-defined) implementation class (unless the method elects to
+bestow such a blessing) - they simply use its methods as though they are.
+
+autobox プラグマは Perl の組み込み型にファーストクラスオブジェクト
+としての能力を賦与します. これは ARRAY, HASH, CODE リファレンスや
+生のスカラーからブレスされたリファレンスと全く同じようにメソッドを
+呼べることを許可します. autoboxは透過的に行われます: autoboxされた
+値は(ユーザが定義した)実装クラスにブレスされることはありません(
+メソッドがブレスのようななにかを与えることを選ぶことなしに) - 
+それにもかかわらず単純にそのメソッドを利用します.
+
+autobox is lexically scoped, and handlers (see below) for an outer scope
+can be overridden or countermanded in a nested scope:
+
+autobox はレキシカルスコープにあり, 外部のスコープのハンドラ(後述)は
+内側のスコープで上書き又は取り消すことができます.
+
+    {
+	use autobox; # default handlers
+	...
+	{
+	    use autobox SCALAR => 'MyScalar';
+	    ...
+	}
+	# back to the default
+	...
+    }
+
+Autoboxing can be turned off entirely by using the C<no> syntax:
+
+autobox化は C<no> 構文を使うことで完全に解除できます:
+
+    {
+	use autobox;
+	...
+	no autobox;
+	...
+    }
+
+- as well as by specifying a sole default value of undef (see below):
+
+- undef を単独でデフォルトの値に指定しても同様です(後述):
+
+    use autobox DEFAULT => undef;
+
+Autoboxing is not performed for barewords i.e. 
+
+autobox化は裸の単語(bareword)には影響しません, すなわち,
+
+    my $foo = Foo->new();
+
+and:
+
+及び:
+
+    my $foo = new Foo;
+
+behave as expected.
+
+は思った通りに振る舞います.
+
+In addition, it only covers named methods, so while this works:
+
+加えて, 名前付きのメソッドのみを対象とします, つまりこれは動作しますが:
+
+    my $foobar = { foo => 'bar' }->some_method();
+
+These don't:
+
+これは動作しません:
+
+    my $method1 = 'some_method';
+    my $method2 = \&HASH::some_method;
+
+    my $error1 = { foo => 'bar' }->$method1();
+    my $error2 = { foo => 'bar' }->$method2();
+
+The classes into which the core types are boxed are fully configurable.
+By default, a method invoked on a non-object value is assumed to be
+defined in a package whose name corresponds to the ref() type of that
+value - or 'SCALAR' if the value is a non-reference.
+
+コアタイプがbox化されるクラスは完全に設定可能です. デフォルトでは
+オブジェクトではない値から呼び出されるメソッドは, その値の
+ref() と対応するパッケージ名か, リファレンスでなければ 'SCALAR' 
+です.
+
+Thus a vanilla:
+
+すなわち標準的な:
+
+    use autobox;
+
+registers the following default handlers (for the current lexical scope):
+
+は以下のデフォルトハンドラを(現在のレキシカルスコープに対して)
+登録します:
+
+    {
+	SCALAR	=> 'SCALAR',
+	ARRAY	=> 'ARRAY',
+	HASH	=> 'HASH',
+	CODE	=> 'CODE'
+    }
+
+Consequently:
+
+これにより:
+
+    "hello, world"->upper()
+
+would be invoked as:
+
+は以下の呼び出しとなります:
+
+    SCALAR::upper("hello, world")
+
+while:
+
+さらに:
+
+    [ 1 .. 10 ]->for_each(sub { ... })
+
+resolves to:
+
+は以下となります:
+
+    ARRAY::for_each([ 1 .. 10 ], sub { ... })
+
+A mapping from the builtin type to the user-defined class can be specified
+by passing a list of key/value bindings to the C<use autobox> statement.
+
+組み込み型からユーザ定義クラスへのマッピングは
+C<use autobox> 文へキー/値バインディングのリストを渡すことで
+指定できます.
+
+The following example shows the range of valid arguments:
+
+以下の例では有効な引数の範囲を示します:
+
+    use autobox SCALAR  => 'MyScalar'	    # package name
+		ARRAY   => 'MyNamespace::', # package prefix (ending in '::')
+		HASH    => '',		    # use the default i.e. HASH 
+		CODE    => undef,	    # don't autobox this type
+		DEFAULT => ...,		    # can take any of the 4 types above
+		UNDEF   => ...,		    # can take any of the 4 types above
+		REPORT  => ...;		    # boolean or coderef
+
+SCALAR, ARRAY, HASH, CODE, UNDEF and DEFAULT can take four different types of value:
+
+SCALAR, ARRAY, HASH, CODE, UNDEF そして DEFAULT は４種類の値を取ることが
+出来ます:
+
+=over
+
+=item *
+
+
+
+A package name e.g.
+
+パッケージ名, 例えば:
+
+    use autobox SCALAR => 'MyScalar';
+
+This overrides the default package - in this case SCALAR. All methods invoked on
+literals or values of builtin type 'key' will be dispatched
+as methods of the package specified in the corresponding 'value'.
+
+これはデフォルトのパッケージ - この場合には SCALAR を上書きします. 
+リテラル若しくは組み込み型 'key' での全てのメソッド呼び出しは
+'value' に対応して指定されたパッケージのメソッドとして配送されます.
+
+If a package name is supplied for DEFAULT, it becomes the default package
+for all unhandled cases. Thus:
+
+もしパッケージ名が DEFAULT に対して提供されたのなら, 全ての処理されて
+いない部分のデフォルトのパッケージになります. すなわち:
+
+    use autobox ARRAY	=> 'MyArray',
+		DEFAULT => 'MyDefault';
+
+will invoke ARRAY methods on MyArray and all other methods on MyDefault.
+
+は ARRAY メソッドを MyArray で呼び出し, それ以外を MyDefault で
+呼び出します.
+
+=item *
+
+
+
+A namespace: this is a package prefix (up to and including the final '::')
+to which the name of the default handler for this type will be appended:
+
+名前空間: これはこのタイプに対するデフォルトのハンドラ名が付与される
+パッケージのプレフィックスになります(末尾の '::' までを含みます):
+
+Thus:
+
+すなわち:
+
+    use autobox ARRAY => 'Prelude::';
+
+binds ARRAY types to the Prelude::ARRAY package.
+
+は ARRAY タイプを Prelude::ARRAY パッケージに束縛します.
+
+As with the package name form, specifying a default namespace e.g.
+
+パッケージ名と同時に, デフォルトの名前空間を指定することで, 例えば,
+
+    use autobox SCALAR	=> 'MyScalar',
+		DEFAULT => 'MyNamespace::';
+
+binds MyNamespace::ARRAY, MyNamespace::HASH &c. to the corresponding builtin
+types.
+
+は, MyNamespace::ARRAY, MyNamespace::HASH &c. を対応する組み込み型に
+束縛します.
+
+=item *
+
+
+
+An empty string: this is shorthand for the builtin type name. e.g.
+
+空の文字列: これは組み込み型の名前の短縮表現です, 例えば,
+
+    use autobox SCALAR	=> 'MyScalar',
+		ARRAY	=> '',
+	       	DEFAULT => 'MyDefault::';
+
+is equivalent to:
+
+は以下と等値です:
+
+    use autobox SCALAR	=> 'MyScalar'
+		ARRAY	=> 'ARRAY',
+		DEFAULT	=> 'MyDefault::';
+
+which in turn is equivalent to:
+
+そしてこれは以下と等値です:
+
+    use autobox SCALAR	=> 'MyScalar'
+		ARRAY	=> 'ARRAY',
+		HASH	=> 'MyDefault::HASH',
+		CODE	=> 'MyDefault::CODE';
+
+If DEFAULT is set to an empty string (as it is by default),
+it fills in the default type for all the unhandled cases e.g.
+
+もし DEFAULT に空の文字列が設定されると(それはデフォルトなので), 
+全ての処理されていない箇所をデフォルトの型で埋めます, 例えば,
+
+    use autobox SCALAR	=> 'MyScalar',
+		CODE	=> 'MyCode',
+	       	DEFAULT => '';
+
+is equivalent to:
+
+は以下と等価です:
+
+    use autobox SCALAR	=> 'MyScalar',
+		CODE	=> 'MyCode',
+		ARRAY	=> 'ARRAY',
+		HASH	=> 'HASH';
+
+=item *
+
+
+
+undef: this disables autoboxing for the specified type, or all unhandled types
+in the case of DEFAULT.
+
+undef: これは指定した型, もしくは DEFAULT の時には全ての指定していない
+型に対して autobox を無効にします.
+
+=back
+
+In addition to the SCALAR, ARRAY, HASH, CODE and DEFAULT fields above,
+there are two additional fields: UNDEF and REPORT.
+
+これまでに述べた SCALAR, ARRAY, HASH, CODE そして DEFAULT の
+フィールドに加えて２つのフィールド, UNDEF 及び REPORT があります.
+
+=head2 UNDEF
+
+The pseudotype, UNDEF, can be used to autobox undefined values. These are
+not autoboxed by default (i.e. the default value is undef):
+
+仮想型, UNDEF, は未定義値の autobox に利用されます. 
+これはデフォルトでは autobox されません (すなわちデフォルトは undef
+です):
+
+This doesn't work:
+
+これは動作しません:
+
+    use autobox;
+
+    undef->foo() # runtime error
+
+This works:
+
+これなら動作します:
+
+    use autobox UNDEF => 'MyPackage'; 
+
+    undef->foo(); # ok
+
+So does this:
+
+そしてこれも動作します:
+
+    use autobox UNDEF => 'MyNamespace::'; 
+
+    undef->foo(); # ok
+
+=head2 REPORT
+
+REPORT exposes the current handlers by means of a callback, or a
+static reporting function.
+
+REPORT は現在のハンドラをコールバック若しくは静的なレポート関数
+で露出させます.
+
+This can be useful if one wishes to see the computed bindings
+in 'longhand'.
+
+これは手書きで算出された束縛を見たい人には便利です.
+
+Reporting is ignored if the value corresponding to the REPORT key is false.
+
+レポートは REPORT キーに対応する値が偽であれば無視されます.
+
+If the value is a CODE ref, then this sub is called with a reference to
+the HASH containing the computed handlers for the current scope.
+
+値が CODE リファレンスであればその関数が現在のスコープに対して
+算出されたハンドラを含んだハッシュへのリファレンスを伴って
+呼び出されます.
+
+Finally, if REPORT is true but not a CODE ref, the handlers are dumped
+to STDERR.
+
+そして最後に, REPORT が真で且つ CODE リファレンスでなければ, ハンドラは
+標準エラーにダンプされます.
+
+Thus:
+
+すなわち:
+
+    use autobox REPORT => 1, ...
+
+or
+
+若しくは
+
+    use autobox REPORT => sub { ... }, ...
+
+or
+
+若しくは
+
+    sub my_callback ($) {
+	my $hashref = shift;
+	...
+    }
+
+    use autobox REPORT => \&my_callback, ...
+
+=head1 警告
+
+Due to Perl's precedence rules some autoboxed literals may need to be
+parenthesized:
+
+Perl の優先順位のために幾つかの autobox リテラルは括弧でくくる
+必要があります:
+
+For instance, while this works:
+
+例えばこれは動作しますが:
+
+    my $curried = sub { ... }->curry();
+
+this doesn't:
+
+これは動作しません:
+
+    my $curried = \&foo->curry();
+
+The solution is to wrap the reference in parentheses:
+
+リファレンスを括弧でくくることで解決出来ます:
+
+    my $curried = (\&foo)->curry();
+
+The same applies for signed integer and float literals:
+
+符号付きの整数及び浮動小数点数リテラルにも同様に適用できます:
+
+    # this works
+    # これは動作します
+    my $range = 10->to(1);
+
+    # this doesn't work
+    # これは動作しません
+    my $range = -10->to(10);
+
+    # this works
+    # これは動作します
+    my $range = (-10)->to(10);
+
+Perl's special-casing for the C<print BLOCK ...> syntax
+(see perlsub) means that C<print { expression() } ...>
+(where the curly brackets denote an anonymous HASH ref)
+may require some further disambiguation:
+
+Perl の C<print BLOCK> 構文(perlsub参照)に関する特殊なケースでは
+C<print { expression() } ...> (ここで波括弧は無名ハッシュ
+リファレンスを意味します)において幾つかの曖昧性の除去のために
+幾分踏み込む必要があります.
+
+    # this works (
+    # これは動作します(
+    print { foo => 'bar' }->foo();
+
+    # and this
+    # そしてこれも
+    print { 'foo', 'bar' }->foo();
+
+    # and even this
+    # これもまた
+    print { 'foo', 'bar', @_ }->foo();
+
+    # but this doesn't
+    # でもこれはだめです
+    print { @_ }->foo() ? 1 : 0
+
+In the latter case, the solution is to supply something
+other than a HASH ref literal as the first argument
+to print():
+
+後者のケースでは, これを解決するために print() の最初の引数に
+HASH リファレンス以外の何かを渡す必要があります:
+
+    # e.g.
+    # 例
+    print STDOUT { @_ }->foo() ? 1 : 0;
+
+    # or
+    # 若しくは
+    my $hashref = { @_ };
+    print $hashref->foo() ? 1 : 0; 
+
+    # or
+    # 若しくは
+    print '', { @_ }->foo() ? 1 : 0; 
+
+    # or
+    # 若しくは
+    print '' . { @_ }->foo() ? 1 : 0; 
+
+    # or even
+    # さらに若しくは
+    { @_ }->print_if_foo(1, 0);
+
+Although C<isa> and C<can> are "overloaded" for autoboxed values, the C<VERSION> method isn't.
+Thus, while these work:
+
+C<isa> 及び C<can> は autobox された値では"上書き(overload)"されて
+いますが, C<VERSION> メソッドはされていません.
+つまり, これらは動作しますが:
+
+	[ ... ]->can('pop')
+
+	3.1415->isa('MyScalar')
+
+This doesn't:
+
+これは動作しません:
+
+	use MyScalar 1.23;
+
+	use autobox SCALAR => MyScalar;
+
+	print "Hello, World"->VERSION(), $/;
+
+Though, of course:
+
+けれどももちろん:
+
+	print MyScalar->VERSION(), $/;
+
+and
+
+及び
+
+	print $MyScalar::VERSION, $/;
+
+continue to work.
+
+は従来通りに動作します.
+
+This is due to a limitation in perl's implementation of C<use> and C<no>.
+Likewise, C<import> and C<unimport> are unaffected by the autobox pragma:
+
+これは perl の C<use> 及び C<no> の実装による制限です. 同じように
+C<import> 及び C<unimport> は autobox プラグマからは影響を受けません.
+
+	'Foo'->import() # equivalent to Foo->import() rather than MyScalar->import('Foo')
+	                # MyScalar->import('Foo') ではなくFoo->import() と等価
+
+	[]->import()  # error: Can't call method "import" on unblessed reference
+	              # エラー: ブレスされていないリファレンス上で "import" メソッドを呼び出せません
+
+=head1 バージョン
+
+1.03
+
+
+=head1 関連項目
+
+L<autobox::Core>, L<Perl6::Contexts>, L<Scalar::Properties>, L<Set::Array>, L<String::Ruby>, L<Language::Functional>
+
+
+=head1 著者
+
+chocolateboy: <chocolate.boy@email.com>
+
+
+=head1 著作権
+
+Copyright (c) 2005, chocolateboy.
+
+
+This module is free software. It may be used, redistributed
+and/or modified under the same terms as Perl itself.
+
+このモジュールはフリーソフトウェアです. Perl と同じライセンスの
+元で利用, 再配布及び変更を行うことが出来ます.
+
