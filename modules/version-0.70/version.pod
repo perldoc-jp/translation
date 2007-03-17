@@ -1,0 +1,1198 @@
+=head1 NAME
+
+version - バージョンオブジェクトのためのPerl拡張
+
+=head1 SYNOPSIS
+
+  use version;
+  $version = version->new("12.2.1"); # Perl < 5.8.1 のためにクオートしなければなりません
+  print $version; 		# v12.2.1
+  print $version->numify; 	# 12.002001
+  if ( $version gt "12.2" )	# 真
+
+  $alphaver = version->new("1.02_03"); # クオートしなければなりません！
+  print $alphaver;		# 1.02_0300
+  print $alphaver->is_alpha();  # 真
+
+  $ver = qv("1.2.0");           # v1.2.0
+
+  $perlver = version->new(5.005_03); # クオートしてはいけません！
+  print $perlver;		# 5.005030
+
+=head1 DESCRIPTION
+
+Overloaded version objects for all modern versions of Perl.This module
+implements all of the features of version objects which will be part
+of Perl 5.10.0.
+
+最近の全てのバージョンのPerl用のオーバーロードされたバージョンオブジェ
+クト。このモジュールは，Perl 5.10.0の一部になる予定のバージョンオブジェ
+クトの全機能を実装しています。
+
+=head2 BEST PRACTICES
+
+If you intend for your module to be used by different releases of Perl,
+and/or for your $VERSION scalar to mean what you think it means, there
+are a few simple rules to follow:
+
+もしあなたのモジュールを違うバージョンのPerlで使えるようにしたければ，
+あるいは$VERSIONスカラーがあなたが意図する値を正しく取るようにしたけれ
+ば，従うべき単純なルールがいくつかあります：
+
+=over 4
+
+=item * Be consistent
+
+Whichever of the two types of version objects that you choose to employ,
+you should stick to either L<Numeric Versions> or L<Extended Versions>
+and not mix them together.While this is I<possible>, it is very
+confusing to the average user.
+
+2種類のバージョンオブジェクトのどちらを利用するか選ぶにしろ，L<Numeric
+Versions>かL<Extended Versions>のどちらか一方のみを使い続け，両者を混ぜ
+ないようにすべきです。それはI<可能です>が，通常のユーザはとても戸惑うこ
+とでしょう。
+
+If you intend to use L<Extended Versions>, you are strongly encouraged
+to use the L<qv()> operator with a quoted term, e.g.:
+
+  use version; our $VERSION = qv("1.2.3");
+
+on a single line as above.
+
+もしL<Extended Versions>を使うのであれば，L<qv()>演算子をクオート付きの
+項を指定して使うことが強く推奨されます。例えば：
+
+  use version; our $VERSION = qv("1.2.3");
+
+を上記のように一行で記述します。
+
+At the very least, decide on which of the several ways to initialize
+your version objects you prefer and stick with it.It is also best to
+be explicit about what value you intend to assign your version object
+and to not rely on hidden behavior of the parser.
+
+少なくとも，バージョンオブジェクトを初期化する様々な方法のうち何を使い
+たいかを決めて，その方法にこだわってください。さらに，バージョンオブジ
+ェクトに割り当てようとしている値は何なのかについて明確に理解しているこ
+とと，パーサの隠された動作を頼りにしないことが最重要です。
+
+=item * Be careful
+
+If you are using Module::Build or ExtUtils::MakeMaker, so that you can
+release your module to CPAN, you have to recognize that neither of those
+programs completely handles version objects natively (yet).If you use
+version objects with Module::Build, you should add an explicit dependency
+to the release of version.pm in your Build.PL:
+
+  my $builder = Module::Build->new(
+     ...
+     requires => {
+         ... ,
+         'version'    => 0.50,
+	 ...,
+     },
+     ...
+  );
+
+and it should Just Work(TM).Module::Build will [hopefully soon]
+include full support for version objects; there are no current plans
+to patch ExtUtils::MakeMaker to support version objects.
+
+もしModule::BuildやExtUtils::MakeMakerを使っているのなら，CPANにモジュ
+ールをリリースすることができますが，それらのプログラムがいずれもバージ
+ョンオブジェクトを完全に扱うことが（今のところ）できないということに気
+付くでしょう。もしModule::Buildと同時にバージョンオブジェクトを使うの
+であれば，version.pmの当該バージョンへの依存関係をBuild.PLに明示的に追
+加しなければなりません：
+
+  my $builder = Module::Build->new(
+     ...
+     requires => {
+         ... ,
+         'version'    => 0.50,
+	 ...,
+     },
+     ...
+  );
+
+これで動くはずです。Module::Buildは（きっとすぐに）バージョンオブジェク
+トを完全にサポートするでしょう。バージョンオブジェクトをサポートするた
+めにExtUtils::MakeMakerにパッチを当てる計画は今のところ存在しません。
+
+=back
+
+=head2 Using modules that use version.pm
+
+As much as possible, the version.pm module remains compatible with all
+current code.However, if your module is using a module that has defined
+C<$VERSION> using the version class, there are a couple of things to be
+aware of.For purposes of discussion, we will assume that we have the
+following module installed:
+
+  package Example;
+  use version;  $VERSION = qv('1.2.2');
+  ...module code here...
+  1;
+
+可能な限り，version.pmモジュールは既存の全てのコードとの互換性を保ちま
+す。ただし，もしあなたのモジュールがバージョンクラスを用いてC<$VERSION>
+を定義するモジュールを使用している場合，知っておくべきことがいくつかあ
+ります。議論のため，以下のモジュールがインストールされていることを仮定
+します：
+
+  package Example;
+  use version;  $VERSION = qv('1.2.2');
+  ...ここにモジュールのコードを...
+  1;
+
+=over 4
+
+=item Numeric versions always work
+
+Code of the form:
+
+  use Example 1.002003;
+
+will always work correctly.The C<use> will perform an automatic
+C<$VERSION> comparison using the floating point number given as the first
+term after the module name (e.g. above 1.002.003).In this case, the
+installed module is too old for the requested line, so you would see an
+error like:
+
+  Example version 1.002003 (v1.2.3) required--this is only version 1.002002 (v1.2.2)...
+
+以下の形式のコード：
+
+  use Example 1.002003;
+
+は常に正しく動作します。C<use>はモジュール名の次の項として与えられる浮
+動小数点（例：上述の1.002.003）を使って自動的にC<$VERSION>の比較を行い
+ます。この例では，インストールされているモジュールは要求されたコードに
+対して古すぎるので，次のようなエラーが表示されるでしょう：
+
+  Example version 1.002003 (v1.2.3) required--this is only version 1.002002 (v1.2.2)...
+
+=item Extended version work sometimes
+
+With Perl >= 5.6.2, you can also use a line like this:
+
+  use Example 1.2.3;
+
+and it will again work (i.e. give the error message as above), even with
+releases of Perl which do not normally support v-strings (see L<What about
+v-strings> below).This has to do with that fact that C<use> only checks
+to see if the second term I<looks like a number> and passes that to the
+replacement L<UNIVERSAL::VERSION>.This is not true in Perl 5.005_04,
+however, so you are B<strongly encouraged> to always use a numeric version
+in your code, even for those versions of Perl which support the extended
+version.
+
+Perl >= 5.6.2では，次のようなコードを使うこともできます：
+
+  use Example 1.2.3;
+
+そしてこれも，たとえ通常はv-string（下記のL<What about v-strings>を参照）
+をサポートしていないバージョンのPerlであっても，正常に動作するでしょう
+（すなわち，上述のエラーメッセージが表示されます）。この場合，C<use>は
+2番目の項がI<数字のように見える>かどうかをチェックし，それをReplacement
+L<UNIVERSAL::VERSION>に渡すだけだという事実が関わってきます。しかし，こ
+のことはPerl 5.005_04では正しくなく，そのためにextended versionをサポー
+トするPerlのバージョンにおいてさえも，コード中では常に数値バージョンを
+使うことがB<強く推奨>されます。
+
+=back
+
+=head2 What IS a version
+
+For the purposes of this module, a version "number" is a sequence of
+positive integer values separated by one or more decimal points and
+optionally a single underscore.This corresponds to what Perl itself
+uses for a version, as well as extending the "version as number" that
+is discussed in the various editions of the Camel book.
+
+このモジュールの用途のため，バージョン「番号」は，1つ以上の小数点と任意
+の一つのアンダースコアによって区切られる正の整数値とします。これはPerl
+自身がバージョンを表すのに使用するものに対応し，またラクダ本の各版で論
+じられた「数字としてのバージョン」を拡張します。
+
+There are actually two distinct kinds of version objects:
+
+実際にはバージョンオブジェクトには2種類あります。
+
+=over 4
+
+=item * Numeric Versions
+
+Any initial parameter which "looks like a number", see L<Numeric
+Versions>.This also covers versions with a single decimal point and
+a single embedded underscore, see L<Numeric Alpha Versions>, even though
+these must be quoted to preserve the underscore formatting.
+
+「数字のように見える」先頭の引数全て（L<Numeric Versions>を参照）。これ
+は小数点一つや途中にアンダースコア一つを持つバージョンも含みます（
+L<Numeric Alpha Versions>を参照）が，アンダースコアの書式を保持するには
+クオートされなければなりません。
+
+=item * Extended Versions
+
+Any initial parameter which contains more than one decimal point
+and an optional embedded underscore, see L<Extended Versions>.This
+is what is commonly used in most open source software as the "external"
+version (the one used as part of the tag or tarfile name).The use
+of the exported L<qv()> function also produces this kind of version
+object.
+
+2つ以上の小数点と任意の途中のアンダースコア一つを持つ先頭の引数全て（
+L<Extended Versions>を参照）。これはほとんどのオープンソースソフトウェ
+アで「外部用」バージョン（タグやtarファイル名の一部分として使われるもの）
+として一般的に使われているものです。エクスポートされたL<qv()>関数を使用
+すると，この種のバージョンオブジェクトが生成されます。
+
+=back
+
+Both of these methods will produce similar version objects, in that
+the default stringification will yield the version L<Normal Form> only
+if required:
+
+  $v  = version->new(1.002);     # 1.002, but compares like 1.2.0
+  $v  = version->new(1.002003);  # 1.002003
+  $v2 = version->new("1.2.3");   # v1.2.3
+
+In specific, version numbers initialized as L<Numeric Versions> will
+stringify in Numeric form.Version numbers initialized as L<Extended Versions>
+will be stringified as L<Normal Form>.
+
+これらのメソッド両方が同様のバージョンオブジェクトを生成します。なぜな
+ら，必要なときにのみデフォルトの文字列化はバージョンのL<Normal Form>を
+生み出すからです：
+
+  $v  = version->new(1.002);     # 1.002, ただし1.2.0と同様に比較される
+  $v  = version->new(1.002003);  # 1.002003
+  $v2 = version->new("1.2.3");   # v1.2.3
+
+特に，L<Numeric Versions>として初期化されたバージョン番号はNumeric form
+で文字列化します。L<Extended Versions>として初期化されたバージョン番号
+はL<Normal Form>として文字列化されます。
+
+=head2 Numeric Versions
+
+These correspond to historical versions of Perl itself prior to 5.6.0,
+as well as all other modules which follow the Camel rules for the
+$VERSION scalar.A numeric version is initialized with what looks like
+a floating point number.Leading zeros B<are> significant and trailing
+zeros are implied so that a minimum of three places is maintained
+between subversions.What this means is that any subversion (digits
+to the right of the decimal place) that contains less than three digits
+will have trailing zeros added to make up the difference, but only for
+purposes of comparison with other version objects.For example:
+
+これらは5.6.0より前のPerl自身の歴史上のバージョンや，$VERSIONスカラー用
+のラクダルールを踏襲する他のモジュール全てに対応します。数値バージョン
+は浮動小数点のように見えるもので初期化されます。先頭の0はB<全て>有効で
+末尾の0は暗黙に仮定されるので，3点の最小値は下位バージョン間で保持され
+ます。これが意味するのは，3桁より少ない桁数の下位バージョン（小数点より
+右の数字）は全て末尾への0の追加によって補われますが，しかしそれは他のバ
+ージョンオブジェクトとの比較のためだけです。例えば：
+
+                                   # Prints     Equivalent to
+  $v = version->new(      1.2);    # 1.200      v1.200.0
+  $v = version->new(     1.02);    # 1.020      v1.20.0
+  $v = version->new(    1.002);    # 1.002      v1.2.0
+  $v = version->new(   1.0023);    # 1.002300   v1.2.300
+  $v = version->new(  1.00203);    # 1.002030   v1.2.30
+  $v = version->new( 1.002003);    # 1.002003   v1.2.3
+
+                                   # 表示       等しい値
+  $v = version->new(      1.2);    # 1.200      v1.200.0
+  $v = version->new(     1.02);    # 1.020      v1.20.0
+  $v = version->new(    1.002);    # 1.002      v1.2.0
+  $v = version->new(   1.0023);    # 1.002300   v1.2.300
+  $v = version->new(  1.00203);    # 1.002030   v1.2.30
+  $v = version->new( 1.002003);    # 1.002003   v1.2.3
+
+All of the preceding examples are true whether or not the input value is
+quoted.The important feature is that the input value contains only a
+single decimal.See also L<Alpha Versions> for how to handle
+
+入力値がクオートされているかに関わらず，先行例は全て真となります。重要
+な特徴として，入力値が一つの小数点を持つことがあります。扱う方法は
+L<Alpha Versions>も参照してください。
+
+IMPORTANT NOTE: As shown above, if your numeric version contains more
+than 3 significant digits after the decimal place, it will be split on
+each multiple of 3, so 1.0003 is equivalent to v1.0.300, due to the need
+to remain compatible with Perl's own 5.005_03 == 5.5.30 interpretation.
+Any trailing zeros are ignored for mathematical comparison purposes.
+
+重要な注意：上述で示されているように，数値バージョンが小数点の後に3つを
+超える有効桁数を含む場合，3の各倍数で区切られるので1.0003はv1.0.300と等
+しくなります。これはPerl自身の5.005_03 == 5.5.30という解釈との互換性を
+維持する必要があるためです。末尾の0は数学的な比較用に全て無視されます。
+
+=head2 Extended Versions
+
+These are the newest form of versions, and correspond to Perl's own
+version style beginning with 5.6.0.Starting with Perl 5.10.0,
+and most likely Perl 6, this is likely to be the preferred form.This
+method normally requires that the input parameter be quoted, although
+Perl's after 5.8.1 can use v-strings as a special form of quoting, but
+this is highly discouraged.
+
+これらは最も新しい形式のバージョンで，5.6.0から始まるPerl自身のバージョ
+ン形式に対応します。Perl 5.10.0からは，またほぼ確実にPerl 6でも，これが
+好まれる形式になりそうです。このメソッドは通常入力引数がクオートされて
+いる必要があり，また5.8.1以降のPerlではv-stringをクオートの特別形式とし
+て使用することができますが，これは強く非推奨です。
+
+Unlike L<Numeric Versions>, Extended Versions have more than
+a single decimal point, e.g.:
+
+L<Numeric Versions>と違って，Extended Versionsは2つ以上の小数点を持ちま
+す。例えば：
+
+                                   # Prints
+  $v = version->new( "v1.200");    # v1.200.0
+  $v = version->new("v1.20.0");    # v1.20.0
+  $v = qv("v1.2.3");               # v1.2.3
+  $v = qv("1.2.3");                # v1.2.3
+  $v = qv("1.20");                 # v1.20.0
+
+                                   # 表示
+  $v = version->new( "v1.200");    # v1.200.0
+  $v = version->new("v1.20.0");    # v1.20.0
+  $v = qv("v1.2.3");               # v1.2.3
+  $v = qv("1.2.3");                # v1.2.3
+  $v = qv("1.20");                 # v1.20.0
+
+In general, Extended Versions permit the greatest amount of freedom
+to specify a version, whereas Numeric Versions enforce a certain
+uniformity.See also L<New Operator> for an additional method of
+initializing version objects.
+
+一般的に，Extended Versionsは最も高い自由度でバージョンを指定でき，その
+一方でNumeric Versionsは一定の統一性を強制します。バージョンオブジェク
+トのもう一つの補助的な初期化メソッドについてはL<New Operator>も参照して
+ください。
+
+Just like L<Numeric Versions>, Extended Versions can be used as
+L<Alpha Versions>.
+
+L<Numeric Versions>と全く同様に，Extended VersionsはL<Alpha Versions>と
+して使用することができます。
+
+=head2 Numeric Alpha Versions
+
+The one time that a numeric version must be quoted is when a alpha form is
+used with an otherwise numeric version (i.e. a single decimal point).This
+is commonly used for CPAN releases, where CPAN or CPANPLUS will ignore alpha
+versions for automatic updating purposes.Since some developers have used
+only two significant decimal places for their non-alpha releases, the
+version object will automatically take that into account if the initializer
+is quoted.For example Module::Example was released to CPAN with the
+following sequence of $VERSION's:
+
+かつて数値バージョンが必ずクオートされていなければならなかったのは，ア
+ルファ形式が他の数値バージョン（すなわち小数点が一つ）と一緒に使われて
+いたときです。これはよくCPANリリースに使われており，そこでCPANや
+CPANPLUSは自動アップデートのためにアルファバージョンを無視します。非ア
+ルファリリースに小数の有効桁数を2としていた開発者がいたため，バージョン
+オブジェクトは初期化子がクオートされていれば自動的にそれを考慮します。
+例えば，Module::Exampleが以下の$VERSION系列でCPANにリリースされたとしま
+す：
+
+  # $VERSION    Stringified
+  0.01          0.010
+  0.02          0.020
+  0.02_01       0.02_0100
+  0.02_02       0.02_0200
+  0.03          0.030
+  etc.
+
+  # $VERSION    文字列化版
+  0.01          0.010
+  0.02          0.020
+  0.02_01       0.02_0100
+  0.02_02       0.02_0200
+  0.03          0.030
+  etc.
+
+As you can see, the version object created from the values in the first
+column may contain a trailing 0, but will otherwise be both mathematically
+equivalent and sorts alpha-numerically as would be expected.
+
+ご覧の通り，最初の列の値から作成されたバージョンオブジェクトは末尾に0を
+一つ含むかもしれませんが，そうでなければ両者は数学的に等価で，期待通り
+に英数字順でソートされます。
+
+=head2 Object Methods
+
+Overloading has been used with version objects to provide a natural
+interface for their use.All mathematical operations are forbidden,
+since they don't make any sense for base version objects.Consequently,
+there is no overloaded numification available.If you want to use a
+version object in a numeric context for some reason, see the L<numify>
+object method.
+
+バージョンオブジェクトの利用にとって自然なインタフェースを提供するため
+に，それらに対してオーバーロードが使われてきました。数学的な演算は全て，
+ベースのバージョンオブジェクトに対して意味を成さないので，禁止されてい
+ます。その結果，オーバーロードされた数値化は存在せず利用できません。も
+し何らかの理由でバージョンオブジェクトを数値コンテキストで使用したい場
+合は，オブジェクトメソッドのL<numify>を参照してください。
+
+=over 4
+
+=item * New Operator
+
+Like all OO interfaces, the new() operator is used to initialize
+version objects.One way to increment versions when programming is to
+use the CVS variable $Revision, which is automatically incremented by
+CVS every time the file is committed to the repository.
+
+全てのOOインタフェースと同様に，new()演算子はバージョンオブジェクトを初
+期化するために使われます。プログラミング時にバージョンをインクリメント
+するための方法の一つはCVS変数の$Revisionを使うことです。$Revisionはファ
+イルがリポジトリにコミットされた際に毎回CVSによって自動的にインクリメン
+トされます。
+
+In order to facilitate this feature, the following
+code can be employed:
+
+  $VERSION = version->new(qw$Revision$);
+
+and the version object will be created as if the following code
+were used:
+
+  $VERSION = version->new("v2.7");
+
+In other words, the version will be automatically parsed out of the
+string, and it will be quoted to preserve the meaning CVS normally
+carries for versions.The CVS $Revision$ increments differently from
+numeric versions (i.e. 1.10 follows 1.9), so it must be handled as if
+it were a L<Extended Version>.
+
+この機能を容易に行うために，以下のコードが利用できます：
+
+  $VERSION = version->new(qw$Revision$);
+
+これにより，以下のコードが使われたかのようにバージョンオブジェクトが
+作成されます：
+
+  $VERSION = version->new("v2.7");
+
+言い換えると，構文解析により文字列からバージョンが自動的に取り出され，
+CVSが通常バージョンで伝える意味を保つためにそれがクオートされます。CVS
+の$Revision$は数値バージョンとは異なった方法でインクリメントされる（す
+なわち1.9の後に1.10が続く）ので，それがL<Extended Version>であるかのよ
+うに扱わなければなりません。
+
+A new version object can be created as a copy of an existing version
+object, either as a class method:
+
+  $v1 = version->new(12.3);
+  $v2 = version->new($v1);
+
+or as an object method:
+
+  $v1 = version->new(12.3);
+  $v2 = $v1->new(12.3);
+
+and in each case, $v1 and $v2 will be identical.NOTE: if you create
+a new object using an existing object like this:
+
+  $v2 = $v1->new();
+
+the new object B<will not> be a clone of the existing object.In the
+example case, $v2 will be an empty object of the same type as $v1.
+
+新しいバージョンオブジェクトは既存のバージョンオブジェクトのコピーとし
+て作成可能で，クラスメソッドとして作成する：
+
+  $v1 = version->new(12.3);
+  $v2 = version->new($v1);
+
+ことも，あるいはオブジェクトメソッドとして作成する：
+
+  $v1 = version->new(12.3);
+  $v2 = $v1->new(12.3);
+
+こともでき，それぞれの例において，$v1と$v2は同一です。注意：もし新しい
+オブジェクトを次のように既存のオブジェクトを使って作成する場合：
+
+  $v2 = $v1->new();
+
+新しいオブジェクトは既存のオブジェクトのクローンにはB<なりません>。この
+例では，$v2は$v1と同じ種類の空のオブジェクトになります。
+
+=back
+
+=over 4
+
+=item * qv()
+
+An alternate way to create a new version object is through the exported
+qv() sub.This is not strictly like other q?operators (like qq, qw),
+in that the only delimiters supported are parentheses (or spaces).It is
+the best way to initialize a short version without triggering the floating
+point interpretation.For example:
+
+  $v1 = qv(1.2);         # 1.2.0
+  $v2 = qv("1.2");       # also 1.2.0
+
+As you can see, either a bare number or a quoted string can usually
+be used interchangably, except in the case of a trailing zero, which
+must be quoted to be converted properly.For this reason, it is strongly
+recommended that all initializers to qv() be quoted strings instead of
+bare numbers.
+
+新しいバージョンオブジェクトを作成する別の方法に，エクスポートされた
+qv()関数を使う方法があります。これは，利用可能なデリミタが丸カッコ（ま
+たはスペース）のみであるという点で，厳密には他のq?演算子（qq, qwなど）
+とは似ていません。これは，小数点解釈を引き起こすことなしに短いバージョ
+ンを初期化するための最良の方法です。例えば：
+
+  $v1 = qv(1.2);         # 1.2.0
+  $v2 = qv("1.2");       # これも 1.2.0
+
+ご覧の通り，bare numberまたはクオートされた文字列は通常交換して使用でき
+ます。ただし，末尾に0があるケースは，正しく変換するためにクオートされる
+必要があるので例外です。この理由のため，qv()への全ての初期化子はbare
+numberのかわりにクオートされた文字列とすることが強く推奨されます。
+
+To prevent the C<qv()> function from being exported to the caller's namespace,
+either use version with a null parameter:
+
+  use version ();
+
+or just require version, like this:
+
+  require version;
+
+Both methods will prevent the import() method from firing and exporting the
+C<qv()> sub.This is true of subclasses of version as well, see
+L<SUBCLASSING> for details.
+
+C<qv()>関数が呼び出し側の名前空間にエクスポートされるのを防ぐために，空
+の引数でuse versionを呼び出すか：
+
+  use version ();
+
+あるいは単にrequire versionを行うか：
+
+  require version;
+
+のいずれかを行ってください。両方のメソッドともimport()メソッドが起動し
+てC<qv()>サブルーチンをエクスポートするのを防ぎます。このことはversion
+のサブクラスでも同じように成り立ちます。詳しくはL<SUBCLASSING>を参照し
+てください。
+
+=back
+
+For the subsequent examples, the following three objects will be used:
+
+  $ver   = version->new("1.2.3.4"); # see "Quoting" below
+  $alpha = version->new("1.2.3_4"); # see "Alpha versions" below
+  $nver  = version->new(1.002);     # see "Numeric Versions" above
+
+以降の例では，以下の3つのオブジェクトが使われます：
+
+  $ver   = version->new("1.2.3.4"); # 下記の"Quoting"を参照
+  $alpha = version->new("1.2.3_4"); # 下記の"Alpha versions"を参照
+  $nver  = version->new(1.002);     # 下記の"Numeric Versions"を参照
+
+=over 4
+
+=item * Normal Form
+
+For any version object which is initialized with multiple decimal
+places (either quoted or if possible v-string), or initialized using
+the L<qv()> operator, the stringified representation is returned in
+a normalized or reduced form (no extraneous zeros), and with a leading 'v':
+
+  print $ver->normal;         # prints as v1.2.3.4
+  print $ver->stringify;      # ditto
+  print $ver;                 # ditto
+  print $nver->normal;        # prints as v1.2.0
+  print $nver->stringify;     # prints as 1.002, see "Stringification"
+
+複数の小数点（クオートされたものか可能であればv-string）を用いて，もし
+くはL<qv()>演算子を用いて初期化されたバージョンオブジェクトのために，文
+字列化された表現形式が正規化もしくは縮小された形式（余分なゼロを削除）
+で，先頭に'v'が付いて返されます：
+
+  print $ver->normal;         # v1.2.3.4 と出力されます
+  print $ver->stringify;      # 同上
+  print $ver;                 # 同上
+  print $nver->normal;        # v1.2.0 と出力されます
+  print $nver->stringify;     # 1.002 と出力されます（"Stringification" を参照）
+
+In order to preserve the meaning of the processed version, the
+normalized representation will always contain at least three sub terms.
+In other words, the following is guaranteed to always be true:
+
+  my $newver = version->new($ver->stringify);
+  if ($newver eq $ver ) # always true
+    {...}
+
+処理されたバージョンの意味を保つために，正規化された表現形式は必ず最低
+3つの下位項を持たなければなりません。言い換えると，以下のコードは常に真
+となることが保証されます：
+
+  my $newver = version->new($ver->stringify);
+  if ($newver eq $ver ) # 常に真
+    {...}
+
+=back
+
+=over 4
+
+=item * Numification
+
+Although all mathematical operations on version objects are forbidden
+by default, it is possible to retrieve a number which corresponds
+to the version object through the use of the $obj->numify
+method.For formatting purposes, when displaying a number which
+corresponds a version object, all sub versions are assumed to have
+three decimal places.So for example:
+
+  print $ver->numify;         # prints 1.002003004
+  print $nver->numify;        # prints 1.002
+
+バージョンオブジェクトに対する数学的な演算はデフォルトでは全て禁止され
+ていますが，$obj->numifyメソッドを使うことでそのバージョンオブジェクト
+に対応した数値を取り出すことが可能です。フォーマッティングのために，バ
+ージョンオブジェクトに対応する数値を表示する際には，下位バージョンは全
+て3桁あると仮定されます。従って，例を挙げると以下のようになります：
+
+  print $ver->numify;         # 1.002003004 を出力
+  print $nver->numify;        # 1.002 を出力
+
+Unlike the stringification operator, there is never any need to append
+trailing zeros to preserve the correct version value.
+
+文字列化演算子と違って，正しいバージョン値を保持するために末尾のゼロを
+追加する必要は全くありません。
+
+=back
+
+=over 4
+
+=item * Stringification
+
+In order to mirror as much as possible the existing behavior of ordinary
+$VERSION scalars, the stringification operation will display differently,
+depending on whether the version was initialized as a L<Numeric Version>
+or L<Extended Version>.
+
+通常の$VERSIONスカラーの既存の振る舞いを可能な限り反映させるために，文
+字列化演算はそのバージョンがL<Numeric Version>とL<Extended Version>のど
+ちらで初期化されたかに依存して表示が異なります。
+
+What this means in practice is that if the normal CPAN and Camel rules are
+followed ($VERSION is a floating point number with no more than 3 decimal
+points), the stringified output will be exactly the same as the numified
+output.There will be no visible difference, although the internal
+representation will be different, and the L<Comparison operators> will
+function using the internal coding.
+
+これが現実的に意味しているのは，通常のCPANやラクダルールが使われれば
+（$VERSIONが浮動小数で3つより多くの小数点を持たなければ），文字列化の結
+果は数値化の結果と完全に一致します。内部の表現形式が異なったとしても，
+目に見える違いはなく，L<Comparison operators>は内部の符号化を用いて正し
+く機能します。
+
+If a version object is initialized using a L<Extended Version> form, then
+the stringified form will be the L<Normal Form>.The $obj->normal
+operation can always be used to produce the L<Normal Form>, even if the
+version was originally a L<Numeric Version>.
+
+  print $ver->stringify;    # prints v1.2.3.4
+  print $nver->stringify;   # prints 1.002
+
+もしバージョンオブジェクトがL<Extended Version>形式を用いて初期化されて
+いるならば，文字列化された形式はL<Normal Form>になるでしょう。
+$obj->normal演算は，たとえそのバージョンがもともとはL<Numeric Version>
+であったとしても，L<Normal Form>を生成するために常に利用できます。
+
+  print $ver->stringify;    # v1.2.3.4 を出力
+  print $nver->stringify;   # 1.002 を出力
+
+=back
+
+=over 4
+
+=item * Comparison operators
+
+Both C<cmp> and C<E<lt>=E<gt>> operators perform the same comparison between
+terms (upgrading to a version object automatically).Perl automatically
+generates all of the other comparison operators based on those two.
+In addition to the obvious equalities listed below, appending a single
+trailing 0 term does not change the value of a version for comparison
+purposes.In other words "v1.2" and "1.2.0" will compare as identical.
+
+C<cmp>とC<E<lt>=E<gt>>は両方とも同じ比較を項間で行います（自動的にバー
+ジョンオブジェクトにアップグレードします）。それら2つに基づいて，Perlは
+他の比較演算子を全て自動的に生成します。以下に挙げられている明らかな等
+値性に加えて，末尾に0の項を1つ追加しても比較用のバージョン値は変化しま
+せん。言い換えると，"v1.2"と"1.2.0"の比較は同一と見なされます。
+
+For example, the following relations hold:
+
+  As Number        As String           Truth Value
+  -------------    ----------------    -----------
+  $ver >  1.0      $ver gt "1.0"       true
+  $ver <  2.5      $ver lt             true
+  $ver != 1.3      $ver ne "1.3"       true
+  $ver == 1.2      $ver eq "1.2"       false
+  $ver == 1.2.3.4  $ver eq "1.2.3.4"   see discussion below
+
+例えば，以下の関係が維持されます：
+
+  数値として       文字列として        真偽値
+  -------------    ----------------    -----------
+  $ver >  1.0      $ver gt "1.0"       真
+  $ver <  2.5      $ver lt             真
+  $ver != 1.3      $ver ne "1.3"       真
+  $ver == 1.2      $ver eq "1.2"       偽
+  $ver == 1.2.3.4  $ver eq "1.2.3.4"   以下の議論を参照
+
+It is probably best to chose either the numeric notation or the string
+notation and stick with it, to reduce confusion.Perl6 version objects
+B<may> only support numeric comparisons.See also L<Quoting>.
+
+数値記法か文字列記法のどちらかを選んでそれを使い続けることが，混乱を避
+けるためにはおそらくベストでしょう。Perl6のバージョンオブジェクトは数値
+比較のみをサポートするB<かもしれません>。L<Quoting>も参照してください。
+
+WARNING: Comparing version with unequal numbers of decimal points (whether
+explicitly or implicitly initialized), may yield unexpected results at
+first glance.For example, the following inequalities hold:
+
+  version->new(0.96)     > version->new(0.95); # 0.960.0 > 0.950.0
+  version->new("0.96.1") < version->new(0.95); # 0.096.1 < 0.950.0
+
+警告：（初期化が明示的か暗黙的かに関わらず）小数点の数が異なるバージョ
+ンの比較は一見すると期待しない結果を生み出すかもしれません。例えば，以
+下の非等値性が成り立ちます：
+
+  version->new(0.96)     > version->new(0.95); # 0.960.0 > 0.950.0
+  version->new("0.96.1") < version->new(0.95); # 0.096.1 < 0.950.0
+
+For this reason, it is best to use either exclusively L<Numeric Versions> or
+L<Extended Versions> with multiple decimal points.
+
+この理由のため，L<Numeric Versions>かL<Extended Versions>のどちらかを排
+他的に，かつ複数の小数点を付けて使うことがベストです。
+
+=back
+
+=over 4
+
+=item * Logical Operators
+
+If you need to test whether a version object
+has been initialized, you can simply test it directly:
+
+  $vobj = version->new($something);
+  if ( $vobj )   # true only if $something was non-blank
+
+もしバージョンオブジェクトが初期化されているかどうかを確かめたければ，
+単純に直接テストできます：
+
+  $vobj = version->new($something);
+  if ( $vobj )   # $somethingが空でない場合のみ真
+
+You can also test whether a version object is an L<Alpha version>, for
+example to prevent the use of some feature not present in the main
+release:
+
+  $vobj = version->new("1.2_3"); # MUST QUOTE
+  ...later...
+  if ( $vobj->is_alpha )       # True
+
+また，例えばメインリリースでは提供されない機能の使用を防ぐといった目的
+のために，バージョンオブジェクトがL<Alpha version>であるかどうかを確か
+めるには以下のようにします：
+
+  $vobj = version->new("1.2_3"); # クオートが必要
+  ...後で...
+  if ( $vobj->is_alpha )       # 真
+
+=back
+
+=head2 Quoting
+
+Because of the nature of the Perl parsing and tokenizing routines,
+certain initialization values B<must> be quoted in order to correctly
+parse as the intended version, especially when using the L<qv()> operator.
+In all cases, a floating point number passed to version->new() will be
+identically converted whether or not the value itself is quoted.This is
+not true for L<qv()>, however, when trailing zeros would be stripped on
+an unquoted input, which would result in a very different version object.
+
+Perlがルーチンをパースしてトークンに分ける仕組みが原因で，意図したバー
+ジョンに正しくパースするために，特にL<qv()>演算子を使用する際には，特定
+の初期値はB<必ず>クオートしなければなりません。全てのケースにおいて，
+version->new()に渡される浮動小数の値は，その値がクオートされていようと
+なかろうと同一に変換されます。しかし，L<qv()>では，クオートされていない
+入力で末尾のゼロが抜け落ちてしまう場合にはそのようにならず，全く異なる
+バージョンオブジェクトが結果として返されます。
+
+In addition, in order to be compatible with earlier Perl version styles,
+any use of versions of the form 5.006001 will be translated as v5.6.1.
+In other words, a version with a single decimal point will be parsed as
+implicitly having three digits between subversions, but only for internal
+comparison purposes.
+
+加えて，以前のPerlのバージョンスタイルと互換性を保つために，5.006001と
+いう形式のバージョンを使用すると全てv5.6.1のように変換されます。言い換
+えると，小数点が1つのバージョンは，下位バージョン間には3桁の数字が暗黙
+的に存在するようにパースされます。ただし，その目的は内部比較のみです。
+
+The complicating factor is that in bare numbers (i.e. unquoted), the
+underscore is a legal numeric character and is automatically stripped
+by the Perl tokenizer before the version code is called.However, if
+a number containing one or more decimals and an underscore is quoted, i.e.
+not bare, that is considered a L<Alpha Version> and the underscore is
+significant.
+
+ややこしくしている要因は，ベアナンバー（すなわちクオートされていないも
+の）ではアンダースコアは正当な数値用の文字であって，バージョンコードが
+呼び出される前にPerlのトークナイザによって自動的に剥ぎ取られることです。
+しかしながら，もし数値が1つ以上の小数を含んでいてアンダースコアがクオー
+トされている場合，すなわちベアナンバーではない場合，L<Alpha Version>で
+あると見なされてアンダースコアが有効になります。
+
+If you use a mathematic formula that resolves to a floating point number,
+you are dependent on Perl's conversion routines to yield the version you
+expect.You are pretty safe by dividing by a power of 10, for example,
+but other operations are not likely to be what you intend.For example:
+
+  $VERSION = version->new((qw$Revision: 1.4)[1]/10);
+  print $VERSION;          # yields 0.14
+  $V2 = version->new(100/9); # Integer overflow in decimal number
+  print $V2;               # yields something like 11.111.111.100
+
+もし浮動小数が求まる数式を使った場合，期待するバージョンを生み出せるか
+どうかはPerlの変換ルーチンに依存することになります。例えば10の累乗で割
+ることは非常に安全ですが，他の演算はおそらく期待する値にはならないでし
+ょう。例えば：
+
+  $VERSION = version->new((qw$Revision: 1.4)[1]/10);
+  print $VERSION;          # 0.14 になります
+  $V2 = version->new(100/9); # 10進数で整数のオーバーフロー
+  print $V2;               # 11.111.111.100 のようなものになります
+
+Perl 5.8.1 and beyond will be able to automatically quote v-strings but
+that is not possible in earlier versions of Perl.In other words:
+
+  $version = version->new("v2.5.4");  # legal in all versions of Perl
+  $newvers = version->new(v2.5.4);    # legal only in Perl >= 5.8.1
+
+Perl 5.8.1以降はv-sringを自動的にクオートできますが，それは以前のバージ
+ョンのPerlでは不可能です。言い換えれば，
+
+  $version = version->new("v2.5.4");  # 全てのバージョンのPerlで有効
+  $newvers = version->new(v2.5.4);    # Perl >= 5.8.1でのみ有効
+
+=head2 What about v-strings?
+
+Beginning with Perl 5.6.0, an alternate method to code arbitrary strings
+of bytes was introduced, called v-strings.They were intended to be an
+easy way to enter, for example, Unicode strings (which contain two bytes
+per character).Some programs have used them to encode printer control
+characters (e.g. CRLF).They were also intended to be used for $VERSION,
+but their use as such has been problematic from the start.
+
+Perl 5.6.0以降では，任意のバイト列をコーディングする代替方法が導入され，
+v-stringと呼ばれています。v-stringは，例えば（1文字あたり2バイトを使う）
+Unicode文字列のようなものを入力するのが簡単なようになっています。プリン
+タコントロール文字（すなわちCRLF）をエンコードするためにを使っているプ
+ログラムもあります。v-stringは$VERSIONのために使われるようにも意図され
+ていましたが，そのような使用は初めから問題をはらんでいました。
+
+There are two ways to enter v-strings: a bare number with two or more
+decimal points, or a bare number with one or more decimal points and a
+leading 'v' character (also bare).For example:
+
+  $vs1 = 1.2.3; # encoded as \1\2\3
+  $vs2 = v1.2;  # encoded as \1\2
+
+v-stringを入力する方法は2つあります。2つ以上の小数点を持つベアナンバー
+か，先頭にベア文字'v'があって1つ以上の小数点を持つベアナンバーです。例
+えば：
+
+  $vs1 = 1.2.3; # \1\2\3 としてエンコードされます
+  $vs2 = v1.2;  # \1\2 としてエンコードされます
+
+However, the use of bare v-strings to initialize version objects is
+B<strongly> discouraged in all circumstances (especially the leading
+'v' style), since the meaning will change depending on which Perl you
+are running.It is better to directly use L<"Extended Versions"> to
+ensure the proper interpretation.
+
+しかしながら，バージョンオブジェクトを初期化するためにベアv-stringを使
+用することは，実行しているPerlが何かに依存して意味が変わるので，どのよ
+うな状況であってもB<強く>非推奨です（特に先頭に'v'が付くスタイルは）。
+L<"Extended Versions">を直接使って適切な解釈を確実にすることがより良い
+でしょう。
+
+If you insist on using bare v-strings with Perl > 5.6.0, be aware of the
+following limitations:
+
+もしPerl > 5.6.0でベアv-stringを使うことを主張する場合，以下の制限に注
+意してください。
+
+1) For Perl releases 5.6.0 through 5.8.0, the v-string code merely guesses,
+based on some characteristics of v-strings.You B<must> use a three part
+version, e.g. 1.2.3 or v1.2.3 in order for this heuristic to be successful.
+
+Perlのリリース5.6.0から5.8.0において，v-stringコードはv-stringのいくつ
+かの特徴に基づいて単に推測を行うのみです。このヒューリスティクスが成功
+するためには，必ず3パート（例えば1.2.3やv1.2.3）のバージョンを使わなけ
+ればB<なりません>。
+
+2) For Perl releases 5.8.1 and later, v-strings have changed in the Perl
+core to be magical, which means that the version.pm code can automatically
+determine whether the v-string encoding was used.
+
+Perlのリリース5.8.1以降では，v-stringはPerlコアで魔法となるように変更さ
+れました。つまりは，version.pmコードがv-stringエンコーディングが使われ
+たかどうかを自動的に判断できるようになったということです。
+
+=head2 Types of Versions Objects
+
+There are two types of Version Objects:
+
+2種類のバージョンオブジェクトが存在します。
+
+=over 4
+
+=item * Ordinary versions
+
+These are the versions that normal modules will use.Can contain as
+many subversions as required.In particular, those using RCS/CVS can
+use the following:
+
+  $VERSION = version->new(qw$Revision$);
+
+and the current RCS Revision for that file will be inserted
+automatically.If the file has been moved to a branch, the Revision
+will have three or more elements; otherwise, it will have only two.
+This allows you to automatically increment your module version by
+using the Revision number from the primary file in a distribution, see
+L<ExtUtils::MakeMaker/"VERSION_FROM">.
+
+これらは通常のモジュールが使うバージョンです。必要なだけ多くの下位バー
+ジョンを含むことができます。特に，RCS/CVSを使っている人は以下のコードを
+使うことができます：
+
+  $VERSION = version->new(qw$Revision$);
+
+これでそのファイルに対する現在のRCS Revisionが自動的に挿入されます。も
+しファイルがブランチに移動されればRevisionは3つかそれ以上の要素を持ち，
+そうでなければ2つのみを持つでしょう。これはディストリビューション内のプ
+ライマリファイルからRevision番号を使うことでモジュールバージョンを自動
+的にインクリメントすることを可能にします
+（L<ExtUtils::MakeMaker/"VERSION_FROM">を参照）。
+
+=item * Alpha Versions
+
+For module authors using CPAN, the convention has been to note
+unstable releases with an underscore in the version string, see
+L<CPAN>.Alpha releases will test as being newer than the more recent
+stable release, and less than the next stable release.For example:
+
+  $alphaver = version->new("12.03_01"); # must be quoted
+
+obeys the relationship
+
+  12.03 < $alphaver < 12.04
+
+CPANを使用しているモジュール作者の間で，不安定なリリースを示すためにバ
+ージョン文字列内にアンダースコアを付ける慣習ができています（L<CPAN>を参
+照）。アルファリリースは，その直前の安定リリースよりも新しく，次の安定
+リリースよりも小さく判定されます。例えば：
+
+  $alphaver = version->new("12.03_01"); # クオートが必要
+
+これは次の関係に従います。
+
+  12.03 < $alphaver < 12.04
+
+Alpha versions with a single decimal point will be treated exactly as if
+they were L<Numeric Versions>, for parsing purposes.The stringification for
+alpha versions with a single decimal point may seem surprising, since any
+trailing zeros will visible.For example, the above $alphaver will print as
+
+  12.03_0100
+
+which is mathematically equivalent and ASCII sorts exactly the same as
+without the trailing zeros.
+
+小数点を1つ持つアルファバージョンは，パースのために，完全に
+L<Numeric Versions>であるかのように扱われます。小数点を1つ持つアルファ
+バージョンの文字列化は，末尾のゼロが全て表示されるので，びっくりするか
+もしれません。例えば，上記の$alphaverは
+
+  12.03_0100
+
+と出力されます。これは数学的に等値であり，末尾のゼロがない場合と完全に
+同じようにASCIIでソートされます。
+
+Alpha versions with more than a single decimal point will be treated
+exactly as if they were L<Extended Versions>, and will display without any
+trailing (or leading) zeros, in the L<Version Normal> form.For example,
+
+  $newver = version->new("12.3.1_1");
+  print $newver; # v12.3.1_1
+
+2つ以上の小数点を持つアルファバージョンは完全にL<Extended Versions>であ
+るかのように取り扱われ，バージョンのL<Normal form>で，末尾（あるいは先
+頭）のゼロ無しで表示されます。例えば：
+
+  $newver = version->new("12.3.1_1");
+  print $newver; # v12.3.1_1
+
+=back
+
+=head2 Replacement UNIVERSAL::VERSION
+
+In addition to the version objects, this modules also replaces the core
+UNIVERSAL::VERSION function with one that uses version objects for its
+comparisons.The return from this operator is always the numified form,
+and the warning message generated includes both the numified and normal
+forms (for clarity).
+
+バージョンオブジェクトに加えて，このモジュールは比較のためにコアの
+UNIVERSAL::VERSION関数をバージョンオブジェクトを使うものに置き換えるこ
+とも行います。この演算子から返されるものは常に数値化された形式で，生成
+された警告メッセージは（分かりやすさのために）数値化された形式とNormal
+Formの両方を含みます。
+
+For example:
+
+  package Foo;
+  $VERSION = 1.2;
+
+  package Bar;
+  $VERSION = "1.3.5"; # works with all Perl's (since it is quoted)
+
+  package main;
+  use version;
+
+  print $Foo::VERSION; # prints 1.2
+
+  print $Bar::VERSION; # prints 1.003005
+
+  eval "use CGI 10"; # some far future release
+  print $@; # prints "CGI version 10 (10.0.0) required..."
+
+例えば：
+
+  package Foo;
+  $VERSION = 1.2;
+
+  package Bar;
+  $VERSION = "1.3.5"; # 全てのPerlで動作（クオートされているので）
+
+  package main;
+  use version;
+
+  print $Foo::VERSION; # 1.2 を出力
+
+  print $Bar::VERSION; # 1.003005 を出力
+
+  eval "use CGI 10"; # いつか将来のリリースのために
+  print $@; # "CGI version 10 (10.0.0) required..." を出力
+
+IMPORTANT NOTE: This may mean that code which searches for a specific
+string (to determine whether a given module is available) may need to be
+changed.
+
+重要な注意点：（与えられたモジュールが利用可能かどうかを決定するために）
+特定の文字列を検索するためのコードは変更が必要かもしれないことを意味し
+ます。
+
+The replacement UNIVERSAL::VERSION, when used as a function, like this:
+
+  print $module->VERSION;
+
+will also exclusively return the numified form.Technically, the
+$module->VERSION function returns a string (PV) that can be converted to a
+number following the normal Perl rules, when used in a numeric context.
+
+UNIVERSAL::VERSIONの代替物は，関数として使われた際には，例えば
+
+  print $module->VERSION;
+
+これも数値化形式のみを返します。技術的には，$module->VERSION関数は，数
+値コンテキストで使われた際には，通常のPerlのルールを適用すると数値に変
+換可能な文字列(PV)を返します。
+
+=head1 SUBCLASSING
+
+This module is specifically designed and tested to be easily subclassed.
+In practice, you only need to override the methods you want to change, but
+you have to take some care when overriding new() (since that is where all
+of the parsing takes place).For example, this is a perfect acceptable
+derived class:
+
+  package myversion;
+  use base version;
+  sub new {
+      my($self,$n)=@_;
+      my $obj;
+      # perform any special input handling here
+      $obj = $self->SUPER::new($n);
+      # and/or add additional hash elements here
+      return $obj;
+  }
+
+このモジュールは簡単にサブクラス化ができるように明確に設計やテストがさ
+れています。実際には，変更したいメソッドをオーバーライドするだけでOKで
+すが，new()をオーバーライドする際には注意が必要です（パースが全て行われ
+る場所なので）。例えば，これは完全に条件を満たしている派生クラスです：
+
+  package myversion;
+  use base version;
+  sub new {
+      my($self,$n)=@_;
+      my $obj;
+      # 特別な入力の処理は全てここで実行
+      $obj = $self->SUPER::new($n);
+      # あるいは追加のハッシュ要素をここで追加
+      return $obj;
+  }
+
+See also L<version::AlphaBeta> on CPAN for an alternate representation of
+version strings.
+
+バージョン文字列の代替の表現形式についてはCPANのL<version::AlphaBeta>も
+参照してください。
+
+B<NOTE:> Although the L<qv> operator is not a true class method, but rather a
+function exported into the caller's namespace, a subclass of version will
+inherit an import() function which will perform the correct magic on behalf
+of the subclass.
+
+B<注意>：L<qv>演算子は真のクラスメソッドではなく，むしろcallerの名前空
+間にエクスポートされた関数で，バージョンのサブクラスは，そのサブクラス
+に代わって正しい魔法を実行するimport()関数を継承します。
+
+=head1 EXPORT
+
+qv - Extended Version initialization operator
+
+qv - Extended Version初期化演算子
+
+=head1 AUTHOR
+
+John Peacock E<lt>jpeacock@cpan.orgE<gt>
+
+=head1 SEE ALSO
+
+L<perl>.
+
+=cut
