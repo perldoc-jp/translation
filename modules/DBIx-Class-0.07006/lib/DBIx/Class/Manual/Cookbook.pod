@@ -14,7 +14,7 @@ paged resultset, which will fetch only a small number of records at a time:
 結果セットが膨大になりそうなら、ページ処理された結果をL<DBIx::Class>で取得できます。
 一回に、少しのレコードしかとってきません:
 
-  my $rs = $schema->resultset('Artist')->search(
+   my $rs = $schema->resultset('Artist')->search(
     undef,
     {
       page => 1,  # page to return (defaults to 1)
@@ -1012,7 +1012,7 @@ database schema:
 
 The schema update can be deployed to customers using the same method as before.
 
-=head2 Setting limit dialect for SQL::Abstract::Limit
+=head2 SQL::Abstract::Limit のために、リミットの方言を設定する
 
 In some cases, SQL::Abstract::Limit cannot determine the dialect of
 the remote SQL server by looking at the database handle. This is a
@@ -1022,41 +1022,72 @@ Java component has loaded.  This specifically sets the limit_dialect
 to Microsoft SQL-server (See more names in SQL::Abstract::Limit
 -documentation.
 
+時には、SQL::Abstract::Limit はデータベースハンドルで見ていることで、
+リモートのSQLサーバの方言を決めれられない場合があります。
+これは、DBD::JDBCを使っているときの、よく知られた問題です。。
+DBD-driver は Java-driver が利用できることを知っているだけで、
+どのJDBCドライバをJavaコンポーネントがロードしているかを知らないからです。
+具体的に、Microsoft SQL-server のlimitの方言をセットします
+(SQL::Abstract::Limitのドキュメントには、より多くの名前があります)。
+
   __PACKAGE__->storage->sql_maker->limit_dialect('mssql');
 
 The JDBC bridge is one way of getting access to a MSSQL server from a platform
 that Microsoft doesn't deliver native client libraries for. (e.g. Linux)
 
-=head2 Setting quoting for the generated SQL. 
+JDBCブリッジはMicrosoftがネイティブのクライアントライブラリを配布していない
+プラットフォーム(例えば、Linux)からMSSQLサーバへアクセスする1つの方法です。
+
+=head2 生成されたSQLをクォートする
 
 If the database contains column names with spaces and/or reserved words, they
 need to be quoted in the SQL queries. This is done using:
-n
+
+データベースにスペースおよび/または予約後のついたカラム名がある場合、
+SQLクエリないで、クォートされる必要があります。次のようにします:
+
   __PACKAGE__->storage->sql_maker->quote_char([ qw/[ ]/] );
   __PACKAGE__->storage->sql_maker->name_sep('.');
 
 The first sets the quote characters. Either a pair of matching
 brackets, or a C<"> or C<'>:
-  
+
+1行目は、クォート文字をセットしています。ブラケットのペアか、C<">, C<'>です。
+
   __PACKAGE__->storage->sql_maker->quote_char('"');
 
 Check the documentation of your database for the correct quote
 characters to use. C<name_sep> needs to be set to allow the SQL
 generator to put the quotes the correct place.
 
-=head2 Overloading methods
+正しいクォート文字を使うために、データベースのドキュメントをチェックしてください。
+C<name_sep>は、SQLジェネレーターが正しい場所にクォートを置くために、
+セットしなければいけません。
+
+=head2 メソッドのオーバーロード
 
 L<DBIx::Class> uses the L<Class::C3> package, which provides for redispatch of 
 method calls.  You have to use calls to C<next::method> to overload methods.  
 More information on using L<Class::C3> with L<DBIx::Class> can be found in 
 L<DBIx::Class::Manual::Component>.
 
-=head3 Changing one field whenever another changes
+L<DBIx::Class>はL<Class::C3>パッケージを使っています。L<Class::C3>はメソッドコールを
+再分岐させるために使われています。メソッドをオーバーロードするために、
+C<next::method>の呼び出しを使わなければいけません。
+L<DBIx::Class>とL<Class::C3>を使ったより詳しい情報は、L<DBIx::Class::Manual::Component>
+を見てください。
+
+=head3 他が変更されたらいつでもあるフィールドを変更する
 
 For example, say that you have three columns, C<id>, C<number>, and 
 C<squared>.  You would like to make changes to C<number> and have
 C<squared> be automagically set to the value of C<number> squared.
 You can accomplish this by overriding C<store_column>:
+
+例えば、3つのカラムがあったとします。C<id>、C<number>、C<squared>。
+C<number>に変更を加え、C<squared>は自動的に、C<number>の二乗の値を
+セットしたいとします。C<store_coolumn>をオーバーロードすることで、
+これができます:
 
   sub store_column {
     my ( $self, $name, $value ) = @_;
@@ -1069,11 +1100,19 @@ You can accomplish this by overriding C<store_column>:
 Note that the hard work is done by the call to C<next::method>, which
 redispatches your call to store_column in the superclass(es).
 
-=head3 Automatically creating related objects
+C<next::method>を呼び出すことで、大変な仕事がされていることに注意しましょう。
+呼び出しが、(複数の)スーパークラスのstore_columnに再分岐されてます:
+
+=head3 関連するオブジェクトを自動的に作る
 
 You might have a class C<Artist> which has many C<CD>s.  Further, if you
 want to create a C<CD> object every time you insert an C<Artist> object.
 You can accomplish this by overriding C<insert> on your objects:
+
+多くのC<CD>を持ったC<Artist>クラスがあるとします。
+さらに、C<Artist>オブジェクトをインサートするときは、いつでも、
+C<CD>オブジェクトを作りたければ、オブジェクトのC<insert>を
+オーバロードすればできます:
 
   sub insert {
     my ( $self, @args ) = @_;
@@ -1085,11 +1124,18 @@ You can accomplish this by overriding C<insert> on your objects:
 where C<fill_from_artist> is a method you specify in C<CD> which sets
 values in C<CD> based on the data in the C<Artist> object you pass in.
 
-=head2 Debugging DBIx::Class objects with Data::Dumper
+C<fill_from_artist>はC<CD>で指定しているメソッドで、
+渡したC<Artist>オブジェクトのデータに基づいた値をセットします。
+
+=head2 Data::Dumperを使って、DBIx::Classをデバッグする
 
 L<Data::Dumper> can be a very useful tool for debugging, but sometimes it can
 be hard to find the pertinent data in all the data it can generate.
 Specifically, if one naively tries to use it like so,
+
+L<Data::Dumper> はデバッグにとても便利なツールです。ですが、
+生成された全てのデータの中の、該当のデータを見付けるのが難しい時があります。
+次のように単純に使おうとしたら、
 
   use Data::Dumper;
 
@@ -1100,9 +1146,17 @@ several pages worth of data from the CD object's schema and result source will
 be dumped to the screen. Since usually one is only interested in a few column
 values of the object, this is not very helpful.
 
+複数ページにわたり、CDオブジェクトのスキーマと結果のソースから価値のあるデータが
+スクリーンにダンプされます。ですが、普通はオブジェクトの数カラムの値の1つのみに
+興味があるので、これでは、あまり便利ではありません。
+
 Luckily, it is possible to modify the data before L<Data::Dumper> outputs
 it. Simply define a hook that L<Data::Dumper> will call on the object before
 dumping it. For example,
+
+幸運にも、L<Data::Dumper>が出力する前にデータを加工することが出来ます。
+簡単にフックを定義すると、L<Data::Dumper>がダンプする前に、オブジェクトで
+それを呼び出します。
 
   package My::DB::CD;
 
@@ -1129,9 +1183,17 @@ base class and set C<$Data::Dumper::Freezer> to its name and L<Data::Dumper>
 will automagically clean up your data before printing it. See
 L<Data::Dumper/EXAMPLES> for more information.
 
-=head2 Retrieving a row object's Schema
+スキーマの構造が、全てのテーブルクラスのための共通のベースクラスがあるような
+ものであれば、単純に、ベースクラスに、C<_dumper_hook>と同じようなメソッドを作り、
+C<$Data::Dumper::Freezer>にその名前をセットします。
+L<Data::Dumper>は、自動的に、データを出力する前に、きれいにします。
+L<Data::Dumper/EXAMPLES>により詳しい情報ががあります。
+
+=head2 列オブジェクトのスキーマを得る
 
 It is possible to get a Schema object from a row object like so:
+
+次のようにして、列のオブジェクトからスキーマを得ることができます:
 
   my $schema = $cd->result_source->schema;
   # use the schema as normal:
@@ -1140,13 +1202,20 @@ It is possible to get a Schema object from a row object like so:
 This can be useful when you don't want to pass around a Schema object to every
 method.
 
-=head2 Profiling
+全てのメソッドで、スキーマオブジェクトを順に回したくなければ、便利でしょう。
+
+=head2 プロファイリング
 
 When you enable L<DBIx::Class::Storage::DBI>'s debugging it prints the SQL
 executed as well as notifications of query completion and transaction
 begin/commit.  If you'd like to profile the SQL you can subclass the
 L<DBIx::Class::Storage::Statistics> class and write your own profiling
 mechanism:
+
+L<DBIx::Class::Storage::DBI>のデバッギングを有効にすれば、
+実行されたSQLだけでなく、クエリの完了や、トランザクションの開始/コミット
+も、出力します。SQLを分析したければ、 L<DBIx::Class::Storage::Statistics>
+クラスのサブクラスを作り、自分自身のプロファイリングメカニズムを書けます:
 
   package My::Profiler;
   use strict;
@@ -1179,11 +1248,15 @@ mechanism:
 
 You can then install that class as the debugging object:
 
+それから、このクラスを、デバッギングオブジェクトにインストールします:
+
   __PACKAGE__->storage()->debugobj(new My::Profiler());
   __PACKAGE__->storage()->debug(1);
 
 A more complicated example might involve storing each execution of SQL in an
 array:
+
+より複雑な例としては、配列に実行する各SQLを貯めておくようなものを含むでしょう:
 
   sub query_end {
     my $self = shift();
@@ -1200,11 +1273,16 @@ array:
 You could then create average, high and low execution times for an SQL
 statement and dig down to see if certain parameters cause aberrant behavior.
 
-=head2 Getting the value of the primary key for the last database insert
+それから、平均やSQLステートメントのあらゆる時間を取れますし、あるパラメータが
+異常な振る舞いを引き起こしていれば、掘り下げることも出来まるでしょう。
 
-AKA getting last_insert_id
+=head2 最後にデータベースにインサートしたプライマリキーの値を取りたい
+
+last_insert_id を取るともいいます。
 
 If you are using PK::Auto, this is straightforward:
+
+PK::Autoを使っているのなら、直接:
 
   my $foo = $rs->create(\%blah);
   # do more stuff
@@ -1213,8 +1291,13 @@ If you are using PK::Auto, this is straightforward:
 If you are not using autoincrementing primary keys, this will probably
 not work, but then you already know the value of the last primary key anyway.
 
-=head2 Dynamic Sub-classing DBIx::Class proxy classes 
+オートインクリメントのプライマリキーを使っていないのなら、おそらく動きません。
+ですが、すでに、プライマリキーの値を知っていることでしょう。
+
+=head2 DBIx::Classのプロキシクラスを動的にサブクラス化する
 (AKA multi-class object inflation from one table) 
+
+(AKA 1つのテーブルからマルチクラスのオブジェクトに膨らませる) 
  
 L<DBIx::Class> classes are proxy classes, therefore some different
 techniques need to be employed for more than basic subclassing.  In
@@ -1226,13 +1309,28 @@ seperate proxy-class files for this.  We would be copying all the user
 methods into the Admin class.  There is a cleaner way to accomplish
 this.
 
+L<DBIx::Class>クラスはプロキシクラスです。そのため、基本的なサブクラス化以上に、
+いくつかの違ったテクニックが必要とされます。
+この例では、管理者用に真偽値を持っているユーザーテーブルがあります。
+管理者ユーザーには、オブジェクト(L<DBIx::Class::Row>)のメソッドを、
+普通のユーザーと同じようにあたえますが、管理者のみの特別なメソッドも、
+あたえたいとします。このために2つのプロキシクラスファイルに分割するのは
+理にかないません。Adminクラスに全てのユーザークラスのメソッドをコピー
+することになります。これをするために、よりすっきりした方法があります。
+
 Overriding the C<inflate_result> method within the User proxy-class
 gives us the effect we want.  This method is called by
 L<DBIx::Class::ResultSet> when inflating a result from storage.  So we
 grab the object being returned, inspect the values we are looking for,
 bless it if it's an admin object, and then return it.  See the example
 below:
- 
+
+ユーザーのプロキシクラス内でC<inflate_result>メソッドをオーバーライドすることで、
+望んでいる効果が得られます。このメソッドは、ストレージからの結果が膨らむときに、
+L<DBIx::Class::ResultSet>によって呼ばれます。
+返されたオブジェクトを掴んだら、探している値を調べ、管理者オブジェクトであれば、
+それをblessします。下の例を見てください:
+
 B<Schema Definition> 
  
     package DB::Schema; 
@@ -1333,12 +1431,18 @@ B<Test File> test.pl
     ### The statement below will print 
     print "I can do admin stuff\n" if $admin->can('do_admin_stuff'); 
 
-=head2 Skip object creation for faster results
+=head2 高速に結果を得るために、オブジェクトの作成をスキップしたい
 
 DBIx::Class is not built for speed, it's built for convenience and
 ease of use, but sometimes you just need to get the data, and skip the
 fancy objects. Luckily this is also fairly easy using
 C<inflate_result>:
+
+DBIx::Class はスピードのためには作られておらず、DBIx::Classは、
+利便性と使い易さのために作られました。ですが、時には、データをただ
+取得しなければいけないだけの時があり、素敵なオブジェクトはスキップ
+したい場合もあるでしょう。幸運なことに、この用途には、C<inflate_result>
+が、実に簡単に使えます。
 
   # Define a class which just returns the results as a hashref:
   package My::HashRefInflator;
@@ -1373,9 +1477,11 @@ C<inflate_result>:
      }
   }
 
-=head2 Want to know if find_or_create found or created a row?
+=head2 find_or_create が見付けたのか、列を作ったのかわかりますか？
 
 Just use C<find_or_new> instead, then check C<in_storage>:
+
+C<find_or_new>を代わりに使ってください。それから、C<in_storage>をチェックします:
 
   my $obj = $rs->find_or_new({ blah => 'blarg' });
   unless ($obj->in_storage) {
@@ -1383,27 +1489,44 @@ Just use C<find_or_new> instead, then check C<in_storage>:
     # do whatever else you wanted if it was a new row
   }
 
-=head3 Wrapping/overloading a column accessor
+=head3 カラムのアクセサをラッピング/オーバーロードする
 
 Problem: Say you have a table "Camera" and want to associate a description
 with each camera. For most cameras, you'll be able to generate the description from
 the other columns. However, in a few special cases you may want to associate a
 custom description with a camera.
 
+問題: "Camera"テーブルがあったとして、それぞれのカメラについて、
+説明を関連付けたいとします。ほとんどのカメラでは、他のカラムから説明を生成できるでしょう。
+しかし、特別な数ケースでは、カメラのカスタムの説明を関連付けたいとします。
+
 Solution:
+
+解:
 
 In your database schema, define a description field in the "Camera" table that
 can contain text and null values.
+
+データベーススキーマで、"Camera"にdescriptionフィールドが定義し、
+textとnullの値を含むことをできるようにします。
 
 In DBIC, we'll overload the column accessor to provide a sane default if no
 custom description is defined. The accessor will either return or generate the
 description, depending on whether the field is null or not.
 
+DBICは、カスタムの description が定義されていなければ、
+提供されているまともなデフォルトのカラムアクセサをオーバーロードできます。
+フィールドがnullかnullでないかに依存して、アクセサはdescriptionを返すか生成します。
+
 First, in your "Camera" schema class, define the description field as follows:
+
+まず、"Camera"スキーマクラスで、下記のようにdescriptionフィールドを定義します:
 
   __PACKAGE__->add_columns(description => { accessor => '_description' });
 
 Next, we'll define the accessor-wrapper subroutine:
+
+次に、アクセサラッパーサブルーチンを定義します:
 
   sub description {
       my $self = shift;
