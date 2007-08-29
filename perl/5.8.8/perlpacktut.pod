@@ -332,6 +332,7 @@ C<unpack> pattern that we B<need> to find another 12 characters; we'll
 just say "if there's anything left, take it". As you might guess from
 regular expressions, that's what the C<*> means: "use everything
 remaining".
+(TBT)
 
 =over 3
 
@@ -516,6 +517,8 @@ pieces of data.
 
 =end original
 
+複数のデータ片を一つの固定長データにするには C<pack> を使います;
+固定長フォーマット文字列を複数のデータ片にするには C<unpack> を使います。
 
 =item *
 
@@ -527,6 +530,8 @@ spaces.
 
 =end original
 
+pack フォーマット C<A> は「任意の文字」を意味します; もし C<pack> 中に
+pack するものがなくなったら、C<pack> は残りを空白で埋めます。
 
 =item *
 
@@ -538,6 +543,10 @@ dealing with plain text.
 
 =end original
 
+C<unpack> での C<x> は「1 バイト読み飛ばす」ことを意味します;
+C<pack> では、「ヌルバイトを生成する」ことを意味します - 
+これは、プレーンテキストを扱っている場合はおそらく望んでいるものでは
+ないでしょう。
 
 =item *
 
@@ -549,6 +558,9 @@ C<x6> means "skip 6 bytes" or "character 0, 6 times".
 
 =end original
 
+フォーマットの後に数値をつけることで、フォーマットに影響される文字数を
+指定します: C<A12> は「12 文字取る」ことを意味します;
+C<x6> は「6 バイト読み飛ばす」や「ヌルバイト 6 つ」を意味します。
 
 =item *
 
@@ -559,6 +571,7 @@ left".
 
 =end original
 
+数値の代わりに、C<*> で「残っているもの全てを使う」ことを指定できます。
 
 =begin original
 
@@ -567,6 +580,9 @@ B<Warning>: when packing multiple pieces of data, C<*> only means
 
 =end original
 
+B<警告>: 複数のデータ片を pack するとき、C<*> は「現在のデータ片を全て
+含む」という意味だけです。
+これは、以下のようにすると:
 
     pack("A*A*", $one, $two)
 
@@ -578,12 +594,16 @@ corresponds to one piece of data to be C<pack>ed.
 
 =end original
 
+C<$one> の全てを最初の C<A*> に pack し、それから C<$two> の全てを二番目に
+pack します。
+ここに一般的な原則があります: 各フォーマット文字は C<pack> されるデータ片
+一つに対応します。
 
 =back
 
-
-
 =head1 Packing Numbers
+
+(数値を pack する)
 
 =begin original
 
@@ -594,7 +614,11 @@ Perl will do all the finicky labor for you.
 
 =end original
 
-
+So much for textual data. Let's get onto the meaty stuff that C<pack>
+and C<unpack> are best at: handling binary formats for numbers. There is,
+of course, not just one binary format  - life would be too simple - but
+Perl will do all the finicky labor for you.
+(TBT)
 
 =head2 Integers
 
@@ -694,6 +718,11 @@ getting set, and unpacking this will smartly return a negative value.
 
 これは全ての数値テンプレートコードに対して真です。
 しかし奇跡を期待してはいけません:
+if the packed value exceeds the allotted byte capacity, high order bits
+are silently discarded, and unpack certainly won't be able to pull them
+back out of some magic hat. And, when you pack using a signed template
+code such as C<s>, an excess value may result in the sign bit
+getting set, and unpacking this will smartly return a negative value.
 (TBT)
 
 =begin original
@@ -709,6 +738,14 @@ a local C compiler returns for C<sizeof(int)>, but it'll use I<at least>
 
 =end original
 
+16 bits won't get you too far with integers, but there is C<l> and C<L>
+for signed and unsigned 32-bit integers. And if this is not enough and
+your system supports 64 bit integers you can push the limits much closer
+to infinity with pack codes C<q> and C<Q>. A notable exception is provided
+by pack codes C<i> and C<I> for signed and unsigned integers of the 
+"local custom" variety: Such an integer will take up as many bytes as
+a local C compiler returns for C<sizeof(int)>, but it'll use I<at least>
+32 bits.
 
 =begin original
 
@@ -728,6 +765,19 @@ you have to import it with C<use Config>.)
 
 =end original
 
+Each of the integer pack codes C<sSlLqQ> results in a fixed number of bytes,
+no matter where you execute your program. This may be useful for some 
+applications, but it does not provide for a portable way to pass data 
+structures between Perl and C programs (bound to happen when you call 
+XS extensions or the Perl function C<syscall>), or when you read or
+write binary files. What you'll need in this case are template codes that
+depend on what your local C compiler compiles when you code C<short> or
+C<unsigned long>, for instance. These codes and their corresponding
+byte lengths are shown in the table below.  Since the C standard leaves
+much leeway with respect to the relative sizes of these data types, actual
+values may vary, and that's why the values are given as expressions in
+C and Perl. (If you'd like to use values from C<%Config> in your program
+you have to import it with C<use Config>.)
 
    signed unsigned  byte length in C   byte length in Perl       
      s!     S!      sizeof(short)      $Config{shortsize}
@@ -742,7 +792,8 @@ tolerated for completeness' sake.
 
 =end original
 
-
+C<i!> および C<I!> は C<i> および C<I> と違いはありません; これらは
+完全性のために許容されています。
 
 =head2 Unpacking a Stack Frame
 
@@ -1154,6 +1205,14 @@ is no size limit to BER encoding, but Perl won't go to extremes.
 
 =end original
 
+The pack code C<w> has been added to support a portable binary data
+encoding scheme that goes way beyond simple integers. (Details can
+be found at L<Casbah.org>, the Scarab project.)  A BER (Binary Encoded
+Representation) compressed unsigned integer stores base 128
+digits, most significant digit first, with as few digits as possible.
+Bit eight (the high bit) is set on each byte except the last.
+BER エンコーディングには制限がありませんが、Perl は極端なことはしません。
+(TBT)
 
    my $berbuf = pack( 'w*', 1, 128, 128+1, 128*128+127 );
 
@@ -1184,6 +1243,11 @@ be written like this:
 
 =end original
 
+Prior to Perl 5.8, repetitions of templates had to be made by
+C<x>-multiplication of template strings. Now there is a better way as
+we may use the pack codes C<(> and C<)> combined with a repeat count.
+The C<unpack> template from the Stack Frame example can simply
+be written like this:
 
    unpack( 'v2 (vXXCC)5 v5', $frame )
 
@@ -1193,6 +1257,9 @@ Let's explore this feature a little more. We'll begin with the equivalent of
 
 =end original
 
+この機能についてもうすこしだけ探求してみましょう。
+We'll begin with the equivalent of
+(TBT)
 
    join( '', map( substr( $_, 0, 1 ), @str ) )
 
@@ -1203,6 +1270,8 @@ Using pack, we can write
 
 =end original
 
+which returns a string consisting of the first character from each string.
+Using pack, we can write
 
    pack( '(A)'.@str, @str )
 
@@ -1213,6 +1282,8 @@ simply
 
 =end original
 
+or, because a repeat count C<*> means "repeat as often as required",
+simply
 
    pack( '(A)*', @str )
 
@@ -1223,6 +1294,8 @@ length.)
 
 =end original
 
+(Note that the template C<A*> would only have packed C<$str[0]> in full
+length.)
 
 =begin original
 
@@ -1231,6 +1304,8 @@ into a sequence of byte, byte, short integer we can write
 
 =end original
 
+To pack dates stored as triplets ( day, month, year ) in an array C<@dates>
+into a sequence of byte, byte, short integer we can write
 
    $pd = pack( '(CCS)*', map( @$_, @dates ) );
 
@@ -1241,6 +1316,8 @@ several techniques. First, let's use C<x> and C<X> to skip forward and back:
 
 =end original
 
+To swap pairs of characters in a string (with even length) one could use
+several techniques. First, let's use C<x> and C<X> to skip forward and back:
 
    $s = pack( '(A)*', unpack( '(xAXXAx)*', $s ) );
 
@@ -1251,6 +1328,8 @@ we were when the last C<(> was encountered:
 
 =end original
 
+We can also use C<@> to jump to an offset, with 0 being the position where
+we were when the last C<(> was encountered:
 
    $s = pack( '(A)*', unpack( '(@1A @0A @2)*', $s ) );
 
@@ -1261,6 +1340,8 @@ endian shorts and packing them in the reverse byte order:
 
 =end original
 
+Finally, there is also an entirely different approach by unpacking big
+endian shorts and packing them in the reverse byte order:
 
    $s = pack( '(v)*', unpack( '(n)*', $s );
 
@@ -1286,6 +1367,14 @@ a length byte:
 
 =end original
 
+In the previous section we've seen a network message that was constructed
+by prefixing the binary message length to the actual message. You'll find
+that packing a length followed by so many bytes of data is a 
+frequently used recipe since appending a null byte won't work
+if a null byte may be part of the data. Here is an example where both
+techniques are used: after two null terminated strings with source and
+destination address, a Short Message (to a mobile phone) is sent after
+a length byte:
 
    my $msg = pack( 'Z*Z*CA*', $src, $dst, length( $sm ), $sm );
 
@@ -1749,6 +1838,10 @@ the ARM structure rules make C<sizeof (foo_t)> == 4]
 =end original
 
 サイズは様々であるとしています。
+構造のアライメント制約は、それぞれの要素よりも大きいかもしれません。
+[And if you think that this doesn't affect anything
+common, dismember the next cellphone that you see. Many have ARM cores, and
+the ARM structure rules make C<sizeof (foo_t)> == 4]
 (TBT)
 
 =head2 Pointers for How to Use Them
@@ -1766,6 +1859,12 @@ stored.)
 
 =end original
 
+The title of this section indicates the second problem you may run into
+sooner or later when you pack C structures. If the function you intend
+to call expects a, say, C<void *> value, you I<cannot> simply take
+a reference to a Perl variable. (Although that value certainly is a
+memory address, it's not the address where the variable's contents are
+stored.)
 
 =begin original
 
@@ -1774,6 +1873,8 @@ Isn't this what we want? Let's try:
 
 =end original
 
+Template code C<P> promises to pack a "pointer to a fixed length string".
+Isn't this what we want? Let's try:
 
     # allocate some storage and pack a pointer to it
     my $memory = "\x00" x $size;
@@ -1788,6 +1889,12 @@ address from the bytes returned by C<pack>.
 
 =end original
 
+ちょっとまった: C<pack> は単にバイトシーケンスを返すのでは?
+How can we pass this
+string of bytes to some C code expecting a pointer which is, after all,
+nothing but a number?
+答えは単純です: C<pack> で返されたバイト列から数値のアドレスを得なければ
+なりません。
 
     my $ptr = unpack( 'L!', $memptr );
 
@@ -1801,6 +1908,11 @@ where a pointer is expected. The read(2) system call comes to mind:
 
 =end original
 
+Obviously this assumes that it is possible to typecast a pointer
+to an unsigned long and vice versa, which frequently works but should not
+be taken as a universal law. - Now that we have this pointer the next question
+is: How can we put it to good use? We need a call to some C function
+where a pointer is expected. The read(2) system call comes to mind:
 
     ssize_t read(int fd, void *buf, size_t count);
 
@@ -1837,6 +1949,11 @@ way. You simply pass a string variable, and Perl forwards the address.)
 
 =end original
 
+This is neither a specimen of simplicity nor a paragon of portability but
+it illustrates the point: We are able to sneak behind the scenes and
+access Perl's otherwise well-guarded memory! (Important note: Perl's
+C<syscall> does I<not> require you to construct pointers in this roundabout
+way. You simply pass a string variable, and Perl forwards the address.) 
 
 =begin original
 
@@ -1848,6 +1965,11 @@ it's up to you to specify the actual size as an explicit length after C<P>.
 
 =end original
 
+How does C<unpack> with C<P> work? Imagine some pointer in the buffer
+about to be unpacked: If it isn't the null pointer (which will smartly
+produce the C<undef> value) we have a start address - but then what?
+Perl has no way of knowing how long this "fixed length string" is, so
+it's up to you to specify the actual size as an explicit length after C<P>.
 
    my $mem = "abcdefghijklmn";
    print unpack( 'P5', pack( 'P', $mem ) ); # prints "abcde"
@@ -1858,7 +1980,7 @@ As a consequence, C<pack> ignores any number or C<*> after C<P>.
 
 =end original
 
-
+結果として、C<pack> は C<P> の後の数値や C<*> を無視します。
 
 =begin original
 
@@ -1870,11 +1992,14 @@ and that implies a length for the data item to be returned:
 
 =end original
 
+Now that we have seen C<P> at work, we might as well give C<p> a whirl.
+Why do we need a second template code for packing pointers at all? The 
+answer lies behind the simple fact that an C<unpack> with C<p> promises
+a null-terminated string starting at the address taken from the buffer,
+and that implies a length for the data item to be returned:
 
    my $buf = pack( 'p', "abc\x00efhijklmn" );
    print unpack( 'p', $buf );    # prints "abc"
-
-
 
 =begin original
 
@@ -1884,7 +2009,9 @@ count, not a length as after C<P>.
 
 =end original
 
-
+Albeit this is apt to be confusing: As a consequence of the length being
+implied by the string's length, a number after pack code C<p> is a repeat
+count, not a length as after C<P>. 
 
 =begin original
 
@@ -1895,6 +2022,10 @@ private matter and doesn't really care that we have obtained a copy. Therefore:
 
 =end original
 
+Using C<pack(..., $x)> with C<P> or C<p> to get the address where C<$x> is
+actually stored must be used with circumspection. Perl's internal machinery
+considers the relation between a variable and that address as its very own 
+private matter and doesn't really care that we have obtained a copy. Therefore:
 
 =over 4
 
@@ -1955,6 +2086,7 @@ and C<unpack>:
 
 =end original
 
+以下に C<pack> と C<unpack> に関する、(多分)役に立つレシピをまとめます:
 
     # Convert IP address for socket functions
     pack( "C4", split /\./, "123.4.5.6" ); 
@@ -1980,12 +2112,13 @@ spacing - 16 bytes to a line:
 
 =end original
 
+単純なメモリダンプのために、バイト列を 16 進数の組に unpack し、
+C<map> を使って伝統的な表現 - 1 行に 16 バイト - に加工します:
 
     my $i;
     print map( ++$i % 16 ? "$_ " : "$_\n",
                unpack( 'H2' x length( $mem ), $mem ) ),
           length( $mem ) % 16 ? "\n" : '';
-
 
 =head1 Funnies Section
 
