@@ -1,0 +1,2316 @@
+=head1 NAME
+X<tie>
+
+=begin original
+
+perltie - how to hide an object class in a simple variable
+
+=end original
+
+perltie - オブジェクトクラスを単純な変数に隠す方法
+
+=head1 SYNOPSIS
+
+ tie VARIABLE, CLASSNAME, LIST
+
+ $object = tied VARIABLE
+
+ untie VARIABLE
+
+=head1 DESCRIPTION
+
+=begin original
+
+Prior to release 5.0 of Perl, a programmer could use dbmopen()
+to connect an on-disk database in the standard Unix dbm(3x)
+format magically to a %HASH in their program.  However, their Perl was either
+built with one particular dbm library or another, but not both, and
+you couldn't extend this mechanism to other packages or types of variables.
+
+=end original
+
+5.0 より前の Perl では、プログラマは dbmopen() を使ってディスクにある
+標準 UNIX dbm(3x) フォーマットのデータベースをプログラム中の %HASH と
+結び付けることができました。
+しかしながら、Perl は特定の dbm ライブラリか別のものを使って
+ビルドすることができたものの、両方一度にはできませんでした。
+そして、この仕組みを他のパッケージや変数の型に拡張することは
+できなかったのです。
+
+=begin original
+
+Now you can.
+
+=end original
+
+今はできます。
+
+=begin original
+
+The tie() function binds a variable to a class (package) that will provide
+the implementation for access methods for that variable.  Once this magic
+has been performed, accessing a tied variable automatically triggers
+method calls in the proper class.  The complexity of the class is
+hidden behind magic methods calls.  The method names are in ALL CAPS,
+which is a convention that Perl uses to indicate that they're called
+implicitly rather than explicitly--just like the BEGIN() and END()
+functions.
+
+=end original
+
+tie() 関数は変数と、その変数に対するアクセスメソッドの実装を提供する
+クラス(パッケージ)とを結び付けます。
+この魔法が一度働けば、tie された変数は自動的に適切なクラスにある
+メソッド呼び出しを実行します。
+クラスのすべての複雑性はメソッド呼び出しに隠されます。
+それらのメソッドの名前は、BEGIN() や END() と同様に(そのメソッドを) Perl が
+こっそりと呼び出すことを示すための規約に従って全て大文字です。
+
+=begin original
+
+In the tie() call, C<VARIABLE> is the name of the variable to be
+enchanted.  C<CLASSNAME> is the name of a class implementing objects of
+the correct type.  Any additional arguments in the C<LIST> are passed to
+the appropriate constructor method for that class--meaning TIESCALAR(),
+TIEARRAY(), TIEHASH(), or TIEHANDLE().  (Typically these are arguments
+such as might be passed to the dbminit() function of C.) The object
+returned by the "new" method is also returned by the tie() function,
+which would be useful if you wanted to access other methods in
+C<CLASSNAME>. (You don't actually have to return a reference to a right
+"type" (e.g., HASH or C<CLASSNAME>) so long as it's a properly blessed
+object.)  You can also retrieve a reference to the underlying object
+using the tied() function.
+
+=end original
+
+tie() コールの中で、C<VARIABLE> は魔法を掛けられる変数の名前です。
+C<CLASSNAME> は正しい型のオブジェクトを実装するクラスの名前です。
+C<LIST> にあるその他の引数はクラスの適切なコンストラクタメソッド
+TIESCALAR()、TIEARRAY()、TIEHASH()、TIEHANDLE() のいずれかに
+渡されます(典型的にはこれらの引数は C の dbminit() 関数に渡すのと
+同じものです)。
+"new" メソッドから返されたオブジェクトは同様に関数 tie() からも
+返されます。
+これはあなたが C<CLASSNAME> の中の別のメソッドでアクセスしたいというときに
+便利でしょう(あなたは実際には正しい「型」(HASH か C<CLASSNAME>) の
+参照を、それが適切な bless されたオブジェクトであるということから
+返す必要はありません)。
+また、関数 tied() を使って、基礎となるオブジェクトへのリファレンスを
+取得することができます。
+
+=begin original
+
+Unlike dbmopen(), the tie() function will not C<use> or C<require> a module
+for you--you need to do that explicitly yourself.
+
+=end original
+
+dbmopen() とは異なり、tie() はモジュールを C<use> したり C<require> したり
+することはありません。
+あなたが、自分自身でそれを明示的に行わなければなりません。
+
+=head2 Tying Scalars
+X<scalar, tying>
+
+(スカラを tie する)
+
+=begin original
+
+A class implementing a tied scalar should define the following methods:
+TIESCALAR, FETCH, STORE, and possibly UNTIE and/or DESTROY.
+
+=end original
+
+tie されたスカラを実装するクラスは、TIESCALAR, FETCH, STORE, 
+そして可能であれば UNTIE や DESTROY といったメソッドを定義しておくべきです。
+
+=begin original
+
+Let's look at each in turn, using as an example a tie class for
+scalars that allows the user to do something like:
+
+=end original
+
+以下のような操作を、ユーザーに許しているスカラに対してクラスを
+tie する例を使って順に見て行きましょう。
+
+    tie $his_speed, 'Nice', getppid();
+    tie $my_speed,  'Nice', $$;
+
+=begin original
+
+And now whenever either of those variables is accessed, its current
+system priority is retrieved and returned.  If those variables are set,
+then the process's priority is changed!
+
+=end original
+
+こうした後ではこれらの変数のいずれかがアクセスされたときには、カレントの
+システム優先順位が取得されたり返されたりします。
+もし変数に代入が行われれば、プロセスの優先順位は変更されます!
+
+=begin original
+
+We'll use Jarkko Hietaniemi <F<jhi@iki.fi>>'s BSD::Resource class (not
+included) to access the PRIO_PROCESS, PRIO_MIN, and PRIO_MAX constants
+from your system, as well as the getpriority() and setpriority() system
+calls.  Here's the preamble of the class.
+
+=end original
+
+システムの PRIO_PROCESS, PRIO_MIN, PRIO_MAX といった定数に
+アクセスするために Jarkko Hietaniemi <F<jhi@iki.fi>> の
+BSD::Resource クラスを使います。
+以下はこのクラスの前置きです。
+
+    package Nice;
+    use Carp;
+    use BSD::Resource;
+    use strict;
+    $Nice::DEBUG = 0 unless defined $Nice::DEBUG;
+
+=over 4
+
+=item TIESCALAR classname, LIST
+X<TIESCALAR>
+
+=begin original
+
+This is the constructor for the class.  That means it is
+expected to return a blessed reference to a new scalar
+(probably anonymous) that it's creating.  For example:
+
+=end original
+
+これはクラスのためのコンストラクタです。
+その役割は作成された新たな(おそらくは無名の)スカラへの bless された
+参照を返すことです。
+たとえば、
+
+    sub TIESCALAR {
+        my $class = shift;
+        my $pid = shift || $$; # 0 means me
+
+        if ($pid !~ /^\d+$/) {
+            carp "Nice::Tie::Scalar got non-numeric pid $pid" if $^W;
+            return undef;
+        }
+
+        unless (kill 0, $pid) { # EPERM or ERSCH, no doubt
+            carp "Nice::Tie::Scalar got bad pid $pid: $!" if $^W;
+            return undef;
+        }
+
+        return bless \$pid, $class;
+    }
+
+=begin original
+
+This tie class has chosen to return an error rather than raising an
+exception if its constructor should fail.  While this is how dbmopen() works,
+other classes may well not wish to be so forgiving.  It checks the global
+variable C<$^W> to see whether to emit a bit of noise anyway.
+
+=end original
+
+このtie クラスでは、コンストラクタが失敗したときに例外を起こすのではなく
+エラーを返すことを選択しました。
+dbmopen() が動作している間に、他のクラスは例外が起きることを
+好まないかもしれないからです。
+グローバル変数 C<$^W> でエラーメッセージを出すかどうかを検査しています。
+
+=item FETCH this
+X<FETCH>
+
+=begin original
+
+This method will be triggered every time the tied variable is accessed
+(read).  It takes no arguments beyond its self reference, which is the
+object representing the scalar we're dealing with.  Because in this case
+we're using just a SCALAR ref for the tied scalar object, a simple $$self
+allows the method to get at the real value stored there.  In our example
+below, that real value is the process ID to which we've tied our variable.
+
+=end original
+
+このメソッドは tie された変数がアクセス(読み出し)される度に起動されます。
+これは自分のリファレンス、つまり私たちが扱おうとしている
+スカラを表現するオブジェクトの他に引数は取りません。
+この場合、単に SCALAR の参照をtieされたスカラオブジェクトとして
+使うので、単純な $$self がそこに格納されている実際の値を取得する
+メソッドとなります。
+以下に示した例では、実際の値は変数に tie されたプロセス ID です。
+
+    sub FETCH {
+        my $self = shift;
+        confess "wrong type" unless ref $self;
+        croak "usage error" if @_;
+        my $nicety;
+        local($!) = 0;
+        $nicety = getpriority(PRIO_PROCESS, $$self);
+        if ($!) { croak "getpriority failed: $!" }
+        return $nicety;
+    }
+
+=begin original
+
+This time we've decided to blow up (raise an exception) if the renice
+fails--there's no place for us to return an error otherwise, and it's
+probably the right thing to do.
+
+=end original
+
+ここでは、renice に失敗した場合には例外を引き起こすようにしました。
+エラーを返すための場所がなく、例外を引き起こすことがおそらく妥当です。
+
+=item STORE this, value
+X<STORE>
+
+=begin original
+
+This method will be triggered every time the tied variable is set
+(assigned).  Beyond its self reference, it also expects one (and only one)
+argument--the new value the user is trying to assign. Don't worry about
+returning a value from STORE -- the semantic of assignment returning the
+assigned value is implemented with FETCH.
+
+=end original
+
+このメソッドは tie された変数に代入される度毎に起動されます。
+自分の参照のほか、ただ一つの引数としてユーザーが代入しようとする
+新しい値を取ります。
+Don't worry about
+returning a value from STORE -- the semantic of assignment returning the
+assigned value is implemented with FETCH.
+(TBT)
+
+    sub STORE {
+        my $self = shift;
+        confess "wrong type" unless ref $self;
+        my $new_nicety = shift;
+        croak "usage error" if @_;
+
+        if ($new_nicety < PRIO_MIN) {
+            carp sprintf
+              "WARNING: priority %d less than minimum system priority %d",
+                  $new_nicety, PRIO_MIN if $^W;
+            $new_nicety = PRIO_MIN;
+        }
+
+        if ($new_nicety > PRIO_MAX) {
+            carp sprintf
+              "WARNING: priority %d greater than maximum system priority %d",
+                  $new_nicety, PRIO_MAX if $^W;
+            $new_nicety = PRIO_MAX;
+        }
+
+        unless (defined setpriority(PRIO_PROCESS, $$self, $new_nicety)) {
+            confess "setpriority failed: $!";
+        }
+    }
+
+=item UNTIE this
+X<UNTIE>
+
+=begin original
+
+This method will be triggered when the C<untie> occurs. This can be useful
+if the class needs to know when no further calls will be made. (Except DESTROY
+of course.) See L<The C<untie> Gotcha> below for more details.
+
+=end original
+
+This method will be triggered when the C<untie> occurs. This can be useful
+if the class needs to know when no further calls will be made. (Except DESTROY
+of course.) See L<The C<untie> Gotcha> below for more details.
+(TBT)
+
+=item DESTROY this
+X<DESTROY>
+
+=begin original
+
+This method will be triggered when the tied variable needs to be destructed.
+As with other object classes, such a method is seldom necessary, because Perl
+deallocates its moribund object's memory for you automatically--this isn't
+C++, you know.  We'll use a DESTROY method here for debugging purposes only.
+
+=end original
+
+このメソッドは tie された変数を破棄する必要があるときに起動されます。
+他のオブジェクトクラスと同じように、このようなメソッドは
+ほとんど必要ありません。
+それは、Perl は消滅しかかったオブジェクトのメモリを自動的に
+解放するからです。
+これは C++ ではないのです。
+いいですね?。
+私たちはここでは DESTROY メソッドをデバッグのためだけに使います。
+
+    sub DESTROY {
+        my $self = shift;
+        confess "wrong type" unless ref $self;
+        carp "[ Nice::DESTROY pid $$self ]" if $Nice::DEBUG;
+    }
+
+=back
+
+=begin original
+
+That's about all there is to it.  Actually, it's more than all there
+is to it, because we've done a few nice things here for the sake
+of completeness, robustness, and general aesthetics.  Simpler
+TIESCALAR classes are certainly possible.
+
+=end original
+
+これがすべきことの全てです。
+実際のところ、それよりも多くのことがあります。
+ですから、私たちはここでちょっとした完全性、堅牢性、一般的な美しさと
+いうものを込めました。
+もっと簡単な TIESCALAR クラスを作ることも可能です。
+
+=head2 Tying Arrays
+X<array, tying>
+
+(配列を tie する)
+
+=begin original
+
+A class implementing a tied ordinary array should define the following
+methods: TIEARRAY, FETCH, STORE, FETCHSIZE, STORESIZE and perhaps UNTIE and/or DESTROY.
+
+=end original
+
+tie された配列を実装するクラスは TIEARRAY, FETCH, STORE, FETCHSIZE, 
+STORESIZE、そしておそらく UNTIE や DESTROY といったメソッドを
+実装すべきでしょう。
+
+=begin original
+
+FETCHSIZE and STORESIZE are used to provide C<$#array> and
+equivalent C<scalar(@array)> access.
+
+=end original
+
+FETCHSIZE と STORESIZE は C<$#array> と
+C<scalar(@array)> アクセスに等価なものを提供します。
+
+=begin original
+
+The methods POP, PUSH, SHIFT, UNSHIFT, SPLICE, DELETE, and EXISTS are
+required if the perl operator with the corresponding (but lowercase) name
+is to operate on the tied array. The B<Tie::Array> class can be used as a
+base class to implement the first five of these in terms of the basic
+methods above.  The default implementations of DELETE and EXISTS in
+B<Tie::Array> simply C<croak>.
+
+=end original
+
+POP, PUSH, SHIFT, UNSHIFT, SPLICE, DELETE, EXIST といったメソッドは
+同名の perl の演算子(ただし小文字)が tie された配列に対して
+操作を行うときに必要となります。
+B<Tie::Array> クラスは、これらのうち、最初の 5 つの基本的なメソッドを
+実装するためのベースクラスとして使用できます。
+The default implementations of DELETE and EXISTS in
+B<Tie::Array> simply C<croak>.
+(TBT)
+
+=begin original
+
+In addition EXTEND will be called when perl would have pre-extended
+allocation in a real array.
+
+=end original
+
+それに加え、EXTEND は perl が実際の配列中であらかじめ
+拡張するようなときに呼び出されます。
+
+=begin original
+
+For this discussion, we'll implement an array whose elements are a fixed
+size at creation.  If you try to create an element larger than the fixed
+size, you'll take an exception.  For example:
+
+=end original
+
+ここでの説明のため、要素数が生成時に固定されたサイズである配列を実装します。
+固定サイズを越えた要素を作ろうとすると、例外が発生します。
+例えば:
+
+    use FixedElem_Array;
+    tie @array, 'FixedElem_Array', 3;
+    $array[0] = 'cat';  # ok.
+    $array[1] = 'dogs'; # exception, length('dogs') > 3.
+
+=begin original
+
+The preamble code for the class is as follows:
+
+=end original
+
+このクラスに対する 前置きコードは以下の通りです。
+
+    package FixedElem_Array;
+    use Carp;
+    use strict;
+
+=over 4
+
+=item TIEARRAY classname, LIST
+X<TIEARRAY>
+
+=begin original
+
+This is the constructor for the class.  That means it is expected to
+return a blessed reference through which the new array (probably an
+anonymous ARRAY ref) will be accessed.
+
+=end original
+
+これはクラスのためのコンストラクタです。
+その役割は作成された新たな(おそらくは無名の配列の参照)配列への
+bless された参照を返すことです。
+
+=begin original
+
+In our example, just to show you that you don't I<really> have to return an
+ARRAY reference, we'll choose a HASH reference to represent our object.
+A HASH works out well as a generic record type: the C<{ELEMSIZE}> field will
+store the maximum element size allowed, and the C<{ARRAY}> field will hold the
+true ARRAY ref.  If someone outside the class tries to dereference the
+object returned (doubtless thinking it an ARRAY ref), they'll blow up.
+This just goes to show you that you should respect an object's privacy.
+
+=end original
+
+私たちの例では、あなたにあなたが I<実際には> ARRAY のリファレンスを
+返さなくてもよいということを示すためだけに、使用するオブジェクトを
+表わす HASH の参照を選びました。
+HASH は汎用的なレコード型と同じように働きます。
+C<{ELEMSIZE}> フィールドは許される最大の要素の数を格納し、
+C<{ARRAY}> フィールドは本物の ARRAY のリファレンスを保持します。
+誰かがクラスの外側で返されたオブジェクトのデリファレンスを試みた場合
+(それが ARRAY のリファレンスであると疑いなく考えて)、それは失敗します。
+これはあなたがオブジェクトのプライバシーを尊重すべきであるという
+ことなのです。
+
+    sub TIEARRAY {
+      my $class    = shift;
+      my $elemsize = shift;
+      if ( @_ || $elemsize =~ /\D/ ) {
+        croak "usage: tie ARRAY, '" . __PACKAGE__ . "', elem_size";
+      }
+      return bless {
+        ELEMSIZE => $elemsize,
+        ARRAY    => [],
+      }, $class;
+    }
+
+=item FETCH this, index
+X<FETCH>
+
+=begin original
+
+This method will be triggered every time an individual element the tied array
+is accessed (read).  It takes one argument beyond its self reference: the
+index whose value we're trying to fetch.
+
+=end original
+
+このメソッドは tie された配列の個々の要素がアクセス(読み出し)される毎に
+起動されます。
+これは自分の参照のほかに、一つの引数、フェッチしようとする値の
+インデックスをとります。
+
+    sub FETCH {
+      my $self  = shift;
+      my $index = shift;
+      return $self->{ARRAY}->[$index];
+    }
+
+=begin original
+
+If a negative array index is used to read from an array, the index
+will be translated to a positive one internally by calling FETCHSIZE
+before being passed to FETCH.  You may disable this feature by
+assigning a true value to the variable C<$NEGATIVE_INDICES> in the
+tied array class.
+
+=end original
+
+If a negative array index is used to read from an array, the index
+will be translated to a positive one internally by calling FETCHSIZE
+before being passed to FETCH.  You may disable this feature by
+assigning a true value to the variable C<$NEGATIVE_INDICES> in the
+tied array class.
+(TBT)
+
+=begin original
+
+As you may have noticed, the name of the FETCH method (et al.) is the same
+for all accesses, even though the constructors differ in names (TIESCALAR
+vs TIEARRAY).  While in theory you could have the same class servicing
+several tied types, in practice this becomes cumbersome, and it's easiest
+to keep them at simply one tie type per class.
+
+=end original
+
+すでに気がついたかもしれませんが、FETCH メソッド(など)の名前は全ての
+アクセスについて、たとえコンストラクタが別の名前であった
+(TIESCALAR と TIEARRAY)としても同じ名前になっています。
+理論的には、幾つかの tie されたクラスをサービスする同じクラスを
+持つこともできるでしょうが、実際にはこれは厄介なものになり、
+単にクラスあたり一つの状態にするのが最も簡単です。
+
+=item STORE this, index, value
+X<STORE>
+
+=begin original
+
+This method will be triggered every time an element in the tied array is set
+(written).  It takes two arguments beyond its self reference: the index at
+which we're trying to store something and the value we're trying to put
+there.
+
+=end original
+
+このメソッドは、tie された配列にある要素に対する書き込みがある度毎に
+起動されます。
+これは自分の参照のほかに、何かを格納しようとする場所の添え字と、
+格納しようとしている値という二つの引数を取ります。
+
+=begin original
+
+In our example, C<undef> is really C<$self-E<gt>{ELEMSIZE}> number of
+spaces so we have a little more work to do here:
+
+=end original
+
+In our example, C<undef> is really C<$self-E<gt>{ELEMSIZE}> number of
+spaces so we have a little more work to do here:
+(TBT)
+
+    sub STORE {
+      my $self = shift;
+      my( $index, $value ) = @_;
+      if ( length $value > $self->{ELEMSIZE} ) {
+        croak "length of $value is greater than $self->{ELEMSIZE}";
+      }
+      # fill in the blanks
+      $self->EXTEND( $index ) if $index > $self->FETCHSIZE();
+      # right justify to keep element size for smaller elements
+      $self->{ARRAY}->[$index] = sprintf "%$self->{ELEMSIZE}s", $value;
+    }
+
+=begin original
+
+Negative indexes are treated the same as with FETCH.
+
+=end original
+
+インデックスの値が負数の場合、FETCH と同様に扱われます。
+
+=item FETCHSIZE this
+X<FETCHSIZE>
+
+=begin original
+
+Returns the total number of items in the tied array associated with
+object I<this>. (Equivalent to C<scalar(@array)>).  For example:
+
+=end original
+
+Returns the total number of items in the tied array associated with
+object I<this>. (Equivalent to C<scalar(@array)>).  For example:
+(TBT)
+
+    sub FETCHSIZE {
+      my $self = shift;
+      return scalar @{$self->{ARRAY}};
+    }
+
+=item STORESIZE this, count
+X<STORESIZE>
+
+=begin original
+
+Sets the total number of items in the tied array associated with
+object I<this> to be I<count>. If this makes the array larger then
+class's mapping of C<undef> should be returned for new positions.
+If the array becomes smaller then entries beyond count should be
+deleted. 
+
+=end original
+
+Sets the total number of items in the tied array associated with
+object I<this> to be I<count>. If this makes the array larger then
+class's mapping of C<undef> should be returned for new positions.
+If the array becomes smaller then entries beyond count should be
+deleted. 
+(TBT)
+
+=begin original
+
+In our example, 'undef' is really an element containing
+C<$self-E<gt>{ELEMSIZE}> number of spaces.  Observe:
+
+=end original
+
+In our example, 'undef' is really an element containing
+C<$self-E<gt>{ELEMSIZE}> number of spaces.  Observe:
+(TBT)
+
+    sub STORESIZE {
+      my $self  = shift;
+      my $count = shift;
+      if ( $count > $self->FETCHSIZE() ) {
+        foreach ( $count - $self->FETCHSIZE() .. $count ) {
+          $self->STORE( $_, '' );
+        }
+      } elsif ( $count < $self->FETCHSIZE() ) {
+        foreach ( 0 .. $self->FETCHSIZE() - $count - 2 ) {
+          $self->POP();
+        }
+      }
+    }
+
+=item EXTEND this, count
+X<EXTEND>
+
+=begin original
+
+Informative call that array is likely to grow to have I<count> entries.
+Can be used to optimize allocation. This method need do nothing.
+
+=end original
+
+Informative call that array is likely to grow to have I<count> entries.
+Can be used to optimize allocation. This method need do nothing.
+(TBT)
+
+=begin original
+
+In our example, we want to make sure there are no blank (C<undef>)
+entries, so C<EXTEND> will make use of C<STORESIZE> to fill elements
+as needed:
+
+=end original
+
+In our example, we want to make sure there are no blank (C<undef>)
+entries, so C<EXTEND> will make use of C<STORESIZE> to fill elements
+as needed:
+(TBT)
+
+    sub EXTEND {   
+      my $self  = shift;
+      my $count = shift;
+      $self->STORESIZE( $count );
+    }
+
+=item EXISTS this, key
+X<EXISTS>
+
+=begin original
+
+Verify that the element at index I<key> exists in the tied array I<this>.
+
+=end original
+
+Verify that the element at index I<key> exists in the tied array I<this>.
+(TBT)
+
+=begin original
+
+In our example, we will determine that if an element consists of
+C<$self-E<gt>{ELEMSIZE}> spaces only, it does not exist:
+
+=end original
+
+In our example, we will determine that if an element consists of
+C<$self-E<gt>{ELEMSIZE}> spaces only, it does not exist:
+(TBT)
+
+    sub EXISTS {
+      my $self  = shift;
+      my $index = shift;
+      return 0 if ! defined $self->{ARRAY}->[$index] ||
+                  $self->{ARRAY}->[$index] eq ' ' x $self->{ELEMSIZE};
+      return 1;
+    }
+
+=item DELETE this, key
+X<DELETE>
+
+=begin original
+
+Delete the element at index I<key> from the tied array I<this>.
+
+=end original
+
+インデックス I<key> の要素を tie された配列 I<this> から削除します。
+
+=begin original
+
+In our example, a deleted item is C<$self-E<gt>{ELEMSIZE}> spaces:
+
+=end original
+
+この例では、削除された要素は C<$self-E<gt>{ELEMSIZE}> スペースです:
+
+    sub DELETE {
+      my $self  = shift;
+      my $index = shift;
+      return $self->STORE( $index, '' );
+    }
+
+=item CLEAR this
+X<CLEAR>
+
+=begin original
+
+Clear (remove, delete, ...) all values from the tied array associated with
+object I<this>.  For example:
+
+=end original
+
+Clear (remove, delete, ...) all values from the tied array associated with
+object I<this>.  For example:
+(TBT)
+
+    sub CLEAR {
+      my $self = shift;
+      return $self->{ARRAY} = [];
+    }
+
+=item PUSH this, LIST 
+X<PUSH>
+
+=begin original
+
+Append elements of I<LIST> to the array.  For example:
+
+=end original
+
+I<LIST> の要素を配列に追加します。
+例えば:
+
+    sub PUSH {  
+      my $self = shift;
+      my @list = @_;
+      my $last = $self->FETCHSIZE();
+      $self->STORE( $last + $_, $list[$_] ) foreach 0 .. $#list;
+      return $self->FETCHSIZE();
+    }   
+
+=item POP this
+X<POP>
+
+=begin original
+
+Remove last element of the array and return it.  For example:
+
+=end original
+
+配列の最後の要素を取り除いてそれを返します。
+例えば:
+
+    sub POP {
+      my $self = shift;
+      return pop @{$self->{ARRAY}};
+    }
+
+=item SHIFT this
+X<SHIFT>
+
+=begin original
+
+Remove the first element of the array (shifting other elements down)
+and return it.  For example:
+
+=end original
+
+Remove the first element of the array (shifting other elements down)
+and return it.  For example:
+(TBT)
+
+    sub SHIFT {
+      my $self = shift;
+      return shift @{$self->{ARRAY}};
+    }
+
+=item UNSHIFT this, LIST 
+X<UNSHIFT>
+
+=begin original
+
+Insert LIST elements at the beginning of the array, moving existing elements
+up to make room.  For example:
+
+=end original
+
+Insert LIST elements at the beginning of the array, moving existing elements
+up to make room.  For example:
+(TBT)
+
+    sub UNSHIFT {
+      my $self = shift;
+      my @list = @_;
+      my $size = scalar( @list );
+      # make room for our list
+      @{$self->{ARRAY}}[ $size .. $#{$self->{ARRAY}} + $size ]
+       = @{$self->{ARRAY}};
+      $self->STORE( $_, $list[$_] ) foreach 0 .. $#list;
+    }
+
+=item SPLICE this, offset, length, LIST
+X<SPLICE>
+
+=begin original
+
+Perform the equivalent of C<splice> on the array. 
+
+=end original
+
+Perform the equivalent of C<splice> on the array. 
+(TBT)
+
+=begin original
+
+I<offset> is optional and defaults to zero, negative values count back 
+from the end of the array. 
+
+=end original
+
+I<offset> is optional and defaults to zero, negative values count back 
+from the end of the array. 
+(TBT)
+
+=begin original
+
+I<length> is optional and defaults to rest of the array.
+
+=end original
+
+I<length> is optional and defaults to rest of the array.
+(TBT)
+
+=begin original
+
+I<LIST> may be empty.
+
+=end original
+
+I<LIST> は空かもしれません。
+
+=begin original
+
+Returns a list of the original I<length> elements at I<offset>.
+
+=end original
+
+Returns a list of the original I<length> elements at I<offset>.
+(TBT)
+
+=begin original
+
+In our example, we'll use a little shortcut if there is a I<LIST>:
+
+=end original
+
+In our example, we'll use a little shortcut if there is a I<LIST>:
+(TBT)
+
+    sub SPLICE {
+      my $self   = shift;
+      my $offset = shift || 0;
+      my $length = shift || $self->FETCHSIZE() - $offset;
+      my @list   = (); 
+      if ( @_ ) {
+        tie @list, __PACKAGE__, $self->{ELEMSIZE};
+        @list   = @_;
+      }
+      return splice @{$self->{ARRAY}}, $offset, $length, @list;
+    }
+
+=item UNTIE this
+X<UNTIE>
+
+=begin original
+
+Will be called when C<untie> happens. (See L<The C<untie> Gotcha> below.)
+
+=end original
+
+Will be called when C<untie> happens. (See L<The C<untie> Gotcha> below.)
+(TBT)
+
+=item DESTROY this
+X<DESTROY>
+
+=begin original
+
+This method will be triggered when the tied variable needs to be destructed.
+As with the scalar tie class, this is almost never needed in a
+language that does its own garbage collection, so this time we'll
+just leave it out.
+
+=end original
+
+このメソッドは tie された変数を破棄する必要があるときに呼び出されます。
+スカラを tie したクラスと同様、このメソッドはガベージコレクションを
+言語自体が行っているのでほとんど必要ありません。
+ですから、今回はこのまま放っておきます。
+
+=back
+
+=head2 Tying Hashes
+X<hash, tying>
+
+(ハッシュを tie する)
+
+=begin original
+
+Hashes were the first Perl data type to be tied (see dbmopen()).  A class
+implementing a tied hash should define the following methods: TIEHASH is
+the constructor.  FETCH and STORE access the key and value pairs.  EXISTS
+reports whether a key is present in the hash, and DELETE deletes one.
+CLEAR empties the hash by deleting all the key and value pairs.  FIRSTKEY
+and NEXTKEY implement the keys() and each() functions to iterate over all
+the keys. SCALAR is triggered when the tied hash is evaluated in scalar 
+context. UNTIE is called when C<untie> happens, and DESTROY is called when
+the tied variable is garbage collected.
+
+=end original
+
+ハッシュは tie される最初の Perl データ型(dbmopen() を参照)でした。
+tie されたハッシュを実装するクラスは、以下のメソッドを定義すべきです。
+コンストラクタである TIEHASH、キーと値のペアにアクセスする FETCH と STORE、
+キーがハッシュにあるかどうかを報告する EXISTS、キーを削除するための DELETE、
+すべてのキーと値のペアを削除することによりハッシュを空にする CLEAR、
+すべてのキーをイテレートするための関数 keys() と each() を実装する
+FIRSTKEY と NEXTKEY、
+SCALAR is triggered when the tied hash is evaluated in scalar 
+context. UNTIE is called when C<untie> happens, and
+tieされた変数がガーベッジコレクトされるときに
+呼び出される DESTROY。
+(TBT)
+
+=begin original
+
+If this seems like a lot, then feel free to inherit from merely the
+standard Tie::StdHash module for most of your methods, redefining only the
+interesting ones.  See L<Tie::Hash> for details.
+
+=end original
+
+もしこれがたくさんありすぎると感じられるのなら、標準の Tie::StdHash
+モジュールを単純に継承し、再定義を必要とするものだけを自分で
+実装することもできます。
+詳しくは L<Tie::Hash> を参照してください。
+
+=begin original
+
+Remember that Perl distinguishes between a key not existing in the hash,
+and the key existing in the hash but having a corresponding value of
+C<undef>.  The two possibilities can be tested with the C<exists()> and
+C<defined()> functions.
+
+=end original
+
+Perl がハッシュに存在していないキーと、ハッシュに存在しているけれども
+C<undef> という値を持っているキーとを明確に区別しているということを
+忘れないでください。
+これら二つの可能性は、C<exists()> と
+C<defined()> という関数を使って検査できます。
+
+=begin original
+
+Here's an example of a somewhat interesting tied hash class:  it gives you
+a hash representing a particular user's dot files.  You index into the hash
+with the name of the file (minus the dot) and you get back that dot file's
+contents.  For example:
+
+=end original
+
+次の例は tie されたハッシュクラスを使ったものです。
+この例では特定のユーザーのドットファイルを表わすハッシュを提供します。
+あなたはハッシュをファイルの名前(からドットを取り除いたもの)によって
+添え字付けを行い、そのドットファイルの内容を取得します。
+例えば:
+
+    use DotFiles;
+    tie %dot, 'DotFiles';
+    if ( $dot{profile} =~ /MANPATH/ ||
+         $dot{login}   =~ /MANPATH/ ||
+         $dot{cshrc}   =~ /MANPATH/    )
+    {
+	print "you seem to set your MANPATH\n";
+    }
+
+=begin original
+
+Or here's another sample of using our tied class:
+
+=end original
+
+tie されたクラスを使ったもう一つの例です。
+
+    tie %him, 'DotFiles', 'daemon';
+    foreach $f ( keys %him ) {
+	printf "daemon dot file %s is size %d\n",
+	    $f, length $him{$f};
+    }
+
+=begin original
+
+In our tied hash DotFiles example, we use a regular
+hash for the object containing several important
+fields, of which only the C<{LIST}> field will be what the
+user thinks of as the real hash.
+
+=end original
+
+この DotFiles という tie されたハッシュでは、私たちは C<{LIST}>
+フィールドのみをユーザーが本当のハッシュであると考えるであろう幾つかの
+重要なフィールドを持ったオブジェクトのために、通常のハッシュを
+使いました。
+
+=over 5
+
+=item USER
+
+=begin original
+
+whose dot files this object represents
+
+=end original
+
+このオブジェクトが表わしているドットファイルの所有者
+
+=item HOME
+
+=begin original
+
+where those dot files live
+
+=end original
+
+ドットファイルがある場所
+
+=item CLOBBER
+
+=begin original
+
+whether we should try to change or remove those dot files
+
+=end original
+
+これらのドットファイルを変更したり削除することをしようとすべきか
+を表わすフラグ
+
+=item LIST
+
+=begin original
+
+the hash of dot file names and content mappings
+
+=end original
+
+ドットファイルの名前と内容のマッピングをしたハッシュ
+
+=back
+
+=begin original
+
+Here's the start of F<Dotfiles.pm>:
+
+=end original
+
+次は F<Dotfiles.pm> の先頭です:
+
+    package DotFiles;
+    use Carp;
+    sub whowasi { (caller(1))[3] . '()' }
+    my $DEBUG = 0;
+    sub debug { $DEBUG = @_ ? shift : 1 }
+
+=begin original
+
+For our example, we want to be able to emit debugging info to help in tracing
+during development.  We keep also one convenience function around
+internally to help print out warnings; whowasi() returns the function name
+that calls it.
+
+=end original
+
+この例では、私たちは開発の間トレースがしやすいようにデバッグ情報を
+出力できるようにしたいと考えました。
+同様に、警告を出力するのを助ける一つの便利な内部関数を残しました。
+whowasi() は呼び出した関数の名前を返します。
+
+=begin original
+
+Here are the methods for the DotFiles tied hash.
+
+=end original
+
+以下は、DotoFiles に tie されたハッシュのためのメソッドです。
+
+=over 4
+
+=item TIEHASH classname, LIST
+X<TIEHASH>
+
+=begin original
+
+This is the constructor for the class.  That means it is expected to
+return a blessed reference through which the new object (probably but not
+necessarily an anonymous hash) will be accessed.
+
+=end original
+
+これはクラスに対するコンストラクタです。
+その役割は、アクセスされる(おそらくは無名のハッシュ、
+ただしそうする必要はない)オブジェクトへの bless された参照を返すことです。
+
+=begin original
+
+Here's the constructor:
+
+=end original
+
+コンストラクタの例です。
+
+    sub TIEHASH {
+	my $self = shift;
+	my $user = shift || $>;
+	my $dotdir = shift || '';
+	croak "usage: @{[&whowasi]} [USER [DOTDIR]]" if @_;
+	$user = getpwuid($user) if $user =~ /^\d+$/;
+	my $dir = (getpwnam($user))[7]
+		|| croak "@{[&whowasi]}: no user $user";
+	$dir .= "/$dotdir" if $dotdir;
+
+	my $node = {
+	    USER    => $user,
+	    HOME    => $dir,
+	    LIST    => {},
+	    CLOBBER => 0,
+	};
+
+	opendir(DIR, $dir)
+		|| croak "@{[&whowasi]}: can't opendir $dir: $!";
+	foreach $dot ( grep /^\./ && -f "$dir/$_", readdir(DIR)) {
+	    $dot =~ s/^\.//;
+	    $node->{LIST}{$dot} = undef;
+	}
+	closedir DIR;
+	return bless $node, $self;
+    }
+
+=begin original
+
+It's probably worth mentioning that if you're going to filetest the
+return values out of a readdir, you'd better prepend the directory
+in question.  Otherwise, because we didn't chdir() there, it would
+have been testing the wrong file.
+
+=end original
+
+readdir が返した値をつかってファイルテストをしようという場合、
+問い合わせにディレクトリを付加すべきでしょう。
+そうしなければ、chdir() をしていないので間違ったファイルを
+テストしてしまうこととなります。
+
+=item FETCH this, key
+X<FETCH>
+
+=begin original
+
+This method will be triggered every time an element in the tied hash is
+accessed (read).  It takes one argument beyond its self reference: the key
+whose value we're trying to fetch.
+
+=end original
+
+このメソッドは tie されたハッシュがアクセス(読み出し)される度毎に
+呼び出されます。
+これは自分の参照のほかに、フェッチしようとしている値に対するキーを、
+ただ一つの引数としてとります。
+
+=begin original
+
+Here's the fetch for our DotFiles example.
+
+=end original
+
+以下に示すのは、私たちの DotFiles サンプルのためのフェッチです。
+
+    sub FETCH {
+	carp &whowasi if $DEBUG;
+	my $self = shift;
+	my $dot = shift;
+	my $dir = $self->{HOME};
+	my $file = "$dir/.$dot";
+
+	unless (exists $self->{LIST}->{$dot} || -f $file) {
+	    carp "@{[&whowasi]}: no $dot file" if $DEBUG;
+	    return undef;
+	}
+
+	if (defined $self->{LIST}->{$dot}) {
+	    return $self->{LIST}->{$dot};
+	} else {
+	    return $self->{LIST}->{$dot} = `cat $dir/.$dot`;
+	}
+    }
+
+=begin original
+
+It was easy to write by having it call the Unix cat(1) command, but it
+would probably be more portable to open the file manually (and somewhat
+more efficient).  Of course, because dot files are a Unixy concept, we're
+not that concerned.
+
+=end original
+
+UNIX の cat(1) コマンドを呼んでいるので記述するのは簡単でしたが、
+ファイルを自分でオープンすることによってよりポータブル(かつ、より高効率)に
+できます。
+もちろん、ドットファイルは UNIX 的なコンセプトですから、
+私たちは気にしませんでした。
+
+=item STORE this, key, value
+X<STORE>
+
+=begin original
+
+This method will be triggered every time an element in the tied hash is set
+(written).  It takes two arguments beyond its self reference: the index at
+which we're trying to store something, and the value we're trying to put
+there.
+
+=end original
+
+このメソッドは tie されたハッシュの要素がセット(書き込み)される度に
+呼び出されます。
+これは自分の参照の他に二つの引数、何かを格納しようとする場所の添え字と、
+格納しようとする値をとります。
+
+=begin original
+
+Here in our DotFiles example, we'll be careful not to let
+them try to overwrite the file unless they've called the clobber()
+method on the original object reference returned by tie().
+
+=end original
+
+以下は DotFiles のサンプルです。
+tie() で返されたオブジェクトのリファレンス上で clobber() メソッドが
+呼び出されない限り、ファイルを上書きしないようにしています。
+
+    sub STORE {
+	carp &whowasi if $DEBUG;
+	my $self = shift;
+	my $dot = shift;
+	my $value = shift;
+	my $file = $self->{HOME} . "/.$dot";
+	my $user = $self->{USER};
+
+	croak "@{[&whowasi]}: $file not clobberable"
+	    unless $self->{CLOBBER};
+
+	open(F, "> $file") || croak "can't open $file: $!";
+	print F $value;
+	close(F);
+    }
+
+=begin original
+
+If they wanted to clobber something, they might say:
+
+=end original
+
+もし何かを変更したいというのであれば、このようにします。
+
+    $ob = tie %daemon_dots, 'daemon';
+    $ob->clobber(1);
+    $daemon_dots{signature} = "A true daemon\n";
+
+=begin original
+
+Another way to lay hands on a reference to the underlying object is to
+use the tied() function, so they might alternately have set clobber
+using:
+
+=end original
+
+基礎をなすオブジェクトへの参照を扱うもう一つの方法は tied() 関数を
+使うことで、これによって clobber を以下の様に使ってセットできます。
+
+    tie %daemon_dots, 'daemon';
+    tied(%daemon_dots)->clobber(1);
+
+=begin original
+
+The clobber method is simply:
+
+=end original
+
+clobber メソッドは単純です。
+
+    sub clobber {
+	my $self = shift;
+	$self->{CLOBBER} = @_ ? shift : 1;
+    }
+
+=item DELETE this, key
+X<DELETE>
+
+=begin original
+
+This method is triggered when we remove an element from the hash,
+typically by using the delete() function.  Again, we'll
+be careful to check whether they really want to clobber files.
+
+=end original
+
+このメソッドはハッシュから要素を取り除くとき、典型的には delete() 関数を
+使ったときに呼び出されます。
+繰り返しますが、本当にファイルを clobber したいのかを注意深く検査しています。
+
+    sub DELETE   {
+	carp &whowasi if $DEBUG;
+
+	my $self = shift;
+	my $dot = shift;
+	my $file = $self->{HOME} . "/.$dot";
+	croak "@{[&whowasi]}: won't remove file $file"
+	    unless $self->{CLOBBER};
+	delete $self->{LIST}->{$dot};
+	my $success = unlink($file);
+	carp "@{[&whowasi]}: can't unlink $file: $!" unless $success;
+	$success;
+    }
+
+=begin original
+
+The value returned by DELETE becomes the return value of the call
+to delete().  If you want to emulate the normal behavior of delete(),
+you should return whatever FETCH would have returned for this key.
+In this example, we have chosen instead to return a value which tells
+the caller whether the file was successfully deleted.
+
+=end original
+
+DELETE の 返す値は delete() の戻り値から来ています。
+もしあなたが通常の delete() の動作をまねしたいというのであれば、
+FETCH がこのキーに対して返すであろう値を返すべきでしょう。
+この例では、戻り値としてファイルの削除に成功したかどうかを
+返すことを選択しました。
+
+=item CLEAR this
+X<CLEAR>
+
+=begin original
+
+This method is triggered when the whole hash is to be cleared, usually by
+assigning the empty list to it.
+
+=end original
+
+このメソッドはハッシュ全体が消去されるとき、通常は空リストが代入されたときに
+呼び出されます。
+
+=begin original
+
+In our example, that would remove all the user's dot files!  It's such a
+dangerous thing that they'll have to set CLOBBER to something higher than
+1 to make it happen.
+
+=end original
+
+私たちの例では、これはユーザーのすべてのドットファイルを
+削除してしまいます!
+これはとても危険なことで、実際に削除するには CLOBBER に 1 を超える値を
+セットすることが必要となります。
+
+    sub CLEAR    {
+	carp &whowasi if $DEBUG;
+	my $self = shift;
+	croak "@{[&whowasi]}: won't remove all dot files for $self->{USER}"
+	    unless $self->{CLOBBER} > 1;
+	my $dot;
+	foreach $dot ( keys %{$self->{LIST}}) {
+	    $self->DELETE($dot);
+	}
+    }
+
+=item EXISTS this, key
+X<EXISTS>
+
+=begin original
+
+This method is triggered when the user uses the exists() function
+on a particular hash.  In our example, we'll look at the C<{LIST}>
+hash element for this:
+
+=end original
+
+このメソッドは特定のハッシュにおいて、exists() 関数が使われたときに
+呼び出されます。
+私たちの例では、このためにハッシュ要素 C<{LIST}> を参照します。
+
+    sub EXISTS   {
+	carp &whowasi if $DEBUG;
+	my $self = shift;
+	my $dot = shift;
+	return exists $self->{LIST}->{$dot};
+    }
+
+=item FIRSTKEY this
+X<FIRSTKEY>
+
+=begin original
+
+This method will be triggered when the user is going
+to iterate through the hash, such as via a keys() or each()
+call.
+
+=end original
+
+このメソッドは keys() や each() を呼び出すのと同様に、ハッシュを通じた
+イテレートをユーザーが行おうとするときに呼び出されます。
+
+    sub FIRSTKEY {
+	carp &whowasi if $DEBUG;
+	my $self = shift;
+	my $a = keys %{$self->{LIST}};		# reset each() iterator
+	each %{$self->{LIST}}
+    }
+
+=item NEXTKEY this, lastkey
+X<NEXTKEY>
+
+=begin original
+
+This method gets triggered during a keys() or each() iteration.  It has a
+second argument which is the last key that had been accessed.  This is
+useful if you're carrying about ordering or calling the iterator from more
+than one sequence, or not really storing things in a hash anywhere.
+
+=end original
+
+このメソッドは keys() または each() イテレーションの間に呼び出されます。
+二番目の引数として、最後にアクセスしたキーをとります。
+これは、あなたが順番に取り出すとか、二度以上イテレータを呼び出したり、
+あるいは実際にはハッシュのどこにも格納されていないものであるときに
+便利です。
+
+=begin original
+
+For our example, we're using a real hash so we'll do just the simple
+thing, but we'll have to go through the LIST field indirectly.
+
+=end original
+
+私たちの例では本当のハッシュを使うので、やることは簡単です。
+しかし、LIST フィールドを間接的に扱わなければなりません。
+
+    sub NEXTKEY  {
+	carp &whowasi if $DEBUG;
+	my $self = shift;
+	return each %{ $self->{LIST} }
+    }
+
+=item SCALAR this
+X<SCALAR>
+
+=begin original
+
+This is called when the hash is evaluated in scalar context. In order
+to mimic the behaviour of untied hashes, this method should return a
+false value when the tied hash is considered empty. If this method does
+not exist, perl will make some educated guesses and return true when
+the hash is inside an iteration. If this isn't the case, FIRSTKEY is
+called, and the result will be a false value if FIRSTKEY returns the empty
+list, true otherwise.
+
+=end original
+
+This is called when the hash is evaluated in scalar context. In order
+to mimic the behaviour of untied hashes, this method should return a
+false value when the tied hash is considered empty. If this method does
+not exist, perl will make some educated guesses and return true when
+the hash is inside an iteration. If this isn't the case, FIRSTKEY is
+called, and the result will be a false value if FIRSTKEY returns the empty
+list, true otherwise.
+(TBT)
+
+=begin original
+
+However, you should B<not> blindly rely on perl always doing the right 
+thing. Particularly, perl will mistakenly return true when you clear the 
+hash by repeatedly calling DELETE until it is empty. You are therefore 
+advised to supply your own SCALAR method when you want to be absolutely 
+sure that your hash behaves nicely in scalar context.
+
+=end original
+
+However, you should B<not> blindly rely on perl always doing the right 
+thing. Particularly, perl will mistakenly return true when you clear the 
+hash by repeatedly calling DELETE until it is empty. You are therefore 
+advised to supply your own SCALAR method when you want to be absolutely 
+sure that your hash behaves nicely in scalar context.
+(TBT)
+
+=begin original
+
+In our example we can just call C<scalar> on the underlying hash
+referenced by C<$self-E<gt>{LIST}>:
+
+=end original
+
+この例では、C<$self-E<gt>{LIST}> でリファレンスされている、元となる
+ハッシュで C<scalar> を呼び出しています:
+
+    sub SCALAR {
+	carp &whowasi if $DEBUG;
+	my $self = shift;
+	return scalar %{ $self->{LIST} }
+    }
+
+=item UNTIE this
+X<UNTIE>
+
+=begin original
+
+This is called when C<untie> occurs.  See L<The C<untie> Gotcha> below.
+
+=end original
+
+これは C<untie> が発生した時に呼び出されます。
+以下の L<The C<untie> Gotcha> を参照してください。
+
+=item DESTROY this
+X<DESTROY>
+
+=begin original
+
+This method is triggered when a tied hash is about to go out of
+scope.  You don't really need it unless you're trying to add debugging
+or have auxiliary state to clean up.  Here's a very simple function:
+
+=end original
+
+このメソッドは tie されたハッシュがスコープの外に出るときに
+呼び出されます。
+実際には、デバッグ情報を足そうとするとか、後始末のための
+補助的な情報を持っていなければ、必要になりません。
+
+    sub DESTROY  {
+	carp &whowasi if $DEBUG;
+    }
+
+=back
+
+=begin original
+
+Note that functions such as keys() and values() may return huge lists
+when used on large objects, like DBM files.  You may prefer to use the
+each() function to iterate over such.  Example:
+
+=end original
+
+keys() や values() といった関数は、DBM ファイルのような大きなオブジェクトに
+対して使ったときに大きなリストを返す可能性があるということに
+注意してください。
+そういったものに対して繰り返しの処理を行うには、each() を使うのが
+良いでしょう。
+例:
+
+    # print out history file offsets
+    use NDBM_File;
+    tie(%HIST, 'NDBM_File', '/usr/lib/news/history', 1, 0);
+    while (($key,$val) = each %HIST) {
+        print $key, ' = ', unpack('L',$val), "\n";
+    }
+    untie(%HIST);
+
+=head2 Tying FileHandles
+X<filehandle, tying>
+
+(ファイルハンドルを tie する)
+
+=begin original
+
+This is partially implemented now.
+
+=end original
+
+これは現時点ではまだ部分的にしか実装されていません。
+
+=begin original
+
+A class implementing a tied filehandle should define the following
+methods: TIEHANDLE, at least one of PRINT, PRINTF, WRITE, READLINE, GETC,
+READ, and possibly CLOSE, UNTIE and DESTROY.  The class can also provide: BINMODE,
+OPEN, EOF, FILENO, SEEK, TELL - if the corresponding perl operators are
+used on the handle.
+
+=end original
+
+tie されたファイルハンドルを実装するクラスは以下のメソッドを定義すべきです。
+TIEHANDLE と、PRINT, PRINTF, WRITE, READLINE, GETC, READ の
+中の少なくともいずれか一つ、そして可能であればCLOSE, UNTIE, DESTROY。
+また、クラスは以下のものも提供できます: BINMODE,
+OPEN, EOF, FILENO, SEEK, TELL - もし対応する perl の演算子がハンドルで
+つかわれるならです。
+
+=begin original
+
+When STDERR is tied, its PRINT method will be called to issue warnings
+and error messages.  This feature is temporarily disabled during the call, 
+which means you can use C<warn()> inside PRINT without starting a recursive
+loop.  And just like C<__WARN__> and C<__DIE__> handlers, STDERR's PRINT
+method may be called to report parser errors, so the caveats mentioned under 
+L<perlvar/%SIG> apply.
+
+=end original
+
+When STDERR is tied, its PRINT method will be called to issue warnings
+and error messages.  This feature is temporarily disabled during the call, 
+which means you can use C<warn()> inside PRINT without starting a recursive
+loop.  And just like C<__WARN__> and C<__DIE__> handlers, STDERR's PRINT
+method may be called to report parser errors, so the caveats mentioned under 
+L<perlvar/%SIG> apply.
+(TBT)
+
+=begin original
+
+All of this is especially useful when perl is embedded in some other 
+program, where output to STDOUT and STDERR may have to be redirected 
+in some special way.  See nvi and the Apache module for examples.
+
+=end original
+
+これら全ては perl が他のプログラムに埋め込まれていて、
+STDOUT や STDERR で出力する場所はなんらかの特殊なやり方でリダイレクトする
+必要があるときに特に便利です。
+実際の例は nvi や Apache モジュールを参照してください。
+
+=begin original
+
+In our example we're going to create a shouting handle.
+
+=end original
+
+私たちの例では、叫ぶハンドルを生成します。
+
+    package Shout;
+
+=over 4
+
+=item TIEHANDLE classname, LIST
+X<TIEHANDLE>
+
+=begin original
+
+This is the constructor for the class.  That means it is expected to
+return a blessed reference of some sort. The reference can be used to
+hold some internal information.
+
+=end original
+
+これはこのクラスのコンストラクタです。
+その働きはなにかの bless されたリファレンスを返すことです。
+そのリファレンスは内部情報を保持するために使うことができます。
+
+    sub TIEHANDLE { print "<shout>\n"; my $i; bless \$i, shift }
+
+=item WRITE this, LIST
+X<WRITE>
+
+=begin original
+
+This method will be called when the handle is written to via the
+C<syswrite> function.
+
+=end original
+
+このメソッドは C<syswrite> 関数を通じてハンドルが書き出されるときに
+呼び出されます。
+
+    sub WRITE {
+	$r = shift;
+	my($buf,$len,$offset) = @_;
+	print "WRITE called, \$buf=$buf, \$len=$len, \$offset=$offset";
+    }
+
+=item PRINT this, LIST
+X<PRINT>
+
+=begin original
+
+This method will be triggered every time the tied handle is printed to
+with the C<print()> function.
+Beyond its self reference it also expects the list that was passed to
+the print function.
+
+=end original
+
+このメソッドは tie されたハンドルに C<print> 関数を使って出力される
+度に呼び出されます。
+このメソッドは自分の参照のほか、print 関数に渡すリストを受け取ります。
+
+    sub PRINT { $r = shift; $$r++; print join($,,map(uc($_),@_)),$\ }
+
+=item PRINTF this, LIST
+X<PRINTF>
+
+=begin original
+
+This method will be triggered every time the tied handle is printed to
+with the C<printf()> function.
+Beyond its self reference it also expects the format and list that was
+passed to the printf function.
+
+=end original
+
+このメソッドは tie されたハンドルに C<printf> 関数を使って
+出力される度に呼び出されます。
+このメソッドは自分の参照のほか、printf 関数に渡すリストを受け取ります。
+
+    sub PRINTF {
+        shift;
+        my $fmt = shift;
+        print sprintf($fmt, @_);
+    }
+
+=item READ this, LIST
+X<READ>
+
+=begin original
+
+This method will be called when the handle is read from via the C<read>
+or C<sysread> functions.
+
+=end original
+
+このメソッドはハンドルが C<read> や C<sysread> といった関数を通じて
+読まれたときに呼び出されます。
+
+    sub READ {
+	my $self = shift;
+	my $bufref = \$_[0];
+	my(undef,$len,$offset) = @_;
+	print "READ called, \$buf=$bufref, \$len=$len, \$offset=$offset";
+	# add to $$bufref, set $len to number of characters read
+	$len;
+    }
+
+=item READLINE this
+X<READLINE>
+
+=begin original
+
+This method will be called when the handle is read from via <HANDLE>.
+The method should return undef when there is no more data.
+
+=end original
+
+このメソッドは <HANDLE> を通してハンドルが読まれたときに呼び出されます。
+このメソッドはもうデータがない場合には undef を返します。
+
+    sub READLINE { $r = shift; "READLINE called $$r times\n"; }
+
+=item GETC this
+X<GETC>
+
+=begin original
+
+This method will be called when the C<getc> function is called.
+
+=end original
+
+このメソッドは関数 C<getc> が呼ばれたときに呼び出されます。
+
+    sub GETC { print "Don't GETC, Get Perl"; return "a"; }
+
+=item CLOSE this
+X<CLOSE>
+
+=begin original
+
+This method will be called when the handle is closed via the C<close>
+function.
+
+=end original
+
+このメソッドは、C<close> 関数を通してハンドルがクローズされるときに
+呼び出されます。
+
+    sub CLOSE { print "CLOSE called.\n" }
+
+=item UNTIE this
+X<UNTIE>
+
+=begin original
+
+As with the other types of ties, this method will be called when C<untie> happens.
+It may be appropriate to "auto CLOSE" when this occurs.  See
+L<The C<untie> Gotcha> below.
+
+=end original
+
+As with the other types of ties, this method will be called when C<untie> happens.
+It may be appropriate to "auto CLOSE" when this occurs.  See
+L<The C<untie> Gotcha> below.
+(TBT)
+
+=item DESTROY this
+X<DESTROY>
+
+=begin original
+
+As with the other types of ties, this method will be called when the
+tied handle is about to be destroyed. This is useful for debugging and
+possibly cleaning up.
+
+=end original
+
+他の型に対する tie と同様に、このメソッドは tie されたハンドルが
+破棄されるときに呼び出されます。
+これはデバッグや後始末をするのに便利です。
+
+    sub DESTROY { print "</shout>\n" }
+
+=back
+
+=begin original
+
+Here's how to use our little example:
+
+=end original
+
+以下は私たちのサンプルをどのように使うかの例です。
+
+    tie(*FOO,'Shout');
+    print FOO "hello\n";
+    $a = 4; $b = 6;
+    print FOO $a, " plus ", $b, " equals ", $a + $b, "\n";
+    print <FOO>;
+
+=head2 UNTIE this
+X<UNTIE>
+
+=begin original
+
+You can define for all tie types an UNTIE method that will be called
+at untie().  See L<The C<untie> Gotcha> below.
+
+=end original
+
+全ての型に対する tie について、untie() で呼び出される UNTIE メソッドを
+定義できます。
+以下の L<The C<untie> Gotcha> を参照してください。
+
+=head2 The C<untie> Gotcha
+X<untie>
+
+(C<untie> のコツ)
+
+=begin original
+
+If you intend making use of the object returned from either tie() or
+tied(), and if the tie's target class defines a destructor, there is a
+subtle gotcha you I<must> guard against.
+
+=end original
+
+tie() や tied() が返したオブジェクトを使おうとするならば、また、
+その tie されているターゲットクラスがデストラクタを
+定義しているのであれば、あなたが I<しなければならない>
+微妙なコツがあります。
+
+=begin original
+
+As setup, consider this (admittedly rather contrived) example of a
+tie; all it does is use a file to keep a log of the values assigned to
+a scalar.
+
+=end original
+
+セットアップとして、以下の tie の例を考えてみましょう。
+これはファイルを使って、スカラに代入された値を記録し続けるというものです。
+
+    package Remember;
+
+    use strict;
+    use warnings;
+    use IO::File;
+
+    sub TIESCALAR {
+        my $class = shift;
+        my $filename = shift;
+        my $handle = new IO::File "> $filename"
+                         or die "Cannot open $filename: $!\n";
+
+        print $handle "The Start\n";
+        bless {FH => $handle, Value => 0}, $class;
+    }
+
+    sub FETCH {
+        my $self = shift;
+        return $self->{Value};
+    }
+
+    sub STORE {
+        my $self = shift;
+        my $value = shift;
+        my $handle = $self->{FH};
+        print $handle "$value\n";
+        $self->{Value} = $value;
+    }
+
+    sub DESTROY {
+        my $self = shift;
+        my $handle = $self->{FH};
+        print $handle "The End\n";
+        close $handle;
+    }
+
+    1;
+
+=begin original
+
+Here is an example that makes use of this tie:
+
+=end original
+
+次に挙げるのは、この tie を使った例です。
+
+    use strict;
+    use Remember;
+
+    my $fred;
+    tie $fred, 'Remember', 'myfile.txt';
+    $fred = 1;
+    $fred = 4;
+    $fred = 5;
+    untie $fred;
+    system "cat myfile.txt";
+
+=begin original
+
+This is the output when it is executed:
+
+=end original
+
+これを実行したときの出力は次のようになります。
+
+    The Start
+    1
+    4
+    5
+    The End
+
+=begin original
+
+So far so good.  Those of you who have been paying attention will have
+spotted that the tied object hasn't been used so far.  So lets add an
+extra method to the Remember class to allow comments to be included in
+the file -- say, something like this:
+
+=end original
+
+まずまずですね。
+注意深い人は tie されたオブジェクトがここでは使われていないことを
+指摘するでしょう。
+そこで、Remember クラスにファイルがコメントを含むことを
+できるようにするメソッドを追加しましょう -- そう、このような:
+
+    sub comment {
+        my $self = shift;
+        my $text = shift;
+        my $handle = $self->{FH};
+        print $handle $text, "\n";
+    }
+
+=begin original
+
+And here is the previous example modified to use the C<comment> method
+(which requires the tied object):
+
+=end original
+
+次の例は、前の例を C<comment> メソッド(tie されたオブジェクトを
+必要とします)を使うために変更したものです。
+
+    use strict;
+    use Remember;
+
+    my ($fred, $x);
+    $x = tie $fred, 'Remember', 'myfile.txt';
+    $fred = 1;
+    $fred = 4;
+    comment $x "changing...";
+    $fred = 5;
+    untie $fred;
+    system "cat myfile.txt";
+
+=begin original
+
+When this code is executed there is no output.  Here's why:
+
+=end original
+
+このコードを実行したとき、なにも出力されません。
+その理由はこうです。
+
+=begin original
+
+When a variable is tied, it is associated with the object which is the
+return value of the TIESCALAR, TIEARRAY, or TIEHASH function.  This
+object normally has only one reference, namely, the implicit reference
+from the tied variable.  When untie() is called, that reference is
+destroyed.  Then, as in the first example above, the object's
+destructor (DESTROY) is called, which is normal for objects that have
+no more valid references; and thus the file is closed.
+
+=end original
+
+変数が tie されたとき、それは TIESCALAR, TIEARRAY, TIEHASH といった
+関数のいずれかの返した値であるオブジェクトに結び付けられます。
+このオブジェクトは、通常はただ一つのリファレンス、すなわち tie され
+た変数からの暗黙のリファレンスだけを持っています。
+untile() が呼ばれたとき、このリファレンスは破棄されます。
+したがって、最初の例にあったように、オブジェクトのデストラクタ (DESTROY) が
+呼び出されてオブジェクトはもはや正当なリファレンスを持たないようになり、
+さらにファイルがクローズされます。
+
+=begin original
+
+In the second example, however, we have stored another reference to
+the tied object in $x.  That means that when untie() gets called
+there will still be a valid reference to the object in existence, so
+the destructor is not called at that time, and thus the file is not
+closed.  The reason there is no output is because the file buffers
+have not been flushed to disk.
+
+=end original
+
+しかしながら二番目の例においては、私たちはもう一つの tie された
+オブジェクトへのリファレンスを $x の中に格納しました。
+これは untie() されたときに、存在するオブジェクトに対する正当な
+リファレンスがまだ存在しているということです。
+このためデストラクタはその時には呼び出されません。
+そしてファイルはクローズされないのです。
+何の出力も無かった理由は、ファイルバッファがディスクに
+フラッシュされていなかったからです。
+
+=begin original
+
+Now that you know what the problem is, what can you do to avoid it?
+Prior to the introduction of the optional UNTIE method the only way
+was the good old C<-w> flag. Which will spot any instances where you call
+untie() and there are still valid references to the tied object.  If
+the second script above this near the top C<use warnings 'untie'>
+or was run with the C<-w> flag, Perl prints this
+warning message:
+
+=end original
+
+さて、あなたはもうこれが問題であることがわかったでしょう。
+では、これを避けるにはどうすればいいでしょうか?
+省略可能な UNTIE メソッドが導入される前は、唯一の方法は
+古き良き C<-w> オプションだけです。
+これははあなたが untie() を呼んだそのときに、(untie() の対象となっている)
+tie されたオブジェクトに対する正当なリファレンスがまだ存在している場合には
+それを指摘してくれます。
+もし二番目のスクリプトを先頭の方に C<use warnings 'untie'> を付けるか、
+C<-w> オプションをつけた状態で実行していれば、
+Perl は次のような警告メッセージを出力します。
+
+    untie attempted while 1 inner references still exist
+
+=begin original
+
+To get the script to work properly and silence the warning make sure
+there are no valid references to the tied object I<before> untie() is
+called:
+
+=end original
+
+スクリプトを正しく動作させ、警告を黙らせるには tie されたオブジェクトが
+untie() を呼び出すより I<前に> 正当なリファレンスをなくすようにします。
+
+    undef $x;
+    untie $fred;
+
+=begin original
+
+Now that UNTIE exists the class designer can decide which parts of the
+class functionality are really associated with C<untie> and which with
+the object being destroyed. What makes sense for a given class depends
+on whether the inner references are being kept so that non-tie-related
+methods can be called on the object. But in most cases it probably makes
+sense to move the functionality that would have been in DESTROY to the UNTIE
+method.
+
+=end original
+
+Now that UNTIE exists the class designer can decide which parts of the
+class functionality are really associated with C<untie> and which with
+the object being destroyed. What makes sense for a given class depends
+on whether the inner references are being kept so that non-tie-related
+methods can be called on the object. But in most cases it probably makes
+sense to move the functionality that would have been in DESTROY to the UNTIE
+method.
+(TBT)
+
+=begin original
+
+If the UNTIE method exists then the warning above does not occur. Instead the
+UNTIE method is passed the count of "extra" references and can issue its own
+warning if appropriate. e.g. to replicate the no UNTIE case this method can
+be used:
+
+=end original
+
+If the UNTIE method exists then the warning above does not occur. Instead the
+UNTIE method is passed the count of "extra" references and can issue its own
+warning if appropriate. e.g. to replicate the no UNTIE case this method can
+be used:
+(TBT)
+
+    sub UNTIE
+    {
+     my ($obj,$count) = @_;
+     carp "untie attempted while $count inner references still exist" if $count;
+    }
+
+=head1 SEE ALSO
+
+=begin original
+
+See L<DB_File> or L<Config> for some interesting tie() implementations.
+A good starting point for many tie() implementations is with one of the
+modules L<Tie::Scalar>, L<Tie::Array>, L<Tie::Hash>, or L<Tie::Handle>.
+
+=end original
+
+興味深い幾つかの tie() の実装については L<DB_File> や L<Config> を
+参照してください。
+多くの tie() 実装のためのよい開始点は、モジュール L<Tie::Scalar>,
+L<Tie::Array>, L<Tie::Hash>, L<Tie::Handle> のいずれかです。
+
+=head1 BUGS
+
+=begin original
+
+The bucket usage information provided by C<scalar(%hash)> is not
+available.  What this means is that using %tied_hash in boolean
+context doesn't work right (currently this always tests false,
+regardless of whether the hash is empty or hash elements).
+
+=end original
+
+The bucket usage information provided by C<scalar(%hash)> is not
+available.  What this means is that using %tied_hash in boolean
+context doesn't work right (currently this always tests false,
+regardless of whether the hash is empty or hash elements).
+(TBT)
+
+=begin original
+
+Localizing tied arrays or hashes does not work.  After exiting the
+scope the arrays or the hashes are not restored.
+
+=end original
+
+Localizing tied arrays or hashes does not work.  After exiting the
+scope the arrays or the hashes are not restored.
+(TBT)
+
+=begin original
+
+Counting the number of entries in a hash via C<scalar(keys(%hash))>
+or C<scalar(values(%hash)>) is inefficient since it needs to iterate
+through all the entries with FIRSTKEY/NEXTKEY.
+
+=end original
+
+Counting the number of entries in a hash via C<scalar(keys(%hash))>
+or C<scalar(values(%hash)>) is inefficient since it needs to iterate
+through all the entries with FIRSTKEY/NEXTKEY.
+(TBT)
+
+=begin original
+
+Tied hash/array slices cause multiple FETCH/STORE pairs, there are no
+tie methods for slice operations.
+
+=end original
+
+Tied hash/array slices cause multiple FETCH/STORE pairs, there are no
+tie methods for slice operations.
+(TBT)
+
+=begin original
+
+You cannot easily tie a multilevel data structure (such as a hash of
+hashes) to a dbm file.  The first problem is that all but GDBM and
+Berkeley DB have size limitations, but beyond that, you also have problems
+with how references are to be represented on disk.  One experimental
+module that does attempt to address this need is DBM::Deep.  Check your
+nearest CPAN site as described in L<perlmodlib> for source code.  Note
+that despite its name, DBM::Deep does not use dbm.  Another earlier attempt
+at solving the problem is MLDBM, which is also available on the CPAN, but
+which has some fairly serious limitations.
+
+=end original
+
+(ハッシュのハッシュのような)複数レベルのデータ構造を dbm ファイルに
+tie することは簡単にはできません。
+問題は、GDBM と Berkeley DB はサイズに制限があり、それを超えることが
+できないということで、また、ディスク上にあるものを参照する方法についても
+問題があります。
+不完全ながらもこれを解決している一つの実験的なモジュールに、
+DBM::Deep というものがあります。
+ソースコードは L<perlmodlib> にあるように、
+あなたのお近くの CPAN サイトを確かめてください。
+その名前にも関わらず、DBM::Deep は DBM を使わないことに注意してください。
+問題を解決するためのもう一つの初期の試みは MLDBM で、これも CPAN から
+利用可能ですが、かなり重大な制限があります。
+
+=begin original
+
+Tied filehandles are still incomplete.  sysopen(), truncate(),
+flock(), fcntl(), stat() and -X can't currently be trapped.
+
+=end original
+
+ファイルハンドルの tie はまだ不完全です。
+現在のところ、sysopen(), truncate(), flock(), fcntl(), stat(), -X は
+トラップできません。
+
+=head1 AUTHOR
+
+Tom Christiansen
+
+TIEHANDLE by Sven Verdoolaege <F<skimo@dns.ufsia.ac.be>> and Doug MacEachern <F<dougm@osf.org>>
+
+UNTIE by Nick Ing-Simmons <F<nick@ing-simmons.net>>
+
+SCALAR by Tassilo von Parseval <F<tassilo.von.parseval@rwth-aachen.de>>
+
+Tying Arrays by Casey West <F<casey@geeknest.com>>
+
+=begin meta
+
+Created: KIMURA Koichi
+Updated: Kentaro Shirakata <argrath@ub32.org>
+
+=end meta
+
