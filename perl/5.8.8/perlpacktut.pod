@@ -61,6 +61,15 @@ a very common experience as seasoned travellers are likely to confirm.)
 
 =end original
 
+In Perl, you just can't access memory at random, but the structural and
+representational conversion provided by C<pack> and C<unpack> is an
+excellent alternative. The C<pack> function converts values to a byte
+sequence containing representations according to a given specification,
+the so-called "template" argument. C<unpack> is the reverse process,
+deriving some values from the contents of a string of bytes. (Be cautioned,
+however, that not all that has been packed together can be neatly unpacked - 
+a very common experience as seasoned travellers are likely to confirm.)
+(TBT)
 
 =begin original
 
@@ -76,6 +85,16 @@ of these two functions.
 
 =end original
 
+Why, you may ask, would you need a chunk of memory containing some values
+in binary representation? One good reason is input and output accessing
+some file, a device, or a network connection, whereby this binary
+representation is either forced on you or will give you some benefit
+in processing. Another cause is passing data to some system call that
+is not available as a Perl function: C<syscall> requires you to provide
+parameters stored in the way it happens in a C program. Even text processing 
+(as shown in the next section) may be simplified with judicious usage 
+of these two functions.
+(TBT)
 
 =begin original
 
@@ -90,6 +109,15 @@ about its meaning, we can write
 
 =end original
 
+To see how (un)packing works, we'll start with a simple template
+code where the conversion is in low gear: between the contents of a byte
+sequence and a string of hexadecimal digits. Let's use C<unpack>, since
+this is likely to remind you of a dump program, or some desperate last
+message unfortunate programs are wont to throw at you before they expire
+into the wild blue yonder. Assuming that the variable C<$mem> holds a 
+sequence of bytes that we'd like to inspect without assuming anything 
+about its meaning, we can write
+(TBT)
 
    my( $hex ) = unpack( 'H*', $mem );
    print "$hex\n";
@@ -101,6 +129,9 @@ corresponding to a byte:
 
 =end original
 
+whereupon we might see something like this, with each pair of hex digits
+corresponding to a byte:
+(TBT)
 
    41204d414e204120504c414e20412043414e414c2050414e414d41
 
@@ -122,6 +153,20 @@ remains.
 
 =end original
 
+What was in this chunk of memory? Numbers, characters, or a mixture of
+both? Assuming that we're on a computer where ASCII (or some similar)
+encoding is used: hexadecimal values in the range C<0x40> - C<0x5A>
+indicate an uppercase letter, and C<0x20> encodes a space. So we might
+assume it is a piece of text, which some are able to read like a tabloid;
+but others will have to get hold of an ASCII table and relive that
+firstgrader feeling. Not caring too much about which way to read this,
+we note that C<unpack> with the template code C<H> converts the contents
+of a sequence of bytes into the customary hexadecimal notation. Since
+"a sequence of" is a pretty vague indication of quantity, C<H> has been
+defined to convert just a single hexadecimal digit unless it is followed
+by a repeat count. An asterisk for the repeat count means to use whatever
+remains.
+(TBT)
 
 =begin original
 
@@ -130,6 +175,8 @@ digits - is just as easily written. For instance:
 
 =end original
 
+逆操作 - 16 進数の文字列からバイトの内容に pack する - は簡単に書けます。
+例えば:
 
    my $s = pack( 'H2' x 10, map { "3$_" } ( 0..9 ) );
    print "$s\n";
@@ -142,7 +189,11 @@ with ASCII character coding, it will print C<0123456789>.
 
 =end original
 
-
+16 進で 2 桁の数値を示す文字列 10 個からなるリストを C<pack> に
+渡しているので、pack テンプレートは 10 個の pack コードを含んでいる
+必要があります。
+これが ASCII 文字コードのコンピュータで実行されると、 C<0123456789> を
+表示されます。
 
 =head1 Packing Text
 
@@ -350,7 +401,6 @@ template doesn't match the incoming data, Perl will scream and die.
 Perl は悲鳴をあげて die します。
 
 =back
-
 
 =begin original
 
@@ -1396,6 +1446,9 @@ cannot be unpacked naively:
 
 =end original
 
+遠くに微妙な罠が顔を覗かせています: (変数 C<$sm> に入っている)
+ショートメッセージの後にフィールドを追加すると、pack は問題ありませんが、
+ネイティブに unpack 出来なくなります。
 
    # pack a message
    my $msg = pack( 'Z*Z*CA*C', $src, $dst, length( $sm ), $sm, $prio );
@@ -1412,6 +1465,10 @@ Watch this:
 
 =end original
 
+pack コード C<A*> は残り全てのコードを読み込んでしまい、C<$prio> が
+未定義のままになってしまうのです!
+がっかりして士気をくじかれる前に: Perl はこのようなトリックに対しても
+切り札を持っています; もう少し袖をまくってください。
 
    # pack a message: ASCIIZ, ASCIIZ, length/string, byte
    my $msg = pack( 'Z* Z* C/A* C', $src, $dst, $sm, $prio );
@@ -1793,6 +1850,9 @@ like this:
 
 =end original
 
+Where's the catch? Padding is neither required before the first field C<count>,
+nor between this and the next field C<glyph>, so why can't we simply pack
+like this:
 
    # something goes wrong here:
    pack( 's!a' x @buffer,
@@ -1808,6 +1868,11 @@ of each component as well. Thus the correct template is:
 
 =end original
 
+This packs C<3*@buffer> bytes, but it turns out that the size of 
+C<buffer_t> is four times C<BUFLEN>! The moral of the story is that
+the required alignment of a structure or array is propagated to the
+next higher level where we have to consider padding I<at the end>
+of each component as well. Thus the correct template is:
 
    pack( 's!ax' x @buffer,
          map{ ( $_->{count}, $_->{glyph} ) } @buffer );
@@ -2039,6 +2104,9 @@ are done with using the memory at that address.
 
 =end original
 
+Do not use C<pack> with C<p> or C<P> to obtain the address of variable
+that's bound to go out of scope (and thereby freeing its memory) before you
+are done with using the memory at that address.
 
 =item * 
 
@@ -2050,6 +2118,9 @@ reallocation of its storage, leaving you with a pointer into no-man's land.
 
 =end original
 
+Be very careful with Perl operations that change the value of the
+variable. Appending something to the variable, for instance, might require
+reallocation of its storage, leaving you with a pointer into no-man's land.
 
 =item * 
 
@@ -2062,6 +2133,10 @@ had written something like C<$x .= ''>.
 
 =end original
 
+Don't think that you can get the address of a Perl variable
+when it is stored as an integer or double number! C<pack('P', $x)> will
+force the variable's internal representation to string, just as if you
+had written something like C<$x .= ''>.
 
 =back
 
@@ -2072,8 +2147,8 @@ allocates an anonymous variable.
 
 =end original
 
-
-
+It's safe, however, to P- or p-pack a string literal, because Perl simply
+allocates an anonymous variable.
 
 =head1 Pack Recipes
 
