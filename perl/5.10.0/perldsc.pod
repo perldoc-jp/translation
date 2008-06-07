@@ -1,0 +1,1739 @@
+
+=encoding euc-jp
+
+=head1 NAME
+X<data structure> X<complex data structure> X<struct>
+
+=begin original
+
+perldsc - Perl Data Structures Cookbook
+
+=end original
+
+perldsc - Perl のデータ構造クックブック
+
+=head1 DESCRIPTION
+
+=begin original
+
+The single feature most sorely lacking in the Perl programming language
+prior to its 5.0 release was complex data structures.  Even without direct
+language support, some valiant programmers did manage to emulate them, but
+it was hard work and not for the faint of heart.  You could occasionally
+get away with the C<$m{$AoA,$b}> notation borrowed from B<awk> in which the
+keys are actually more like a single concatenated string C<"$AoA$b">, but
+traversal and sorting were difficult.  More desperate programmers even
+hacked Perl's internal symbol table directly, a strategy that proved hard
+to develop and maintain--to put it mildly.
+
+=end original
+
+Perl というプログラミング言語の、5.0 以前のもので最も欠けていた一つの機能とは
+複雑なデータ構造でした。
+言語による直接のサポートがなくても、一部の英雄的なプログラマー達は複雑な
+データ構造をエミュレートしていました。
+しかし、それはとても大変な作業でした。
+あなたは(多次元配列をエミュレートするために) B<awk> から借りてきた
+C<$m{$AoA,$b}> という記法を使うことができましたが、これは実際には
+そのキーを C<"$AoA$b"> のような連結された文字列にしているので、
+分解やソートが困難でした。
+もっと命知らずのプログラマーたちはデータ構造を優しく put するために、Perl の
+内部シンボルテーブルを直接ハックすることさえ行って、開発や保守を困難にする
+戦略をとったのです。
+
+=begin original
+
+The 5.0 release of Perl let us have complex data structures.  You
+may now write something like this and all of a sudden, you'd have an array
+with three dimensions!
+
+=end original
+
+Perl のリリース 5.0 は、私たちに複雑なデータ構造をもたらしました。
+あなたは今では三次元の配列のようなものだって記述できるんです!
+
+    for $x (1 .. 10) {
+	for $y (1 .. 10) {
+	    for $z (1 .. 10) {
+		$AoA[$x][$y][$z] =
+		    $x ** $y + $z;
+	    }
+	}
+    }
+
+=begin original
+
+Alas, however simple this may appear, underneath it's a much more
+elaborate construct than meets the eye!
+
+=end original
+
+ああ、これは単純に見えるけど見えないところに複雑なものが隠れてるんです!
+
+=begin original
+
+How do you print it out?  Why can't you say just C<print @AoA>?  How do
+you sort it?  How can you pass it to a function or get one of these back
+from a function?  Is it an object?  Can you save it to disk to read
+back later?  How do you access whole rows or columns of that matrix?  Do
+all the values have to be numeric?
+
+=end original
+
+これをどのように出力しますか? なぜ単に C<print @AoA> としては
+いけないのでしょう?
+ソートはどうやるのですか? どうすれば関数に引数として渡したり、関数の
+戻り値として受け取ることができるでしょうか?
+それはオブジェクトですか? 後で読み返すためにディスクにセーブすることが
+できますか?
+配列の行全体や列全体にどうアクセスしますか?
+すべての値は数値でなければいけないのでしょうか?
+
+=begin original
+
+As you see, it's quite easy to become confused.  While some small portion
+of the blame for this can be attributed to the reference-based
+implementation, it's really more due to a lack of existing documentation with
+examples designed for the beginner.
+
+=end original
+
+見ての通り、これは簡単に混乱してしまいます。
+これに対する portion of blame の一部はリファレンスベースの実装に
+帰することができるとしても、初心者向けにデザインされた例を持った
+ドキュメントが欠けているということが大きいでしょう。
+
+=begin original
+
+This document is meant to be a detailed but understandable treatment of the
+many different sorts of data structures you might want to develop.  It
+should also serve as a cookbook of examples.  That way, when you need to
+create one of these complex data structures, you can just pinch, pilfer, or
+purloin a drop-in example from here.
+
+=end original
+
+本ドキュメントは詳しく説明することが目的ですが、あなたが開発しようと
+考えるかもしれないデータ構造の多くの相違点の扱いは理解可能なものです。
+詳細な説明はサンプルのレシピ集に取っておくべきものです。
+あなたがこれら複雑なデータ構造の一つを作成する必要がある場合、あなたは
+ここにある例からひょいと持っていくことができます。
+
+=begin original
+
+Let's look at each of these possible constructs in detail.  There are separate
+sections on each of the following:
+
+=end original
+
+これら可能な構造をそれぞれ詳しく見て行きましょう。
+以下の様に、それぞれセクションとして独立しています。
+
+=over 5
+
+=begin original
+
+=item * arrays of arrays
+
+=item * hashes of arrays
+
+=item * arrays of hashes
+
+=item * hashes of hashes
+
+=item * more elaborate constructs
+
+=end original
+
+=item * 配列の配列
+
+=item * 配列のハッシュ
+
+=item * ハッシュの配列
+
+=item * ハッシュのハッシュ
+
+=item * より手の込んだ構造
+
+=back
+
+=begin original
+
+But for now, let's look at general issues common to all
+these types of data structures.
+
+=end original
+
+
+=head1 REFERENCES
+X<reference> X<dereference> X<dereferencing> X<pointer>
+
+(リファレンス)
+
+=begin original
+
+The most important thing to understand about all data structures in Perl
+-- including multidimensional arrays--is that even though they might
+appear otherwise, Perl C<@ARRAY>s and C<%HASH>es are all internally
+one-dimensional.  They can hold only scalar values (meaning a string,
+number, or a reference).  They cannot directly contain other arrays or
+hashes, but instead contain I<references> to other arrays or hashes.
+X<multidimensional array> X<array, multidimensional>
+
+=end original
+
+多次元配列も含めた Perl におけるすべてのデータ構造を理解するに当たって
+最も重要な事は、Perl の C<@ARRAY> や C<%HASH> は外見はそうは見えなくても、
+内部的には全て一次元であるということです。
+これらのものはスカラー値(文字列や数値、リファレンス)だけを保持することが
+できます。
+(配列やハッシュは)直接他の配列やハッシュを保持することはできませんが、
+他の配列、ハッシュに対する B<リファレンス> を保持することができます。
+X<multidimensional array> X<array, multidimensional>
+
+=begin original
+
+You can't use a reference to an array or hash in quite the same way that you
+would a real array or hash.  For C or C++ programmers unused to
+distinguishing between arrays and pointers to the same, this can be
+confusing.  If so, just think of it as the difference between a structure
+and a pointer to a structure.
+
+=end original
+
+配列へのリファレンスやハッシュのリファレンスを、本当の配列やハッシュと
+同じやり方で使うことはできません。
+C や C++ プログラマーは、ある配列と(配列要素の型への)ポインターとの間の
+区別していませんから混乱してしまうかもしれません。
+もし本当に混乱してしまったら、構造体と構造体へのポインタの違いのような
+ものであると考えてください。
+
+=begin original
+
+You can (and should) read more about references in the perlref(1) man
+page.  Briefly, references are rather like pointers that know what they
+point to.  (Objects are also a kind of reference, but we won't be needing
+them right away--if ever.)  This means that when you have something which
+looks to you like an access to a two-or-more-dimensional array and/or hash,
+what's really going on is that the base type is
+merely a one-dimensional entity that contains references to the next
+level.  It's just that you can I<use> it as though it were a
+two-dimensional one.  This is actually the way almost all C
+multidimensional arrays work as well.
+
+=end original
+
+perlref(1) マニュアルページを読めばリファレンスに関してより多くのことが
+ありますし、そうすべきです。
+一言で言えば、リファレンスは自分が何を指しているかを知っているポインターの
+ようなものです(オブジェクトもまたリファレンスのようなものですが、
+いますぐそうする必要はないでしょう)。
+これはつまり、あなたが二次元、あるいはそれ以上の
+次元を持った配列やハッシュにアクセスしようとしたとき、実際に
+はそれが次のレベルへのリファレンスを保持している一次元の実体
+(entity)であるということなのです。
+あなたはこれを二次元配列であるかのようにB<使うことができます>。
+これはほとんどすべての C の多次元配列が動作しているのと同じ方法です。
+
+=begin original
+
+    $array[7][12]			# array of arrays
+    $array[7]{string}			# array of hashes
+    $hash{string}[7]			# hash of arrays
+    $hash{string}{'another string'}	# hash of hashes
+
+=end original
+
+    $array[7][12]			# 配列の配列
+    $array[7]{string}			# ハッシュの配列
+    $hash{string}[7]			# 配列のハッシュ
+    $hash{string}{'another string'}	# ハッシュのハッシュ
+
+=begin original
+
+Now, because the top level contains only references, if you try to print
+out your array in with a simple print() function, you'll get something
+that doesn't look very nice, like this:
+
+=end original
+
+トップレベルはリファレンスのみで構成されるので、これらの配列を単純に
+print() 関数を使って出力しようとすれば、次のような良くわから
+ない結果となるでしょう。
+
+    @AoA = ( [2, 3], [4, 5, 7], [0] );
+    print $AoA[1][2];
+  7
+    print @AoA;
+  ARRAY(0x83c38)ARRAY(0x8b194)ARRAY(0x8b1d0)
+
+
+=begin original
+
+That's because Perl doesn't (ever) implicitly dereference your variables.
+If you want to get at the thing a reference is referring to, then you have
+to do this yourself using either prefix typing indicators, like
+C<${$blah}>, C<@{$blah}>, C<@{$blah[$i]}>, or else postfix pointer arrows,
+like C<$a-E<gt>[3]>, C<$h-E<gt>{fred}>, or even C<$ob-E<gt>method()-E<gt>[3]>.
+
+=end original
+
+これはPerlがあなたの使う変数のデリファレンス(dereference)をこっそりやらないからです。
+リファレンスが参照しているものを取り出したいのなら、C<${$blah}>, C<@{$blah}>,
+C<@{$blah[$i]}> のような型指定子を前置したり、あるいはC<$a-E<gt>[3]>, 
+C<$h-E<gt>{fred}>, C<$ob-E<gt>method()-E<gt>[3]> のようにpointer arrowを
+後置して自分自身でデリファレンスをしなければなりません。
+
+=head1 COMMON MISTAKES
+
+(よくある間違い)
+
+=begin original
+
+The two most common mistakes made in constructing something like
+an array of arrays is either accidentally counting the number of
+elements or else taking a reference to the same memory location
+repeatedly.  Here's the case where you just get the count instead
+of a nested array:
+
+=end original
+
+配列の配列を構築するようなとき犯しやすい間違いとして、誤って要素の
+数を数えてしまうことと、同じメモリ位置にあるものリファレンスを
+繰り返しとってしまうという二つがあります。
+以下の例は、ネストした配列の代わりにその数を数えてしまうという例です。
+
+    for $i (1..10) {
+	@array = somefunc($i);
+	$AoA[$i] = @array;	# WRONG!
+    }
+
+=begin original
+
+That's just the simple case of assigning an array to a scalar and getting
+its element count.  If that's what you really and truly want, then you
+might do well to consider being a tad more explicit about it, like this:
+
+=end original
+
+これは配列をスカラーに代入し、その要素数を取得するという単純な
+サンプルです。
+もし本当にそれがあなたのやりたいことであるというのであれば、
+それを明確にするために以下の様にすることが良いかもしれません:
+
+    for $i (1..10) {
+	@array = somefunc($i);
+	$counts[$i] = scalar @array;
+    }
+
+=begin original
+
+Here's the case of taking a reference to the same memory location
+again and again:
+
+=end original
+
+次の例は、同じメモリ位置にあるリファレンスを何度もくり返し取って
+しまうというものです。
+
+    for $i (1..10) {
+	@array = somefunc($i);
+	$AoA[$i] = \@array;	# WRONG!
+    }
+
+=begin original
+
+So, what's the big problem with that?  It looks right, doesn't it?
+After all, I just told you that you need an array of references, so by
+golly, you've made me one!
+
+=end original
+
+さて、何が問題なんでしょう?
+正しいように見えますが、違うのでしょうか?
+リファレンスの配列が必要だといいましたよね。
+あれ、あなたもう作ってるじゃないですか!
+
+=begin original
+
+Unfortunately, while this is true, it's still broken.  All the references
+in @AoA refer to the I<very same place>, and they will therefore all hold
+whatever was last in @array!  It's similar to the problem demonstrated in
+the following C program:
+
+=end original
+
+残念なことに、これは正しいのですがまだおかしいのです。
+@AoA にあるすべてのリファレンスはI<全く同じ場所>を参照していて、
+そのためそういったリファレンスはすべて最後に @array にあったものを
+保持してるんです!
+つまり、以下の C プログラムにある問題と同じです。
+
+    #include <pwd.h>
+    main() {
+	struct passwd *getpwnam(), *rp, *dp;
+	rp = getpwnam("root");
+	dp = getpwnam("daemon");
+
+	printf("daemon name is %s\nroot name is %s\n",
+		dp->pw_name, rp->pw_name);
+    }
+
+=begin original
+
+Which will print
+
+=end original
+
+これの出力はこうなります:
+
+    daemon name is daemon
+    root name is daemon
+
+=begin original
+
+The problem is that both C<rp> and C<dp> are pointers to the same location
+in memory!  In C, you'd have to remember to malloc() yourself some new
+memory.  In Perl, you'll want to use the array constructor C<[]> or the
+hash constructor C<{}> instead.   Here's the right way to do the preceding
+broken code fragments:
+X<[]> X<{}>
+
+=end original
+
+この問題は、C<rp> と C<dp> の両方が同じメモリ位置を指している
+ポインターであるということです!
+C では、新たなメモリを確保するために自分でmalloc()することを
+忘れてはいけません。
+Perlでは、代わりに配列コンストラクタ C<[]> や
+ハッシュコンストラクタ C<{}> を使います。
+以下の例は、先に挙げた間違ったコード片の正しいやり方です:
+X<[]> X<{}>
+
+    for $i (1..10) {
+	@array = somefunc($i);
+	$AoA[$i] = [ @array ];
+    }
+
+=begin original
+
+The square brackets make a reference to a new array with a I<copy>
+of what's in @array at the time of the assignment.  This is what
+you want.
+
+=end original
+
+ブラケットは新たな配列への参照を作り出し、代入のときに @array の内容を
+B<コピー> します。
+これがあなたの望むことです。
+
+=begin original
+
+Note that this will produce something similar, but it's
+much harder to read:
+
+=end original
+
+以下のようなやり方でも同様の結果となりますが、読みやすさという点では
+劣るということに注意してください。
+
+    for $i (1..10) {
+	@array = 0 .. $i;
+	@{$AoA[$i]} = @array;
+    }
+
+=begin original
+
+Is it the same?  Well, maybe so--and maybe not.  The subtle difference
+is that when you assign something in square brackets, you know for sure
+it's always a brand new reference with a new I<copy> of the data.
+Something else could be going on in this new case with the C<@{$AoA[$i]}>
+dereference on the left-hand-side of the assignment.  It all depends on
+whether C<$AoA[$i]> had been undefined to start with, or whether it
+already contained a reference.  If you had already populated @AoA with
+references, as in
+
+=end original
+
+同じことなんでしょうか? そう、同じでもあるでしょうし、
+違うとも言えるでしょう。
+そこにある微妙な違いとは、大かっこの中にある何かを代入しようとしたときは、
+それは常にデータの新たな B<コピー> による
+新たなリファレンスであるということです。
+そうでない場合には、代入の左辺で C<@{$AoA[$i]}> のデリファレンスを
+しようとするかもしれません。
+これは C<$AoA[$i]> が未定義の状態であるかあるいはすでにリファレンスが
+入っているかということに依存しています。
+すでに次のようにして @AoA をリファレンスのために使っていた場合:
+
+    $AoA[3] = \@another_array;
+
+=begin original
+
+Then the assignment with the indirection on the left-hand-side would
+use the existing reference that was already there:
+
+=end original
+
+そして左辺の間接代入では、既に存在するリファレンスを
+使うことになります:
+
+    @{$AoA[3]} = @array;
+
+=begin original
+
+Of course, this I<would> have the "interesting" effect of clobbering
+@another_array.  (Have you ever noticed how when a programmer says
+something is "interesting", that rather than meaning "intriguing",
+they're disturbingly more apt to mean that it's "annoying",
+"difficult", or both?  :-)
+
+=end original
+
+もちろんこれは、@another_array を壊すという「興味深い」効果を
+もたらすでしょう。
+(プログラマーが何かを「興味深い」といったときに、
+それは「好奇心をそそるもの」というよりはむしろ「困ったもの」、
+「困難なもの」という意味で使われるということに
+気がついたことがありますか? :-)
+
+=begin original
+
+So just remember always to use the array or hash constructors with C<[]>
+or C<{}>, and you'll be fine, although it's not always optimally
+efficient.
+
+=end original
+
+C<[]>やC<{}>による配列やハッシュのコンストラクターを
+常に使うのだと言うことを忘れないでください。
+そうすれば、たとえそれが効率的に最良でない場合があるにせよ、
+あなたは気持ちよくいられるでしょう。
+
+=begin original
+
+Surprisingly, the following dangerous-looking construct will
+actually work out fine:
+
+=end original
+
+驚くべきことに、以下の例は危険なもののように見えるにも関らず、
+実際にはきちんと動作します。
+
+    for $i (1..10) {
+        my @array = somefunc($i);
+        $AoA[$i] = \@array;
+    }
+
+=begin original
+
+That's because my() is more of a run-time statement than it is a
+compile-time declaration I<per se>.  This means that the my() variable is
+remade afresh each time through the loop.  So even though it I<looks> as
+though you stored the same variable reference each time, you actually did
+not!  This is a subtle distinction that can produce more efficient code at
+the risk of misleading all but the most experienced of programmers.  So I
+usually advise against teaching it to beginners.  In fact, except for
+passing arguments to functions, I seldom like to see the gimme-a-reference
+operator (backslash) used much at all in code.  Instead, I advise
+beginners that they (and most of the rest of us) should try to use the
+much more easily understood constructors C<[]> and C<{}> instead of
+relying upon lexical (or dynamic) scoping and hidden reference-counting to
+do the right thing behind the scenes.
+
+=end original
+
+なぜなら、my() はコンパイル時に処理される宣言文ではなく、
+実行時に処理される文であるからです。
+これはつまり、my で宣言された変数は、ループを通過する度に新たに
+再生成されるということです。
+このため、このコードが毎回同じ変数のリファレンスを格納しているように
+見えるにも関らず、実際にはそうではないのです!
+これは、熟練したプログラマー以外の人を誤解させる危険性をはらんだ上で、
+より効率の良いコードを作ることのできるような微妙な違いです。
+ですから、私は普段は初心者に対してこれを使わないように教えるのです。
+事実、関数に対してパラメーターを渡すときを除いて、私はプログラム中に
+参照演算子がうじゃうじゃでて来ることを好みません。
+その代わり、私は初心者に(初心者と、我々の大部分は)レキシカル
+(または動的)スコープや隠れた参照カウントに影響されるよりは、
+より理解しやすい C<[]>, C<{}> をもっと使うようにすべきであると
+アドバイスしています。
+
+=begin original
+
+In summary:
+
+=end original
+
+まとめるとこうなります:
+
+=begin original
+
+    $AoA[$i] = [ @array ];	# usually best
+    $AoA[$i] = \@array;		# perilous; just how my() was that array?
+    @{ $AoA[$i] } = @array;	# way too tricky for most programmers
+
+=end original
+
+    $AoA[$i] = [ @array ];	# 普通はこれが最善
+    $AoA[$i] = \@array;		# 危険; just how my() was that array?
+    @{ $AoA[$i] } = @array;	# ほとんどのプログラマには技巧的過ぎ
+
+=head1 CAVEAT ON PRECEDENCE
+X<dereference, precedence> X<dereferencing, precedence>
+
+(優先順位に関する警告)
+
+=begin original
+
+Speaking of things like C<@{$AoA[$i]}>, the following are actually the
+same thing:
+X<< -> >>
+
+=end original
+
+C<@{$AoA[$i]}> のときと同様、以下の二つは同じ動作をします。
+
+=begin original
+
+    $aref->[2][2]	# clear
+    $$aref[2][2]	# confusing
+
+=end original
+
+    $aref->[2][2]	# 明快
+    $$aref[2][2]	# まぎらわしい
+
+=begin original
+
+That's because Perl's precedence rules on its five prefix dereferencers
+(which look like someone swearing: C<$ @ * % &>) make them bind more
+tightly than the postfix subscripting brackets or braces!  This will no
+doubt come as a great shock to the C or C++ programmer, who is quite
+accustomed to using C<*a[i]> to mean what's pointed to by the I<i'th>
+element of C<a>.  That is, they first take the subscript, and only then
+dereference the thing at that subscript.  That's fine in C, but this isn't C.
+
+=end original
+
+これは、Perlの優先順位規則では 5つの前置形式のデリファレンス演算子
+(C<$ @ * % &>)は、後置形式の添え字付け演算子のブラケットや
+カーリーブレースよりも強く結び付くからなのです!
+これは C<*a[i]> を、C<a>のB<i番目>が指しているものであるとみなすことに
+慣れきった C/C++ プログラマーにとっては大きな衝撃であることは
+疑いないでしょう。
+つまり、まず最初に添え字を取って、それから添え字付けされたものの
+デリファレンスを行うということです。
+それは C では正しいことですが、これは C じゃないのです。
+
+=begin original
+
+The seemingly equivalent construct in Perl, C<$$aref[$i]> first does
+the deref of $aref, making it take $aref as a reference to an
+array, and then dereference that, and finally tell you the I<i'th> value
+of the array pointed to by $AoA. If you wanted the C notion, you'd have to
+write C<${$AoA[$i]}> to force the C<$AoA[$i]> to get evaluated first
+before the leading C<$> dereferencer.
+
+=end original
+
+Perlにおける等価な構造の C<$$aref[$i]> では、最初に $aref の
+デリファレンスをして、$aref から配列への参照にします。
+そしてそのデリファレンスをして、最後に $AoA によって指されている配列の
+B<i番目> の値を取り出します。
+もし C の記法を望むのなら、先頭のデリファレンス演算子 C<$> より前に
+C<$AoA[$i]> を評価することを強制するために、C<${$AoA[$i]}> と
+記述しなければなりません
+
+=head1 WHY YOU SHOULD ALWAYS C<use strict>
+
+(なぜ常に C<use strict> を使うべきなのか)
+
+=begin original
+
+If this is starting to sound scarier than it's worth, relax.  Perl has
+some features to help you avoid its most common pitfalls.  The best
+way to avoid getting confused is to start every program like this:
+
+=end original
+
+もしこのことが、価値あるものというより恐ろしいものに感じられても
+リラックスしてください。
+Perlはありがちな落とし穴を避けるための幾つかの機能を備えています。
+混乱を避けるための最善の方法は、すべてのプログラムを以下のような
+行で始めることです:
+
+    #!/usr/bin/perl -w
+    use strict;
+
+=begin original
+
+This way, you'll be forced to declare all your variables with my() and
+also disallow accidental "symbolic dereferencing".  Therefore if you'd done
+this:
+
+=end original
+
+この場合、あなたはすべての変数を my() を使って宣言することが強制され、
+間違った「シンボリックデリファレンス」が禁止されます。
+したがって、以下のようにした場合:
+
+    my $aref = [
+	[ "fred", "barney", "pebbles", "bambam", "dino", ],
+	[ "homer", "bart", "marge", "maggie", ],
+	[ "george", "jane", "elroy", "judy", ],
+    ];
+
+    print $aref[2][2];
+
+=begin original
+
+The compiler would immediately flag that as an error I<at compile time>,
+because you were accidentally accessing C<@aref>, an undeclared
+variable, and it would thereby remind you to write instead:
+
+=end original
+
+宣言されていない変数 C<@aref> に間違ってアクセスしたために、
+コンパイラは B<コンパイル時> にフラグをエラーに設定し、次のように
+書くということあなたに思い出させるでしょう。
+
+    print $aref->[2][2]
+
+=head1 DEBUGGING
+X<data structure, debugging> X<complex data structure, debugging>
+X<AoA, debugging> X<HoA, debugging> X<AoH, debugging> X<HoH, debugging>
+X<array of arrays, debugging> X<hash of arrays, debugging>
+X<array of hashes, debugging> X<hash of hashes, debugging>
+
+(デバッグ)
+
+=begin original
+
+Before version 5.002, the standard Perl debugger didn't do a very nice job of
+printing out complex data structures.  With 5.002 or above, the
+debugger includes several new features, including command line editing as
+well as the C<x> command to dump out complex data structures.  For
+example, given the assignment to $AoA above, here's the debugger output:
+
+=end original
+
+5.002 より前の、標準の Perl デバッガは複雑なデータ構造をきちんと
+きれいに出力することができませんでした。
+5.002 以降のデバッガでは複雑なデータ構造をダンプするための
+C<x> コマンドやコマンドライン編集などの幾つかの新たな機能を
+取り込んでいます。
+たとえば、先の例にあった $AoA に対する代入をデバッガに渡したとき、
+その出力はこうなります。
+
+    DB<1> x $AoA
+    $AoA = ARRAY(0x13b5a0)
+       0  ARRAY(0x1f0a24)
+	  0  'fred'
+	  1  'barney'
+	  2  'pebbles'
+	  3  'bambam'
+	  4  'dino'
+       1  ARRAY(0x13b558)
+	  0  'homer'
+	  1  'bart'
+	  2  'marge'
+	  3  'maggie'
+       2  ARRAY(0x13b540)
+	  0  'george'
+	  1  'jane'
+	  2  'elroy'
+	  3  'judy'
+
+=head1 CODE EXAMPLES
+
+(コード例)
+
+=begin original
+
+Presented with little comment (these will get their own manpages someday)
+here are short code examples illustrating access of various
+types of data structures.
+
+=end original
+
+ここにあるちょっとしたコメント(将来は独立したマニュアルページと
+なるでしょう)は、様々な形式のデータ構造へのアクセスを
+例示するサンプルです。
+
+=head1 ARRAYS OF ARRAYS
+X<array of arrays> X<AoA>
+
+(配列の配列)
+
+=head2 Declaration of an ARRAY OF ARRAYS
+
+(配列の配列の宣言)
+
+ @AoA = (
+        [ "fred", "barney" ],
+        [ "george", "jane", "elroy" ],
+        [ "homer", "marge", "bart" ],
+      );
+
+=head2 Generation of an ARRAY OF ARRAYS
+
+(配列の配列の生成)
+
+=begin original
+
+ # reading from file
+ while ( <> ) {
+     push @AoA, [ split ];
+ }
+
+ # calling a function
+ for $i ( 1 .. 10 ) {
+     $AoA[$i] = [ somefunc($i) ];
+ }
+
+ # using temp vars
+ for $i ( 1 .. 10 ) {
+     @tmp = somefunc($i);
+     $AoA[$i] = [ @tmp ];
+ }
+
+ # add to an existing row
+ push @{ $AoA[0] }, "wilma", "betty";
+
+=end original
+
+ # ファイルから読み込む
+ while ( <> ) {
+     push @AoA, [ split ];
+ }
+
+ # 関数を呼ぶ
+ for $i ( 1 .. 10 ) {
+     $AoA[$i] = [ somefunc($i) ];
+ }
+
+ # 一時変数を使う
+ for $i ( 1 .. 10 ) {
+     @tmp = somefunc($i);
+     $AoA[$i] = [ @tmp ];
+ }
+
+ # すでにある行に追加する
+ push @{ $AoA[0] }, "wilma", "betty";
+
+=head2 Access and Printing of an ARRAY OF ARRAYS
+
+(配列の配列へのアクセスと出力)
+
+=begin original
+
+ # one element
+ $AoA[0][0] = "Fred";
+
+ # another element
+ $AoA[1][1] =~ s/(\w)/\u$1/;
+
+ # print the whole thing with refs
+ for $aref ( @AoA ) {
+     print "\t [ @$aref ],\n";
+ }
+
+ # print the whole thing with indices
+ for $i ( 0 .. $#AoA ) {
+     print "\t [ @{$AoA[$i]} ],\n";
+ }
+
+ # print the whole thing one at a time
+ for $i ( 0 .. $#AoA ) {
+     for $j ( 0 .. $#{ $AoA[$i] } ) {
+         print "elt $i $j is $AoA[$i][$j]\n";
+     }
+ }
+
+=end original
+
+ # 一つの要素
+ $AoA[0][0] = "Fred";
+
+ # もう一つの要素
+ $AoA[1][1] =~ s/(\w)/\u$1/;
+
+ # リファレンスを使って全体を出力
+ for $aref ( @AoA ) {
+     print "\t [ @$aref ],\n";
+ }
+
+ # 添え字を使って全体を出力
+ for $i ( 0 .. $#AoA ) {
+     print "\t [ @{$AoA[$i]} ],\n";
+ }
+
+ # 一度に一つずつ、全体を出力
+ for $i ( 0 .. $#AoA ) {
+     for $j ( 0 .. $#{ $AoA[$i] } ) {
+         print "elt $i $j is $AoA[$i][$j]\n";
+     }
+ }
+
+=head1 HASHES OF ARRAYS
+X<hash of arrays> X<HoA>
+
+(配列のハッシュ)
+
+=head2 Declaration of a HASH OF ARRAYS
+
+(配列のハッシュの宣言)
+
+ %HoA = (
+        flintstones        => [ "fred", "barney" ],
+        jetsons            => [ "george", "jane", "elroy" ],
+        simpsons           => [ "homer", "marge", "bart" ],
+      );
+
+=head2 Generation of a HASH OF ARRAYS
+
+(配列のハッシュの生成)
+
+=begin original
+
+ # reading from file
+ # flintstones: fred barney wilma dino
+ while ( <> ) {
+     next unless s/^(.*?):\s*//;
+     $HoA{$1} = [ split ];
+ }
+
+ # reading from file; more temps
+ # flintstones: fred barney wilma dino
+ while ( $line = <> ) {
+     ($who, $rest) = split /:\s*/, $line, 2;
+     @fields = split ' ', $rest;
+     $HoA{$who} = [ @fields ];
+ }
+
+ # calling a function that returns a list
+ for $group ( "simpsons", "jetsons", "flintstones" ) {
+     $HoA{$group} = [ get_family($group) ];
+ }
+
+ # likewise, but using temps
+ for $group ( "simpsons", "jetsons", "flintstones" ) {
+     @members = get_family($group);
+     $HoA{$group} = [ @members ];
+ }
+
+ # append new members to an existing family
+ push @{ $HoA{"flintstones"} }, "wilma", "betty";
+
+=end original
+
+ # ファイルから読み込む
+ # flintstones: fred barney wilma dino
+ while ( <> ) {
+     next unless s/^(.*?):\s*//;
+     $HoA{$1} = [ split ];
+ }
+
+ # より多くの一時変数を使ってファイルから読み込む
+ # flintstones: fred barney wilma dino
+ while ( $line = <> ) {
+     ($who, $rest) = split /:\s*/, $line, 2;
+     @fields = split ' ', $rest;
+     $HoA{$who} = [ @fields ];
+ }
+
+ # リストを返す関数を呼び出す
+ for $group ( "simpsons", "jetsons", "flintstones" ) {
+     $HoA{$group} = [ get_family($group) ];
+ }
+
+ # 同様だが、一時変数を使う
+ for $group ( "simpsons", "jetsons", "flintstones" ) {
+     @members = get_family($group);
+     $HoA{$group} = [ @members ];
+ }
+
+ # すでにある家族に新しいメンバーを追加する
+ push @{ $HoA{"flintstones"} }, "wilma", "betty";
+
+=head2 Access and Printing of a HASH OF ARRAYS
+
+(配列のハッシュへのアクセスと出力)
+
+=begin original
+
+ # one element
+ $HoA{flintstones}[0] = "Fred";
+
+ # another element
+ $HoA{simpsons}[1] =~ s/(\w)/\u$1/;
+
+ # print the whole thing
+ foreach $family ( keys %HoA ) {
+     print "$family: @{ $HoA{$family} }\n"
+ }
+
+ # print the whole thing with indices
+ foreach $family ( keys %HoA ) {
+     print "family: ";
+     foreach $i ( 0 .. $#{ $HoA{$family} } ) {
+         print " $i = $HoA{$family}[$i]";
+     }
+     print "\n";
+ }
+
+ # print the whole thing sorted by number of members
+ foreach $family ( sort { @{$HoA{$b}} <=> @{$HoA{$a}} } keys %HoA ) {
+     print "$family: @{ $HoA{$family} }\n"
+ }
+
+ # print the whole thing sorted by number of members and name
+ foreach $family ( sort {
+			    @{$HoA{$b}} <=> @{$HoA{$a}}
+					||
+				    $a cmp $b
+	    } keys %HoA )
+ {
+     print "$family: ", join(", ", sort @{ $HoA{$family} }), "\n";
+ }
+
+=end original
+
+ # 一つの要素
+ $HoA{flintstones}[0] = "Fred";
+
+ # もう一つの要素
+ $HoA{simpsons}[1] =~ s/(\w)/\u$1/;
+
+ # 全体を出力
+ foreach $family ( keys %HoA ) {
+     print "$family: @{ $HoA{$family} }\n"
+ }
+
+ # 添え字を使って全体を出力する
+ foreach $family ( keys %HoA ) {
+     print "family: ";
+     foreach $i ( 0 .. $#{ $HoA{$family} } ) {
+         print " $i = $HoA{$family}[$i]";
+     }
+     print "\n";
+ }
+
+ # メンバーの数でソートして全体を出力
+ foreach $family ( sort { @{$HoA{$b}} <=> @{$HoA{$a}} } keys %HoA ) {
+     print "$family: @{ $HoA{$family} }\n"
+ }
+
+ # メンバーの数と名前でソートして全体を出力する
+ foreach $family ( sort {
+			    @{$HoA{$b}} <=> @{$HoA{$a}}
+					||
+				    $a cmp $b
+	    } keys %HoA )
+ {
+     print "$family: ", join(", ", sort @{ $HoA{$family} }), "\n";
+ }
+
+=head1 ARRAYS OF HASHES
+X<array of hashes> X<AoH>
+
+(ハッシュの配列)
+
+=head2 Declaration of an ARRAY OF HASHES
+
+(ハッシュの配列の宣言)
+
+ @AoH = (
+        {
+            Lead     => "fred",
+            Friend   => "barney",
+        },
+        {
+            Lead     => "george",
+            Wife     => "jane",
+            Son      => "elroy",
+        },
+        {
+            Lead     => "homer",
+            Wife     => "marge",
+            Son      => "bart",
+        }
+  );
+
+=head2 Generation of an ARRAY OF HASHES
+
+(ハッシュの配列の生成)
+
+=begin original
+
+ # reading from file
+ # format: LEAD=fred FRIEND=barney
+ while ( <> ) {
+     $rec = {};
+     for $field ( split ) {
+         ($key, $value) = split /=/, $field;
+         $rec->{$key} = $value;
+     }
+     push @AoH, $rec;
+ }
+
+
+ # reading from file
+ # format: LEAD=fred FRIEND=barney
+ # no temp
+ while ( <> ) {
+     push @AoH, { split /[\s+=]/ };
+ }
+
+ # calling a function  that returns a key/value pair list, like
+ # "lead","fred","daughter","pebbles"
+ while ( %fields = getnextpairset() ) {
+     push @AoH, { %fields };
+ }
+
+ # likewise, but using no temp vars
+ while (<>) {
+     push @AoH, { parsepairs($_) };
+ }
+
+ # add key/value to an element
+ $AoH[0]{pet} = "dino";
+ $AoH[2]{pet} = "santa's little helper";
+
+=end original
+
+ # ファイルから読み込む
+ # format: LEAD=fred FRIEND:barney
+ while ( <> ) {
+     $rec = {};
+     for $field ( split ) {
+         ($key, $value) = split /=/, $field;
+         $rec->{$key} = $value;
+     }
+     push @AoH, $rec;
+ }
+
+
+ # ファイルから読み込む
+ # format: LEAD=fred FRIEND:barney
+ # 一時変数なし
+ while ( <> ) {
+     push @AoH, { split /[\s+=]/ };
+ }
+
+ # "lead","fred","daughter","pebbles"
+ # のような、キー/値のペアのリストを返す関数を呼び出す
+ while ( %fields = getnextpairset() ) {
+     push @AoH, { %fields };
+ }
+
+ # 同様だが、一時変数を使わない
+ while (<>) {
+     push @AoH, { parsepairs($_) };
+ }
+
+ # 要素にキー/値を追加
+ $AoH[0]{pet} = "dino";
+ $AoH[2]{pet} = "santa's little helper";
+
+=head2 Access and Printing of an ARRAY OF HASHES
+
+(ハッシュの配列へのアクセスと出力)
+
+=begin original
+
+ # one element
+ $AoH[0]{lead} = "fred";
+
+ # another element
+ $AoH[1]{lead} =~ s/(\w)/\u$1/;
+
+ # print the whole thing with refs
+ for $href ( @AoH ) {
+     print "{ ";
+     for $role ( keys %$href ) {
+         print "$role=$href->{$role} ";
+     }
+     print "}\n";
+ }
+
+ # print the whole thing with indices
+ for $i ( 0 .. $#AoH ) {
+     print "$i is { ";
+     for $role ( keys %{ $AoH[$i] } ) {
+         print "$role=$AoH[$i]{$role} ";
+     }
+     print "}\n";
+ }
+
+ # print the whole thing one at a time
+ for $i ( 0 .. $#AoH ) {
+     for $role ( keys %{ $AoH[$i] } ) {
+         print "elt $i $role is $AoH[$i]{$role}\n";
+     }
+ }
+
+=end original
+
+ # 一つの要素
+ $AoH[0]{lead} = "fred";
+
+ # もう一つの要素
+ $AoH[1]{lead} =~ s/(\w)/\u$1/;
+
+ # リファレンスを使って全体を出力
+ for $href ( @AoH ) {
+     print "{ ";
+     for $role ( keys %$href ) {
+         print "$role=$href->{$role} ";
+     }
+     print "}\n";
+ }
+
+ # 添え字を使って全体を出力
+ for $i ( 0 .. $#AoH ) {
+     print "$i is { ";
+     for $role ( keys %{ $AoH[$i] } ) {
+         print "$role=$AoH[$i]{$role} ";
+     }
+     print "}\n";
+ }
+
+ # 一度に一つずつ全体を出力する
+ for $i ( 0 .. $#AoH ) {
+     for $role ( keys %{ $AoH[$i] } ) {
+         print "elt $i $role is $AoH[$i]{$role}\n";
+     }
+ }
+
+=head1 HASHES OF HASHES
+X<hash of hashes> X<HoH>
+
+(ハッシュのハッシュ)
+
+=head2 Declaration of a HASH OF HASHES
+
+(ハッシュのハッシュの宣言)
+
+ %HoH = (
+        flintstones => {
+		lead      => "fred",
+		pal       => "barney",
+        },
+        jetsons     => {
+		lead      => "george",
+		wife      => "jane",
+		"his boy" => "elroy",
+        },
+        simpsons    => {
+		lead      => "homer",
+		wife      => "marge",
+		kid       => "bart",
+	},
+ );
+
+=head2 Generation of a HASH OF HASHES
+
+(ハッシュのハッシュの生成)
+
+=begin original
+
+ # reading from file
+ # flintstones: lead=fred pal=barney wife=wilma pet=dino
+ while ( <> ) {
+     next unless s/^(.*?):\s*//;
+     $who = $1;
+     for $field ( split ) {
+         ($key, $value) = split /=/, $field;
+         $HoH{$who}{$key} = $value;
+     }
+
+ # reading from file; more temps
+ while ( <> ) {
+     next unless s/^(.*?):\s*//;
+     $who = $1;
+     $rec = {};
+     $HoH{$who} = $rec;
+     for $field ( split ) {
+         ($key, $value) = split /=/, $field;
+         $rec->{$key} = $value;
+     }
+ }
+
+ # calling a function  that returns a key,value hash
+ for $group ( "simpsons", "jetsons", "flintstones" ) {
+     $HoH{$group} = { get_family($group) };
+ }
+
+ # likewise, but using temps
+ for $group ( "simpsons", "jetsons", "flintstones" ) {
+     %members = get_family($group);
+     $HoH{$group} = { %members };
+ }
+
+ # append new members to an existing family
+ %new_folks = (
+     wife => "wilma",
+     pet  => "dino",
+ );
+
+ for $what (keys %new_folks) {
+     $HoH{flintstones}{$what} = $new_folks{$what};
+ }
+
+=end original
+
+ # ファイルから読み込む
+ # flintstones: lead:fred pal:barney wife:wilma pet:dino
+ while ( <> ) {
+     next unless s/^(.*?):\s*//;
+     $who = $1;
+     for $field ( split ) {
+         ($key, $value) = split /=/, $field;
+         $HoH{$who}{$key} = $value;
+     }
+
+ # より多くの一時変数を使ってファイルから読み込む
+ while ( <> ) {
+     next unless s/^(.*?):\s*//;
+     $who = $1;
+     $rec = {};
+     $HoH{$who} = $rec;
+     for $field ( split ) {
+         ($key, $value) = split /=/, $field;
+         $rec->{$key} = $value;
+     }
+ }
+
+ # キーと値のハッシュを返す関数を呼び出す
+ for $group ( "simpsons", "jetsons", "flintstones" ) {
+     $HoH{$group} = { get_family($group) };
+ }
+
+ # 同様だが、一時変数を使う
+ for $group ( "simpsons", "jetsons", "flintstones" ) {
+     %members = get_family($group);
+     $HoH{$group} = { %members };
+ }
+
+ # すでにある家族にメンバーを追加
+ %new_folks = (
+     wife => "wilma",
+     pet  => "dino",
+ );
+
+ for $what (keys %new_folks) {
+     $HoH{flintstones}{$what} = $new_folks{$what};
+ }
+
+=head2 Access and Printing of a HASH OF HASHES
+
+(ハッシュのハッシュに対するアクセスと出力)
+
+=begin original
+
+ # one element
+ $HoH{flintstones}{wife} = "wilma";
+
+ # another element
+ $HoH{simpsons}{lead} =~ s/(\w)/\u$1/;
+
+ # print the whole thing
+ foreach $family ( keys %HoH ) {
+     print "$family: { ";
+     for $role ( keys %{ $HoH{$family} } ) {
+         print "$role=$HoH{$family}{$role} ";
+     }
+     print "}\n";
+ }
+
+ # print the whole thing  somewhat sorted
+ foreach $family ( sort keys %HoH ) {
+     print "$family: { ";
+     for $role ( sort keys %{ $HoH{$family} } ) {
+         print "$role=$HoH{$family}{$role} ";
+     }
+     print "}\n";
+ }
+
+
+ # print the whole thing sorted by number of members
+ foreach $family ( sort { keys %{$HoH{$b}} <=> keys %{$HoH{$a}} } keys %HoH ) {
+     print "$family: { ";
+     for $role ( sort keys %{ $HoH{$family} } ) {
+         print "$role=$HoH{$family}{$role} ";
+     }
+     print "}\n";
+ }
+
+ # establish a sort order (rank) for each role
+ $i = 0;
+ for ( qw(lead wife son daughter pal pet) ) { $rank{$_} = ++$i }
+
+ # now print the whole thing sorted by number of members
+ foreach $family ( sort { keys %{ $HoH{$b} } <=> keys %{ $HoH{$a} } } keys %HoH ) {
+     print "$family: { ";
+     # and print these according to rank order
+     for $role ( sort { $rank{$a} <=> $rank{$b} }  keys %{ $HoH{$family} } ) {
+         print "$role=$HoH{$family}{$role} ";
+     }
+     print "}\n";
+ }
+
+=end original
+
+ # 一つの要素
+ $HoH{flintstones}{wife} = "wilma";
+
+ # もう一つの要素
+ $HoH{simpsons}{lead} =~ s/(\w)/\u$1/;
+
+ # 全体を出力
+ foreach $family ( keys %HoH ) {
+     print "$family: { ";
+     for $role ( keys %{ $HoH{$family} } ) {
+         print "$role=$HoH{$family}{$role} ";
+     }
+     print "}\n";
+ }
+
+ # ソートされた全体を出力
+ foreach $family ( sort keys %HoH ) {
+     print "$family: { ";
+     for $role ( sort keys %{ $HoH{$family} } ) {
+         print "$role=$HoH{$family}{$role} ";
+     }
+     print "}\n";
+ }
+
+ # メンバーの数でソートした全体を出力
+ foreach $family ( sort { keys %{$HoH{$b}} <=> keys %{$HoH{$a}} } keys %HoH ) {
+     print "$family: { ";
+     for $role ( sort keys %{ $HoH{$family} } ) {
+         print "$role=$HoH{$family}{$role} ";
+     }
+     print "}\n";
+ }
+
+ # 役割でソート順を設定する
+ $i = 0;
+ for ( qw(lead wife son daughter pal pet) ) { $rank{$_} = ++$i }
+
+ # now print the whole thing sorted by number of members
+ foreach $family ( sort { keys %{ $HoH{$b} } <=> keys %{ $HoH{$a} } } keys %HoH ) {
+     print "$family: { ";
+     # and print these according to rank order
+     for $role ( sort { $rank{$a} <=> $rank{$b} }  keys %{ $HoH{$family} } ) {
+         print "$role=$HoH{$family}{$role} ";
+     }
+     print "}\n";
+ }
+
+=head1 MORE ELABORATE RECORDS
+X<record> X<structure> X<struct>
+
+(もっと複雑なレコード)
+
+=head2 Declaration of MORE ELABORATE RECORDS
+
+(もっと複雑なレコードの宣言)
+
+=begin original
+
+Here's a sample showing how to create and use a record whose fields are of
+many different sorts:
+
+=end original
+
+以下に示すのは、多くの異なった種類のフィールドを持ったレコードの
+作成と使用のサンプルです。
+
+     $rec = {
+	 TEXT      => $string,
+	 SEQUENCE  => [ @old_values ],
+	 LOOKUP    => { %some_table },
+	 THATCODE  => \&some_function,
+	 THISCODE  => sub { $_[0] ** $_[1] },
+	 HANDLE    => \*STDOUT,
+     };
+
+     print $rec->{TEXT};
+
+     print $rec->{SEQUENCE}[0];
+     $last = pop @ { $rec->{SEQUENCE} };
+
+     print $rec->{LOOKUP}{"key"};
+     ($first_k, $first_v) = each %{ $rec->{LOOKUP} };
+
+     $answer = $rec->{THATCODE}->($arg);
+     $answer = $rec->{THISCODE}->($arg1, $arg2);
+
+     # careful of extra block braces on fh ref
+     print { $rec->{HANDLE} } "a string\n";
+
+     use FileHandle;
+     $rec->{HANDLE}->autoflush(1);
+     $rec->{HANDLE}->print(" a string\n");
+
+=head2 Declaration of a HASH OF COMPLEX RECORDS
+
+(複雑なレコードのハッシュの宣言)
+
+     %TV = (
+        flintstones => {
+            series   => "flintstones",
+            nights   => [ qw(monday thursday friday) ],
+            members  => [
+                { name => "fred",    role => "lead", age  => 36, },
+                { name => "wilma",   role => "wife", age  => 31, },
+                { name => "pebbles", role => "kid",  age  =>  4, },
+            ],
+        },
+
+        jetsons     => {
+            series   => "jetsons",
+            nights   => [ qw(wednesday saturday) ],
+            members  => [
+                { name => "george",  role => "lead", age  => 41, },
+                { name => "jane",    role => "wife", age  => 39, },
+                { name => "elroy",   role => "kid",  age  =>  9, },
+            ],
+         },
+
+        simpsons    => {
+            series   => "simpsons",
+            nights   => [ qw(monday) ],
+            members  => [
+                { name => "homer", role => "lead", age  => 34, },
+                { name => "marge", role => "wife", age => 37, },
+                { name => "bart",  role => "kid",  age  =>  11, },
+            ],
+         },
+      );
+
+=head2 Generation of a HASH OF COMPLEX RECORDS
+
+(複雑なレコードのハッシュの生成)
+
+=begin original
+
+     # reading from file
+     # this is most easily done by having the file itself be
+     # in the raw data format as shown above.  perl is happy
+     # to parse complex data structures if declared as data, so
+     # sometimes it's easiest to do that
+
+=end original
+
+     # ファイルからの読み込み
+     # これはファイルそれ自身が、先の例で示したように raw data
+     # format になっているのでとても簡単です。perlは、データのよ
+     # うに宣言されているのであれば、複雑なデータ構造を喜んで解
+     # 析します。ですからとても簡単に済むことがあるのです。
+
+=begin original
+
+     # here's a piece by piece build up
+     $rec = {};
+     $rec->{series} = "flintstones";
+     $rec->{nights} = [ find_days() ];
+
+=end original
+
+     # フィールド毎に構築する
+     $rec = {};
+     $rec->{series} = "flintstones";
+     $rec->{nights} = [ find_days() ];
+
+=begin original
+
+     @members = ();
+     # assume this file in field=value syntax
+     while (<>) {
+         %fields = split /[\s=]+/;
+         push @members, { %fields };
+     }
+     $rec->{members} = [ @members ];
+
+=end original
+
+     @members = ();
+     # このファイルは フィールド=値 という構文となっていると仮定
+     while (<>) {
+         %fields = split /[\s=]+/;
+         push @members, { %fields };
+     }
+     $rec->{members} = [ @members ];
+
+=begin original
+
+     # now remember the whole thing
+     $TV{ $rec->{series} } = $rec;
+
+=end original
+
+     # now remember the whole thing
+     $TV{ $rec->{series} } = $rec;
+
+=begin original
+
+     ###########################################################
+     # now, you might want to make interesting extra fields that
+     # include pointers back into the same data structure so if
+     # change one piece, it changes everywhere, like for example
+     # if you wanted a {kids} field that was a reference
+     # to an array of the kids' records without having duplicate
+     # records and thus update problems.
+     ###########################################################
+     foreach $family (keys %TV) {
+         $rec = $TV{$family}; # temp pointer
+         @kids = ();
+         for $person ( @{ $rec->{members} } ) {
+             if ($person->{role} =~ /kid|son|daughter/) {
+                 push @kids, $person;
+             }
+         }
+         # REMEMBER: $rec and $TV{$family} point to same data!!
+         $rec->{kids} = [ @kids ];
+     }
+
+=end original
+
+     ###########################################################
+     # ここで、あなたは同じデータへの戻るポインターのような興味
+     # 深い追加フィールドを作成したいと思うかもしれません。これ
+     # により、ある一つを変更するとすべてが変更されます。この例
+     # で言えば、{kid}というフィールドは子供のレコードの配列で
+     # すが、これをレコードの重複をなくして更新の問題もなくすこ
+     # とができるようなものです。
+     ###########################################################
+     foreach $family (keys %TV) {
+         $rec = $TV{$family}; # temp pointer
+         @kids = ();
+         for $person ( @{ $rec->{members} } ) {
+             if ($person->{role} =~ /kid|son|daughter/) {
+                 push @kids, $person;
+             }
+         }
+         # REMEMBER: $rec and $TV{$family} point to same data!!
+         $rec->{kids} = [ @kids ];
+     }
+
+=begin original
+
+     # you copied the array, but the array itself contains pointers
+     # to uncopied objects. this means that if you make bart get
+     # older via
+
+=end original
+
+     # あなたは配列をコピーしました。でも、配列それ自身はコピ
+     # ーされていないオブジェクトへのポインターから構成されていま
+     # す。これはあなたがbartを作ったら古いものを通してで取得され
+     # るということです。
+
+=begin original
+
+     $TV{simpsons}{kids}[0]{age}++;
+
+=end original
+
+     $TV{simpsons}{kids}[0]{age}++;
+
+=begin original
+
+     # then this would also change in
+     print $TV{simpsons}{members}[2]{age};
+
+=end original
+
+     # そしてこれは変更されたものです
+     print $TV{simpsons}{members}[2]{age};
+
+=begin original
+
+     # because $TV{simpsons}{kids}[0] and $TV{simpsons}{members}[2]
+     # both point to the same underlying anonymous hash table
+
+=end original
+
+     # なぜなら $TV{simpsons}{kids}[0] と $TV{simpsons}{members}[2]
+     # は両方とも同じ無名のハッシュテーブルを指しているからです。
+
+=begin original
+
+     # print the whole thing
+     foreach $family ( keys %TV ) {
+         print "the $family";
+         print " is on during @{ $TV{$family}{nights} }\n";
+         print "its members are:\n";
+         for $who ( @{ $TV{$family}{members} } ) {
+             print " $who->{name} ($who->{role}), age $who->{age}\n";
+         }
+         print "it turns out that $TV{$family}{lead} has ";
+         print scalar ( @{ $TV{$family}{kids} } ), " kids named ";
+         print join (", ", map { $_->{name} } @{ $TV{$family}{kids} } );
+         print "\n";
+     }
+
+=end original
+
+     # 全体を表示する
+     foreach $family ( keys %TV ) {
+         print "the $family";
+         print " is on during @{ $TV{$family}{nights} }\n";
+         print "its members are:\n";
+         for $who ( @{ $TV{$family}{members} } ) {
+             print " $who->{name} ($who->{role}), age $who->{age}\n";
+         }
+         print "it turns out that $TV{$family}{lead} has ";
+         print scalar ( @{ $TV{$family}{kids} } ), " kids named ";
+         print join (", ", map { $_->{name} } @{ $TV{$family}{kids} } );
+         print "\n";
+     }
+
+=head1 Database Ties
+
+(データベースの tie)
+
+=begin original
+
+You cannot easily tie a multilevel data structure (such as a hash of
+hashes) to a dbm file.  The first problem is that all but GDBM and
+Berkeley DB have size limitations, but beyond that, you also have problems
+with how references are to be represented on disk.  One experimental
+module that does partially attempt to address this need is the MLDBM
+module.  Check your nearest CPAN site as described in L<perlmodlib> for
+source code to MLDBM.
+
+=end original
+
+(ハッシュのハッシュのような)複数レベルのデータ構造を dbm ファイルに
+tie することは簡単にはできません。
+問題は、GDBM と Berkeley DB はサイズに制限があり、それを超えることが
+できないということで、また、ディスク上にあるものを参照する方法についても
+問題があります。
+部分的にこれを解決しようとしている実験的なモジュールの一つに、
+MLDBM というものがあります。
+ソースコードは L<perlmodlib> にあるように、
+あなたのお近くの CPAN サイトを確かめてください。
+
+=head1 SEE ALSO
+
+perlref(1), perllol(1), perldata(1), perlobj(1)
+
+=head1 AUTHOR
+
+Tom Christiansen <F<tchrist@perl.com>>
+
+Last update:
+Wed Oct 23 04:57:50 MET DST 1996
+
+=begin meta
+
+Created: KIMURA Koichi
+Updated: Kentaro Shirakata <argrath@ub32.org>
+
+=end meta
+
