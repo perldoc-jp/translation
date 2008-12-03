@@ -628,20 +628,20 @@ This also has implications for the use of the SUPER:: qualifier
 
 SUPER:: 限定子の使用についても影響があります(L<perlobj> を参照して下さい)。
 
-=head2 BEGIN, CHECK, INIT and END
-X<BEGIN> X<CHECK> X<INIT> X<END>
+=head2 BEGIN, UNITCHECK, CHECK, INIT and END
+X<BEGIN> X<UNITCHECK> X<CHECK> X<INIT> X<END>
 
 =begin original
 
-Four specially named code blocks are executed at the beginning and at the end
-of a running Perl program.  These are the C<BEGIN>, C<CHECK>, C<INIT>, and
-C<END> blocks.
+Five specially named code blocks are executed at the beginning and at
+the end of a running Perl program.  These are the C<BEGIN>,
+C<UNITCHECK>, C<CHECK>, C<INIT>, and C<END> blocks.
 
 =end original
 
-4 つの特殊な名前のついたコードブロックは、Perl プログラムの開始時および
+5 つの特殊な名前のついたコードブロックは、Perl プログラムの開始時および
 終了時に実行されます。
-それは C<BEGIN>, C<CHECK>, C<INIT>, C<END> ブロックです。
+それは C<BEGIN>, C<UNITCHECK>, C<CHECK>, C<INIT>, C<END> ブロックです。
 
 =begin original
 
@@ -688,14 +688,15 @@ C<BEGIN> が実行されれば、それは即座に未定義になり、使われたコードの
 
 =begin original
 
-It should be noted that C<BEGIN> code blocks B<are> executed inside string
-C<eval()>'s.  The C<CHECK> and C<INIT> code blocks are B<not> executed inside
-a string eval, which e.g. can be a problem in a mod_perl environment.
+It should be noted that C<BEGIN> and C<UNITCHECK> code blocks B<are>
+executed inside string C<eval()>'s.  The C<CHECK> and C<INIT> code
+blocks are B<not> executed inside a string eval, which e.g. can be a
+problem in a mod_perl environment.
 
 =end original
 
-C<BEGIN> コードブロックは文字列の C<eval()> の内側で B<実行される> ことに
-注意した方が良いでしょう。
+C<BEGIN> と C<UNITCHECK> のコードブロックは文字列の C<eval()> の内側で
+B<実行される> ことに注意した方が良いでしょう。
 C<CHECK> と C<INIT> コードブロックは文字列 eval の内側で B<実行されません>;
 これは mod_perl 環境で問題になることがあります。
 
@@ -758,13 +759,31 @@ C<END> コードブロックの内側では、C<$?> はそのプログラムが C<exit()> に
 
 =begin original
 
-C<CHECK> and C<INIT> code blocks are useful to catch the transition between
-the compilation phase and the execution phase of the main program.
+C<UNITCHECK>, C<CHECK> and C<INIT> code blocks are useful to catch the
+transition between the compilation phase and the execution phase of
+the main program.
 
 =end original
 
-C<CHECK> と C<INIT> コードブロックは、メインプログラムの
+C<UNITCHECK>, C<CHECK>, C<INIT> コードブロックは、メインプログラムの
 コンパイルフェーズと実行フェーズの遷移を捕捉したい場合に便利です。
+
+=begin original
+
+C<UNITCHECK> blocks are run just after the unit which defined them has
+been compiled.  The main program file and each module it loads are
+compilation units, as are string C<eval>s, code compiled using the
+C<(?{ })> construct in a regex, calls to C<do FILE>, C<require FILE>,
+and code after the C<-e> switch on the command line.
+
+=end original
+
+C<UNITCHECK> ブロックは、定義されたコンパイル単位がコンパイルされた直後に
+実行されます。
+メインプログラムファイルと、それが読み込んだそれぞれのモジュール、
+文字列 C<eval>、正規表現内で C<(?{ })> 構文を使ってコンパイルされたコード、
+C<do FILE> への呼び出し、C<require FILE>、コマンドラインの
+C<-e> オプションの後に書かれているコードがコンパイル単位です。
 
 =begin original
 
@@ -782,16 +801,12 @@ C<CHECK> コードブロックは Perl コンパイラスイートがプログラムのコンパイル
 =begin original
 
 C<INIT> blocks are run just before the Perl runtime begins execution, in
-"first in, first out" (FIFO) order. For example, the code generators
-documented in L<perlcc> make use of C<INIT> blocks to initialize and
-resolve pointers to XSUBs.
+"first in, first out" (FIFO) order.
 
 =end original
 
 C<INIT> ブロックは Perl ランタイムが実行を開始する直前に、「先入れ先出し」
 (FIFO) 順で実行されます。
-例えば、L<perlcc> で文書化されているコードジェネレータは C<INIT> ブロックを
-初期化と、XSUB へのポインタの解決に使います。
 
 =begin original
 
@@ -821,26 +836,32 @@ B<begincheck> プログラムは、最終的にこれら全てをはっきりさせます:
 
   # begincheck
 
-  print         " 8. Ordinary code runs at runtime.\n";
+  print         "10. Ordinary code runs at runtime.\n";
 
-  END { print   "14.   So this is the end of the tale.\n" }
-  INIT { print  " 5. INIT blocks run FIFO just before runtime.\n" }
-  CHECK { print " 4.   So this is the fourth line.\n" }
+  END { print   "16.   So this is the end of the tale.\n" }
+  INIT { print  " 7. INIT blocks run FIFO just before runtime.\n" }
+  UNITCHECK {
+    print       " 4.   And therefore before any CHECK blocks.\n"
+  }
+  CHECK { print " 6.   So this is the sixth line.\n" }
 
-  print         " 9.   It runs in order, of course.\n";
+  print         "11.   It runs in order, of course.\n";
 
   BEGIN { print " 1. BEGIN blocks run FIFO during compilation.\n" }
-  END { print   "13.   Read perlmod for the rest of the story.\n" }
-  CHECK { print " 3. CHECK blocks run LIFO at compilation's end.\n" }
-  INIT { print  " 6.   Run this again, using Perl's -c switch.\n" }
+  END { print   "15.   Read perlmod for the rest of the story.\n" }
+  CHECK { print " 5. CHECK blocks run LIFO after all compilation.\n" }
+  INIT { print  " 8.   Run this again, using Perl's -c switch.\n" }
 
-  print         "10.   This is anti-obfuscated code.\n";
+  print         "12.   This is anti-obfuscated code.\n";
 
-  END { print   "12. END blocks run LIFO at quitting time.\n" }
+  END { print   "14. END blocks run LIFO at quitting time.\n" }
   BEGIN { print " 2.   So this line comes out second.\n" }
-  INIT { print  " 7.   You'll see the difference right away.\n" }
+  UNITCHECK {
+   print " 3. UNITCHECK blocks run LIFO after each file is compiled.\n"
+  }
+  INIT { print  " 9.   You'll see the difference right away.\n" }
 
-  print         "11.   It merely _looks_ like it should be confusing.\n";
+  print         "13.   It merely _looks_ like it should be confusing.\n";
 
   __END__
 
@@ -1272,6 +1293,9 @@ Like C<CLONE>, C<CLONE_SKIP> is called once per package; however, it is
 called just before cloning starts, and in the context of the parent
 thread. If it returns a true value, then no objects of that class will
 be cloned; or rather, they will be copied as unblessed, undef values.
+For example: if in the parent there are two references to a single blessed
+hash, then in the child there will be two references to a single undefined
+scalar value instead.
 This provides a simple mechanism for making a module threadsafe; just add
 C<sub CLONE_SKIP { 1 }> at the top of the class, and C<DESTROY()> will be
 now only be called once per object. Of course, if the child thread needs
@@ -1286,6 +1310,9 @@ C<CLONE> と同様、C<CLONE_SKIP> はパッケージ毎に 1 回呼び出されます;
 呼び出されます。
 これが真の値を返すと、このクラスのオブジェクトはクローン化されません;
 厳密に言うと、bless されていない undef 値としてコピーされます。
+例えば: もし、1 つの bless されたハッシュを示す 2 つのリファレンスが親に
+ある場合、子では代わりに 1 つの未定義のスカラ値を示す 2 つのリファレンスが
+あることになります。
 これはモジュールをスレッドセーフにする単純な機構を提供します;
 単にクラスの先頭に C<sub CLONE_SKIP { 1 }> を追加することで、
 C<DESTROY()> はオブジェクト毎に 1 度だけ呼び出されるようになります。
