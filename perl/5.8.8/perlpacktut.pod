@@ -119,9 +119,9 @@ about its meaning, we can write
 Let's use C<unpack>, since
 this is likely to remind you of a dump program, or some desperate last
 message unfortunate programs are wont to throw at you before they expire
-into the wild blue yonder. Assuming that the variable C<$mem> holds a 
-sequence of bytes that we'd like to inspect without assuming anything 
-about its meaning, we can write
+into the wild blue yonder.
+変数 C<$mem> に、その意味について何の仮定もおかずに調査したいバイト列が
+入っていると仮定すると、以下のように書きます:
 (TBT)
 
    my( $hex ) = unpack( 'H*', $mem );
@@ -157,11 +157,13 @@ remains.
 
 =end original
 
-What was in this chunk of memory? Numbers, characters, or a mixture of
-both? Assuming that we're on a computer where ASCII (or some similar)
-encoding is used: hexadecimal values in the range C<0x40> - C<0x5A>
-indicate an uppercase letter, and C<0x20> encodes a space. So we might
-assume it is a piece of text, which some are able to read like a tabloid;
+このメモリの塊はなんでしょう?
+数値、文字、あるいはそれらの混合でしょうか?
+使っているコンピュータが ASCII エンコーディング (あるいは似たようなもの) を
+使っていると仮定します: C<0x40> - C<0x5A> 範囲の 16 進数は大文字を
+示していて、C<0x20> は空白をエンコードしたものです。
+それで、これは、タブロイドのように読むことのできるテキストの断片と
+仮定できます;
 but others will have to get hold of an ASCII table and relive that
 firstgrader feeling. Not caring too much about which way to read this,
 we note that C<unpack> with the template code C<H> converts the contents
@@ -983,6 +985,19 @@ you could write:
 
 =end original
 
+The pack code for big-endian (high order byte at the lowest address) is
+C<n> for 16 bit and C<N> for 32 bit integers. You use these codes
+if you know that your data comes from a compliant architecture, but,
+surprisingly enough, you should also use these pack codes if you
+exchange binary data, across the network, with some system that you
+know next to nothing about. The simple reason is that this
+order has been chosen as the I<network order>, and all standard-fearing
+programs ought to follow this convention. (This is, of course, a stern
+backing for one of the Lilliputian parties and may well influence the
+political development there.) So, if the protocol expects you to send
+a message by sending the length first, followed by just so many bytes,
+you could write:
+(TBT)
 
    my $buf = pack( 'N', length( $msg ) ) . $msg;
 
@@ -992,6 +1007,7 @@ or even:
 
 =end original
 
+あるいは:
 
    my $buf = pack( 'NA*', length( $msg ), $msg );
 
@@ -1004,7 +1020,11 @@ you really code this!)
 
 =end original
 
-
+and pass C<$buf> to your send routine. Some protocols demand that the
+count should include the length of the count itself: then just add 4
+to the data length. (But make sure to read L<"Lengths and Widths"> before
+you really code this!)
+(TBT)
 
 =head2 Floating point Numbers
 
@@ -1022,8 +1042,14 @@ end of the line.)
 
 =end original
 
-
-
+不動小数点数を pack するには、you have the choice between the
+pack codes C<f> and C<d> which pack into (or unpack from) single-precision or
+double-precision representation as it is provided by your system. (There
+is no such thing as a network representation for reals, so if you want
+to send your real numbers across computer boundaries, you'd better stick
+to ASCII representation, unless you're absolutely sure what's on the other
+end of the line.)
+(TBT)
 
 =head1 Exotic Templates
 
@@ -1046,6 +1072,15 @@ byte:
 
 =end original
 
+Bits are the atoms in the memory world. Access to individual bits may
+have to be used either as a last resort or because it is the most
+convenient way to handle your data. Bit string (un)packing converts
+between strings containing a series of C<0> and C<1> characters and
+a sequence of bytes each containing a group of 8 bits. This is almost
+as simple as it sounds, except that there are two ways the contents of
+a byte may be written as a bit string. Let's have a look at an annotated
+byte:
+(TBT)
 
      7 6 5 4 3 2 1 0
    +-----------------+
@@ -1062,6 +1097,11 @@ string codes:
 
 =end original
 
+It's egg-eating all over again: Some think that as a bit string this should
+be written "10001100" i.e. beginning with the most significant bit, others
+insist on "00110001". Well, Perl isn't biased, so that's why we have two bit
+string codes:
+(TBT)
 
    $byte = pack( 'B8', '10001100' ); # start with MSB
    $byte = pack( 'b8', '00110001' ); # start with LSB
@@ -1077,6 +1117,13 @@ concatenation on unpacked bit strings.)
 
 =end original
 
+It is not possible to pack or unpack bit fields - just integral bytes.
+C<pack> always starts at the next byte boundary and "rounds up" to the
+next multiple of 8 by adding zero bits as required. (If you do want bit
+fields, there is L<perlfunc/vec>. Or you could implement bit field 
+handling at the character string level, using split, substr, and
+concatenation on unpacked bit strings.)
+(TBT)
 
 =begin original
 
@@ -1085,6 +1132,9 @@ status register (a "-" stands for a "reserved" bit):
 
 =end original
 
+To illustrate unpacking for bit strings, we'll decompose a simple
+status register (a "-" stands for a "reserved" bit):
+(TBT)
 
    +-----------------+-----------------+
    | S Z - A - P - C | - - - - O D I T |
@@ -1102,6 +1152,13 @@ this goes".
 
 =end original
 
+Converting these two bytes to a string can be done with the unpack 
+template C<'b16'>. To obtain the individual bit values from the bit
+string we use C<split> with the "empty" separator pattern which dissects
+into individual characters. Bit values from the "reserved" positions are
+simply assigned to C<undef>, a convenient notation for "I don't care where
+this goes".
+(TBT)
 
    ($carry, undef, $parity, undef, $auxcarry, undef, $zero, $sign,
     $trace, $interrupt, $direction, $overflow) =
@@ -1114,7 +1171,9 @@ last 4 bits can be ignored anyway.
 
 =end original
 
-
+We could have used an unpack template C<'b12'> just as well, since the
+last 4 bits can be ignored anyway. 
+(TBT)
 
 =head2 Uuencoding
 
@@ -1135,6 +1194,19 @@ prepare this for you, a la minute, when you select pack code C<u> on the menu:
 
 =end original
 
+テンプレートの中のもう一つの半端者は C<u> で、「uuencode された文字列」を
+pack します。
+("uu" は Unix-to-Unix を縮めたものです。)
+Chances are that
+you won't ever need this encoding technique which was invented to overcome
+the shortcomings of old-fashioned transmission mediums that do not support
+other than simple ASCII data. The essential recipe is simple: Take three 
+bytes, or 24 bits. Split them into 4 six-packs, adding a space (0x20) to 
+each. Repeat until all of the data is blended. Fold groups of 4 bytes into 
+lines no longer than 60 and garnish them in front with the original byte count 
+(incremented by 0x20) and a C<"\n"> at the end. - The C<pack> chef will
+prepare this for you, a la minute, when you select pack code C<u> on the menu:
+(TBT)
 
    my $uubuf = pack( 'u', $bindat );
 
@@ -1147,7 +1219,9 @@ the repeat count.
 
 =end original
 
-
+C<u> の後の繰り返し数は uuencode された行にいれるバイト数で、デフォルトでは
+最大の 45 ですが、3 の倍数のその他の(より小さい)数にできます。
+C<unpack> は単に繰り返し数を無視します。
 
 =head2 Doing Sums
 
@@ -1164,6 +1238,13 @@ doing sums. For numeric unpack codes, no big feat is achieved:
 
 =end original
 
+An even stranger template code is C<%>E<lt>I<number>E<gt>. First, because 
+it's used as a prefix to some other template code. Second, because it
+cannot be used in C<pack> at all, and third, in C<unpack>, doesn't return the
+data as defined by the template code it precedes. Instead it'll give you an
+integer of I<number> bits that is computed from the data value by 
+doing sums. For numeric unpack codes, no big feat is achieved:
+(TBT)
 
     my $buf = pack( 'iii', 100, 20, 3 );
     print unpack( '%32i3', $buf ), "\n";  # prints 123
@@ -1175,6 +1256,9 @@ you the trouble of a sum loop with C<substr> and C<ord>:
 
 =end original
 
+For string values, C<%> returns the sum of the byte values saving
+you the trouble of a sum loop with C<substr> and C<ord>:
+(TBT)
 
     print unpack( '%32A*', "\x01\x10" ), "\n";  # prints 17
 
@@ -1186,6 +1270,10 @@ of bytes, they won't guarantee a noticeable Hamming distance.
 
 =end original
 
+Although the C<%> code is documented as returning a "checksum":
+don't put your trust in such values! Even when applied to a small number
+of bytes, they won't guarantee a noticeable Hamming distance.
+(TBT)
 
 =begin original
 
@@ -1194,6 +1282,9 @@ to good use to count set bits efficiently:
 
 =end original
 
+In connection with C<b> or C<B>, C<%> simply adds bits, and this can be put
+to good use to count set bits efficiently:
+(TBT)
 
     my $bitcount = unpack( '%32b*', $mask );
 
@@ -1203,9 +1294,10 @@ And an even parity bit can be determined like this:
 
 =end original
 
+And an even parity bit can be determined like this:
+(TBT)
 
     my $evenparity = unpack( '%1b*', $mask );
-
 
 =head2  Unicode
 
@@ -1224,6 +1316,17 @@ them - my personal favourites are Telugu and Kannada.)
 
 =end original
 
+Unicode is a character set that can represent most characters in most of
+the world's languages, providing room for over one million different
+characters. Unicode 3.1 specifies 94,140 characters: The Basic Latin
+characters are assigned to the numbers 0 - 127. The Latin-1 Supplement with
+characters that are used in several European languages is in the next
+range, up to 255. After some more Latin extensions we find the character
+sets from languages using non-Roman alphabets, interspersed with a
+variety of symbol sets such as currency symbols, Zapf Dingbats or Braille.
+(You might want to visit L<www.unicode.org> for a look at some of
+them - my personal favourites are Telugu and Kannada.)
+(TBT)
 
 =begin original
 
@@ -1236,6 +1339,13 @@ ones in three or more bytes.
 
 =end original
 
+The Unicode character sets associates characters with integers. Encoding
+these numbers in an equal number of bytes would more than double the
+requirements for storing texts written in Latin alphabets.
+The UTF-8 encoding avoids this by storing the most common (from a western
+point of view) characters in a single byte while encoding the rarer
+ones in three or more bytes.
+(TBT)
 
 =begin original
 
@@ -1246,6 +1356,11 @@ representation of the Euro currency symbol (code number 0x20AC):
 
 =end original
 
+So what has this got to do with C<pack>? Well, if you want to convert
+between a Unicode number and its UTF-8 representation you can do so by
+using template code C<U>. As an example, let's produce the UTF-8
+representation of the Euro currency symbol (code number 0x20AC):
+(TBT)
 
    $UTF8{Euro} = pack( 'U', 0x20AC );
 
@@ -1256,6 +1371,9 @@ round trip can be completed with C<unpack>:
 
 =end original
 
+Inspecting C<$UTF8{Euro}> shows that it contains 3 bytes: "\xe2\x82\xac". The
+round trip can be completed with C<unpack>:
+(TBT)
 
    $Unicode{Euro} = unpack( 'U', $UTF8{Euro} );
 
@@ -1265,11 +1383,11 @@ Usually you'll want to pack or unpack UTF-8 strings:
 
 =end original
 
+普通は UTF-8 文字列を pack または unpack したいでしょう:
 
    # pack and unpack the Hebrew alphabet
    my $alefbet = pack( 'U*', 0x05d0..0x05ea );
    my @hebrew = unpack( 'U*', $utf );
-
 
 =head2 Another Portable Binary Encoding
 
@@ -1288,12 +1406,14 @@ is no size limit to BER encoding, but Perl won't go to extremes.
 =end original
 
 The pack code C<w> has been added to support a portable binary data
-encoding scheme that goes way beyond simple integers. (Details can
-be found at L<Casbah.org>, the Scarab project.)  A BER (Binary Encoded
+encoding scheme that goes way beyond simple integers.
+(詳細については Scarab プロジェクト L<Casbah.org> にあります。)
+A BER (Binary Encoded
 Representation) compressed unsigned integer stores base 128
 digits, most significant digit first, with as few digits as possible.
-Bit eight (the high bit) is set on each byte except the last.
-BER エンコーディングには制限がありませんが、Perl は極端なことはしません。
+ビット 8 (最上位ビット) は、最後以外のバイトでセットされます。
+BER エンコーディングにはサイズ制限がありませんが、Perl は極端なことは
+しません。
 (TBT)
 
    my $berbuf = pack( 'w*', 1, 128, 128+1, 128*128+127 );
@@ -1340,8 +1460,7 @@ Let's explore this feature a little more. We'll begin with the equivalent of
 =end original
 
 この機能についてもうすこしだけ探求してみましょう。
-We'll begin with the equivalent of
-(TBT)
+等価な以下のものから始めます:
 
    join( '', map( substr( $_, 0, 1 ), @str ) )
 
@@ -1354,6 +1473,7 @@ Using pack, we can write
 
 which returns a string consisting of the first character from each string.
 Using pack, we can write
+(TBT)
 
    pack( '(A)'.@str, @str )
 
@@ -1366,6 +1486,7 @@ simply
 
 or, because a repeat count C<*> means "repeat as often as required",
 simply
+(TBT)
 
    pack( '(A)*', @str )
 
@@ -1378,6 +1499,7 @@ length.)
 
 (Note that the template C<A*> would only have packed C<$str[0]> in full
 length.)
+(TBT)
 
 =begin original
 
@@ -1388,6 +1510,7 @@ into a sequence of byte, byte, short integer we can write
 
 To pack dates stored as triplets ( day, month, year ) in an array C<@dates>
 into a sequence of byte, byte, short integer we can write
+(TBT)
 
    $pd = pack( '(CCS)*', map( @$_, @dates ) );
 
@@ -1400,6 +1523,7 @@ several techniques. First, let's use C<x> and C<X> to skip forward and back:
 
 To swap pairs of characters in a string (with even length) one could use
 several techniques. First, let's use C<x> and C<X> to skip forward and back:
+(TBT)
 
    $s = pack( '(A)*', unpack( '(xAXXAx)*', $s ) );
 
@@ -1412,6 +1536,7 @@ we were when the last C<(> was encountered:
 
 We can also use C<@> to jump to an offset, with 0 being the position where
 we were when the last C<(> was encountered:
+(TBT)
 
    $s = pack( '(A)*', unpack( '(@1A @0A @2)*', $s ) );
 
@@ -1424,9 +1549,9 @@ endian shorts and packing them in the reverse byte order:
 
 Finally, there is also an entirely different approach by unpacking big
 endian shorts and packing them in the reverse byte order:
+(TBT)
 
    $s = pack( '(v)*', unpack( '(n)*', $s );
-
 
 =head1 Lengths and Widths
 
@@ -1616,6 +1741,15 @@ we add a C<0> at the end of the C<pack> list, to be packed with C<C>.
 
 =end original
 
+Let's examine the cogs of this byte mill, one by one. There's the C<map>
+call, creating the items we intend to stuff into the C<$env> buffer:
+to each key (in C<$_>) it adds the C<=> separator and the hash entry value.
+Each triplet is packed with the template code sequence C<A*A*Z*> that
+is repeated according to the number of keys. (Yes, that's what the C<keys>
+function returns in scalar context.) To get the very last null byte,
+we add a C<0> at the end of the C<pack> list, to be packed with C<C>.
+(Attentive readers may have noticed that we could have omitted the 0.)
+(TBT)
 
 =begin original
 
@@ -1624,6 +1758,9 @@ in the buffer before we can let C<unpack> rip it apart:
 
 =end original
 
+For the reverse operation, we'll have to determine the number of items
+in the buffer before we can let C<unpack> rip it apart:
+(TBT)
 
    my $n = $env =~ tr/\0// - 1;
    my %env = map( split( /=/, $_ ), unpack( "(Z*)$n", $env ) );
@@ -1635,7 +1772,9 @@ name-value pairs each of which is taken apart in the C<map> block.
 
 =end original
 
-
+The C<tr> counts the null bytes. The C<unpack> call returns a list of
+name-value pairs each of which is taken apart in the C<map> block. 
+(TBT)
 
 =head2 Counting Repetitions
 
@@ -1650,6 +1789,11 @@ we store the number of pairs:
 
 =end original
 
+Rather than storing a sentinel at the end of a data item (or a list of items),
+we could precede the data with a count. Again, we pack keys and values of
+a hash, preceding each with an unsigned short length count, and up front
+we store the number of pairs:
+(TBT)
 
    my $env = pack( 'S(S/A* S/A*)*', scalar keys( %Env ), %Env );
 
@@ -1660,6 +1804,9 @@ unpacked with the C</> code:
 
 =end original
 
+This simplifies the reverse operation as the number of repetitions can be
+unpacked with the C</> code:
+(TBT)
 
    my %env = unpack( 'S/(S/A* S/A*)', $env );
 
@@ -1671,7 +1818,10 @@ a repeat count for a C<()>-group.
 
 =end original
 
-
+Note that this is one of the rare cases where you cannot use the same
+template for C<pack> and C<unpack> because C<pack> can't determine
+a repeat count for a C<()>-group.
+(TBT)
 
 =head1 Packing and Unpacking C Structures
 
@@ -1687,6 +1837,12 @@ Sorry, no: read on, please.
 
 =end original
 
+In previous sections we have seen how to pack numbers and character
+strings. If it were not for a couple of snags we could conclude this
+section right away with the terse remark that C structures don't
+contain anything else, and therefore you already know all there is to it.
+Sorry, no: read on, please.
+(TBT)
 
 =head2 The Alignment Pit
 
@@ -1708,6 +1864,18 @@ that, don't you?)).
 
 =end original
 
+In the consideration of speed against memory requirements the balance
+has been tilted in favor of faster execution. This has influenced the
+way C compilers allocate memory for structures: On architectures
+where a 16-bit or 32-bit operand can be moved faster between places in
+memory, or to or from a CPU register, if it is aligned at an even or 
+multiple-of-four or even at a multiple-of eight address, a C compiler
+will give you this speed benefit by stuffing extra bytes into structures.
+If you don't cross the C shoreline this is not likely to cause you any
+grief (although you should care when you design large data structures,
+or you want your code to be portable between architectures (you do want
+that, don't you?)).
+(TBT)
 
 =begin original
 
@@ -1716,6 +1884,9 @@ C structures:
 
 =end original
 
+To see how this affects C<pack> and C<unpack>, we'll compare these two
+C structures:
+(TBT)
 
    typedef struct {
      char     c1;
@@ -1739,6 +1910,10 @@ we can draw memory maps, showing where the extra 4 bytes are hidden:
 
 =end original
 
+Typically, a C compiler allocates 12 bytes to a C<gappy_t> variable, but
+requires only 8 bytes for a C<dense_t>. After investigating this further,
+we can draw memory maps, showing where the extra 4 bytes are hidden:
+(TBT)
 
    0           +4          +8          +12
    +--+--+--+--+--+--+--+--+--+--+--+--+
@@ -1759,6 +1934,9 @@ templates have to be stuffed with C<x> codes to get those extra fill bytes.
 
 =end original
 
+And that's where the first quirk strikes: C<pack> and C<unpack>
+templates have to be stuffed with C<x> codes to get those extra fill bytes.
+(TBT)
 
 =begin original
 
@@ -1772,6 +1950,14 @@ item alone.
 
 =end original
 
+The natural question: "Why can't Perl compensate for the gaps?" warrants
+an answer. One good reason is that C compilers might provide (non-ANSI)
+extensions permitting all sorts of fancy control over the way structures
+are aligned, even at the level of an individual structure field. And, if
+this were not enough, there is an insidious thing called C<union> where
+the amount of fill bytes cannot be derived from the alignment of the next
+item alone.
+(TBT)
 
 =begin original
 
@@ -1781,6 +1967,10 @@ from the list:
 
 =end original
 
+OK, so let's bite the bullet. Here's one way to get the alignment right
+by inserting template codes C<x>, which don't take a corresponding item 
+from the list:
+(TBT)
 
   my $gappy = pack( 'cxs cxxx l!', $c1, $s, $c2, $l );
 
@@ -1794,6 +1984,12 @@ And somebody somewhere has a platform where it doesn't.
 
 =end original
 
+Note the C<!> after C<l>: We want to make sure that we pack a long
+integer as it is compiled by our C compiler. And even now, it will only
+work for the platforms where the compiler aligns things as above.
+And somebody somewhere has a platform where it doesn't.
+[Probably a Cray, where C<short>s, C<int>s and C<long>s are all 8 bytes. :-)]
+(TBT)
 
 =begin original
 
@@ -1803,6 +1999,10 @@ program? Here's a C program that does the trick:
 
 =end original
 
+Counting bytes and watching alignments in lengthy structures is bound to 
+be a drag. Isn't there a way we can create the template with a simple
+program? Here's a C program that does the trick:
+(TBT)
 
    #include <stdio.h>
    #include <stddef.h>
@@ -1846,6 +2046,13 @@ C standardese).
 
 =end original
 
+Gee, yet another template code - as if we hadn't plenty. But 
+C<@> saves our day by enabling us to specify the offset from the beginning
+of the pack buffer to the next item: This is just the value
+the C<offsetof> macro (defined in C<E<lt>stddef.hE<gt>>) returns when
+given a C<struct> type and one of its field names ("member-designator" in 
+C standardese).
+(TBT)
 
 =begin original
 
@@ -1857,6 +2064,12 @@ appropriate value. Here's the next version of our struct packaging:
 
 =end original
 
+Neither using offsets nor adding C<x>'s to bridge the gaps is satisfactory.
+(Just imagine what happens if the structure changes.) What we really need
+is a way of saying "skip as many bytes as required to the next multiple of N".
+In fluent Templatese, you say this with C<x!N> where N is replaced by the
+appropriate value. Here's the next version of our struct packaging:
+(TBT)
 
   my $gappy = pack( 'c x!2 s c x!4 l!', $c1, $s, $c2, $l );
 
@@ -1870,6 +2083,12 @@ the very best we can do:
 
 =end original
 
+That's certainly better, but we still have to know how long all the
+integers are, and portability is far away. Rather than C<2>,
+for instance, we want to say "however long a short is". But this can be
+done by enclosing the appropriate pack code in brackets: C<[s]>. So, here's
+the very best we can do:
+(TBT)
 
   my $gappy = pack( 'c x![s] s c x![l!] l!', $c1, $s, $c2, $l );
 
@@ -1994,8 +2213,10 @@ Isn't this what we want? Let's try:
 
 =end original
 
-Template code C<P> promises to pack a "pointer to a fixed length string".
-Isn't this what we want? Let's try:
+テンプレートコード C<P> は、「固定長文字列へのポインタ」を pack することを
+約束します。
+これが望みのものではないですか?
+試してみましょう:
 (TBT)
 
     # allocate some storage and pack a pointer to it
@@ -2139,6 +2360,7 @@ count, not a length as after C<P>.
 Albeit this is apt to be confusing: As a consequence of the length being
 implied by the string's length, a number after pack code C<p> is a repeat
 count, not a length as after C<P>. 
+(TBT)
 
 =begin original
 
@@ -2153,6 +2375,7 @@ Using C<pack(..., $x)> with C<P> or C<p> to get the address where C<$x> is
 actually stored must be used with circumspection. Perl's internal machinery
 considers the relation between a variable and that address as its very own 
 private matter and doesn't really care that we have obtained a copy. Therefore:
+(TBT)
 
 =over 4
 
@@ -2169,6 +2392,7 @@ are done with using the memory at that address.
 Do not use C<pack> with C<p> or C<P> to obtain the address of variable
 that's bound to go out of scope (and thereby freeing its memory) before you
 are done with using the memory at that address.
+(TBT)
 
 =item * 
 
@@ -2183,6 +2407,7 @@ reallocation of its storage, leaving you with a pointer into no-man's land.
 Be very careful with Perl operations that change the value of the
 variable. Appending something to the variable, for instance, might require
 reallocation of its storage, leaving you with a pointer into no-man's land.
+(TBT)
 
 =item * 
 
@@ -2199,6 +2424,7 @@ Don't think that you can get the address of a Perl variable
 when it is stored as an integer or double number! C<pack('P', $x)> will
 force the variable's internal representation to string, just as if you
 had written something like C<$x .= ''>.
+(TBT)
 
 =back
 
@@ -2211,6 +2437,7 @@ allocates an anonymous variable.
 
 It's safe, however, to P- or p-pack a string literal, because Perl simply
 allocates an anonymous variable.
+(TBT)
 
 =head1 Pack Recipes
 
@@ -2279,3 +2506,4 @@ Simon Cozens and Wolfgang Laun.
 =end original
 
 Simon Cozens と Wolfgang Laun。
+
