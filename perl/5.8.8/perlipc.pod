@@ -88,7 +88,7 @@ Perl 5.7.3 以前では、自分のハンドラの中を使うことができます。
 これは、ほとんどのシステム上ではライブラリ、とくにメモリ割り付けや
 入出力に関するものは再入可能ではないためです。
 これは、あなたのハンドラ内のほとんど I<あらゆること> が理論的には
-メモリーフォールトやそれに続くコアダンブを引き起こす可能性が
+メモリフォールトやそれに続くコアダンブを引き起こす可能性が
 あるということです - 以下の L</Deferred Signals (Safe Signals)> を
 参照してください。
 
@@ -219,7 +219,7 @@ or has changed its UID.
 
 =end original
 
-この他の興味深いシグナルは、シグナル番号ゼロです。
+この他の興味深いシグナルは、シグナル番号 0 です。
 これは実際には子プロセスに影響を及ぼすことはありませんが、UID が
 生きているのか、あるいは変更されたのかのチェックを行います。
 
@@ -236,11 +236,9 @@ You may be able to determine the cause of failure using C<%!>.
 
 =end original
 
-When directed at a process whose UID is not identical to that
-of the sending process, signal number zero may fail because
-you lack permission to send the signal, even though the process is alive.
+送り先のプロセスの UID が、送り元と同じではない場合、たとえプロセスが
+生きていても、シグナルを送る権限がないので、シグナル番号 0 は失敗します。
 失敗の原因は、C<%!> を使って決定できます。
-(TBT)
 
     unless (kill 0 => $pid or $!{EPERM}) {
 	warn "$pid looks dead";
@@ -652,21 +650,21 @@ previous Perls in the following ways:
 =end original
 
 Perl 5.7.3 以降では、この問題を避けるために、シグナルは「保留」されます --
-that is when the signal is delivered to the process by
-the system (to the C code that implements Perl) a flag is set, and the
-handler returns immediately. Then at strategic "safe" points in the
-Perl interpreter (e.g. when it is about to execute a new opcode) the
-flags are checked and the Perl level handler from %SIG is
-executed. The "deferred" scheme allows much more flexibility in the
-coding of signal handler as we know Perl interpreter is in a safe
-state, and that we are not in a system library function when the
-handler is called.
+これは、システムによってシグナルが (Perl を実装している C コードに)
+配送されると、フラグをセットして、ハンドラは直ちに返ります。
+それから、Perl インタプリタの戦略的に「安全な」地点
+(例えば、新しいオペコードを実行しようとしている時点) で、
+フラグをチェックして、%SIG の Perl レベルハンドラを実行します。
+「保留」スキームは、Perl インタプリタが安全な状態にあって、ハンドラが
+呼び出されたときにシステムライブラリの中ではないことが分かっているので、
+シグナルハンドラのコーディングが遥かに柔軟になります。
 しかし、実装は以下の方向で以前の Perl と異なります:
-(TBT)
 
 =over 4
 
 =item Long running opcodes
+
+(長時間実行されるオペコード)
 
 =begin original
 
@@ -677,12 +675,14 @@ signal will not be seen until operation completes.
 
 =end original
 
-Perl インタプリタは、もし長く実行されるオペコード
+Perl インタプリタは、もし長時間実行されるオペコード
 (例えばとても長い文字列での正規表現操作)の途中でシグナルが
 到着すると、新しいオペコードを実行しようとする時にのみシグナルフラグを
 見るので、シグナルは処理が完了するまで現れません。
 
 =item Interrupting IO
+
+(I/O 割り込み)
 
 =begin original
 
@@ -760,6 +760,8 @@ try something like the following:
 
 =item Restartable system calls
 
+(再起動可能なシステムコール)
+
 =begin original
 
 On systems that supported it, older versions of Perl used the
@@ -774,13 +776,12 @@ where they previously would have succeeded.
 
 これに対応しているシステムでは、より古いバージョンの Perl では %SIG
 ハンドラを設定するときに SA_RESTART フラグを使います。
-This meant that
-restartable system calls would continue rather than returning when
-a signal arrived.  In order to deliver deferred signals promptly,
-Perl 5.7.3 and later do I<not> use SA_RESTART.  Consequently, 
-restartable system calls can fail (with $! set to C<EINTR>) in places
-where they previously would have succeeded.
-(TBT)
+これは、再起動可能なシステムコールではシグナルが配送されたときに
+戻るのではなく続行することを意味します。
+保留シグナルを素早く配送するために、
+Perl 5.7.3 以降では SA_RESTART を I<使っていません>。
+結果として、再起動可能なシステムコールは、いままで成功していたところでも
+($! に C<EINTR> をセットして) 失敗することがあります。
 
 =begin original
 
@@ -795,6 +796,8 @@ C<waitpid> calls will always be retried.
 再試行されることに注意してください。
 
 =item Signals as "faults"
+
+(「障害」としてのシグナル)
 
 =begin original
 
@@ -817,16 +820,15 @@ SEGV, ILL, BUS のようなシグナルは、仮想メモリやその他の「障害」の結果として
 生成されます。
 これらは普通致命的で、Perl-レベルのハンドラができることはほとんどありません。
 (特に、古いシグナルスキームではこのような場合では特に安全ではありません。)
-However if
-a %SIG handler is set the new scheme simply sets a flag and returns as
-described above. This may cause the operating system to try the
-offending machine instruction again and - as nothing has changed - it
-will generate the signal again. The result of this is a rather odd
-"loop". In future Perl's signal mechanism may be changed to avoid this
-- perhaps by simply disallowing %SIG handlers on signals of that
-type. Until then the work-round is not to set a %SIG handler on those
-signals. (Which signals they are is operating system dependent.)
-(TBT)
+しかし、%SIG ハンドラがセットされると、新しいスキームは上述のように、
+単にフラグをセットして返ります。
+これによって OS が問題のあるコードを再び実行して
+- 何も変わっていないので - 再びシグナルを生成します。
+この結果はおかしな「ループ」となります。
+将来の Perl のシグナル機構はこれを避けるために変更されるでしょう -
+おそらく単にこの種類のシグナルに関する %SIG ハンドラを無効にするでしょう。
+それまでの回避策としては、これらのシグナル(どのシグナルかは OS 依存です)
+の %SIG ハンドラをセットしないことです。
 
 =item Signals triggered by operating system state
 
@@ -946,7 +948,7 @@ same effect as opening a pipe for reading:
 
 =end original
 
-読み込みのためのパイプを開くために、backtics を使って同じことが
+読み込みのためのパイプを開くために、逆クォートを使って同じことが
 できることに気がつくかもしれません:
 
     print grep { !/^(tcp|udp)/ } `netstat -an 2>&1`;
@@ -963,7 +965,7 @@ like.
 =end original
 
 その推測は表面的には正しいことのように見えるかも知れませんが、一度に
-メモリーにすべてを読み込む必要がないので、一度にファイルの一行や
+メモリにすべてを読み込む必要がないので、一度にファイルの一行や
 一レコードを処理するには(最初の例のほうが)より効率的なのです。
 同様にプロセス全体の制御を与えるので、あなたが望めば早い時期に
 子プロセスを kill することができます。
@@ -1090,7 +1092,7 @@ output doesn't wind up on the user's terminal).
 これはしばしばデーモン化と呼ばれます。
 礼儀正しいデーモンはルートディレクトリに chdir() (そのため実行ファイルの
 あったディレクトリを含むファイルシステムのアンマウントを邪魔することが
-ありません)し、その標準ファイルディスクリプターを F</fdev/null> に
+ありません)し、その標準ファイル記述子を F</fdev/null> に
 リダイレクトします。
 
     use POSIX 'setsid';
@@ -1584,7 +1586,7 @@ don't need to pass that information.
 ソケットを扱うための Perl の関数呼び出しは対応する C でのシステムコールと
 同じ名前を持っています。
 しかし、引数に関しては二つの理由によって異なるものとなっています:
-第一に、Perl のファイルハンドルは C のファイルディスクリプターとは
+第一に、Perl のファイルハンドルは C のファイル記述子とは
 異なる働きをするものである。
 第二に、Perl はすでに文字列の長さを知っているので、その情報を渡す
 必要がない、というものです。
@@ -3093,7 +3095,7 @@ System V のおかしなシグナルのセマンティクスを仮定することと、単純な
 TCP および UDP ソケット操作に終始するようにすることがおそらくは最も
 安全なもののでしょう。
 たとえば、あなたが自分のプログラムに移植性を持たせるようにしたいのであれば、
-ローカルな UDP データグラムのソケットを通してファイルディスクリプターを
+ローカルな UDP データグラムのソケットを通してファイル記述子を
 渡すようなことをしようとしてはいけないということです。
 
 =head1 AUTHOR
