@@ -260,7 +260,7 @@ handlers:
 But that will be problematic for the more complicated handlers that need
 to reinstall themselves.  Because Perl's signal mechanism is currently
 based on the signal(3) function from the C library, you may sometimes be so
-misfortunate as to run on systems where that function is "broken", that
+unfortunate as to run on systems where that function is "broken", that
 is, it behaves in the old unreliable SysV way rather than the newer, more
 reasonable BSD and POSIX fashion.  So you'll see defensive people writing
 signal handlers like this:
@@ -609,7 +609,7 @@ There were two things you could do, knowing this: be paranoid or be
 pragmatic.  The paranoid approach was to do as little as possible in your
 signal handler.  Set an existing integer variable that already has a
 value, and return.  This doesn't help you if you're in a slow system call,
-which will just restart.  That means you have to C<die> to longjump(3) out
+which will just restart.  That means you have to C<die> to longjmp(3) out
 of the handler.  Even this is a little cavalier for the true paranoiac,
 who avoids C<die> in a handler because the system I<is> out to get you.
 The pragmatic approach was to say "I know the risks, but prefer the
@@ -625,7 +625,7 @@ and be prepared to clean up core dumps now and again.
 既に値をもって存在している整数変数に値を設定してリターンします。
 これは単にリスタートするような遅いシステムコールの中にいるときには
 助けになりません。
-これはつまり、ハンドラの外に longjump(3) するには C<die> する必要が
+これはつまり、ハンドラの外に longjmp(3) するには C<die> する必要が
 あるということです。
 これは本当の偏執狂というのにはちょっとおおげさですが、ハンドラ中で
 C<die> を排除します。
@@ -662,23 +662,56 @@ Perl 5.7.3 以降では、この問題を避けるために、シグナルは「保留」されます --
 
 =over 4
 
-=item Long running opcodes
+=item Long-running opcodes
 
 (長時間実行されるオペコード)
 
 =begin original
 
-As Perl interpreter only looks at the signal flags when it about to
-execute a new opcode if a signal arrives during a long running opcode
-(e.g. a regular expression operation on a very large string) then
-signal will not be seen until operation completes.
+As the Perl interpreter only looks at the signal flags when it is about
+to execute a new opcode, a signal that arrives during a long-running
+opcode (e.g. a regular expression operation on a very large string) will
+not be seen until the current opcode completes.
 
 =end original
 
 Perl インタプリタは、もし長時間実行されるオペコード
 (例えばとても長い文字列での正規表現操作)の途中でシグナルが
 到着すると、新しいオペコードを実行しようとする時にのみシグナルフラグを
-見るので、シグナルは処理が完了するまで現れません。
+見るので、シグナルは現在のオペコードが完了するまで現れません。
+
+=begin original
+
+N.B. If a signal of any given type fires multiple times during an opcode 
+(such as from a fine-grained timer), the handler for that signal will
+only be called once after the opcode completes, and all the other
+instances will be discarded.  Furthermore, if your system's signal queue
+gets flooded to the point that there are signals that have been raised
+but not yet caught (and thus not deferred) at the time an opcode
+completes, those signals may well be caught and deferred during
+subsequent opcodes, with sometimes surprising results.  For example, you
+may see alarms delivered even after calling C<alarm(0)> as the latter
+stops the raising of alarms but does not cancel the delivery of alarms
+raised but not yet caught.  Do not depend on the behaviors described in
+this paragraph as they are side effects of the current implementation and
+may change in future versions of Perl.
+
+=end original
+
+注意: もしどのような種類のシグナルでも(例えば高精度のタイマーから)
+1 つのオペコードの間に複数回発生した場合、そのシグナルのハンドラは
+オペコードの完了後 1 度しか呼び出されず、その他の実体は破棄されます。
+さらに、システムのシグナルキューがあふれたために
+あるオペコードが完了時に、発生したけれどもまだ捕捉されていない
+(従ってまだ保留されていない)シグナルがあると
+これらのシグナルが引き続くオペコードの間捕捉および保留され、時々
+驚くべき結果となることがあります。
+例えば、C<alarm(0)> はアラームの発生を止めますが、
+発生したけれどもまだ捕捉していないアラームの配達がキャンセルしないので、
+C<alarm(0)> を呼び出した後にもアラームが配送されることがあります。
+これは現在の実装の副作用であり、将来のバージョンの Perl では
+変更されるかもしれないので、この段落に記述された振る舞いに依存しては
+いけません。
 
 =item Interrupting IO
 
@@ -760,6 +793,18 @@ try something like the following:
                      POSIX::SigAction->new(sub { die "alarm" }))
           or die "Error setting SIGALRM handler: $!\n";
 
+=begin original
+
+Another way to disable the safe signal behavior locally is to use
+the C<Perl::Unsafe::Signals> module from CPAN (which will affect
+all signals).
+
+=end original
+
+安全なシグナルの振る舞いを局所的に無効にするもう一つの方法は
+CPAN の C<Perl::Unsafe::Signals> モジュールを使うことです
+(全てのシグナルに影響を与えます)。
+
 =item Restartable system calls
 
 (再起動可能なシステムコール)
@@ -803,34 +848,17 @@ C<waitpid> calls will always be retried.
 
 =begin original
 
-Certain signals e.g. SEGV, ILL, BUS are generated as a result of
-virtual memory or other "faults". These are normally fatal and there
-is little a Perl-level handler can do with them. (In particular the
-old signal scheme was particularly unsafe in such cases.)  However if
-a %SIG handler is set the new scheme simply sets a flag and returns as
-described above. This may cause the operating system to try the
-offending machine instruction again and - as nothing has changed - it
-will generate the signal again. The result of this is a rather odd
-"loop". In future Perl's signal mechanism may be changed to avoid this
-- perhaps by simply disallowing %SIG handlers on signals of that
-type. Until then the work-round is not to set a %SIG handler on those
-signals. (Which signals they are is operating system dependent.)
+Certain signals, e.g. SEGV, ILL, and BUS, are generated as a result of
+virtual memory or other "faults". These are normally fatal and there is
+little a Perl-level handler can do with them, so Perl now delivers them
+immediately rather than attempting to defer them.
 
 =end original
 
 SEGV, ILL, BUS のようなシグナルは、仮想メモリやその他の「障害」の結果として
 生成されます。
-これらは普通致命的で、Perl-レベルのハンドラができることはほとんどありません。
-(特に、古いシグナルスキームではこのような場合では特に安全ではありません。)
-しかし、%SIG ハンドラがセットされると、新しいスキームは上述のように、
-単にフラグをセットして返ります。
-これによって OS が問題のあるコードを再び実行して
-- 何も変わっていないので - 再びシグナルを生成します。
-この結果はおかしな「ループ」となります。
-将来の Perl のシグナル機構はこれを避けるために変更されるでしょう -
-おそらく単にこの種類のシグナルに関する %SIG ハンドラを無効にするでしょう。
-それまでの回避策としては、これらのシグナル(どのシグナルかは OS 依存です)
-の %SIG ハンドラをセットしないことです。
+これらは普通致命的で、Perl-レベルのハンドラができることはほとんど
+ないので、これらを保留しようとせず、直ちに配送します。
 
 =item Signals triggered by operating system state
 
@@ -1113,7 +1141,7 @@ output doesn't wind up on the user's terminal).
 The fork() has to come before the setsid() to ensure that you aren't a
 process group leader (the setsid() will fail if you are).  If your
 system doesn't have the setsid() function, open F</dev/tty> and use the
-C<TIOCNOTTY> ioctl() on it instead.  See L<tty(4)> for details.
+C<TIOCNOTTY> ioctl() on it instead.  See tty(4) for details.
 
 =end original
 
@@ -1122,7 +1150,7 @@ fork() はプロセスグループリーダー(もしそうなら setsid() は
 setsid() の前になければなりません。
 あなたの使っているシステムが sesid() 関数を持っていないのであれば、
 F</dev/tty> をオープンして C<TIONCNOTTY> ioctl() を代わりに使います。
-詳しくは L<tty(4)> を参照してください。
+詳しくは tty(4) を参照してください。
 
 =begin original
 
@@ -1803,69 +1831,76 @@ spawn(fork) します。
     my $paddr;
 
     use POSIX ":sys_wait_h";
+    use Errno;
+
     sub REAPER {
-	my $child;
-        while (($waitedpid = waitpid(-1,WNOHANG)) > 0) {
-	    logmsg "reaped $waitedpid" . ($? ? " with exit $?" : '');
-	}
-	$SIG{CHLD} = \&REAPER;  # loathe sysV
+        local $!;   # don't let waitpid() overwrite current error
+        while ((my $pid = waitpid(-1,WNOHANG)) > 0 && WIFEXITED($?)) {
+            logmsg "reaped $waitedpid" . ($? ? " with exit $?" : '');
+        }
+        $SIG{CHLD} = \&REAPER;  # loathe sysV
     }
 
     $SIG{CHLD} = \&REAPER;
 
-    for ( $waitedpid = 0;
-	  ($paddr = accept(Client,Server)) || $waitedpid;
-	  $waitedpid = 0, close Client)
-    {
-	next if $waitedpid and not $paddr;
-	my($port,$iaddr) = sockaddr_in($paddr);
-	my $name = gethostbyaddr($iaddr,AF_INET);
+    while(1) {
+        $paddr = accept(Client, Server) || do {
+            # try again if accept() returned because a signal was received
+            next if $!{EINTR};
+            die "accept: $!";
+        };
+        my ($port, $iaddr) = sockaddr_in($paddr);
+        my $name = gethostbyaddr($iaddr, AF_INET);
 
-	logmsg "connection from $name [",
-		inet_ntoa($iaddr), "]
-		at port $port";
+        logmsg "connection from $name [",
+               inet_ntoa($iaddr),
+               "] at port $port";
 
-	spawn sub {
-	    $|=1;
-	    print "Hello there, $name, it's now ", scalar localtime, $EOL;
-	    exec '/usr/games/fortune'		# XXX: `wrong' line terminators
-		or confess "can't exec fortune: $!";
-	};
-
+        spawn sub {
+            $|=1;
+            print "Hello there, $name, it's now ", scalar localtime, $EOL;
+            exec '/usr/games/fortune'       # XXX: `wrong' line terminators
+                or confess "can't exec fortune: $!";
+        };
+        close Client;
     }
 
     sub spawn {
-	my $coderef = shift;
+        my $coderef = shift;
 
-	unless (@_ == 0 && $coderef && ref($coderef) eq 'CODE') {
-	    confess "usage: spawn CODEREF";
-	}
+        unless (@_ == 0 && $coderef && ref($coderef) eq 'CODE') {
+            confess "usage: spawn CODEREF";
+        }
 
-	my $pid;
-	if (!defined($pid = fork)) {
-	    logmsg "cannot fork: $!";
-	    return;
-	} elsif ($pid) {
-	    logmsg "begat $pid";
-	    return; # I'm the parent
-	}
-	# else I'm the child -- go spawn
+        my $pid;
+        if (! defined($pid = fork)) {
+            logmsg "cannot fork: $!";
+            return;
+        } 
+        elsif ($pid) {
+            logmsg "begat $pid";
+            return; # I'm the parent
+        }
+        # else I'm the child -- go spawn
 
-	open(STDIN,  "<&Client")   || die "can't dup client to stdin";
-	open(STDOUT, ">&Client")   || die "can't dup client to stdout";
-	## open(STDERR, ">&STDOUT") || die "can't dup stdout to stderr";
-	exit &$coderef();
+        open(STDIN,  "<&Client")   || die "can't dup client to stdin";
+        open(STDOUT, ">&Client")   || die "can't dup client to stdout";
+        ## open(STDERR, ">&STDOUT") || die "can't dup stdout to stderr";
+        exit &$coderef();
     }
 
 =begin original
 
-This server takes the trouble to clone off a child version via fork() for
-each incoming request.  That way it can handle many requests at once,
-which you might not always want.  Even if you don't fork(), the listen()
-will allow that many pending connections.  Forking servers have to be
-particularly careful about cleaning up their dead children (called
-"zombies" in Unix parlance), because otherwise you'll quickly fill up your
-process table.
+This server takes the trouble to clone off a child version via fork()
+for each incoming request.  That way it can handle many requests at
+once, which you might not always want.  Even if you don't fork(), the
+listen() will allow that many pending connections.  Forking servers
+have to be particularly careful about cleaning up their dead children
+(called "zombies" in Unix parlance), because otherwise you'll quickly
+fill up your process table.  The REAPER subroutine is used here to
+call waitpid() for any child processes that have finished, thereby
+ensuring that they terminate cleanly and don't join the ranks of the
+living dead.
 
 =end original
 
@@ -1879,6 +1914,54 @@ fork()を使わなかったとしても、listen() は多くの一時停止した
 後始末に関して注意深くする必要があります。
 なぜなら、そうしなければプロセステーブルがすぐに埋めつくされることに
 なるからです。
+ここで REAPER サブルーチンは終了した全ての子プロセスのために
+waitpid() を呼び出すために使われ、従って子プロセスがきれいに終了し、
+ゾンビの集団に加わらないことを確実にします。
+
+=begin original
+
+Within the while loop we call accept() and check to see if it returns
+a false value.  This would normally indicate a system error that needs
+to be reported.  However the introduction of safe signals (see
+L</Deferred Signals (Safe Signals)> above) in Perl 5.7.3 means that
+accept() may also be interrupted when the process receives a signal.
+This typically happens when one of the forked sub-processes exits and
+notifies the parent process with a CHLD signal.  
+
+=end original
+
+while ループの中で accept() を呼び出して、偽の値を返すかどうかを
+チェックします。
+これは普通報告する必要のあるシステムエラーを示しています。
+しかし、Perl 5.7.3 で導入された安全なシグナル(上述の
+L</Deferred Signals (Safe Signals)> を参照してください) の導入は、
+プロセスがシグナルを受信した場合にも accept() が中断されうることを
+意味します。
+これは典型的には、fork した子プロセスの一つが終了して、親プロセスに
+CHLD シグナルを通知した場合に起こります。
+
+=begin original
+
+If accept() is interrupted by a signal then $! will be set to EINTR.
+If this happens then we can safely continue to the next iteration of
+the loop and another call to accept().  It is important that your
+signal handling code doesn't modify the value of $! or this test will
+most likely fail.  In the REAPER subroutine we create a local version
+of $! before calling waitpid().  When waitpid() sets $! to ECHILD (as
+it inevitably does when it has no more children waiting), it will
+update the local copy leaving the original unchanged.
+
+=end original
+
+もし accept() がシグナルで中断されると、$! に EINTR がセットされます。
+これが起きた場合、次の反復と次の accept() の呼び出しを安全に続行できます。
+シグナルハンドラコードが $! を変更しないようにしないと、このテストが
+ほぼ確実に失敗するということは重要です。
+REAPER サブルーチンでは waitpid() を呼び出す前にローカル版の $! を
+作成しています。
+waitpid() が $! に ECHILD をセットすると(これはどの子プロセスも待っていない
+ときに必然的に発生します)、これは元の値を変更せず、ローカルなコピーを
+更新します。
 
 =begin original
 
@@ -2902,10 +2985,10 @@ Here's a small example showing shared memory usage.
 
 共有メモリの使い方を例示する小さな例です。
 
-    use IPC::SysV qw(IPC_PRIVATE IPC_RMID S_IRWXU);
+    use IPC::SysV qw(IPC_PRIVATE IPC_RMID S_IRUSR S_IWUSR);
 
     $size = 2000;
-    $id = shmget(IPC_PRIVATE, $size, S_IRWXU) || die "$!";
+    $id = shmget(IPC_PRIVATE, $size, S_IRUSR|S_IWUSR) || die "$!";
     print "shm key $id\n";
 
     $message = "Message #1";
@@ -3017,9 +3100,9 @@ A small example demonstrating SysV message queues:
 
 SysV メッセージキューを例示する簡単な例です:
 
-    use IPC::SysV qw(IPC_PRIVATE IPC_RMID IPC_CREAT S_IRWXU);
+    use IPC::SysV qw(IPC_PRIVATE IPC_RMID IPC_CREAT S_IRUSR S_IWUSR);
 
-    my $id = msgget(IPC_PRIVATE, IPC_CREAT | S_IRWXU);
+    my $id = msgget(IPC_PRIVATE, IPC_CREAT | S_IRUSR | S_IWUSR);
 
     my $sent = "message";
     my $type_sent = 1234;
