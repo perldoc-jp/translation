@@ -1,0 +1,168 @@
+=encoding utf8
+
+=head1 題名
+
+Moose::Cookbook::Meta::Recipe7 - グロブリファレンスをメタインスタンスのクラスにする
+
+=head1 概要
+
+  package My::Meta::Instance;
+
+  use Scalar::Util qw( weaken );
+  use Symbol qw( gensym );
+
+  use Moose;
+  extends 'Moose::Meta::Instance';
+
+  sub create_instance {
+      my $self = shift;
+      my $sym = gensym();
+      bless $sym, $self->_class_name;
+  }
+
+  sub clone_instance {
+      my ( $self, $instance ) = @_;
+
+      my $new_sym = gensym();
+      %{*$new_sym} = %{*$instance};
+
+      bless $new_sym, $self->_class_name;
+  }
+
+  sub get_slot_value {
+      my ( $self, $instance, $slot_name ) = @_;
+      return *$instance->{$slot_name};
+  }
+
+  sub set_slot_value {
+      my ( $self, $instance, $slot_name, $value ) = @_;
+      *$instance->{$slot_name} = $value;
+  }
+
+  sub deinitialize_slot {
+      my ( $self, $instance, $slot_name ) = @_;
+      delete *$instance->{$slot_name};;
+  }
+
+  sub is_slot_initialized {
+      my ( $self, $instance, $slot_name, $value ) = @_;
+      exists *$instance->{$slot_name};;
+  }
+
+  sub weaken_slot_value {
+      my ( $self, $instance, $slot_name ) = @_;
+      weaken *$instance->{$slot_name};;
+  }
+
+  sub inline_create_instance {
+      my ( $self, $class_variable ) = @_;
+      return 'do { my $sym = Symbol::gensym(); bless $sym, ' . $class_variable . ' }';
+  }
+
+  sub inline_slot_access {
+      my ( $self, $instance, $slot_name ) = @_;
+      return '*{' . $instance . '}->{' . $slot_name . '}';
+  }
+
+  package MyApp::User;
+
+  use metaclass 'Moose::Meta::Class' =>
+      ( instance_metaclass => 'My::Meta::Instance' );
+
+  use Moose;
+
+  has 'name' => (
+      is  => 'rw',
+      isa => 'Str',
+  );
+
+  has 'email' => (
+      is  => 'rw',
+      isa => 'Str',
+  );
+
+=head1 本文
+
+このレシピでは自前のメタインスタンスの作り方を紹介します。メタインスタンスというのはオブジェクトのインスタンスを作るメタクラスのことで、アトリビュートスロットへのアクセスを管理する手助けをします。
+
+ここで作るメタインスタンスは、ハッシュリファレンスではなく、グロブリファレンスベースのものです（この例の元ネタはおもにPiotr RoszatyckiのL<MooseX::GlobRef>モジュールです）。
+
+私たちのクラスはL<Moose::Meta::Instance>のサブクラスですが、これはハッシュリファレンスベースのオブジェクトを作るものなので、オブジェクトのデータ構造がそうなっていることを前提にしているメソッドはすべてオーバーライドする必要があります。
+
+最初にオーバーライドするメソッドはC<create_instance>です。
+
+  sub create_instance {
+      my $self = shift;
+      my $sym = gensym();
+      bless $sym, $self->_class_name;
+  }
+
+ここではメタインスタンスに紐づけられたクラスでblessされたグロブリファレンスを返します。
+
+また、C<clone_instance>もオーバーライドして、新しいグロブリファレンスを生成するようにします。
+
+  sub clone_instance {
+      my ( $self, $instance ) = @_;
+
+      my $new_sym = gensym();
+      %{*$new_sym} = %{*$instance};
+
+      bless $new_sym, $self->_class_name;
+  }
+
+それから、オブジェクトのスロットへのアクセスを仲介する一連のメソッドがあります（「スロット」というのはアトリビュートが保存される場所です）。デフォルトのインスタンスクラスでは、オブジェクトはハッシュリファレンスであることが期待されていますが、ここを、グロブリファレンスであることを期待するように変更する必要があります。
+
+  sub get_slot_value {
+      my ( $self, $instance, $slot_name ) = @_;
+      *$instance->{$slot_name};;
+  }
+
+このレベルの回り道をすると、おそらくインスタンスクラスはデフォルトのものより「遅く」なってしまいますが、アトリビュートのアクセスをインライン展開してしまえば、この参照はキャッシュされます。
+
+  sub inline_create_instance {
+      my ( $self, $class_variable ) = @_;
+      return 'do { my $sym = Symbol::gensym(); bless $sym, ' . $class_variable . ' }';
+  }
+
+C<inline_slot_access>メソッドが返すコード片は、ひとつのアトリビュートにつき1度C<eval>されます。
+
+最後に、C<MyApp::User>クラスの中でこのメタインスタンスを使うようにします。
+
+  use metaclass 'Moose::Meta::Class' =>
+      ( instance_metaclass => 'My::Meta::Instance' );
+
+実際にはほとんどの場合、L<metaclass>の利用は推奨しません。ただし、もう一方の、メタクラスの代用品を利用するやり方はもっと複雑ですし、例題のコードも必要以上に込み入ったものになってしまいます。
+
+=head1 まとめ
+
+このレシピでは独自のメタインスタンスクラスの作り方を紹介しました。みなさんがここまでする必要はなさそうですが、Mooseが裏でどのような動きをしているかを見てみるのも一興です。
+
+=head1 参照
+
+CPANにはメタインスタンスクラスの拡張モジュールがいくつかあります。
+
+=over 4
+
+=item * L<MooseX::Singleton>
+
+このモジュールはインスタンスクラスを拡張してオブジェクトが確実にシングルトンになるようにします（ただし、このモジュールが利用するインスタンスはそれでもblessされたハッシュリファレンスのままです）。
+
+=item * L<MooseX::GlobRef>
+
+このモジュールはインスタンスをblessされたグロブリファレンスにします。こうするとハンドルをオブジェクトインスタンスとして利用できるようになります。
+
+=back
+
+=head1 作者
+
+Dave Rolsky E<lt>autarch@urth.orgE<gt>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2006-2009 by Infinity Interactive, Inc.
+
+L<http://www.iinteractive.com>
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+

@@ -1,0 +1,116 @@
+=encoding utf8
+
+=head1 題名
+
+Moose::Cookbook::Roles::Recipe2 - 高度なロールの合成――メソッドの排除と別名
+
+=head1 概要
+
+  package Restartable;
+  use Moose::Role;
+
+  has 'is_paused' => (
+      is      => 'rw',
+      isa     => 'Bool',
+      default => 0,
+  );
+
+  requires 'save_state', 'load_state';
+
+  sub stop { 1 }
+
+  sub start { 1 }
+
+  package Restartable::ButUnreliable;
+  use Moose::Role;
+
+  with 'Restartable' => {
+      alias => {
+          stop  => '_stop',
+          start => '_start'
+      }
+  };
+
+  sub stop {
+      my $self = shift;
+
+      $self->explode() if rand(1) > .5;
+
+      $self->_stop();
+  }
+
+  sub start {
+      my $self = shift;
+
+      $self->explode() if rand(1) > .5;
+
+      $self->_start();
+  }
+
+  package Restartable::ButBroken;
+  use Moose::Role;
+
+  with 'Restartable' => { excludes => [ 'stop', 'start' ] };
+
+  sub stop {
+      my $self = shift;
+
+      $self->explode();
+  }
+
+  sub start {
+      my $self = shift;
+
+      $self->explode();
+  }
+
+=head1 本文
+
+この例では、ロールのどのメソッドを取り込むを細かくコントロールするやり方を説明します。ここではC<Restartable>というロールを用意しました。これにはC<is_paused>というアトリビュートと、C<stop>とC<start>という2つのメソッドがあります。
+
+それから、もう2つ、インタフェースは同じですが、それぞれC<stop>メソッドとC<start>メソッドにひねりを加えたロールを用意します。
+
+C<Restartable::ButUnreliable>ロールではC<stop>とC<start>の実装を新しくしつつ、もともとの実装も利用できるようにしたいので、C<Restartable>のメソッドに別名をつけてプライベートメソッドにし、もとのメソッドの方にラッパを用意することにします。(1)
+
+  with 'Restartable' => {
+      alias => {
+          stop  => '_stop',
+          start => '_start'
+      }
+  };
+
+C<Restartable::ButBroken>ロールの方では、C<stop>とC<start>の振る舞いを一新したいので、C<Restartable::ButBroken>にC<Restartable>ロールを合成するときにC<stop>とC<start>を完全に排除してしまいます。
+
+C<excludes>パラメータは、排除したいメソッドがひとつだけの場合は引数に単一の文字列を取ることができることも特記しておきます。
+
+  with 'Restartable' => { excludes => [ 'stop', 'start' ] };
+
+=head1 まとめ
+
+排除と別名は強力なツールですし、特にほかのロールからロールを生成する場合には便利に使えます。この例では、すべてのロールがC<Restartable>ロールを実装しています。どのロールもAPIは同じですが、それぞれ裏では異なった実装になっています。
+
+別名と排除の機能は、ロールをクラスに合成するときも使えます。
+
+=head1 脚注
+
+=over 4
+
+=item (1)
+
+ラッパに言及したことからおわかりの通り、メソッドモディファイアを利用しても同じことができますが、この例ではそうしていません。
+
+=back
+
+=head1 作者
+
+Dave Rolsky E<lt>autarch@urth.orgE<gt>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2006-2009 by Infinity Interactive, Inc.
+
+L<http://www.iinteractive.com>
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+

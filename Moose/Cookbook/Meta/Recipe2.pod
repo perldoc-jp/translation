@@ -1,0 +1,226 @@
+=encoding utf8
+
+=head1 題名
+
+Moose::Cookbook::Meta::Recipe2 - メタアトリビュート、ラベル付きのアトリビュート
+
+=head1 概要
+
+  package MyApp::Meta::Attribute::Labeled;
+  use Moose;
+  extends 'Moose::Meta::Attribute';
+
+  has label => (
+      is        => 'rw',
+      isa       => 'Str',
+      predicate => 'has_label',
+  );
+
+  package Moose::Meta::Attribute::Custom::Labeled;
+  sub register_implementation {'MyApp::Meta::Attribute::Labeled'}
+
+  package MyApp::Website;
+  use Moose;
+
+  has url => (
+      metaclass => 'Labeled',
+      is        => 'rw',
+      isa       => 'Str',
+      label     => "The site's URL",
+  );
+
+  has name => (
+      is  => 'rw',
+      isa => 'Str',
+  );
+
+  sub dump {
+      my $self = shift;
+
+      my $dump = '';
+
+      my %attributes = %{ $self->meta->get_attribute_map };
+      for my $name ( sort keys %attributes ) {
+          my $attribute = $attributes{$name};
+
+          if (   $attribute->isa('MyApp::Meta::Attribute::Labeled')
+              && $attribute->has_label ) {
+              $dump .= $attribute->label;
+          }
+          else {
+              $dump .= $name;
+          }
+
+          my $reader = $attribute->get_read_method;
+          $dump .= ": " . $self->$reader . "\n";
+      }
+
+      return $dump;
+  }
+
+  package main;
+
+  my $app = MyApp::Website->new( url => "http://google.com", name => "Google" );
+
+=head1 概要
+
+このレシピからは、不思議なメタプログラミングの世界に深入りしていきます。読者の中には「そんなのはいかれまくった変態開発者だけの世界だ」と冷笑する方もいるかもしれませんが、断じてそんなことはありません！　それなりにいかれた開発者であれば、メタを利用すれば多大な恩恵を受けられます。
+
+ここでの目標は、それぞれのアトリビュートに人が読んでわかるような「ラベル」を追加することです。このようなラベルがあれば、エンドユーザにデータを見せるときに利用できます。このレシピでは、C<url>アトリビュートに「このサイトのURL」というラベルをつけ、そのラベルの使い方を紹介する簡単なメソッドを作ります。
+
+=head1 メタアトリビュートオブジェクト
+
+Mooseベースのオブジェクトのアトリビュートは、実際にはすべてオブジェクトであり、メソッドやアトリビュートを持っています。具体的な例を見てみましょう。
+
+  has 'x' => ( isa => 'Int', is => 'ro' );
+  has 'y' => ( isa => 'Int', is => 'rw' );
+
+内部的には、C<Point>のメタクラスはL<Moose::Meta::Attribute>を2つ持っています。メタクラスからメタアトリビュートを取り出す方法はいくつかありますが、そのひとつにC<get_attribute_map>というメソッドがあります。このメソッドはメタクラスオブジェクトから呼べます。
+
+C<get_attribute_map>メソッドはアトリビュート名とオブジェクトがマッピングされたハッシュリファレンスを返します。今回の場合、C<get_attribute_map>はこのようなハッシュリファレンスを返すはずです。
+
+  {
+      x => $attr_object_for_x,
+      y => $attr_object_for_y,
+  }
+
+また、C<get_attribute('name')>を使うと単独のL<Moose::Meta::Attribute>を取り出すこともできます。メタアトリビュートオブジェクトを取り出したら、このようなメソッドを呼ぶことができます。
+
+  print $point->meta->get_attribute('x')->type_constraint;
+     => Int
+
+アトリビュートにラベルを追加するには、2つの手順を踏む必要があります。まず、アトリビュートのラベルを保存できる新しいアトリビュートメタクラスが必要です。また、そのアトリビュートメタクラスを利用するアトリビュートを作成する必要があります。
+
+=head1 レシピのおさらい
+
+まずは新しいアトリビュートメタクラスから作っていきます。
+
+  package MyApp::Meta::Attribute::Labeled;
+  use Moose;
+  extends 'Moose::Meta::Attribute';
+
+Mooseのメタクラスもほかのものをサブクラス化するのと同じやり方でサブクラス化できます。
+
+  has label => (
+      is        => 'rw',
+      isa       => 'Str',
+      predicate => 'has_label',
+  );
+
+これもまた標準的なMooseのコードです。
+
+続いて、Mooseを使って私たちのメタクラスを登録する必要があります。
+
+  package Moose::Meta::Attribute::Custom::Labeled;
+  sub register_implementation { 'MyApp::Meta::Attribute::Labeled' }
+
+ここではちょっとした魔法を使って、新しいメタクラスを参照するときに「Labeled」という短い名前を使えるようにしています。
+
+これでアトリビュートメタクラスはおしまいです。
+
+今度はアトリビュートメタクラスを使ってみましょう。
+
+  package MyApp::Website;
+  use Moose;
+  use MyApp::Meta::Attribute::Labeled;
+
+ほかのPerlのクラスと同様に、メタクラスを使うにはロードする必要があります。
+
+いよいよアトリビュートにメタクラスを適用します。
+
+  has url => (
+      metaclass => 'Labeled',
+      is        => 'rw',
+      isa       => 'Str',
+      label     => "The site's URL",
+  );
+
+これは一見ふつうのアトリビュート宣言ですが、2つ異なっているところがあります。C<metaclass>パラメータとC<label>パラメータです。C<metaclass>パラメータはMooseにこのアトリビュートでは独自のメタクラスを利用したい、ということを伝えるものです。C<label>パラメータはメタアトリビュートオブジェクトに保存されます。
+
+C<MyApp::Meta::Attribute::Labeled>ではなくC<Labeled>という名前を渡せるのは、先ほど触れたC<register_implementation>というコードのおかげです。
+
+C<has>にメタクラスを渡すと、Mooseは受け取ったメタクラス名にC<Moose::Meta::Attribute::Custom::>というプレフィックスをつけて、そのパッケージ内のC<register_implementation>を呼びます（この場合は最終的にC<Moose::Meta::Attribute::Custom::Labeled::register_implementation>を呼ぶことになります）。
+
+この関数が存在している場合は「本当の」メタクラスパッケージ名を返すことになっています（ここでC<MyApp::Meta::Attribute::Labeled>を返しているのはまさにそれです）。ただ、このやり方はいささか複雑なので、気に入らない場合は、いつでも完全修飾名を使ってください。
+
+このメタアトリビュートとラベルにはこのような形でアクセスできます。
+
+  $website->meta->get_attribute('url')->label()
+
+  MyApp::Website->meta->get_attribute('url')->label()
+
+また、ここではC<name>というふつうのアトリビュートも用意してあります。
+
+  has name => (
+      is  => 'rw',
+      isa => 'Str',
+  );
+
+これは新しいメタクラスを指定していませんから、いつも通りのMooseのアトリビュートです。
+
+いよいよC<dump>メソッドです。これはC<MyApp::Website>オブジェクトを人が読める形にするものです。ここではアトリビュートのラベルがあればそれを利用するようになっています。
+
+  sub dump {
+      my $self = shift;
+
+      my $dump = '';
+
+      my %attributes = %{ $self->meta->get_attribute_map };
+      for my $name ( sort keys %attributes ) {
+          my $attribute = $attributes{$name};
+
+          if (   $attribute->isa('MyApp::Meta::Attribute::Labeled')
+              && $attribute->has_label ) {
+              $dump .= $attribute->label;
+          }
+
+これはやや防衛的なコードになっています。すべてのメタアトリビュートがラベルを持っているとは限りません。私たちが自分のクラスのすべてのアトリビュートにラベルを定義したとしても、サブクラスはそうしないかもしれませんし、スーパークラスがラベルのないアトリビュートを追加するかもしれないからです。
+
+また、ここで定義した断定用のメソッドを使って、アトリビュートがラベルを持っているかどうかもチェックしています。あるいはラベルをC<required>にしてもよいかもしれません。ラベルがあればそれを利用し、なければアトリビュート名を利用します。
+
+          else {
+              $dump .= $name;
+          }
+
+          my $reader = $attribute->get_read_method;
+          $dump .= ": " . $self->$reader . "\n";
+      }
+
+      return $dump;
+  }
+
+C<get_read_method>はL<Moose::Meta::Attribute>のAPIからきています。これは「本当のオブジェクトに対して呼ばれた場合は」アトリビュートの値を読み込むときに使えるメソッド名を返します（メタアトリビュートに対しては使わないでください）。
+
+=head1 まとめ
+
+どうしてこんな手間をかけるのかと思われたかもしれません。C<dump>メソッドに「このサイトのURL」とハードコードするだけでもいいように思えます。でも、繰り返しは避けたいものです。どこかでラベルが必要になったということは、別の箇所、たとえば次に書くC<as_form>というメソッドでもラベルが必要になるかもしれないということ。
+
+ラベルをアトリビュートに紐づけておけば筋が通ります！　ラベルはそのアトリビュート「についての」情報なのですから。
+
+もうひとつぜひ理解しておいていただきたいのは、今回の例はつまらないものだったということ。単に追加情報を保存しておくだけでなく、もっといろいろなことをしてくれる、はるかに強力なメタクラスを作ることもできるのです。たとえば、一定時間がたったらアトリビュートを期限切れにするメタクラスを実装してみてもよいでしょう。
+
+   has site_cache => (
+       metaclass     => 'TimedExpiry',
+       expires_after => { hours => 1 },
+       refresh_with  => sub { get( $_[0]->url ) },
+       isa           => 'Str',
+       is            => 'ro',
+   );
+
+可能性は無限大です！
+
+=head1 作者
+
+Shawn M Moore E<lt>sartak@gmail.comE<gt>
+
+Dave Rolsky E<lt>autarch@urth.org<gt>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2006-2009 by Infinity Interactive, Inc.
+
+L<http://www.iinteractive.com>
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+

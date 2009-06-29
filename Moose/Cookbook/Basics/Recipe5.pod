@@ -1,0 +1,166 @@
+=encoding utf8
+
+=head1 題名
+
+Moose::Cookbook::Basics::Recipe5 - サブタイプふたたび、B<Request>クラスの型変換
+
+=head1 概要
+
+  package Request;
+  use Moose;
+  use Moose::Util::TypeConstraints;
+
+  use HTTP::Headers  ();
+  use Params::Coerce ();
+  use URI            ();
+
+  subtype 'My::Types::HTTP::Headers' => as class_type('HTTP::Headers');
+
+  coerce 'My::Types::HTTP::Headers'
+      => from 'ArrayRef'
+          => via { HTTP::Headers->new( @{$_} ) }
+      => from 'HashRef'
+          => via { HTTP::Headers->new( %{$_} ) };
+
+  subtype 'My::Types::URI' => as class_type('URI');
+
+  coerce 'My::Types::URI'
+      => from 'Object'
+          => via { $_->isa('URI')
+                   ? $_
+                   : Params::Coerce::coerce( 'URI', $_ ); }
+      => from 'Str'
+          => via { URI->new( $_, 'http' ) };
+
+  subtype 'Protocol'
+      => as 'Str'
+      => where { /^HTTP\/[0-9]\.[0-9]$/ };
+
+  has 'base' => ( is => 'rw', isa => 'My::Types::URI', coerce => 1 );
+  has 'uri'  => ( is => 'rw', isa => 'My::Types::URI', coerce => 1 );
+  has 'method'   => ( is => 'rw', isa => 'Str' );
+  has 'protocol' => ( is => 'rw', isa => 'Protocol' );
+  has 'headers'  => (
+      is      => 'rw',
+      isa     => 'My::Types::HTTP::Headers',
+      coerce  => 1,
+      default => sub { HTTP::Headers->new }
+  );
+
+=head1 本文
+
+このレシピではC<coerce>というシュガー関数で定義される型変換を紹介します。型変換は、既存の型制約と組み合わせて、ある型から別の型への（一方的な）変換を定義するものです。
+
+これは非常に強力な機能ですが、魔術的な機能でもあるので、アトリビュートを型変換する際には明示的に、C<coerce>というアトリビュートオプションを真に設定しなければなりません。
+
+まずはほかの型から型変換するサブタイプを作ります。
+
+  subtype 'My::Types::HTTP::Headers' => as class_type('HTTP::Headers');
+
+ここではC<HTTP::Headers>を直接型として利用するのではなく、サブタイプを作っています。これは、型変換はグローバルなものであるため、C<Request>クラスでC<HTTP::Headers>の型変換を定義すると、同じPerlインタプリタ上でMooseを使っている「すべての」クラスで同じ型変換が定義されてしまうためです。このような名前空間の汚染は避けるのがL<ベストプラクティス|Moose::Manual::BestPractices>です。
+
+C<class_type>というシュガー関数は単にこれのショートカットです。
+
+  subtype 'HTTP::Headers'
+      => as 'Object'
+      => where { $_->isa('HTTP::Headers') };
+
+Mooseを使っているクラスはすべて内部的に型制約が生成されますが、Mooseを使っていないクラスについては明示的に型を宣言しなければなりません。
+
+型を宣言しておくと、この先この新しい型を直接使えるようになります。
+
+  has 'headers' => (
+      is      => 'rw',
+      isa     => 'HTTP::Headers',
+      default => sub { HTTP::Headers->new }
+  );
+
+これで、空のL<HTTP::Headers>インスタンスがデフォルトの簡単なアトリビュートが生成されます。
+
+L<HTTP::Headers>のコンストラクタは、HTTPヘッダのフィールドに対応するキーと値の組のリストを受け付けます。Perlでは、このようなリストは配列リファレンスないしハッシュリファレンスに保存できますが、このC<headers>アトリビュートでも、B<HTTP::Headers>インスタンスのかわりにそういったデータ構造を受け付けて適切な処理をさせたいところ。こういうときこそ型変換の出番です。
+
+  coerce 'My::Types::HTTP::Headers'
+      => from 'ArrayRef'
+          => via { HTTP::Headers->new( @{$_} ) }
+      => from 'HashRef'
+          => via { HTTP::Headers->new( %{$_} ) };
+
+C<coerce>の最初の引数は、変換「先」の型です。そのあとには、C<from>節とC<via>節の組を続けます。C<from>関数は別の型の名前を、C<via>は実際に型変換を行うサブルーチンリファレンスを取ります。
+
+ただし、型変換を定義しても、Mooseに型変換したいアトリビュートを伝えないと何も起こりません。
+
+  has 'headers' => (
+      is      => 'rw',
+      isa     => 'My::Types::HTTP::Headers',
+      coerce  => 1,
+      default => sub { HTTP::Headers->new }
+  );
+
+これで、C<headers>を初期化するときにC<ArrayRef>やC<HashRef>を使うと、新しいL<HTTP::Headers>インスタンスに変換されます。この型変換を用意すると、以下のコードはすべて同じ結果になります。
+
+  $foo->headers( HTTP::Headers->new( bar => 1, baz => 2 ) );
+  $foo->headers( [ 'bar', 1, 'baz', 2 ] );
+  $foo->headers( { bar => 1, baz => 2 } );
+
+ご覧の通り、型変換は気をつけて使うと型制約のチェックによる「安全性」を保ったままクラスのインタフェースを非常にオープンなものにできます。(1)
+
+次の型変換では、既存のCPANモジュールを使って型変換を実装する方法を紹介します（ここではL<Params::Coerce>を使います）。
+
+L<URI>クラスはMooseを使っていないので、今回もクラス型を宣言しておく必要があります。
+
+  subtype 'My::Types::URI' => as class_type('URI');
+
+続いて型変換を定義します。
+
+  coerce 'My::Types::URI'
+      => from 'Object'
+          => via { $_->isa('URI')
+                   ? $_
+                   : Params::Coerce::coerce( 'URI', $_ ); }
+      => from 'Str'
+          => via { URI->new( $_, 'http' ) };
+
+最初の型変換は、何らかのオブジェクトを受け取ってC<URI>オブジェクトに変換するものです。型変換システムはそれほど賢いものではありませんので、オブジェクトがもともとL<URI>かどうかはチェックしません。そこで、そのチェックは自分でして、L<URI>でなければL<Params::Coerce>に魔法をかけてもらい、その返り値を流用しています。
+
+もし（なんらかの事情で）L<Params::Coerce>がL<URI>オブジェクトを返さなかった場合は、型制約のエラーが発生します。
+
+もうひとつの型変換は、文字列を受け取ってL<URI>に変換するものです。この場合は、型変換を利用してデフォルトの振る舞いを適用しています（文字列はC<http>のURIであると仮定しています）。
+
+最後に、アトリビュートの型変換を忘れずに有効にしておく必要があります。
+
+  has 'base' => ( is => 'rw', isa => 'My::Types::URI', coerce => 1 );
+  has 'uri'  => ( is => 'rw', isa => 'My::Types::URI', coerce => 1 );
+
+型変換を再利用すると、複数のアトリビュートで首尾一貫したAPIを強制することができます。
+
+=head1 まとめ
+
+このレシピでは、型変換を利用してより柔軟で物わかりのよいAPIを生成する方法を紹介しました。ただし、強力な魔法を使うときはいつでもそうですが、多少用心することをおすすめします。場合によっては値をどう処理するのがよいか推測するより、拒否してしまう方がよい場合もあるのですから。
+
+また、新しいC<Object>のサブタイプを定義するショートカットとして、C<class_type>というシュガー関数を使う方法も紹介しました。
+
+=head1 脚注
+
+=over 4
+
+=item (1)
+
+この例に限ってはもっと安全にできます。本当は要素の数が偶数の配列のみ型変換したいのですから、新たにC<EvenElementArrayRef>という型を用意して、プレーンなC<ArrayRef>ではなく、その型から変換するようにすればよいのです。
+
+=back
+
+=head1 作者
+
+Stevan Little E<lt>stevan@iinteractive.comE<gt>
+
+Dave Rolsky E<lt>autarch@urth.orgE<gt>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2006-2009 by Infinity Interactive, Inc.
+
+L<http://www.iinteractive.com>
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+

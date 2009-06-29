@@ -1,0 +1,307 @@
+=encoding utf8
+
+=head1 題名
+
+Moose::Unsweetened - Mooseのイディオムを昔風に砂糖を入れないプレーンなPerl 5で書くと
+
+=head1 本文
+
+いったいMooseはどんなことをしているのか、どうして時間の節約になるのか。そのようなことを知りたいのであれば、Mooseが「実際に」どのようなことをしてくれているのかを調べてみるとよいかもしれません。ここではMooseのシュガー関数を昔風のプレーンなPerl 5に書き直したものをご覧にいれます。
+
+=head1 クラスとアトリビュート
+
+まずはごく小さなクラスを2つ、Moose風に定義してみましょう。
+
+  package Person;
+
+  use DateTime;
+  use DateTime::Format::Natural;
+  use Moose;
+  use Moose::Util::TypeConstraints;
+
+  has name => (
+      is       => 'rw',
+      isa      => 'Str',
+      required => 1,
+  );
+
+  # Moose doesn't know about non-Moose-based classes.
+  class_type 'DateTime';
+
+  my $en_parser = DateTime::Format::Natural->new(
+      lang      => 'en',
+      time_zone => 'UTC',
+  );
+
+  coerce 'DateTime'
+      => from 'Str'
+      => via { $en_parser->parse_datetime($_) };
+
+  has birth_date => (
+      is      => 'rw',
+      isa     => 'DateTime',
+      coerce  => 1,
+      handles => { birth_year => 'year' },
+  );
+
+  subtype 'ShirtSize'
+      => as 'Str'
+      => where { /^(?:s|m|l|xl|xxl)$/i }
+      => message { "$_ is not a valid shirt size (s, m, l, xl, xxl)" };
+
+  has shirt_size => (
+      is      => 'rw',
+      isa     => 'ShirtSize',
+      default => 'l',
+  );
+
+Mooseのクラスとしてはかなりシンプルなものです。アトリビュートは3つしかありません。ただ、Tシャツのサイズを検証するための型をひとつ定義してあります。Tシャツのサイズが「青」なんてことにはしたくないですからね！
+
+  package User;
+
+  use Email::Valid;
+  use Moose;
+  use Moose::Util::TypeConstraints;
+
+  extends 'Person';
+
+  subtype 'Email'
+      => as 'Str'
+      => where { Email::Valid->address($_) }
+      => message { "$_ is not a valid email address" };
+
+  has email_address => (
+      is       => 'rw',
+      isa      => 'Email',
+      required => 1,
+  );
+
+こちらはPersonクラスを継承して、メールアドレスというアトリビュートをひとつ追加しています。
+
+それでは、この2つのクラスを昔風のプレーンなPerl 5で書くとどうなるか、見ていきましょう。話の都合上、ここではほかのベースクラスやC<Class::Accessor>のようなヘルパーはいっさい利用しないことにします。
+
+  package Person;
+
+  use strict;
+  use warnings;
+
+  use Carp qw( confess );
+  use DateTime;
+  use DateTime::Format::Natural;
+
+  sub new {
+      my $class = shift;
+      my %p = ref $_[0] ? %{ $_[0] } : @_;
+
+      exists $p{name}
+          or confess 'name is a required attribute';
+      $class->_validate_name( $p{name} );
+
+      exists $p{birth_date}
+          or confess 'birth_date is a required attribute';
+
+      $p{birth_date} = $class->_coerce_birth_date( $p{birth_date} );
+      $class->_validate_birth_date( $p{birth_date} );
+
+      $p{shirt_size} = 'l'
+          unless exists $p{shirt_size}:
+
+      $class->_validate_shirt_size( $p{shirt_size} );
+
+      return bless \%p, $class;
+  }
+
+  sub _validate_name {
+      shift;
+      my $name = shift;
+
+      local $Carp::CarpLevel = $Carp::CarpLevel + 1;
+
+      defined $name
+          or confess 'name must be a string';
+  }
+
+  {
+      my $en_parser = DateTime::Format::Natural->new(
+          lang      => 'en',
+          time_zone => 'UTC',
+      );
+
+      sub _coerce_birth_date {
+          shift;
+          my $date = shift;
+
+          return $date unless defined $date && ! ref $date;
+
+          my $dt = $en_parser->parse_datetime($date);
+
+          return $dt ? $dt : undef;
+      }
+  }
+
+  sub _validate_birth_date {
+      shift;
+      my $birth_date = shift;
+
+      local $Carp::CarpLevel = $Carp::CarpLevel + 1;
+
+      $birth_date->isa('DateTime')
+          or confess 'birth_date must be a DateTime object';
+  }
+
+  sub _validate_shirt_size {
+      shift;
+      my $shirt_size = shift;
+
+      local $Carp::CarpLevel = $Carp::CarpLevel + 1;
+
+      defined $shirt_size
+          or confess 'shirt_size cannot be undef';
+
+      $shirt_size =~ /^(?:s|m|l|xl|xxl)$/
+          or confess "$shirt_size is not a valid shirt size (s, m, l, xl, xxl)";
+  }
+
+  sub name {
+      my $self = shift;
+
+      if (@_) {
+          $self->_validate_name( $_[0] );
+          $self->{name} = $_[0];
+      }
+
+      return $self->{name};
+  }
+
+  sub birth_date {
+      my $self = shift;
+
+      if (@_) {
+          my $date = $self->_coerce_birth_date( $_[0] );
+          $self->_validate_birth_date( $date );
+
+          $self->{birth_date} = $date;
+      }
+
+      return $self->{birth_date};
+  }
+
+  sub birth_year {
+      my $self = shift;
+
+      return $self->birth_date->year;
+  }
+
+  sub shirt_size {
+      my $self = shift;
+
+      if (@_) {
+          $self->_validate_shirt_size( $_[0] );
+          $self->{shirt_size} = $_[0];
+      }
+
+      return $self->{shirt_size};
+  }
+
+いやはや長かったですね！　ここで注意しておきたいのは、データを検証するコードがいかに場所を取るかということ。だからこそPerl 5のプログラマは検証用のコードを書くのをサボりがちなのですが、困ったことに、引数の検証をしないと、あとで驚くことになるのがオチなのですよね（「どうしてbirth_dateにメールアドレスが入ってるんだ？」って）。
+
+あと、（わざと残しておいた）バグに気がつきましたか？
+
+C<_validate_birth_date()>メソッドを見てください。C<isa()>を呼ぶ前に、C<$birth_date>の値が実際に定義されているか、オブジェクトであるかを確認した方がよいはずです！　このチェックをしないと、データ検証用のコードがプログラムを殺してしまうことになりかねません。それではいけませんよね。
+
+Personクラスにスーパークラスを追加した場合はコンストラクタもそれにあわせて変更する必要が出てくることにも注意しましょう。
+
+（ついでに書いておきますと、ここでMooseがしてくれている細々としたことをすべてきっちり理解するのは決して楽なことではありません。そして、この例のポイントはまさにそこにあります。Mooseを使えば、そういった多くの作業から解放されるのです！）
+
+さて、今度はUserクラスを見ていきます:
+
+  package User;
+
+  use strict;
+  use warnings;
+
+  use Carp qw( confess );
+  use Email::Valid;
+  use Scalar::Util qw( blessed );
+
+  use base 'Person';
+
+  sub new {
+      my $class = shift;
+      my %p = ref $_[0] ? %{ $_[0] } : @_;
+
+      exists $p{email_address}
+          or confess 'email_address is a required attribute';
+      $class->_validate_email_address( $p{email_address} );
+
+      my $self = $class->SUPER::new(%p);
+
+      $self->{email_address} = $p{email_address};
+
+      return $self;
+  }
+
+  sub _validate_email_address {
+      shift;
+      my $email_address = shift;
+
+      local $Carp::CarpLevel = $Carp::CarpLevel + 1;
+
+      defined $email_address
+          or confess 'email_address must be a string';
+
+      Email::Valid->address($email_address)
+          or confess "$email_address is not a valid email address";
+  }
+
+  sub email_address {
+      my $self = shift;
+
+      if (@_) {
+          $self->_validate_email_address( $_[0] );
+          $self->{email_address} = $_[0];
+      }
+
+      return $self->{email_address};
+  }
+
+こちらは短めでした。もっとも、アトリビュートの方もひとつしかないわけですが。
+
+この2つのクラスには、あまり役に立っていないコードがたくさんありますから、たぶんこのような感じで「アトリビュートと検証」用のハッシュでも定義してやればシンプルに書けそうです。
+
+  package Person;
+
+  my %Attr = (
+      name => {
+          required => 1,
+          validate => sub { defined $_ },
+      },
+      birth_date => {
+          required => 1,
+          validate => sub { blessed $_ && $_->isa('DateTime') },
+      },
+      shirt_size => {
+          required => 1,
+          validate => sub { defined $_ && $_ =~ /^(?:s|m|l|xl|xxl)$/i },
+      }
+  );
+
+また、そのような定義を受け入れて適切なことをしてくれるベースクラスも定義できそうですが、そのようなことを続けていくと、いつの間にかできそこないのMooseもどきを書いていた、ということになるわけです！
+
+もちろんC<Class::Accessor>やC<Class::Meta>のように、Mooseがしてくれることを部分的に実現してくれるCPANモジュールはあります。ただ、Mooseのすべての機能をひっくるめてDSL的なシュガーをふりかけてくれるものはありませんし、Mooseと同じだけの拡張性を持つように設計されているものもありません。Mooseの場合、MooseXモジュールを書けば、もともと組み込まれている機能を置き換えたり拡張したりすることが簡単にできます。
+
+Mooseは、単体でも完全なオブジェクト指向パッケージですが、豊富な拡張があるエコシステムの一部でもあります。熱心なユーザコミュニティもありますし、いまも活発に維持・開発が行われています。
+
+=head1 作者
+
+Dave Rolsky E<lt>autarch@urth.orgE<gt>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2009 by Infinity Interactive, Inc.
+
+L<http://www.iinteractive.com>
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+

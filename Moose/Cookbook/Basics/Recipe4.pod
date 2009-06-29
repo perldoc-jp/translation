@@ -1,0 +1,232 @@
+=encoding utf8
+
+=head1 題名
+
+Moose::Cookbook::Basics::Recipe4 - サブタイプと、簡単なB<Company>クラス階層のモデリング
+
+=head1 概要
+
+  package Address;
+  use Moose;
+  use Moose::Util::TypeConstraints;
+
+  use Locale::US;
+  use Regexp::Common 'zip';
+
+  my $STATES = Locale::US->new;
+  subtype 'USState'
+      => as Str
+      => where {
+             (    exists $STATES->{code2state}{ uc($_) }
+               || exists $STATES->{state2code}{ uc($_) } );
+         };
+
+  subtype 'USZipCode'
+      => as Value
+      => where {
+             /^$RE{zip}{US}{-extended => 'allow'}$/;
+         };
+
+  has 'street'   => ( is => 'rw', isa => 'Str' );
+  has 'city'     => ( is => 'rw', isa => 'Str' );
+  has 'state'    => ( is => 'rw', isa => 'USState' );
+  has 'zip_code' => ( is => 'rw', isa => 'USZipCode' );
+
+  package Company;
+  use Moose;
+  use Moose::Util::TypeConstraints;
+
+  has 'name' => ( is => 'rw', isa => 'Str', required => 1 );
+  has 'address'   => ( is => 'rw', isa => 'Address' );
+  has 'employees' => ( is => 'rw', isa => 'ArrayRef[Employee]' );
+
+  sub BUILD {
+      my ( $self, $params ) = @_;
+      if ( @{ $self->employees || [] } ) {
+          foreach my $employee ( @{ $self->employees } ) {
+              $employee->employer($self);
+          }
+      }
+  }
+
+  after 'employees' => sub {
+      my ( $self, $employees ) = @_;
+      if ($employees) {
+          foreach my $employee ( @{$employees} ) {
+              $employee->employer($self);
+          }
+      }
+  };
+
+  package Person;
+  use Moose;
+
+  has 'first_name' => ( is => 'rw', isa => 'Str', required => 1 );
+  has 'last_name'  => ( is => 'rw', isa => 'Str', required => 1 );
+  has 'middle_initial' => (
+      is        => 'rw', isa => 'Str',
+      predicate => 'has_middle_initial'
+  );
+  has 'address' => ( is => 'rw', isa => 'Address' );
+
+  sub full_name {
+      my $self = shift;
+      return $self->first_name
+          . (
+          $self->has_middle_initial
+          ? ' ' . $self->middle_initial . '. '
+          : ' '
+          ) . $self->last_name;
+  }
+
+  package Employee;
+  use Moose;
+
+  extends 'Person';
+
+  has 'title'    => ( is => 'rw', isa => 'Str',     required => 1 );
+  has 'employer' => ( is => 'rw', isa => 'Company', weak_ref => 1 );
+
+  override 'full_name' => sub {
+      my $self = shift;
+      super() . ', ' . $self->title;
+  };
+
+=head1 本文
+
+このレシピではL<Moose::Util::TypeConstraints>が提供しているC<subtype>というシュガー関数について紹介します。C<subtype>関数を使うとクラスをひとつまるごと用意しなくても宣言的に型制約を生成できるようになります。
+
+また、既存のCPANツールを使ってデータを検証する方法を紹介するため、L<Locale::US>とL<Regexp::Common>を使った制約も作成します。
+
+最後に、C<required>というアトリビュートオプションを紹介します。
+
+C<Address>クラスでは2つのサブタイプを定義しています。ひとつめのサブタイプは、L<Locale::US>モジュールを使って州の名前を検証するものです。このサブタイプは、州の略称も正式名称も受け付けるようになっています。
+
+州の名前は文字列として渡したいので、C<USState>型はMoose組み込みのC<Str>型のサブタイプにしました。これはC<as>というシュガー関数を使って指定します。実際の制約はC<where>を使って定義します（この関数はサブルーチンリファレンスをひとつ受け取ります）。このサブルーチンを呼ぶと、チェックしたい値がC<$_>に入ります(1)。また、返り値としてはその型として有効な値かどうかをあらわす真偽値が期待されています。
+
+これでC<USState>型はMooseの組み込み型と同じように使えるようになりました。
+
+  has 'state'    => ( is => 'rw', isa => 'USState' );
+
+C<state>アトリビュートに値がセットされると、C<USState>型の制約を満たすかチェックされ、値が有効でなかった場合は例外が発生します。
+
+次のC<USZipCode>というサブタイプではL<Regexp::Common>を使います。L<Regexp::Common>にはアメリカの郵便番号を検証する正規表現が含まれていますので、これをC<zip_code>アトリビュートの制約として利用します。
+
+  subtype 'USZipCode'
+      => as Value
+      => where {
+             /^$RE{zip}{US}{-extended => 'allow'}$/;
+         };
+
+それぞれの型についてクラスを要求するかわりにサブタイプを使うと、コードが非常に簡潔になります。ここで取り上げた型の場合、値は単なる文字列ですから本当にクラスは必要ありません（ただし、有効な値かどうか確認したいのは本当です）。
+
+ここで作成した型制約は再利用できます。型制約はグローバルなレジストリに名前付きで保存されるので、ほかのクラスからも参照できるのです。ただし、このレジストリはグローバルなので、実際のアプリケーションではC<MyApp.Type.USState>のようになんらかの擬似的な名前空間を利用することを強くおすすめします。
+
+この2つのサブタイプを使うと、簡単なC<Address>クラスを定義できます。
+
+続いて、C<Company>クラスを定義しましょう。このクラスには住所の情報を持たせます。これまでのレシピで見たように、Mooseはそれぞれのクラスに自動的に型制約を生成してくれるので、ここでもC<Company>クラスのC<address>アトリビュートにはその自動生成された型制約を利用します。
+
+  has 'address'   => ( is => 'rw', isa => 'Address' );
+
+また、会社には名前も必要です。
+
+  has 'name' => ( is => 'rw', isa => 'Str', required => 1 );
+
+ここではC<required>という新しいアトリビュートオプションが登場しました。アトリビュートが必須になっている場合、かならずクラスのコンストラクタにそのアトリビュートを渡さなければなりません（そうでない場合は例外が発生します）。ただし、これもぜひ理解しておいていただきたいのですが、C<required>アトリビュートは、型制約が許せば偽値やC<undef>であってもかまいません。
+
+次のC<employees>アトリビュートでは「パラメータ付きの」型制約を利用しています。
+
+  has 'employees' => ( is => 'rw', isa => 'ArrayRef[Employee]' );
+
+この制約の意味は、C<employees>は配列リファレンスでなければならず、配列のそれぞれの要素はC<Employee>オブジェクトでなければならない、ということ（「空の」配列リファレンスもこの制約を満たすことは注記しておくべきでしょう）。
+
+C<ArrayRef[`a]>のようなパラメータ指定可能な型制約（「コンテナ」型）は、型パラメータを使うとより具体的に書けますが（実際にはこれらの型を任意の回数ネストさせてC<HashRef[ArrayRef[Int]]>のような制約を作ることもできます）、指定された型を単独で使うだけでもかまいません（だから、C<ArrayRef>という型制約も合法です）。(2)
+
+途中を飛ばしてC<Employee>クラスの定義を見ると、C<employer>アトリビュートがあります。
+
+C<Company>のC<employees>に値をセットしたときは、それぞれの従業員オブジェクトのC<employer>アトリビュートも確実に正しいC<Company>を参照させたいところです。
+
+そのためにはオブジェクトの生成に割り込みをかける必要があります。Mooseでは、クラスにC<BUILD>メソッドを書くとそうすることができるようになります。定義しておいたC<BUILD>メソッドは、オブジェクトが生成された直後、呼び出し元にそのオブジェクトを返す前に呼ばれます。(3)
+
+C<Company>クラスではC<BUILD>メソッドを使って会社の各従業員がかならずC<employer>アトリビュートに適切なC<Company>オブジェクトを持つようにしています。
+
+  sub BUILD {
+      my ( $self, $params ) = @_;
+      if ( $self->employees ) {
+          foreach my $employee ( @{ $self->employees } ) {
+              $employee->employer($self);
+          }
+      }
+  }
+
+このC<BUILD>メソッドは、型制約のチェックが済んだあとに実行されます。だから、C<< $self->employees >>が配列リファレンスを返すことや、その配列の要素がC<Employee>オブジェクトであることは間違いないものと決めてかかっても大丈夫です。
+
+また、C<Company>のC<employees>アトリビュートが変わったときもかならず各従業員のC<employer>を更新しておきたいところです。
+
+そうするには、C<after>モディファイアが使えます。
+
+  after 'employees' => sub {
+      my ( $self, $employees ) = @_;
+      if ($employees) {
+          foreach my $employee ( @{$employees} ) {
+              $employee->employer($self);
+          }
+      }
+  };
+
+ここでもまた、C<BUILD>メソッドと同じく事前に型制約のチェックが済んでいることはわかっていますので、C<$employees>引数が定義されているかどうかだけのチェックで済ませられます。
+
+B<Person>クラスには特に目新しいことはありません。C<required>なアトリビュートがいくつかあるのと、L<レシピ3|Moose::Cookbook::Basics::Recipe3>ではじめて使ったC<predicate>メソッドがひとつあります。
+
+C<Employee>クラスも、新しい機能はC<override>メソッドモディファイアだけです。
+
+  override 'full_name' => sub {
+      my $self = shift;
+      super() . ', ' . $self->title;
+  };
+
+これはPerlに組み込まれているC<SUPER::>機能のかわりをするシュガー関数に過ぎないのですが、ひとつ違うところがあります。C<super>には引数を渡せないのです（Mooseは単にメソッドに渡されたのと同じパラメータを渡します）。
+
+F<t/000_recipes/moose_cookbook_basics_recipe4.t>にはもっと詳しい使用例があります。
+
+=head1 まとめ
+
+このレシピはあえてやや長く、複雑なものにしました。ここではMooseのクラスと型制約を組み合わせて使う方法や、Mooseを使うとわずかなタイプ量でさまざまな情報を取得できるようになることを説明しました。
+
+また、このレシピではC<subtype>関数やC<required>アトリビュート、C<override>メソッドモディファイアの使い方も紹介しました。
+
+型制約については型変換ともどもこの先のレシピで再度取り上げます。
+
+=head1 脚注
+
+=over 4
+
+=item (1)
+
+チェックしたい値はC<where>ブロックの最初の引数として渡されます（C<$_[0]>でアクセスできます）。
+
+=item (2)
+
+ただし、C<ArrayRef[]>は正しく動作しません。このような場合、Mooseはコンテナ型とはみなさず、「ArrayRef[]」という意味不明な新しい型が指定されたものとみなすためです。
+
+=item (3)
+
+C<BUILD>メソッドは、実際にはC<< Moose::Object->new >>が呼び出すC<< Moose::Object->BUILDALL >>から呼ばれます。C<BUILDALL>メソッドは、オブジェクトの継承グラフをたどって、見つけたC<BUILD>メソッドをすべて、正しい順序で呼び出すものです。
+
+=back
+
+=head1 作者
+
+Stevan Little E<lt>stevan@iinteractive.comE<gt>
+
+Dave Rolsky E<lt>autarch@urth.orgE<gt>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2006-2009 by Infinity Interactive, Inc.
+
+L<http://www.iinteractive.com>
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+

@@ -1,0 +1,327 @@
+=encoding utf8
+
+=head1 題名
+
+Moose::Manual::Types - Mooseの型システム
+
+=head1 Perlで型?
+
+Mooseはアトリビュートのために独自の型システムを用意しています。また、MooseXモジュールの助けを借りるとこれらの型をメソッドのパラメータの検証に使うこともできます。
+
+Mooseの型システムのもとになったのは、Perl 5自身の「暗黙の」型と、Perl 6のいくつかのコンセプトを組み合わせたものです。独自の制約を使うと自前のサブタイプを簡単に作れるため、どのような種類の検証コードでも簡単に表現できます。
+
+型には名前がついているので、名指しで再利用できます。そのため、大きなアプリケーション全体で型を共有することも簡単にできます。
+
+ただし、ここで明確にしておきたいのは、これは「本当の」型システムではないということ。Mooseを使うと魔法の力でPerlが型と変数を関連づけるようになるわけではありません。これは単に名前と制約を関連づけられる高度なパラメータチェックシステムにすぎないのです。
+
+とはいえ、これは本当に便利なものですし、Mooseを楽しく、強力にしている機能のひとつだと思っています。型システムを活用すると、確実に有効なデータを得られるようにするのがはるかに簡単になりますし、コードの保守性にも大きく貢献します。
+
+=head1 型
+
+基本的なMooseの型階層はこのようになります。
+
+  Any
+  Item
+      Bool
+      Maybe[`a]
+      Undef
+      Defined
+          Value
+              Num
+                Int
+              Str
+                ClassName
+                RoleName
+          Ref
+              ScalarRef
+              ArrayRef[`a]
+              HashRef[`a]
+              CodeRef
+              RegexpRef
+              GlobRef
+                FileHandle
+              Object
+                Role
+
+実用的には、C<Any>とC<Item>の違いは概念的なものでしかありません（C<Item>は型階層の最上位の型として扱われます）。
+
+それ以外の型は既存のPerlの概念に対応しています。たとえば、C<Num>はPerlが数字だとみなすものすべてであり、C<Object>はblessされたリファレンスである、という具合です。
+
+型のあとに「[`a]」と書いてあるのはパラメータを指定できるものです。だから、単に素のC<ArrayRef>がほしいと書くかわりに、C<ArrayRef[Int]>がほしいと書けるわけです（それどころか、C<HashRef[ArrayRef[Str]]>のようなこともできます）。
+
+特筆に値するのはC<Maybe[`a]>という型です。単独で使うと本当に何の意味もないのですが（C<Item>と同等になります）、パラメータを指定すると、C<undef>かパラメータで指定した型の値をとる、という意味になります（だから、C<Maybe[Int]>であれば整数かC<undef>になります）。
+
+型階層の詳細についてはL<Moose::Util::TypeConstraints>をご覧ください。
+
+=head1 型とはなにか
+
+大事なのは、型はクラス（やパッケージ）ではないということです。型は名前と制約を持った単なるオブジェクト（正確にいうならL<Moose::Meta::TypeConstraint>のオブジェクト）にすぎません。Mooseは、C<Num>のような名前を適切なオブジェクトに変換できるように、グローバルな型レジストリを持っています。
+
+ただし、クラス名が型の名前になることは「ありえます」。Mooseを使って新しいクラスを定義すると、裏ではそのクラスに関連づけられた型の名前が定義されます。
+
+  package MyApp::User;
+
+  use Moose;
+
+こうすると、C<'MyApp::User'>が型の名前として使えるようになります。
+
+  has creator => (
+      is  => 'ro',
+      isa => 'MyApp::User',
+  );
+
+ただし、Mooseを使っていないクラスの場合、魔法がきかないので、クラス型を明示的に宣言する必要があるかもしれません。いささかややこしいことに、MooseはアトリビュートのC<isa>の値として未知の型の名前が渡されるとクラスであると仮定するので、これはうまくいきます。
+
+  has 'birth_date' => (
+      is  => 'ro',
+      isa => 'DateTime',
+  );
+
+一般的に、Mooseは未知の名前を渡すとクラスを指しているものと仮定します。
+
+  subtype 'ModernDateTime'
+      => as 'DateTime'
+      => where { $_->year() >= 1980 }
+      => message { 'The date you provided is not modern enough' };
+
+  has 'valid_dates' => (
+      is  => 'ro',
+      isa => 'ArrayRef[DateTime]',
+  );
+
+だから、どちらの場合も、C<DateTime>はクラス名であるとみなされます。
+
+=head1 サブタイプ
+
+サブタイプは、Mooseの組み込みの階層でも利用されています（たとえば、C<Int>はC<Num>の子です）。
+
+サブタイプは親の型や制約によって定義されます。親が定義している制約があれば先にそれがチェックされ、それからサブタイプが定義している制約がチェックされます。これらのチェックを「すべて」満たさないと、そのサブタイプの有効な値とはみなされません。
+
+典型的なサブタイプは、親の制約を受け継いでより具体的なものにします。
+
+また、サブタイプには制約を満たさなかったときのために独自のメッセージを定義できます。これを使うと「入力された値(20)は有効な評価ではありません。1～10までの数を入れてください」といったエラーを表示させられます（これは、その値は型の検証チェックに失敗しましたとしか言ってくれないデフォルトのエラーよりはるかに親切です）。
+
+これは簡単な（しかも役に立つ）サブタイプの例です。
+
+  subtype 'PositiveInt'
+      => as 'Int'
+      => where { $_ > 0 }
+      => message { "The number you provided, $_, was not a positive number" }
+
+なお、型を扱うためのシュガー関数はすべてL<Moose::Util::TypeConstraints>がエクスポートしています。
+
+=head2 （サブタイプではない）新しい型を作る
+
+新たに最上位の型を作ることもできます。
+
+  type 'FourCharacters' => where { defined $_ && length $_ == 4 };
+
+実用上、これはC<Str>をサブタイプ化するのと大差ありません（ただし、値が定義されているかどうかは自分でチェックしなければなりません）。
+
+C<Defined>やC<Ref>、C<Object>のように非常に大まかな型をサブタイプ化するだけではすまない場合があるとはあまり考えられません。
+
+新たに最上位の型を定義するのは、概念的にはC<Item>をサブタイプ化するのと同じことです。
+
+=head1 型の名前
+
+型の名前は、現在実行中のPerlインタプリタ全体に影響を及ぼすグローバルなものです。内部的には、MooseはL<レジストリ|Moose::Meta::TypeConstraint::Registry>を通じて型の名前を型オブジェクトにマッピングします。
+
+同じプロセス内にMooseを使っているアプリケーションやライブラリが複数ある場合、名前の衝突による問題が起こるかもしれません。この種の衝突を防ぐために、型の名前には何らかの名前空間を示すプレフィックスをつけることをおすすめします。
+
+たとえば、型に「PositiveInt」という名前をつけるかわりに「MyApp::Type::PositiveInt」や「MyApp::Types::PositiveInt」と名付けてください。このような型の定義はすべてC<MyApp::Types>というひとつのパッケージにまとめて、アプリケーションのほかのクラスからもロードできるようにすることをおすすめします。
+
+=head1 型変換
+
+Mooseの型システムでもっとも強力な機能のひとつが、型変換です。型変換は、ある型を別の型に変える方法のひとつです。
+
+  subtype 'ArrayRefOfInts'
+      => as 'ArrayRef[Int]';
+
+  coerce 'ArrayRefOfInts'
+      => from 'Int'
+      => via { [ $_ ] };
+
+お気づきの通り、ここはC<ArrayRef[Int]>を直接型変換するのではなく、サブタイプを作らなければならないところでした（この辺はちょっとわかりづらいところです）。
+
+型変換も、型の名前と同じくグローバルなものです（これが型の名前に名前空間をつけた方がよい「もうひとつの」理由です）。Mooseは、明示的に指示しない限り「決して」値を型変換しようとはしません。型変換を指示するには、C<coerce>というアトリビュートオプションを真値にセットします。
+
+  package Foo;
+
+  has 'sizes' => (
+      is     => 'ro',
+      isa    => 'ArrayRefOfInts',
+      coerce => 1,
+  );
+
+  Foo->new( sizes => 42 );
+
+このサンプルコードは正しく動作します。新しく作ったオブジェクトのC<sizes>アトリビュートの値はC<[ 42 ]>になります。
+
+=head2 再帰的な型変換
+
+再帰的な型変換というのは、パラメータ付きの型の型パラメータを型変換することです。このような型を例に取ってみましょう。
+
+  subtype 'HexNum'
+      => as 'Str'
+      => where { /[a-f0-9]/i };
+
+  coerce 'Int'
+      => from 'HexNum'
+      => via { hex $_ };
+
+  has 'sizes' => (
+      is     => 'ro',
+      isa    => 'ArrayRef[Int]',
+      coerce => 1,
+  );
+
+C<sizes>アトリビュートに16進数の配列リファレンスを渡そうとしても、Mooseは型変換してくれません。
+
+ただし、サブタイプをひと組定義すると、パラメータ付きの型同士の型変換を有効にすることができます。
+
+  subtype 'ArrayRefOfHexNums'
+      => as 'ArrayRef[HexNum]';
+
+  subtype 'ArrayRefOfInts'
+      => as 'ArrayRef[Int]';
+
+  coerce 'ArrayRefOfInts'
+      => from 'ArrayRefOfHexNums'
+      => via { [ map { hex } @{$_} ] };
+
+  Foo->new( sizes => [ 'a1', 'ff', '22' ] );
+
+これでMooseは16進数を整数に型変換してくれるようになりました。
+
+ただし、Mooseは型変換を連鎖的に実行してくれるわけではないので、このままでは単独の16進数の型変換はしてくれません。これをさせるには、別の型変換を定義する必要があります。
+
+  coerce 'ArrayRefOfInts'
+      => from 'HexNum'
+      => via { [ hex $_ ] };
+
+たしかにこれは非常に冗長になってしまうこともありますが、型変換はトリッキーな魔法ですから、明示的にしておくのがいちばんだと思っています。
+
+=head1 型結合
+
+Mooseを使うと、複数の異なる型になれるアトリビュートを定義することができます。たとえば、ここではC<Object>かC<FileHandle>なら認めてもよい、というわけです。
+
+  has 'output' => (
+      is  => 'rw',
+      isa => 'Object | FileHandle',
+  );
+
+Mooseは実際にその文字列を解析して、型結合を作っていることを認識すると、C<output>アトリビュートにはあらゆる種類のオブジェクトと、blessされていないファイルハンドルを受け入れるようにさせます。自分のコードの中でそのそれぞれについて正しい処理を行うのはみなさんの仕事です。
+
+型結合を使う場合はかならず型変換の方がよい解決策ではないか検討するようにしてください。
+
+上の例の場合、もっと具体的に、outputはC<print>メソッドを持つオブジェクトでなければならないと定義した方がよいかもしれません。
+
+  subtype 'CanPrint'
+      => as 'Object'
+      => where { $_->can('print') };
+
+簡単なラッパクラスを使えば、ファイルハンドルをこの条件を満たすオブジェクトに型変換することもできます。
+
+  package FHWrapper;
+
+  use Moose;
+
+  has 'handle' => (
+      is  => 'rw',
+      isa => 'FileHandle',
+  );
+
+  sub print {
+      my $self = shift;
+      my $fh   = $self->handle();
+
+      print $fh @_;
+  }
+
+これでC<FileHandle>からこのラッパクラスへの型変換を定義できるようになりました。
+
+  coerce 'CanPrint'
+      => from 'FileHandle'
+      => via { FHWrapper->new( handle => $_ ) };
+
+  has 'output' => (
+      is     => 'rw',
+      isa    => 'CanPrint',
+      coerce => 1,
+  );
+
+このように型結合のかわりに型変換を使うと、クラスの内部をよりシンプルにできるようになります。
+
+=head1 型を生成するためのヘルパー関数
+
+L<Moose::Util::TypeConstraints>モジュールは、C<class_type>やC<role_type>、C<maybe_type>のように、特定の種類の型を生成するためのヘルパー関数を多数エクスポートします。詳しくはドキュメントをご覧ください。
+
+特筆に値するヘルパーとしては、C<enum>があります。これを使うと、指定した値しか許さないC<Str>型のサブタイプを生成できます。
+
+  enum 'RGB' => qw( red green blue );
+
+これでC<RGB>という名前の型が生成されます。
+
+=head1 無名の型
+
+型を生成する関数はすべて型オブジェクトを返します。この型オブジェクトは、親の型や、アトリビュートのC<isa>オプションの値のように、型の名前を使える場所ならどこででも使えます。
+
+  has 'size' => (
+      is => 'ro',
+      isa => subtype 'Int' => where { $_ > 0 },
+  );
+
+これは、その場限りの型を作る（グローバルな名前空間レジストリを「汚染」したくない）ときに便利です。
+
+=head1 検証メソッドのパラメータ
+
+Mooseには検証メソッドにパラメータを渡す手段はありませんが、CPANにはこれをできるようにするMooseX拡張モジュールがいくつかあります。
+
+もっとも簡単で、甘さ控えめなのはL<MooseX::Params::Validate>です。このモジュールを使うと、名前付きパラメータの組を検証するときにMooseの型を使えます。
+
+  use Moose;
+  use MooseX::Params::Validate;
+
+  sub foo {
+      my $self   = shift;
+      my %params = validated_hash(
+          \@_,
+          bar => { isa => 'Str', default => 'Moose' },
+      );
+      ...
+  }
+
+L<MooseX::Params::Validate>は型変換もサポートしています。
+
+Mooseの型を使ったメソッドパラメータの検証をサポートしている拡張モジュールの中には、ほかにももっと強力ながいくつかあります。そのひとつであるL<MooseX::Method::Signatures>は、本格的なC<method>キーワードを提供してくれます。
+
+  method morning (Str $name) {
+      $self->say("Good morning ${name}!");
+  }
+
+=head1 ロード順の問題
+
+Mooseの型は実行時に定義されるので、ロード順の問題に遭遇することがあります（特に、定義される前にクラス型の制約を使おうとしてしまうことがあります）。
+
+この問題にはいくつかおすすめの解決策があります。まず、独自の型は「すべて」C<MyApp::Types>というモジュールに定義してください。次に、このモジュールを、ほかのすべてのモジュールでロードするようにしてください。
+
+それでもまだロード順の問題が起こる場合は、L<Moose::Util::TypeConstraints>がエクスポートしているC<find_type_constraint>を使う手もあります。
+
+  class_type('MyApp::User')
+      unless find_type_constraint('MyApp::User');
+
+このような「なければ作る」というロジックは、書くのも簡単ですし、ロード順の問題の対策にもなります。
+
+=head1 作者
+
+Dave Rolsky E<lt>autarch@urth.orgE<gt>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2009 by Infinity Interactive, Inc.
+
+L<http://www.iinteractive.com>
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+

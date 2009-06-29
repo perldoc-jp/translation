@@ -1,0 +1,118 @@
+=encoding utf8
+
+=head1 題名
+
+Moose::Cookbook::Basics::Recipe6 - augment/innerの例
+
+=head1 概要
+
+  package Document::Page;
+  use Moose;
+
+  has 'body' => ( is => 'rw', isa => 'Str', default => sub {''} );
+
+  sub create {
+      my $self = shift;
+      $self->open_page;
+      inner();
+      $self->close_page;
+  }
+
+  sub append_body {
+      my ( $self, $appendage ) = @_;
+      $self->body( $self->body . $appendage );
+  }
+
+  sub open_page  { (shift)->append_body('<page>') }
+  sub close_page { (shift)->append_body('</page>') }
+
+  package Document::PageWithHeadersAndFooters;
+  use Moose;
+
+  extends 'Document::Page';
+
+  augment 'create' => sub {
+      my $self = shift;
+      $self->create_header;
+      inner();
+      $self->create_footer;
+  };
+
+  sub create_header { (shift)->append_body('<header/>') }
+  sub create_footer { (shift)->append_body('<footer/>') }
+
+  package TPSReport;
+  use Moose;
+
+  extends 'Document::PageWithHeadersAndFooters';
+
+  augment 'create' => sub {
+      my $self = shift;
+      $self->create_tps_report;
+      inner();
+  };
+
+  sub create_tps_report {
+      (shift)->append_body('<report type="tps"/>');
+  }
+
+  # <page><header/><report type="tps"/><footer/></page>
+  my $report_xml = TPSReport->new->create;
+
+=head1 本文
+
+このレシピではC<augment>メソッドモディファイアの動作を紹介します。このモディファイアは通常のサブクラスから親クラスへというメソッド解決順序を逆転させるものです。C<augment>を使うと、「もっとも具体的でない（抽象的な）」メソッドがまず呼ばれ、C<inner>を呼ぶたびに継承ツリーをたどって、もっとも具体的なサブクラスで終わります。
+
+C<augment>モディファイアを使って設計した親クラスは、具体的に拡張していくことができます（親クラスでは一般的なラッパ機能を用意し、サブクラスを使って詳細を詰めていきます）。
+
+上の例では、ドキュメントクラスを一組作りました。もっとも具体的なものはC<TPSReport>です。
+
+まずはもっとも具体的でないC<Document::Page>から見ていきましょう。C<Document::Page>のC<create>メソッドにはC<inner()>の呼び出しがあります。
+
+  sub create {
+      my $self = shift;
+      $self->open_page;
+      inner();
+      $self->close_page;
+  }
+
+このC<inner>はC<Moose>がエクスポートしている関数で、C<augment>されたメソッドで使えるC<super>のようなものです。C<inner>が呼ばれると、Mooseはチェーンの中から次のメソッドを探します（この場合はC<Document::PageWithHeadersAndFooters>のC<augment>モディファイア）。お気づきの通り、C<inner>はモディファイアの中でも呼べます。
+
+  augment 'create' => sub {
+      my $self = shift;
+      $self->create_header;
+      inner();
+      $self->create_footer;
+  };
+
+すると、次の、もっとも具体的なモディファイアが見つかります（C<TPSReport>クラスのものです）。
+
+最後、C<TPSReport>クラスでチェーンは終わりです。
+
+  augment 'create' => sub {
+      my $self = shift;
+      $self->create_tps_report;
+      inner();
+  };
+
+もう一度C<inner>関数を呼んでいますが、これ以上具体的なサブクラスはありませんので、ここでは何もしません。この呼び出しを入れておくと、将来C<TPSReport>を簡単にサブクラス化できるようになります。
+
+=head1 まとめ
+
+C<augment>モディファイアは、ネストしたラッパを作成できる強力なツールです。始終必要になるものではありませんが、必要なときには非常に役に立ちます。
+
+=head1 作者
+
+Stevan Little E<lt>stevan@iinteractive.comE<gt>
+
+Dave Rolsky E<lt>autarch@urth.orgE<gt>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2007-2009 by Infinity Interactive, Inc.
+
+L<http://www.iinteractive.com>
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+

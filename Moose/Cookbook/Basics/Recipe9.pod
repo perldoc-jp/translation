@@ -1,0 +1,106 @@
+=encoding utf8
+
+=head1 題名
+
+Moose::Cookbook::Basics::Recipe9 - ビルダーメソッドとlazy_build
+
+=head1 概要
+
+  package BinaryTree;
+  use Moose;
+
+  has 'node' => (is => 'rw', isa => 'Any');
+
+  has 'parent' => (
+      is        => 'rw',
+      isa       => 'BinaryTree',
+      predicate => 'has_parent',
+      weak_ref  => 1,
+  );
+
+  has 'left' => (
+      is        => 'rw',
+      isa       => 'BinaryTree',
+      predicate => 'has_left',
+      lazy      => 1,
+      builder   => '_build_child_tree',
+  );
+
+  has 'right' => (
+      is        => 'rw',
+      isa       => 'BinaryTree',
+      predicate => 'has_right',
+      lazy      => 1,
+      builder   => '_build_child_tree',
+  );
+
+  before 'right', 'left' => sub {
+      my ($self, $tree) = @_;
+      $tree->parent($self) if defined $tree;
+  };
+
+  sub _build_child_tree {
+      my $self = shift;
+
+      return BinaryTree->new( parent => $self );
+  }
+
+=head1 本文
+
+この例は、L<Moose::Cookbook::Basics::Recipe3>を読んだ方ならほとんど同じもののように見えることでしょう。実際、ここでしたのはアトリビュートのC<default>パラメータをC<builder>で置き換えたことだけです。
+
+この例に限っていえば、C<default>とC<builder>オプションはまったく同じ働きをしています。C<left>ないしC<right>アトリビュートを読み込もうとすると、ビルダーメソッドが呼ばれてアトリビュートが初期化されるわけです。
+
+注意したいのは、Mooseは、「そのアトリビュートが定義されているオブジェクトの」ビルダーメソッドを呼ぶ、ということ。例をあげましょう。
+
+  my $tree = BinaryTree->new();
+
+  my $left = $tree->left();
+
+C<< $tree->left() >>が呼ばれると、MooseはC<< $tree->_build_child_tree() >>を呼んでC<left>アトリビュートの初期化を行います。あらかじめもとのコンストラクタにC<left>が渡されていた場合は、ビルダーは呼ばれません。
+
+C<default>とC<builder>にはいくつか違いがあります。特筆に値するものとしては、ビルダーはサブクラス化が可能であることと、ロールから合成できることがあげられます。詳しくはL<Moose::Manual::Attributes>をご覧ください。
+
+=head2 lazy_buildによるショートカット
+
+アトリビュートのオプションを一度にまとめて指定するシンタックスシュガーとして、C<lazy_build>というアトリビュートオプションを使うこともできます。
+
+  has 'animal' => (
+      is         => 'ro',
+      isa        => 'Animal',
+      lazy_build => 1,
+  );
+
+これは、次の書き方を簡略化したものです。
+
+  has 'animal' => (
+      is        => 'ro',
+      isa       => 'Animal',
+      required  => 1,
+      lazy      => 1,
+      builder   => '_build_animal',
+      predicate => 'has_animal',
+      clearer   => 'clear_animal',
+  );
+
+アトリビュートがアンダースコア（下線）で始まる場合、C<predicate>とC<clearer>についてはMooseが気を利かせて、期待通りにメソッド名がアンダースコアで始まるようにしてくれます。C<builder>メソッドについては「常に」アンダースコアで始まります。
+
+C<lazy_build>の詳細についてはL<Moose::Manual::Attributes>をご覧ください。
+
+=head1 まとめ
+
+C<builder>オプションは、C<default>の機能をよりオブジェクト指向らしくしたものです。また、デフォルト値を生成するコードを明確に定義されたメソッドに分離してくれます。アトリビュートの定義に無名サブルーチンを混ぜると、非常に見苦しい、理解しづらいものになることがあります。
+
+=head1 作者
+
+Dave Rolsky E<lt>autarch@urth.orgE<gt>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2006-2009 by Infinity Interactive, Inc.
+
+L<http://www.iinteractive.com>
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+

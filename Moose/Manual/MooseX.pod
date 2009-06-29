@@ -1,0 +1,213 @@
+=encoding utf8
+
+=head1 題名
+
+Moose::Manual::MooseX - おすすめの拡張モジュール
+
+=head1 MooseX?
+
+Mooseを拡張したり変更するのは簡単です（だからこそMooseはこれほど強力なのです）。MOPのAPIを使えば、独自のやり方で処理を行ったり、新しい機能を追加したり、一般的なカスタマイズを行うこともできます。
+
+ただし、独自の拡張モジュールを書く場合は、メタモデルをよく理解しておく必要があります。まずはL<Moose::Manual::MOP>のドキュメントをご覧ください。L<Moose::Cookbook>にもいくつか拡張のためのレシピがあります。
+
+拡張モジュールの書き方を説明するのはこのマニュアルの範囲を超えますが、ありがたいことに、すでに多くの人が拡張モジュールを書いてCPANにあげてくれています。
+
+このドキュメントは、その中から私たちがもっとも愛用しているいくつかのモジュールを取り上げます。
+
+=head1 L<MooseX::AttributeHelpers>
+
+拡張モジュールをひとつしか見ないのであれば、これを見るべきです。これは、配列リファレンスやハッシュリファレンス、数、文字列といったPerlのネイティブなデータ型すべてに委譲に相当するものを用意します。
+
+これを使うと、はるかにきれいで流れるようなAPIを作成できるようになります。
+
+  package User;
+
+  use Moose;
+  use MooseX::AttributeHelpers;
+
+  has '_orders' => (
+      metaclass => 'Collection::Array',
+      is        => 'ro',
+      isa       => 'ArrayRef',
+      default   => sub { [] },
+      provides  => {
+          push     => 'add_order',
+          shift    => 'next_order',
+          elements => 'orders',
+      },
+  );
+
+ここでは配列リファレンスをそのままさらすかわりに、わかりやすい名前のついた使いやすいメソッドを3つ用意しました。
+
+=head1 L<MooseX::StrictConstructor>
+
+Mooseは、デフォルトでは余計な引数があってもすべてクラスのコンストラクタに渡してしまいますが、L<MooseX::StrictConstructor>をロードすると、コンストラクタが認識できない引数があったときはエラーが発生するようになります。
+
+  package User;
+
+  use Moose;
+  use MooseX::StrictConstructor;
+
+  has 'name';
+  has 'email';
+
+  User->new( name => 'Bob', emali => 'bob@example.com' );
+
+L<MooseX::StrictConstructor>を使うと、「emali」というタイポのせいで実行時エラーが発生します（素のMooseの場合、「emali」アトリビュートは黙って無視されます）。
+
+=head1 L<MooseX::Params::Validate>
+
+L<MooseX::Method::Signatures>とL<MooseX::Declare>の未来には大きな期待を寄せていますが、いまは、はるかに見劣りのする（ただし、速くて簡単な）L<MooseX::Params::Validate>の方をおすすめします。このモジュールを使うと、Mooseの型や型変換をあらゆるメソッドの引数に適用できます。
+
+  package User;
+
+  use Moose;
+  use MooseX::Params::Validate;
+
+  sub login {
+      my $self = shift;
+      my ($password)
+          = validated_list( \@_, password => { isa => 'Str', required => 1 } );
+
+      ...
+  }
+
+=head1 L<MooseX::Getopt>
+
+これはC<new_with_options>というメソッドをクラスに追加してくれるロールです。これはコマンドラインオプションを受け取ってアトリビュートに値を入れてくれるコンストラクタです。
+
+これを使うとコマンドラインアプリケーション用のモジュールを書くのが非常に簡単になります。
+
+  package App::Foo;
+
+  use Moose;
+  with 'MooseX::Getopt';
+
+  has 'input' => (
+      is       => 'ro',
+      isa      => 'Str',
+      required => 1
+  );
+
+  has 'output' => (
+      is       => 'ro',
+      isa      => 'Str',
+      required => 1
+  );
+
+  sub run { ... }
+
+実行したいスクリプトの方にはこう書いておきます。
+
+  use App::Foo;
+
+  App::Foo->new_with_options->run;
+
+これで、コマンドラインからこんな風にスクリプトを実行できるようになります。
+
+  foo@example> foo --input /path/to/input --output /path/to/output
+
+=head1 L<MooseX::Singleton>
+
+正直にいうと、シングルトンを使うのはハックにすぎないことも多いのですが、たしかにこれは便利なハックです。L<MooseX::Singleton>を使うとMooseのクラスをシングルトンにできます。
+
+  package Config;
+
+  use MooseX::Singleton; # instead of Moose
+
+  has 'cache_dir' => ( ... );
+
+こんなに簡単。
+
+=head1 検討中の拡張モジュール
+
+CPANには文字通り何ダースもの拡張モジュールがありますが、ここでは、便利に思う人もいるかもしれないけれど、まだお墨付きをあげられるほどではない拡張モジュールを紹介します。
+
+=head2 L<MooseX::Declare>
+
+これはC<Devel::Declare>を使って、PerlそのものをMooseベースのキーワードで拡張しようというものです。非常にクールな拡張モジュールですが、まだ新しい、実験段階のものです。
+
+  class User {
+
+      has 'name'  => ( ... );
+      has 'email' => ( ... );
+
+      method login (Str $password) { ... }
+  }
+
+=head2 L<MooseX::Types>
+
+この拡張モジュールを使うと、アプリケーション用の型ライブラリを作成しやすくなります。また、あらかじめ型の名前を宣言しておくことで、裸のワードとして利用できるようになります。
+
+  use MooseX::Types -declare => ['PositiveInt'];
+  use MooseX::Types::Moose 'Int';
+
+  subtype PositiveInt
+      => as Int,
+      => where { $_ > 0 }
+      => message {"Int is not larger than 0"};
+
+ありがたいことにこの裸の名前はMooseの型レジストリの中では実は名前空間がついているので、アプリケーションによって型の定義が異なる場合でも、同じ裸の名前を使うことができます。
+
+=head2 L<MooseX::Types::Structured>
+
+この拡張モジュールは、L<MooseX::Types>をベースに、複雑なデータ構造を持つ型を宣言できるようにします。
+
+  use MooseX::Types -declare => [ qw( Name Color ) ];
+  use MooseX::Types::Moose qw(Str Int);
+  use MooseX::Types::Structured qw(Dict Tuple Optional);
+
+  subtype Name
+      => as Dict[ first => Str, middle => Optional[Str], last => Str ];
+
+  subtype Color
+      => as Tuple[ Int, Int, Int, Optional[Int] ];
+
+もちろんオブジェクトを使えばいつでもこのようなことをすることはできます。
+
+=head2 L<MooseX::ClassAttribute>
+
+この拡張モジュールは、Mooseのクラスにクラスアトリビュートを提供します。このモジュールを使って宣言したクラスアトリビュートは、通常のMooseのアトリビュートとまったく同じようにイントロスペクションできます。
+
+  package User;
+
+  use Moose;
+  use MooseX::ClassAttribute;
+
+  has 'name' => ( ... );
+
+  class_has 'Cache' => ( ... );
+
+=head2 L<MooseX::Daemonize>
+
+これは起動や停止、PIDファイルの管理、シグナル処理といった、デーモンを作成するときに便利なさまざまなメソッドを提供するロールです。
+
+=head2 L<MooseX::Role::Parameterized>
+
+ロールを取り込む相手にあわせてカスタマイズしたい場合は、このツールがうってつけです。このモジュールを使うと、それぞれの相手にあわせてカスタマイズしたパラメータを受け取ってアトリビュートやメソッドなどを生成するロールを作成できます。
+
+=head2 L<MooseX::POE>
+
+これはMooseのクラスとC<POE::Session>を結びつける小さなラッパです。また、C<event>というイベントハンドラを宣言するためのシュガー関数を提供しています。
+
+=head2 L<MooseX::FollowPBP>
+
+『Perlベストプラクティス』風に、すべてのアクセサの名前を自動的に「get_size」や「set_size」のようにします。
+
+=head2 L<MooseX::SemiAffordanceAccessor>
+
+すべてのアクセサの名前を自動的に「size」や「set_size」のように、getは明示せず、setは明示するようにします。
+
+=head1 作者
+
+Dave Rolsky E<lt>autarch@urth.orgE<gt>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2009 by Infinity Interactive, Inc.
+
+L<http://www.iinteractive.com>
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+

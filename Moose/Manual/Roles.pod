@@ -1,0 +1,224 @@
+=encoding utf8
+
+=head1 題名
+
+Moose::Manual::Roles - ロール：深い階層やベースクラスのかわりに
+
+=head1 ロールとは
+
+ロールというのはクラスが行う役割をあらわすものです。ロールはふつう、クラス間で共有できるなんらかの振る舞いや状態をカプセル化しますが、大切なのは「ロールはクラスではない」ということです。ロールは継承できませんし、インスタンス化することもできません（ロールはクラスやほかのロールによって「消費」されてしまうという言い方をすることもあります）。
+
+そのかわり、ロールはクラスに「合成」できます。実用的な言い方をすると、ロールの中で定義されているメソッドやアトリビュートはすべて、ロールを取り込んだクラスにそのまま追加される（「フラット化」されるという言い方をすることもあります）、ということです。このようにして合成したアトリビュートやメソッドは、そのクラス自身に定義されていたかのように見えるようになります。ロールを取り込んだクラスをサブクラス化すると、合成したメソッドやアトリビュートもすべて継承されます。
+
+Mooseのロールは、ほかの言語でいうミックスインやインタフェースに似ています。
+
+ロールは、自前のメソッドやアトリビュートを定義できるだけでなく、取り込む側のクラス自身に特定のメソッドを定義するよう要求することもできます（必須メソッドのリストしかないロールを作ることもできます。その場合、ロールはJavaのインタフェースと非常によく似たものになります）。
+
+=head1 簡単なロール
+
+ロールの作り方とMooseのクラスの作り方はよく似ています。
+
+  package Breakable;
+
+  use Moose::Role;
+
+  has 'is_broken' => (
+      is  => 'rw',
+      isa => 'Bool',
+  );
+
+  sub break {
+      my $self = shift;
+
+      print "I broke\n";
+
+      $self->is_broken(1);
+  }
+
+L<Moose::Role>を使っていることを除けば、これはMooseを使ったクラス定義にそっくりです。ただし、これはクラスではないのでインスタンス化はできません。
+
+そのかわり、このアトリビュートやメソッドはこのロールを使ったクラスに合成されます。
+
+  package Car;
+
+  use Moose;
+
+  with 'Breakable';
+
+  has 'engine' => (
+      is  => 'ro',
+      isa => 'Engine',
+  );
+
+C<with>関数を使うとロールをクラスに合成できます。合成が済むと、C<Car>クラスにはC<is_broken>アトリビュートとC<break>メソッドができます。また、C<Car>クラスはC<does('Breakable')>でもあります。
+
+  my $car = Car->new( engine => Engine->new );
+
+  print $car->is_broken ? 'Still working' : 'Busted';
+  $car->break;
+  print $car->is_broken ? 'Still working' : 'Busted';
+
+  $car->does('Breakable'); # true
+
+この出力はこうなります。
+
+  Still working
+  I broke
+  Busted
+
+同じロールをC<Bone>クラスでも使うことができます。
+
+  package Bone;
+
+  use Moose;
+
+  with 'Breakable';
+
+  has 'marrow' => (
+      is  => 'ro',
+      isa => 'Marrow',
+  );
+
+=head1 必須メソッド
+
+前述したように、ロールは取り込む側のクラスにひとつ以上のメソッドを提供するように要求できます。C<Breakable>の例を使って、取り込み側のクラスに自前のC<break>メソッドを実装するよう要求することにしましょう。
+
+  package Breakable;
+
+  use Moose::Role;
+
+  requires 'break';
+
+  has 'is_broken' => (
+      is  => 'rw',
+      isa => 'Bool',
+  );
+
+  after 'break' => sub {
+      my $self = shift;
+
+      $self->is_broken(1);
+  };
+
+このロールをC<break>メソッドのないクラスに取り込もうとすると例外が発生します。
+
+ご覧の通り、C<break>にはメソッドモディファイアを追加しました。このロールを取り込むクラスには自前のbreakロジックを実装してほしいけれど、C<break>が呼ばれたときにはかならずC<is_broken>アトリビュートも真にしたいためです。
+
+  package Car
+
+  use Moose;
+
+  with 'Breakable';
+
+  has 'engine' => (
+      is  => 'ro',
+      isa => 'Engine',
+  );
+
+  sub break {
+      my $self = shift;
+
+      if ( $self->is_moving ) {
+          $self->stop;
+      }
+  }
+
+=head2 ロールvs抽象ベースクラス
+
+ほかの言語で抽象ベースクラスの概念におなじみの方は、ロールを同じように使いたいと思われるかもしれません。
+
+必須メソッドのリストしかない「インタフェースのみの」ロールを定義することは「できます」。
+
+ただし、そのロールを取り込むクラスは、直接実装するにせよ、親から継承するにせよ、かならずすべての必須メソッドを実装しなければなりません（必須メソッドのチェックを後回しにして、将来サブクラスに実装させるようにはできません）。
+
+ロールは必須メソッドを直接定義しているので、そこにベースクラスを追加しても何の役にも立ちません。インタフェースロールは単純にそのインタフェースを実装しているすべてのクラスで取り込むようにすることをおすすめします。
+
+=head1 メソッドモディファイアを使う
+
+メソッドモディファイアとロールは非常に強力な組み合わせです。ロールがメソッドモディファイアと必須メソッドを組み合わせたものになることが多いのは、すでにC<Breakable>の例でも見た通りです。
+
+メソッドモディファイアを使うとロールの複雑さが増します（ロールを組み込む順番が問題になってくるためです）。クラスの中に同じメソッドを修飾するロールが複数ある場合、モディファイアはロールが組み込まれるのと同じ順番で適用されます。
+
+  package MovieCar;
+
+  use Moose;
+
+  extends 'Car';
+
+  with 'Breakable', 'ExplodesOnBreakage';
+
+新しく追加したC<ExplodesOnBreakage>ロール「でも」C<break>にC<after>モディファイアがついている場合、C<after>モディファイアはひとつずつ実行されます（最初にC<Breakable>のモディファイアが実行され、次にC<ExplodesOnBreakage>のモディファイアが実行されます）。
+
+=head1 メソッドの衝突
+
+クラスに複数のロールを合成するとき、複数のロールに同名のメソッドがあると衝突が起こります。この場合、合成しようとしているクラスが同名のメソッドを「自分で」提供しなければなりません。
+
+  package Breakdancer;
+
+  use Moose::Role
+
+  sub break {
+
+  }
+
+C<Breakable>とC<Breakdancer>をひとつのクラスに合成する場合、自前のC<break>メソッドを用意する必要があります。
+
+  package FragileDancer;
+
+  use Moose;
+
+  with 'Breakable', 'Breakdancer';
+
+  sub break { ... }
+
+=head1 メソッドの排除と別名
+
+C<FragileDancer>クラスからどちらのロールのメソッドも呼べるようにしたい場合は、メソッドに別名をつける手があります。
+
+  package FragileDancer;
+
+  use Moose;
+
+  with 'Breakable'   => { alias => { break => 'break_bone' } },
+       'Breakdancer' => { alias => { break => 'break_dance' } };
+
+ただし、メソッドの別名は単にメソッドを「コピー」して新しいメソッドを作っているだけなので、元の名前を排除しておく必要もあります。
+
+  with 'Breakable' => {
+      alias   => { break => 'break_bone' },
+      exclude => 'break',
+      },
+      'Breakdancer' => {
+      alias   => { break => 'break_dance' },
+      exclude => 'break',
+      };
+
+excludeパラメータを使うと、C<break>メソッドがC<FragileDancer>クラスに合成されなくなるので衝突は起こりません（つまり、C<FragileDancer>が自前のC<break>メソッドを実装する必要もなくなります）。
+
+これは便利な機能ですが、ロールを取り込むときの暗黙の契約を破ってしまうことにもご注意ください。C<FragileDancer>クラスは、C<Breakable>でありC<BreakDancer>でもあるのにC<break>メソッドがありませんが、どちらかのロールを持つオブジェクトを期待しているAPIがあったら、おそらくこのメソッドが実装されていることも期待しているはずです。
+
+ユースケースによっては、ロールのメソッドは別名を用意して排除したうえで、クラス自身に同名のメソッドを用意させる場合もあります。
+
+=head1 ロールの排除
+
+ロールは、合成できないロールを指定することもできます。これはロールの再利用性を制限するのでよく気をつけて利用してください。
+
+  package Breakable;
+
+  use Moose::Role;
+
+  excludes 'BreakDancer';
+
+=head1 作者
+
+Dave Rolsky E<lt>autarch@urth.orgE<gt>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2009 by Infinity Interactive, Inc.
+
+L<http://www.iinteractive.com>
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+

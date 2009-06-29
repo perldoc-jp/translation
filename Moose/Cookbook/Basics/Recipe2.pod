@@ -1,0 +1,161 @@
+=encoding utf8
+
+=head1 題名
+
+Moose::Cookbook::Basics::Recipe2 - 簡単なB<BankAccount>の例
+
+=head1 概要
+
+  package BankAccount;
+  use Moose;
+
+  has 'balance' => ( isa => 'Int', is => 'rw', default => 0 );
+
+  sub deposit {
+      my ( $self, $amount ) = @_;
+      $self->balance( $self->balance + $amount );
+  }
+
+  sub withdraw {
+      my ( $self, $amount ) = @_;
+      my $current_balance = $self->balance();
+      ( $current_balance >= $amount )
+          || confess "Account overdrawn";
+      $self->balance( $current_balance - $amount );
+  }
+
+  package CheckingAccount;
+  use Moose;
+
+  extends 'BankAccount';
+
+  has 'overdraft_account' => ( isa => 'BankAccount', is => 'rw' );
+
+  before 'withdraw' => sub {
+      my ( $self, $amount ) = @_;
+      my $overdraft_amount = $amount - $self->balance();
+      if ( $self->overdraft_account && $overdraft_amount > 0 ) {
+          $self->overdraft_account->withdraw($overdraft_amount);
+          $self->deposit($overdraft_amount);
+      }
+  };
+
+=head1 本文
+
+最初のレシピでは、アトリビュートの生成や操作に焦点をあてながら、非常に基本的なMooseのクラスの作り方を説明しました。最初のレシピのオブジェクトは非常にデータ指向で、振る舞い（メソッド）についてはたいしたことをしませんでしたが、このレシピでは最初のレシピのコンセプトを拡張して、本当の振る舞いをいくつか追加します。とりわけここではメソッドの新しい振る舞いを実装するためにメソッドモディファイアを使うやり方を紹介します。
+
+概要に掲載したクラスは2種類の銀行口座をあらわすものです。単純な銀行口座の方は、残高(balance)というアトリビュートがひとつに、預け入れ(deposit)、引き出し(withdraw)という2つの振る舞いがあります。
+
+この基本の銀行口座を拡張したのがCheckingAccount(当座預金口座)クラスです。このクラスにはもうひとつ、当座貸越口座(overdraft_account)というアトリビュートを追加しました。また、withdrawメソッドには当座貸越保護の仕組みを追加して、預金残高以上に引き出そうとした場合は当座貸越口座から差額の調整を試みるようにしてあります。(1)
+
+最初のB<BankAccount>クラスではアトリビュートのデフォルト値という新機能が使われています。
+
+  has 'balance' => ( isa => 'Int', is => 'rw', default => 0 );
+
+これは、B<BankAccount>にはC<balance>というアトリビュートがあり、このアトリビュートにはC<Int>型の制約と、読み書き可能なアクセサ、C<0>というデフォルト値が用意されている、という意味。つまり、コンストラクタになにか別の値を渡さない限り、生成されたB<BankAccount>のインスタンスのC<balance>スロットはC<0>に初期化される、ということです。
+
+C<deposit>メソッドとC<withdraw>メソッドは、昔ながらのプレーンなPerl 5のオブジェクト指向ですから、見ればだいたい意味が通じるでしょう。
+
+最初のレシピでおわかりの通り、C<extends>キーワードはクラスのスーパークラスを設定するものです（ここではB<CheckingAccount>がB<BankAccount>をC<extends>しています）。次の行は、これもまたクラスベースの型制約というアトリビュートの新機能です。
+
+  has 'overdraft_account' => ( isa => 'BankAccount', is => 'rw' );
+
+ここまで見てきたのはC<Int>型の制約だけでした。これは（最初のレシピでも見たように）組み込みの型制約ですが、このC<BankAccount>型の制約は新たに（実際にはB<BankAccount>クラスそのものを作成した瞬間に）定義されたものです。Mooseはプログラムの中で使われているひとつひとつのクラスに対応する型制約を生成するのです。 (2)
+
+つまり、最初のレシピであれば、C<Point>とC<Point3D>の双方に制約が生成されていましたし、このレシピであれば、C<BankAccount>とC<CheckingAccount>の型制約が自動的に生成されます（Mooseが気を利かせて、クラスと型制約がお互いに同期した状態を保てるようにしてくれているのです）。要するに、Mooseを使うと確実に期待した通りのことができるようになります。(3)
+
+B<CheckingAccount>にはもうひとつ、C<before>というメソッドモディファイアも見られます。
+
+  before 'withdraw' => sub {
+      my ( $self, $amount ) = @_;
+      my $overdraft_amount = $amount - $self->balance();
+      if ( $self->overdraft_account && $overdraft_amount > 0 ) {
+          $self->overdraft_account->withdraw($overdraft_amount);
+          $self->deposit($overdraft_amount);
+      }
+  };
+
+最初のレシピにあったC<after>モディファイアと同じく、スーパークラスのメソッド（この場合はC<< BankAccount->withdraw >>）を呼ぶのはMooseの方でしてくれます。
+
+C<before>モディファイアは（当然ながら）スーパークラスのコードが実行される「前に」実行されます。ここでは、C<before>モディファイアは当座貸越保護を実装するために、まずは当座預金口座の残高を確認しています。残高がない（ただし当座貸越口座は利用できる）場合は、必要な額を当座預金口座に移します。(4)
+
+最初のレシピのメソッドモディファイアと同じく、ここでもC<SUPER::>を使えば同じ効果を得ることはできます。
+
+  sub withdraw {
+      my ( $self, $amount ) = @_;
+      my $overdraft_amount = $amount - $self->balance();
+      if ( $self->overdraft_account && $overdraft_amount > 0 ) {
+          $self->overdraft_account->withdraw($overdraft_amount);
+          $self->deposit($overdraft_amount);
+      }
+      $self->SUPER::withdraw($amount);
+  }
+
+メソッドモディファイアを使うアプローチの利点は、C<< CheckingAccount->withdraw >>を書くときにC<SUPER::withdraw>を呼んだりC<$amount>引数を渡したりするのを覚えておく必要がないことです。
+
+ただし、これは忘れっぽいプログラマにとって便利な機能というだけではありません。メソッドモディファイアを使うと、サブクラスがサーパークラスの変化を受けづらくなります。たとえば、B<< BankAccount->withdraw >>になんらかの引数が追加されたとします。C<SUPER::withdraw>を使っている場合、B<< CheckingAccount->withdraw >>は追加された引数を正しく渡せなくなりますが、メソッドモディファイアを使っていれば自動的にすべての引数を正しく渡せます。
+
+最初のレシピと同じく、オブジェクトのインスタンス化には名前付きのパラメータを受け取れるC<new>メソッドを使っています。
+
+  my $savings_account = BankAccount->new( balance => 250 );
+
+  my $checking_account = CheckingAccount->new(
+      balance           => 100,
+      overdraft_account => $savings_account,
+  );
+
+これもまた最初のレシピと同じく、F<t/000_recipes/moose_cookbook_basics_recipe2.t>というテストファイルにはもっと詳細な例があります。
+
+=head1 まとめ
+
+このレシピでは、より「現実の世界」に近いユースケースを使って、最初のレシピの基本的なコンセプトを拡張しました。
+
+=head1 脚注
+
+=over 4
+
+=item (1)
+
+よく見てみると、ここでは円形ループが起こりそうになっていることに気がつかれるかもしれません。もっと賢くするなら、当座預金口座と当座貸越口座の間で偶発的にループが発生してしまわないようにする必要があるでしょう。
+
+=item (2)
+
+実際には、この型制約の生成はモジュールのロード順の影響を受けます。もっと複雑な例になると、クラスに対応する型制約がロードされないうちにクラスの型を明示的に宣言する必要がある場合が出てくるかもしれません。
+
+=item (3)
+
+Mooseはクラスのis-a関係を型制約の階層構造の中に持ち込むことはしません。クラスの型制約はC<Object>のサブタイプにすぎないとみなして、型チェックを特殊化し、サブクラスを受け付けるようにします。つまり、B<CheckingAccount>のインスタンスはC<BankAccount>型の制約を満たすわけです。詳しくはL<Moose::Util::TypeConstraints>のドキュメントをご覧ください。
+
+=item (4)
+
+当座貸越口座に必要な残高がない場合は、エラーが発生します。もちろん当座貸越口座にも当座貸越保護を持たせることもできるでしょう。注釈(1)をご覧ください。
+
+=back
+
+=head1 参照
+
+=over 4
+
+=item 謝辞
+
+このレシピのBankAccountの例は『実践Common Lisp』の該当の章から直接引用したものです。
+
+L<http://www.gigamonkeys.com/book/object-reorientation-generic-functions.html>
+
+=back
+
+=head1 作者
+
+Stevan Little E<lt>stevan@iinteractive.comE<gt>
+
+Dave Rolsky E<lt>autarch@urth.orgE<gt>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2006-2009 by Infinity Interactive, Inc.
+
+L<http://www.iinteractive.com>
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+

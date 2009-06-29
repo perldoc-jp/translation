@@ -1,0 +1,99 @@
+=encoding utf8
+
+=head1 題名
+
+Moose::Cookbook::Basics::Recipe11 - BUILDARGSとBUILDを使ってオブジェクトの生成に割り込む
+
+=head1 概要
+
+  package Person;
+
+  has 'ssn' => (
+      is        => 'ro',
+      isa       => 'Str',
+      predicate => 'has_ssn',
+  );
+
+  has 'country_of_residence' => (
+      is      => 'ro',
+      isa     => 'Str',
+      default => 'usa'
+  );
+
+  has 'first_name' => (
+      is  => 'ro',
+      isa => 'Str',
+  );
+
+  has 'last_name' => (
+      is  => 'ro',
+      isa => 'Str',
+  );
+
+  sub BUILDARGS {
+      my $class = shift;
+
+      if ( @_ == 1 && ! ref $_[0] ) {
+          return { ssn => $_[0] };
+      }
+      else {
+          return $class->SUPER::BUILDARGS(@_);
+      }
+  }
+
+  sub BUILD {
+      my $self = shift;
+
+      if ( $self->country_of_residence eq 'usa' ) {
+          die 'Cannot create a Person who lives in the USA without an ssn.'
+              unless $self->has_ssn;
+      }
+  }
+
+=head1 本文
+
+このレシピではC<BUILDARGS>とC<BUILD>の使い方を説明します。これらのメソッドを定義すると、C<new>をオーバーライドしなくてもオブジェクトの生成プロセスに割り込むことができます。
+
+C<BUILDARGS>メソッドが呼ばれるのはオブジェクトが生成される「前」です。これはクラスメソッドとして呼ばれ、C<new>メソッドに渡されるすべてのパラメータを受け取ります。C<BUILDARGS>メソッドはその引数に何らかの処理をして、ハッシュリファレンスを返すことが期待されています。ハッシュの各キーはアトリビュートのC<init_arg>でなければなりません。
+
+C<BUILDARGS>の主な目的は、クラスが名前付き引数以外のものを受け取れるようにすることです。このC<Person>クラスの場合は引数が社会保障番号ひとつだけでも呼べるようにしています。
+
+  my $person = Person->new('123-45-6789');
+
+今回のC<BUILDARGS>のポイントはこの条件文です。
+
+      if ( @_ == 1 && ! ref $_[0] ) {
+          return { ssn => $_[0] };
+      }
+
+Mooseのコンストラクタは、デフォルトではキーと値のペアからなるリストか、ハッシュリファレンスを受け取るようになっているので、リファレンスでないことを確認してからでないとC<$_[0]>が社会保障番号であると想定することはできません。
+
+C<< $class->SUPER::BUILDARGS(@_) >>を呼んでいるのは、それ以外のすべてのケースに対応するためです。自分でC<BUILDARGS>メソッドを実装する場合はかならずこのようにしておいてください。L<Moose::Object>にもハッシュリファレンスやキーと値のペアのリストを処理する独自のC<BUILDARGS>メソッドが用意されているためです。
+
+C<BUILD>メソッドが呼ばれるのはオブジェクトが生成された「あと」、呼び出し元にオブジェクトを返す前です。C<BUILD>メソッドを使うと全体的なオブジェクトの状態をチェックできます。C<BUILD>メソッドは個々のアトリビュートの型制約だけでは表現できないロジックを入れておくのに便利です。
+
+C<Person>クラスの場合はC<ssn>とC<country_of_residence>という2つのアトリビュートの関係をチェックする必要があります。オブジェクトが論理的に首尾一貫していない場合は例外が発生します。
+
+=head1 検討課題
+
+このレシピではすべてのアトリビュートが読み取り専用なのでかなり単純になっていますが、C<country_of_residence>アトリビュートが設定可能だったら、新しい居住国がC<usa>だったときにC<ssn>が設定されているかチェックする必要が出てきます（このようなチェックはC<before>モディファイアを使えば実現できるかもしれません）。
+
+=head1 まとめ
+
+これまで何度もMooseのクラスではC<new>をオーバーライドしないようにと言ってきました。このレシピでは、C<new>をオーバーライドしなくてもC<BUILDARGS>とC<BUILD>を使えばオブジェクトの生成に割り込めることを紹介しました。
+
+C<BUILDARGS>メソッドを使うと、Mooseに組み込まれているコンストラクタのパラメータ処理を拡張できます。C<BUILD>メソッドを使うと、オブジェクト生成後にオブジェクト全体にかかわる論理的な制約を実装できます。
+
+=head1 作者
+
+Dave Rolsky E<lt>autarch@urth.orgE<gt>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2006-2009 by Infinity Interactive, Inc.
+
+L<http://www.iinteractive.com>
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
