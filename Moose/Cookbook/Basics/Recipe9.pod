@@ -1,106 +1,232 @@
 =encoding utf8
 
+=pod
+
 =head1 題名
 
-Moose::Cookbook::Basics::Recipe9 - ビルダーメソッドとlazy_build
+Moose::Cookbook::Basics::Recipe9 - 演算子のオーバーロード、サブタイプ、型変換
 
 =head1 概要
 
-  package BinaryTree;
+  package Human;
+
   use Moose;
+  use Moose::Util::TypeConstraints;
 
-  has 'node' => (is => 'rw', isa => 'Any');
+  subtype 'Gender'
+      => as 'Str'
+      => where { $_ =~ m{^[mf]$}s };
 
-  has 'parent' => (
-      is        => 'rw',
-      isa       => 'BinaryTree',
-      predicate => 'has_parent',
-      weak_ref  => 1,
-  );
+  has 'gender' => ( is => 'ro', isa => 'Gender', required => 1 );
 
-  has 'left' => (
-      is        => 'rw',
-      isa       => 'BinaryTree',
-      predicate => 'has_left',
-      lazy      => 1,
-      builder   => '_build_child_tree',
-  );
+  has 'mother' => ( is => 'ro', isa => 'Human' );
+  has 'father' => ( is => 'ro', isa => 'Human' );
 
-  has 'right' => (
-      is        => 'rw',
-      isa       => 'BinaryTree',
-      predicate => 'has_right',
-      lazy      => 1,
-      builder   => '_build_child_tree',
-  );
+  use overload '+' => \&_overload_add, fallback => 1;
 
-  before 'right', 'left' => sub {
-      my ($self, $tree) = @_;
-      $tree->parent($self) if defined $tree;
-  };
+  sub _overload_add {
+      my ( $one, $two ) = @_;
 
-  sub _build_child_tree {
-      my $self = shift;
+      die('Only male and female humans may create children')
+          if ( $one->gender() eq $two->gender() );
 
-      return BinaryTree->new( parent => $self );
+      my ( $mother, $father )
+          = ( $one->gender eq 'f' ? ( $one, $two ) : ( $two, $one ) );
+
+      my $gender = 'f';
+      $gender = 'm' if ( rand() >= 0.5 );
+
+      return Human->new(
+          gender => $gender,
+          mother => $mother,
+          father => $father,
+      );
   }
 
 =head1 本文
 
-この例は、L<Moose::Cookbook::Basics::Recipe3>を読んだ方ならほとんど同じもののように見えることでしょう。実際、ここでしたのはアトリビュートのC<default>パラメータをC<builder>で置き換えたことだけです。
+このレシピでは演算子のオーバーロードや型変換、サブタイプを利用してヒトの繁殖システムを（まあ、少なくとも遺伝子の選択くらいは、ですが）再現する方法を紹介します。
 
-この例に限っていえば、C<default>とC<builder>オプションはまったく同じ働きをしています。C<left>ないしC<right>アトリビュートを読み込もうとすると、ビルダーメソッドが呼ばれてアトリビュートが初期化されるわけです。
+=head1 はじめに
 
-注意したいのは、Mooseは、「そのアトリビュートが定義されているオブジェクトの」ビルダーメソッドを呼ぶ、ということ。例をあげましょう。
+このC<Human>クラスでは演算子のオーバーロードを利用して2人のヒトを「加え」れば子供が産まれるようになっています（今回の実装では2つのオブジェクトは異なる性を持っている必要がありますが、ここで話題にしているのはあくまでも生物学的な繁殖の話であって、結婚の話ではありませんので、あしからず）。
 
-  my $tree = BinaryTree->new();
+この例は、そのままでもよいのですが、遺伝子を加えてやればもっとおもしろいものになります。ここでは生物学のまねごとをするために目の色をコントロールする遺伝子を2つ加えて、オーバーロードを使って親から受け継いだ遺伝子を合成してみます。
 
-  my $left = $tree->left();
+=head2 演算子のオーバーロードとは?
 
-C<< $tree->left() >>が呼ばれると、MooseはC<< $tree->_build_child_tree() >>を呼んでC<left>アトリビュートの初期化を行います。あらかじめもとのコンストラクタにC<left>が渡されていた場合は、ビルダーは呼ばれません。
+オーバーロードはMoose特有の機能「ではありません」。PerlではC<overload>プラグマを使って実装されている一般的なオブジェクト指向のコンセプトです。オーバーロードを使うと、加算演算子(C<+>)のようにPerlの組み込み演算子とオブジェクトを組み合わせて使うとき、あるいはオブジェクトを文字列として扱うときに有意義な処理をさせられます。
 
-C<default>とC<builder>にはいくつか違いがあります。特筆に値するものとしては、ビルダーはサブクラス化が可能であることと、ロールから合成できることがあげられます。詳しくはL<Moose::Manual::Attributes>をご覧ください。
+この例では、加算をオーバーロードして、C<$child = $mother + $father>のようなコードを書けるようにしています。
 
-=head2 lazy_buildによるショートカット
+=head1 遺伝子
 
-アトリビュートのオプションを一度にまとめて指定するシンタックスシュガーとして、C<lazy_build>というアトリビュートオプションを使うこともできます。
+目の色に影響を与える遺伝子はたくさんありますが、もっとも重要なのはI<gey>とI<bey2>の2つです。ここではそれぞれの遺伝子にクラスを用意するところから始めましょう。
 
-  has 'animal' => (
-      is         => 'ro',
-      isa        => 'Animal',
-      lazy_build => 1,
+=head2 Human::Gene::bey2
+
+  package Human::Gene::bey2;
+
+  use Moose;
+  use Moose::Util::TypeConstraints;
+
+  type 'bey2_color' => where { $_ =~ m{^(?:brown|blue)$} };
+
+  has 'color' => ( is => 'ro', isa => 'bey2_color' );
+
+このクラスはたいしたことはありません。許される色についての型制約と、C<color>というアトリビュートがあるだけです。
+
+=head2 Human::Gene::gey
+
+  package Human::Gene::gey;
+
+  use Moose;
+  use Moose::Util::TypeConstraints;
+
+  type 'gey_color' => where { $_ =~ m{^(?:green|blue)$} };
+
+  has 'color' => ( is => 'ro', isa => 'gey_color' );
+
+これもC<Humane::Gene::bey2>クラスとほとんど同じですが、許される色が異なっています。
+
+=head1 目の色
+
+C<Human>クラスに（それぞれの遺伝子について2つずつ）4つのアトリビュートを用意することもできますが、それではいささかごちゃごちゃしてしまいますので、かわりに遺伝子をC<Human::EyeColor>というコンテナクラスに入れて抽象化することにします。こうすると、C<Human>にはC<eye_color>というアトリビュートさえ用意しておけばよくなります。
+
+  package Human::EyeColor;
+
+  use Moose;
+  use Moose::Util::TypeConstraints;
+
+  coerce 'Human::Gene::bey2'
+      => from 'Str'
+          => via { Human::Gene::bey2->new( color => $_ ) };
+
+  coerce 'Human::Gene::gey'
+      => from 'Str'
+          => via { Human::Gene::gey->new( color => $_ ) };
+
+  has [qw( bey2_1 bey2_2 )] =>
+      ( is => 'ro', isa => 'Human::Gene::bey2', coerce => 1 );
+
+  has [qw( gey_1 gey_2 )] =>
+      ( is => 'ro', isa => 'Human::Gene::gey', coerce => 1 );
+
+目の色をあらわすクラスには遺伝子がそれぞれ2つずつ用意されています。また、それぞれのクラスの型変換も用意して、文字列を新しいオブジェクトに変換できるようにしてあります。ただし、「indigo」のような文字列を変換しようとすると、型変換は失敗します。どちらの遺伝子もこの色を有効とは認めないためです。
+
+ついでながら、この例を見ると、C<has>の第1引数に名前の配列リファレンスを渡すと、同じアトリビュートを一度に複数個定義できるのがわかります。
+
+それから、遺伝子の組み合わせから実際の目の色を計算するメソッドが必要です。I<bey2>の茶色の遺伝子は青と緑の遺伝子より優性で、I<gey>の緑の遺伝子は青より優性です。
+
+  sub color {
+      my ($self) = @_;
+
+      return 'brown'
+          if ( $self->bey2_1->color() eq 'brown'
+          or $self->bey2_2->color() eq 'brown' );
+
+      return 'green'
+          if ( $self->gey_1->color() eq 'green'
+          or $self->gey_2->color() eq 'green' );
+
+      return 'blue';
+  }
+
+C<Human::EyeColor>オブジェクトは文字列としても扱えるようにしたいので、C<Human::EyeColor>クラスに文字列のオーバーロードを定義しましょう。
+
+  use overload '""' => \&color, fallback => 1;
+
+最後に、加算のオーバーロードを定義する必要があります。これで、C<Human::EyeColor>オブジェクトを足しあわせると、新しい（遺伝子学的に正しい）目の色をした新しいC<Human::EyeColor>オブジェクトが得られるようになります。
+
+  use overload '+' => \&_overload_add, fallback => 1;
+
+  sub _overload_add {
+      my ( $one, $two ) = @_;
+
+      my $one_bey2 = 'bey2_' . _rand2();
+      my $two_bey2 = 'bey2_' . _rand2();
+
+      my $one_gey = 'gey_' . _rand2();
+      my $two_gey = 'gey_' . _rand2();
+
+      return Human::EyeColor->new(
+          bey2_1 => $one->$one_bey2->color(),
+          bey2_2 => $two->$two_bey2->color(),
+          gey_1  => $one->$one_gey->color(),
+          gey_2  => $two->$two_gey->color(),
+      );
+  }
+
+  sub _rand2 {
+      return 1 + int( rand(2) );
+  }
+
+目の色をあらわすオブジェクトを2つ足しあわせると、C<_overload_add()>メソッドに2つのC<Human::EyeColor>オブジェクトが渡され（C<+>演算子の左項と右項です）、新しいC<Human::EyeColor>オブジェクトが返ります。
+
+=head1 C<Human>に目の色を追加する
+
+新しいC<Human::EyeColor>クラスは、もとのC<Human>クラスを何ヶ所か変更するだけで組み込むことができます。
+
+  use List::MoreUtils qw( zip );
+
+  coerce 'Human::EyeColor'
+      => from 'ArrayRef'
+      => via { my @genes = qw( bey2_1 bey2_2 gey_1 gey_2 );
+               return Human::EyeColor->new( zip( @genes, @{$_} ) ); };
+
+  has 'eye_color' => (
+      is       => 'ro',
+      isa      => 'Human::EyeColor',
+      coerce   => 1,
+      required => 1,
   );
 
-これは、次の書き方を簡略化したものです。
+また、C<Human>クラスのC<_overload_add()>も目の色に対応できるように修正する必要があります。
 
-  has 'animal' => (
-      is        => 'ro',
-      isa       => 'Animal',
-      required  => 1,
-      lazy      => 1,
-      builder   => '_build_animal',
-      predicate => 'has_animal',
-      clearer   => 'clear_animal',
+  return Human->new(
+      gender    => $gender,
+      eye_color => ( $one->eye_color() + $two->eye_color() ),
+      mother    => $mother,
+      father    => $father,
   );
-
-アトリビュートがアンダースコア（下線）で始まる場合、C<predicate>とC<clearer>についてはMooseが気を利かせて、期待通りにメソッド名がアンダースコアで始まるようにしてくれます。C<builder>メソッドについては「常に」アンダースコアで始まります。
-
-C<lazy_build>の詳細についてはL<Moose::Manual::Attributes>をご覧ください。
 
 =head1 まとめ
 
-C<builder>オプションは、C<default>の機能をよりオブジェクト指向らしくしたものです。また、デフォルト値を生成するコードを明確に定義されたメソッドに分離してくれます。アトリビュートの定義に無名サブルーチンを混ぜると、非常に見苦しい、理解しづらいものになることがあります。
+ここで利用したオーバーロード、サブタイプ、型変換という3つのテクニックを組み合わせると強力なインタフェースを提供できます。
+
+オーバーロードの詳細についてはL<overload>プラグマのドキュメントをご覧ください。
+
+ここで作成したコードの全体をまとめて見たい場合はF<t/000_recipes/basics/010_genes.t>をご覧ください。
+
+=head1 次のステップ
+
+これが本物のプロジェクトだったとしたら、おそらく以下のようなものがほしくなるでしょう。
+
+=over 4
+
+=item Crypt::Randomを使った高度なランダム化
+
+=item 身体的特徴用のベースクラス
+
+=item 遺伝子の突然変異
+
+=item 追加の身体的特徴
+
+=item 人工生命
+
+=back
 
 =head1 作者
 
+Aran Clary Deltac <bluefeet@cpan.org>
+
 Dave Rolsky E<lt>autarch@urth.orgE<gt>
 
-=head1 COPYRIGHT AND LICENSE
+=head1 LICENSE
 
-Copyright 2006-2009 by Infinity Interactive, Inc.
+This work is licensed under a Creative Commons Attribution 3.0 Unported License.
 
-L<http://www.iinteractive.com>
+License details are at: L<http://creativecommons.org/licenses/by/3.0/>
 
-This library is free software; you can redistribute it and/or modify
-it under the same terms as Perl itself.
+=cut
 

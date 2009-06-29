@@ -1,228 +1,103 @@
 =encoding utf8
 
+=pod
+
 =head1 題名
 
-Moose::Cookbook::Basics::Recipe10 - 演算子のオーバーロード、サブタイプ、型変換
+Moose::Cookbook::Basics::Recipe10 - BUILDARGSとBUILDを使ってオブジェクトの生成に割り込む
 
 =head1 概要
 
-  package Human;
+  package Person;
 
-  use Moose;
-  use Moose::Util::TypeConstraints;
+  has 'ssn' => (
+      is        => 'ro',
+      isa       => 'Str',
+      predicate => 'has_ssn',
+  );
 
-  subtype 'Gender'
-      => as 'Str'
-      => where { $_ =~ m{^[mf]$}s };
+  has 'country_of_residence' => (
+      is      => 'ro',
+      isa     => 'Str',
+      default => 'usa'
+  );
 
-  has 'gender' => ( is => 'ro', isa => 'Gender', required => 1 );
+  has 'first_name' => (
+      is  => 'ro',
+      isa => 'Str',
+  );
 
-  has 'mother' => ( is => 'ro', isa => 'Human' );
-  has 'father' => ( is => 'ro', isa => 'Human' );
+  has 'last_name' => (
+      is  => 'ro',
+      isa => 'Str',
+  );
 
-  use overload '+' => \&_overload_add, fallback => 1;
+  sub BUILDARGS {
+      my $class = shift;
 
-  sub _overload_add {
-      my ( $one, $two ) = @_;
+      if ( @_ == 1 && ! ref $_[0] ) {
+          return { ssn => $_[0] };
+      }
+      else {
+          return $class->SUPER::BUILDARGS(@_);
+      }
+  }
 
-      die('Only male and female humans may create children')
-          if ( $one->gender() eq $two->gender() );
+  sub BUILD {
+      my $self = shift;
 
-      my ( $mother, $father )
-          = ( $one->gender eq 'f' ? ( $one, $two ) : ( $two, $one ) );
-
-      my $gender = 'f';
-      $gender = 'm' if ( rand() >= 0.5 );
-
-      return Human->new(
-          gender => $gender,
-          mother => $mother,
-          father => $father,
-      );
+      if ( $self->country_of_residence eq 'usa' ) {
+          die 'Cannot create a Person who lives in the USA without an ssn.'
+              unless $self->has_ssn;
+      }
   }
 
 =head1 本文
 
-このレシピでは演算子のオーバーロードや型変換、サブタイプを利用してヒトの繁殖システムを（まあ、少なくとも遺伝子の選択くらいは、ですが）再現する方法を紹介します。
+このレシピではC<BUILDARGS>とC<BUILD>の使い方を説明します。これらのメソッドを定義すると、C<new>をオーバーライドしなくてもオブジェクトの生成プロセスに割り込むことができます。
 
-=head1 はじめに
+C<BUILDARGS>メソッドが呼ばれるのはオブジェクトが生成される「前」です。これはクラスメソッドとして呼ばれ、C<new>メソッドに渡されるすべてのパラメータを受け取ります。C<BUILDARGS>メソッドはその引数に何らかの処理をして、ハッシュリファレンスを返すことが期待されています。ハッシュの各キーはアトリビュートのC<init_arg>でなければなりません。
 
-このC<Human>クラスでは演算子のオーバーロードを利用して2人のヒトを「加え」れば子供が産まれるようになっています（今回の実装では2つのオブジェクトは異なる性を持っている必要がありますが、ここで話題にしているのはあくまでも生物学的な繁殖の話であって、結婚の話ではありませんので、あしからず）。
+C<BUILDARGS>の主な目的は、クラスが名前付き引数以外のものを受け取れるようにすることです。このC<Person>クラスの場合は引数が社会保障番号ひとつだけでも呼べるようにしています。
 
-この例は、そのままでもよいのですが、遺伝子を加えてやればもっとおもしろいものになります。ここでは生物学のまねごとをするために目の色をコントロールする遺伝子を2つ加えて、オーバーロードを使って親から受け継いだ遺伝子を合成してみます。
+  my $person = Person->new('123-45-6789');
 
-=head2 演算子のオーバーロードとは?
+今回のC<BUILDARGS>のポイントはこの条件文です。
 
-オーバーロードはMoose特有の機能「ではありません」。PerlではC<overload>プラグマを使って実装されている一般的なオブジェクト指向のコンセプトです。オーバーロードを使うと、加算演算子(C<+>)のようにPerlの組み込み演算子とオブジェクトを組み合わせて使うとき、あるいはオブジェクトを文字列として扱うときに有意義な処理をさせられます。
+      if ( @_ == 1 && ! ref $_[0] ) {
+          return { ssn => $_[0] };
+      }
 
-この例では、加算をオーバーロードして、C<$child = $mother + $father>のようなコードを書けるようにしています。
+Mooseのコンストラクタは、デフォルトではキーと値のペアからなるリストか、ハッシュリファレンスを受け取るようになっているので、リファレンスでないことを確認してからでないとC<$_[0]>が社会保障番号であると想定することはできません。
 
-=head1 遺伝子
+C<< $class->SUPER::BUILDARGS(@_) >>を呼んでいるのは、それ以外のすべてのケースに対応するためです。自分でC<BUILDARGS>メソッドを実装する場合はかならずこのようにしておいてください。L<Moose::Object>にもハッシュリファレンスやキーと値のペアのリストを処理する独自のC<BUILDARGS>メソッドが用意されているためです。
 
-目の色に影響を与える遺伝子はたくさんありますが、もっとも重要なのはI<gey>とI<bey2>の2つです。ここではそれぞれの遺伝子にクラスを用意するところから始めましょう。
+C<BUILD>メソッドが呼ばれるのはオブジェクトが生成された「あと」、呼び出し元にオブジェクトを返す前です。C<BUILD>メソッドを使うと全体的なオブジェクトの状態をチェックできます。C<BUILD>メソッドは個々のアトリビュートの型制約だけでは表現できないロジックを入れておくのに便利です。
 
-=head2 Human::Gene::bey2
+C<Person>クラスの場合はC<ssn>とC<country_of_residence>という2つのアトリビュートの関係をチェックする必要があります。オブジェクトが論理的に首尾一貫していない場合は例外が発生します。
 
-  package Human::Gene::bey2;
+=head1 検討課題
 
-  use Moose;
-  use Moose::Util::TypeConstraints;
-
-  type 'bey2_color' => where { $_ =~ m{^(?:brown|blue)$} };
-
-  has 'color' => ( is => 'ro', isa => 'bey2_color' );
-
-このクラスはたいしたことはありません。許される色についての型制約と、C<color>というアトリビュートがあるだけです。
-
-=head2 Human::Gene::gey
-
-  package Human::Gene::gey;
-
-  use Moose;
-  use Moose::Util::TypeConstraints;
-
-  type 'gey_color' => where { $_ =~ m{^(?:green|blue)$} };
-
-  has 'color' => ( is => 'ro', isa => 'gey_color' );
-
-これもC<Humane::Gene::bey2>クラスとほとんど同じですが、許される色が異なっています。
-
-=head1 目の色
-
-C<Human>クラスに（それぞれの遺伝子について2つずつ）4つのアトリビュートを用意することもできますが、それではいささかごちゃごちゃしてしまいますので、かわりに遺伝子をC<Human::EyeColor>というコンテナクラスに入れて抽象化することにします。こうすると、C<Human>にはC<eye_color>というアトリビュートさえ用意しておけばよくなります。
-
-  package Human::EyeColor;
-
-  use Moose;
-  use Moose::Util::TypeConstraints;
-
-  coerce 'Human::Gene::bey2'
-      => from 'Str'
-          => via { Human::Gene::bey2->new( color => $_ ) };
-
-  coerce 'Human::Gene::gey'
-      => from 'Str'
-          => via { Human::Gene::gey->new( color => $_ ) };
-
-  has [qw( bey2_1 bey2_2 )] =>
-      ( is => 'ro', isa => 'Human::Gene::bey2', coerce => 1 );
-
-  has [qw( gey_1 gey_2 )] =>
-      ( is => 'ro', isa => 'Human::Gene::gey', coerce => 1 );
-
-目の色をあらわすクラスには遺伝子がそれぞれ2つずつ用意されています。また、それぞれのクラスの型変換も用意して、文字列を新しいオブジェクトに変換できるようにしてあります。ただし、「indigo」のような文字列を変換しようとすると、型変換は失敗します。どちらの遺伝子もこの色を有効とは認めないためです。
-
-ついでながら、この例を見ると、C<has>の第1引数に名前の配列リファレンスを渡すと、同じアトリビュートを一度に複数個定義できるのがわかります。
-
-それから、遺伝子の組み合わせから実際の目の色を計算するメソッドが必要です。I<bey2>の茶色の遺伝子は青と緑の遺伝子より優性で、I<gey>の緑の遺伝子は青より優性です。
-
-  sub color {
-      my ($self) = @_;
-
-      return 'brown'
-          if ( $self->bey2_1->color() eq 'brown'
-          or $self->bey2_2->color() eq 'brown' );
-
-      return 'green'
-          if ( $self->gey_1->color() eq 'green'
-          or $self->gey_2->color() eq 'green' );
-
-      return 'blue';
-  }
-
-C<Human::EyeColor>オブジェクトは文字列としても扱えるようにしたいので、C<Human::EyeColor>クラスに文字列のオーバーロードを定義しましょう。
-
-  use overload '""' => \&color, fallback => 1;
-
-最後に、加算のオーバーロードを定義する必要があります。これで、C<Human::EyeColor>オブジェクトを足しあわせると、新しい（遺伝子学的に正しい）目の色をした新しいC<Human::EyeColor>オブジェクトが得られるようになります。
-
-  use overload '+' => \&_overload_add, fallback => 1;
-
-  sub _overload_add {
-      my ( $one, $two ) = @_;
-
-      my $one_bey2 = 'bey2_' . _rand2();
-      my $two_bey2 = 'bey2_' . _rand2();
-
-      my $one_gey = 'gey_' . _rand2();
-      my $two_gey = 'gey_' . _rand2();
-
-      return Human::EyeColor->new(
-          bey2_1 => $one->$one_bey2->color(),
-          bey2_2 => $two->$two_bey2->color(),
-          gey_1  => $one->$one_gey->color(),
-          gey_2  => $two->$two_gey->color(),
-      );
-  }
-
-  sub _rand2 {
-      return 1 + int( rand(2) );
-  }
-
-目の色をあらわすオブジェクトを2つ足しあわせると、C<_overload_add()>メソッドに2つのC<Human::EyeColor>オブジェクトが渡され（C<+>演算子の左項と右項です）、新しいC<Human::EyeColor>オブジェクトが返ります。
-
-=head1 C<Human>に目の色を追加する
-
-新しいC<Human::EyeColor>クラスは、もとのC<Human>クラスを何ヶ所か変更するだけで組み込むことができます。
-
-  use List::MoreUtils qw( zip );
-
-  coerce 'Human::EyeColor'
-      => from 'ArrayRef'
-      => via { my @genes = qw( bey2_1 bey2_2 gey_1 gey_2 );
-               return Human::EyeColor->new( zip( @genes, @{$_} ) ); };
-
-  has 'eye_color' => (
-      is       => 'ro',
-      isa      => 'Human::EyeColor',
-      coerce   => 1,
-      required => 1,
-  );
-
-また、C<Human>クラスのC<_overload_add()>も目の色に対応できるように修正する必要があります。
-
-  return Human->new(
-      gender    => $gender,
-      eye_color => ( $one->eye_color() + $two->eye_color() ),
-      mother    => $mother,
-      father    => $father,
-  );
+このレシピではすべてのアトリビュートが読み取り専用なのでかなり単純になっていますが、C<country_of_residence>アトリビュートが設定可能だったら、新しい居住国がC<usa>だったときにC<ssn>が設定されているかチェックする必要が出てきます（このようなチェックはC<before>モディファイアを使えば実現できるかもしれません）。
 
 =head1 まとめ
 
-ここで利用したオーバーロード、サブタイプ、型変換という3つのテクニックを組み合わせると強力なインタフェースを提供できます。
+これまで何度もMooseのクラスではC<new>をオーバーライドしないようにと言ってきました。このレシピでは、C<new>をオーバーライドしなくてもC<BUILDARGS>とC<BUILD>を使えばオブジェクトの生成に割り込めることを紹介しました。
 
-オーバーロードの詳細についてはL<overload>プラグマのドキュメントをご覧ください。
-
-ここで作成したコードの全体をまとめて見たい場合はF<t/000_recipes/basics/010_genes.t>をご覧ください。
-
-=head1 次のステップ
-
-これが本物のプロジェクトだったとしたら、おそらく以下のようなものがほしくなるでしょう。
-
-=over 4
-
-=item Crypt::Randomを使った高度なランダム化
-
-=item 身体的特徴用のベースクラス
-
-=item 遺伝子の突然変異
-
-=item 追加の身体的特徴
-
-=item 人工生命
-
-=back
+C<BUILDARGS>メソッドを使うと、Mooseに組み込まれているコンストラクタのパラメータ処理を拡張できます。C<BUILD>メソッドを使うと、オブジェクト生成後にオブジェクト全体にかかわる論理的な制約を実装できます。
 
 =head1 作者
 
-Aran Clary Deltac <bluefeet@cpan.org>
-
 Dave Rolsky E<lt>autarch@urth.orgE<gt>
 
-=head1 LICENSE
+=head1 COPYRIGHT AND LICENSE
 
-This work is licensed under a Creative Commons Attribution 3.0 Unported License.
+Copyright 2006-2009 by Infinity Interactive, Inc.
 
-License details are at: L<http://creativecommons.org/licenses/by/3.0/>
+L<http://www.iinteractive.com>
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=cut
 
