@@ -62,7 +62,7 @@ L<Moose::Util::MetaRole>というモジュールを使うと、前述したメ�
 
 =head1 ロールとトレートとサブクラス
 
-これはぜひ理解しておいていただきたいのですが、B<ロールとトレートは同じものです>。ロールはトレートとしても使えますし、トレートはロールでもあります。唯一の違いは、トレートは名前の一部を省略してもMooseがクラス名を導き出せるようにパッケージングされていることです。言い換えると、トレートの場合は「Big」のような短縮表記で呼び出せるし、MooseはそこからC<MooseX::Embiggen::Meta::Attribute::Role::Big>のようなクラス名を導き出せる、ということです。
+これはぜひ理解しておいていただきたいのですが、B<ロールとトレートは同じものです>。トレーとはインスタンスにロールを適用したものです。唯一の違いは、トレートは名前の一部を省略してもMooseがクラス名を導き出せるようにパッケージングされていることです。言い換えると、トレートの場合は「Big」のような短縮表記で呼び出せるし、MooseはそこからC<MooseX::Embiggen::Meta::Attribute::Role::Big>のようなクラス名を導き出せる、ということです。
 
 実際にトレートを利用している例については、L<Moose::Cookbook::Meta::Recipe3>やL<Moose::Cookbook::Meta::Recipe5>をご覧ください。いずれも特にトレートの名前解決メカニズムを紹介しています。
 
@@ -130,39 +130,32 @@ Mooseには、取り込む側の方で使いたいサブクラスを指定でき
 
   use Moose ();
   use Moose::Exporter;
-  use Moose::Util::MetaRole;
 
   use MooseX::Embiggen::Role::Meta::Class;
   use MooseX::Embiggen::Role::Meta::Attribute;
   use MooseX::Embiggen::Role::Meta::Method::Constructor;
   use MooseX::Embiggen::Role::Object;
 
-  Moose::Exporter->setup_import_methods( also => 'Moose' );
+  my ( $import, $unimport, $init_meta ) = Moose::Exporter->build_import_methods(
+      also => ['Moose'] metaclass_roles =>
+          ['MooseX::Embiggen::Role::Meta::Class'],
+      attribute_metaclass_roles => ['MooseX::Embiggen::Role::Meta::Attribute'],
+      constructor_class_roles =>
+          ['MooseX::Embiggen::Role::Meta::Method::Constructor'],
+      base_class_roles => ['MooseX::Embiggen::Role::Object'],
+      install          => [qw(import unimport)],
+  );
 
   sub init_meta {
-      shift;    # just your package name
+      my $package = shift;
       my %options = @_;
 
       Moose->init_meta(%options);
 
-      my $meta = Moose::Util::MetaRole::apply_metaclass_roles(
-          for_class       => $options{for_class},
-          metaclass_roles => ['MooseX::Embiggen::Role::Meta::Class'],
-          attribute_metaclass_roles =>
-              ['MooseX::Embiggen::Role::Meta::Attribute'],
-          constructor_class_roles =>
-              ['MooseX::Embiggen::Role::Meta::Method::Constructor'],
-      );
-
-      Moose::Util::MetaRole::apply_base_class_roles(
-          for_class => $options{for_class},
-          roles     => ['MooseX::Embiggen::Role::Object'],
-      );
-
-      return $meta;
+      return $package->$init_meta(%options);
   }
 
-ご覧の通り、L<Moose::Util::MetaRole>はどんなメタクラスにロールを組み込むときでも使えます（ベースオブジェクトクラスの場合も同様です）。拡張モジュールがロールを組み込んでも、ほかの拡張モジュールが組み込んだロールはそのまま残りますし、その逆も同様です。
+ご覧の通り、L<Moose::Util::MetaRole>はどんなメタクラスにロールを組み込むときでも使えます（ベースオブジェクトクラスの場合も同様です）。拡張モジュールがロールを組み込んでも、ほかの拡張モジュールが組み込んだロールはそのまま残りますし、その逆も同様です。なお、C<Moose::Util::MetaRole>のを必要とするほとんどの箇所ではC<Moose::Exporter>が代わりに全て処理することも可能です。詳しくはC<Moose::Exporter>のドキュメントをご覧下さい。
 
 =head2 シュガー関数を提供する
 
@@ -174,15 +167,13 @@ L<Moose::Exporter>を使うと、独自のシュガー関数をエクスポー�
   use Moose::Exporter;
 
   Moose::Exporter->setup_import_methods(
-      with_caller => ['embiggen'],
+      with_meta => ['embiggen'],
       also        => 'Moose',
   );
 
-  sub init_meta { ... }
-
   sub embiggen {
-      my $caller = shift;
-      $caller->meta()->embiggen(@_);
+      my $meta = shift;
+      $meta->embiggen(@_);
   }
 
 こうすると、この拡張モジュールを取り込んだクラスではC<embiggen>サブルーチンを使うことができるようになります。
