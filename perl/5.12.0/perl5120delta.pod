@@ -1,0 +1,6694 @@
+
+=encoding utf8
+
+=head1 NAME
+
+=begin original
+
+perl5120delta - what is new for perl v5.12.0
+
+=end original
+
+perldelta - perl v5.12.0 での変更点
+
+=head1 DESCRIPTION
+
+=begin original
+
+This document describes differences between the 5.10.0 release and the
+5.12.0 release.
+
+=end original
+
+このドキュメントは 5.10.0 リリースと 5.12.0 リリースの変更点を記述しています。
+
+=begin original
+
+Many of the bug fixes in 5.12.0 are already included in the 5.10.1
+maintenance release.
+
+=end original
+
+
+=begin original
+
+You can see the list of those changes in the 5.10.1 release notes
+(L<perl5101delta>).
+
+=end original
+
+
+
+=head1 Core Enhancements
+
+=head2 New C<package NAME VERSION> syntax
+
+=begin original
+
+This new syntax allows a module author to set the $VERSION of a namespace
+when the namespace is declared with 'package'. It eliminates the need
+for C<our $VERSION = ...> and similar constructs. E.g.
+
+=end original
+
+
+      package Foo::Bar 1.23;
+      # $Foo::Bar::VERSION == 1.23
+
+=begin original
+
+There are several advantages to this:
+
+=end original
+
+
+=over
+
+=item *
+
+=begin original
+
+C<$VERSION> is parsed in exactly the same way as C<use NAME VERSION>
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<$VERSION> is set at compile time
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<$VERSION> is a version object that provides proper overloading of
+comparison operators so comparing C<$VERSION> to decimal (1.23) or
+dotted-decimal (v1.2.3) version numbers works correctly.
+
+=end original
+
+
+=item *
+
+=begin original
+
+Eliminates C<$VERSION = ...> and C<eval $VERSION> clutter
+
+=end original
+
+
+=item *
+
+=begin original
+
+As it requires VERSION to be a numeric literal or v-string
+literal, it can be statically parsed by toolchain modules
+without C<eval> the way MM-E<gt>parse_version does for C<$VERSION = ...>
+
+=end original
+
+
+=back
+
+=begin original
+
+It does not break old code with only C<package NAME>, but code that uses
+C<package NAME VERSION> will need to be restricted to perl 5.12.0 or newer
+This is analogous to the change to C<open> from two-args to three-args.
+Users requiring the latest Perl will benefit, and perhaps after several
+years, it will become a standard practice.
+
+=end original
+
+
+
+=begin original
+
+However, C<package NAME VERSION> requires a new, 'strict' version
+number format. See L<"Version number formats"> for details.
+
+=end original
+
+
+
+=head2 The C<...> operator
+
+=begin original
+
+A new operator, C<...>, nicknamed the Yada Yada operator, has been added.
+It is intended to mark placeholder code that is not yet implemented.
+See L<perlop/"Yada Yada Operator">.
+
+=end original
+
+
+=head2 Implicit strictures
+
+=begin original
+
+Using the C<use VERSION> syntax with a version number greater or equal
+to 5.11.0 will lexically enable strictures just like C<use strict>
+would do (in addition to enabling features.) The following:
+
+=end original
+
+
+    use 5.12.0;
+
+=begin original
+
+means:
+
+=end original
+
+
+    use strict;
+    use feature ':5.12';
+
+=head2 Unicode improvements
+
+=begin original
+
+Perl 5.12 comes with Unicode 5.2, the latest version available to
+us at the time of release.  This version of Unicode was released in
+October 2009. See L<http://www.unicode.org/versions/Unicode5.2.0> for
+further details about what's changed in this version of the standard.
+See L<perlunicode> for instructions on installing and using other versions
+of Unicode.
+
+=end original
+
+
+=begin original
+
+Additionally, Perl's developers have significantly improved Perl's Unicode
+implementation. For full details, see L</Unicode overhaul> below.
+
+=end original
+
+
+=head2 Y2038 compliance
+
+=begin original
+
+Perl's core time-related functions are now Y2038 compliant. (It may not mean much to you, but your kids will love it!)
+
+=end original
+
+
+=head2 qr overloading
+
+=begin original
+
+It is now possible to overload the C<qr//> operator, that is,
+conversion to regexp, like it was already possible to overload
+conversion to boolean, string or number of objects. It is invoked when
+an object appears on the right hand side of the C<=~> operator or when
+it is interpolated into a regexp. See L<overload>.
+
+=end original
+
+
+=head2 Pluggable keywords
+
+=begin original
+
+Extension modules can now cleanly hook into the Perl parser to define
+new kinds of keyword-headed expression and compound statement. The
+syntax following the keyword is defined entirely by the extension. This
+allow a completely non-Perl sublanguage to be parsed inline, with the
+correct ops cleanly generated.
+
+=end original
+
+
+=begin original
+
+See L<perlapi/PL_keyword_plugin> for the mechanism. The Perl core
+source distribution also includes a new module
+L<XS::APItest::KeywordRPN>, which implements reverse Polish notation
+arithmetic via pluggable keywords. This module is mainly used for test
+purposes, and is not normally installed, but also serves as an example
+of how to use the new mechanism.
+
+=end original
+
+
+=begin original
+
+Perl's developers consider this feature to be experimental. We may remove
+it or change it in a backwards-incompatible way in Perl 5.14.
+
+=end original
+
+
+=head2 APIs for more internals
+
+=begin original
+
+The lowest layers of the lexer and parts of the pad system now have C
+APIs available to XS extensions. These are necessary to support proper
+use of pluggable keywords, but have other uses too. The new APIs are
+experimental, and only cover a small proportion of what would be
+necessary to take full advantage of the core's facilities in these
+areas. It is intended that the Perl 5.13 development cycle will see the
+addition of a full range of clean, supported interfaces.
+
+=end original
+
+
+=begin original
+
+Perl's developers consider this feature to be experimental. We may remove
+it or change it in a backwards-incompatible way in Perl 5.14.
+
+=end original
+
+
+=head2 Overridable function lookup
+
+=begin original
+
+Where an extension module hooks the creation of rv2cv ops to modify the
+subroutine lookup process, this now works correctly for bareword
+subroutine calls. This means that prototypes on subroutines referenced
+this way will be processed correctly. (Previously bareword subroutine
+names were initially looked up, for parsing purposes, by an unhookable
+mechanism, so extensions could only properly influence subroutine names
+that appeared with an C<&> sigil.)
+
+=end original
+
+
+=head2 A proper interface for pluggable Method Resolution Orders
+
+(プラグ可能なメソッド解決順序のための適切なインターフェース)
+
+=begin original
+
+As of Perl 5.12.0 there is a new interface for plugging and using method
+resolution orders other than the default linear depth first search.
+The C3 method resolution order added in 5.10.0 has been re-implemented as
+a plugin, without changing its Perl-space interface. See L<perlmroapi> for
+more information.
+
+=end original
+
+Perl 5.10.1 から、デフォルト (線形深さ優先検索) 以外のメソッド解決順序を
+追加して使うための新しいインターフェースがあります。
+5.10.0 で追加された C3 メソッド解決順序は、Perl 空間でのインターフェースの
+変更なしにプラグインとして再実装されました。
+さらなる情報については L<perlmroapi> を参照してください。
+
+=head2 C<\N> experimental regex escape
+
+=begin original
+
+Perl now supports C<\N>, a new regex escape which you can think of as
+the inverse of C<\n>. It will match any character that is not a newline,
+independently from the presence or absence of the single line match
+modifier C</s>. It is not usable within a character class.  C<\N{3}>
+means to match 3 non-newlines; C<\N{5,}> means to match at least 5.
+C<\N{NAME}> still means the character or sequence named C<NAME>, but
+C<NAME> no longer can be things like C<3>, or C<5,>.
+
+=end original
+
+
+=begin original
+
+This will break a L<custom charnames translator|charnames/CUSTOM
+TRANSLATORS> which allows numbers for character names, as C<\N{3}> will
+now mean to match 3 non-newline characters, and not the character whose
+name is C<3>. (No name defined by the Unicode standard is a number,
+so only custom translators might be affected.)
+
+=end original
+
+
+=begin original
+
+Perl's developers are somewhat concerned about possible user confusion
+with the existing C<\N{...}> construct which matches characters by their
+Unicode name. Consequently, this feature is experimental. We may remove
+it or change it in a backwards-incompatible way in Perl 5.14.
+
+=end original
+
+
+=head2 DTrace support
+
+(DTrace 対応)
+
+=begin original
+
+Perl now has some support for DTrace. See "DTrace support" in F<INSTALL>.
+
+=end original
+
+DTrace へのいくらかの対応が追加されました。
+F<INSTALL> の "DTrace support" を参照してください。
+
+=head2 Support for C<configure_requires> in CPAN module metadata
+
+(CPAN モジュールメタデータの C<configure_requires> への対応)
+
+=begin original
+
+Both C<CPAN> and C<CPANPLUS> now support the C<configure_requires>
+keyword in the F<META.yml> metadata file included in most recent CPAN
+distributions.  This allows distribution authors to specify configuration
+prerequisites that must be installed before running F<Makefile.PL>
+or F<Build.PL>.
+
+=end original
+
+C<CPAN> と C<CPANPLUS> は、ほとんどの最近の CPAN 配布が含んでいる
+メタデータファイル F<META.yml> の C<configure_requires> キーワードに
+対応しました。
+これにより、F<Makefile.PL> や F<Build.PL> が実行される前に
+インストールされていなければならない設定の事前条件を指定できます。
+
+=begin original
+
+See the documentation for C<ExtUtils::MakeMaker> or C<Module::Build> for
+more on how to specify C<configure_requires> when creating a distribution
+for CPAN.
+
+=end original
+
+CPAN で配布するときに C<configure_requires> を指定する方法については
+C<ExtUtils::MakeMaker> か C<Module::Build> の文書を参照してください。
+
+=head2 C<each> is now more flexible
+
+=begin original
+
+The C<each> function can now operate on arrays.
+
+=end original
+
+
+=head2 C<when> as a statement modifier
+
+=begin original
+
+C<when> is now allowed to be used as a statement modifier.
+
+=end original
+
+
+=head2 C<$,> flexibility
+
+=begin original
+
+The variable C<$,> may now be tied.
+
+=end original
+
+
+=head2 // in when clauses
+
+=begin original
+
+// now behaves like || in when clauses
+
+=end original
+
+
+=head2 Enabling warnings from your shell environment
+
+=begin original
+
+You can now set C<-W> from the C<PERL5OPT> environment variable
+
+=end original
+
+
+=head2 C<delete local>
+
+=begin original
+
+C<delete local> now allows you to locally delete a hash entry.
+
+=end original
+
+
+=head2 New support for Abstract namespace sockets
+
+=begin original
+
+Abstract namespace sockets are Linux-specific socket type that live in
+AF_UNIX family, slightly abusing it to be able to use arbitrary
+character arrays as addresses: They start with nul byte and are not
+terminated by nul byte, but with the length passed to the socket()
+system call.
+
+=end original
+
+
+=head2 32-bit limit on substr arguments removed
+
+=begin original
+
+The 32-bit limit on C<substr> arguments has now been removed. The full
+range of the system's signed and unsigned integers is now available for
+the C<pos> and C<len> arguments.
+
+=end original
+
+
+=head1 Potentially Incompatible Changes
+
+=head2 Deprecations warn by default
+
+=begin original
+
+Over the years, Perl's developers have deprecated a number of language
+features for a variety of reasons.  Perl now defaults to issuing a
+warning if a deprecated language feature is used. Many of the deprecations
+Perl now warns you about have been deprecated for many years.  You can
+find a list of what was deprecated in a given release of Perl in the
+C<perl5xxdelta.pod> file for that release.
+
+=end original
+
+
+=begin original
+
+To disable this feature in a given lexical scope, you should use C<no
+warnings 'deprecated';> For information about which language features
+are deprecated and explanations of various deprecation warnings, please
+see L<perldiag.pod>. See L</Deprecations> below for the list of features
+and modules Perl's developers have deprecated as part of this release.
+
+=end original
+
+
+=head2 Version number formats
+
+=begin original
+
+Acceptable version number formats have been formalized into "strict" and
+"lax" rules. C<package NAME VERSION> takes a strict version number.
+C<UNIVERSAL::VERSION> and the L<version> object constructors take lax
+version numbers. Providing an invalid version will result in a fatal
+error. The version argument in C<use NAME VERSION> is first parsed as a
+numeric literal or v-string and then passed to C<UNIVERSAL::VERSION>
+(and must then pass the "lax" format test).
+
+=end original
+
+
+=begin original
+
+These formats are documented fully in the L<version> module. To a first
+approximation, a "strict" version number is a positive decimal number
+(integer or decimal-fraction) without exponentiation or else a
+dotted-decimal v-string with a leading 'v' character and at least three
+components. A "lax" version number allows v-strings with fewer than
+three components or without a leading 'v'. Under "lax" rules, both
+decimal and dotted-decimal versions may have a trailing "alpha"
+component separated by an underscore character after a fractional or
+dotted-decimal component.
+
+=end original
+
+
+=begin original
+
+The L<version> module adds C<version::is_strict> and C<version::is_lax>
+functions to check a scalar against these rules.
+
+=end original
+
+
+=head2 @INC reorganization
+
+=begin original
+
+In C<@INC>, C<ARCHLIB> and C<PRIVLIB> now occur after after the current
+version's C<site_perl> and C<vendor_perl>.  Modules installed into
+C<site_perl> and C<vendor_perl> will now be loaded in preference to
+those installed in C<ARCHLIB> and C<PRIVLIB>.
+
+=end original
+
+
+
+=head2 REGEXPs are now first class
+
+=begin original
+
+Internally, Perl now treates compiled regular expressions (such as
+those created with C<qr//>) as first class entities. Perl modules which
+serialize, deserialize or otherwise have deep interaction with Perl's
+internal data structures need to be updated for this change.  Most
+affected CPAN modules have already been updated as of this writing.
+
+=end original
+
+
+=head2 Switch statement changes
+
+(switch 文の変更)
+
+=begin original
+
+The C<given>/C<when> switch statement handles complex statements better
+than Perl 5.10.0 did (These enhancements are also available in
+5.10.1 and subsequent 5.10 releases.) There are two new cases where
+C<when> now interprets its argument as a boolean, instead of an
+expression to be used in a smart match:
+
+=end original
+
+The C<given>/C<when> switch statement handles complex statements better
+than Perl 5.10.0 did (These enhancements are also available in
+5.10.1 and subsequent 5.10 releases.) 
+新しく、C<when> がスマートマッチングの式ではなく真偽値として
+引数を解釈する場合が二つあります。
+(TBT)
+
+=over
+
+=item flip-flop operators
+
+(フリップフロップ演算子)
+
+=begin original
+
+The C<..> and C<...> flip-flop operators are now evaluated in boolean
+context, following their usual semantics; see L<perlop/"Range Operators">.
+
+=end original
+
+C<..> と C<...> のフリップフロップ演算子は、通常の文法に従ってブール値
+コンテキストで評価されるようになりました。
+L<perlop/"Range Operators"> を参照してください。
+
+=begin original
+
+Note that, as in perl 5.10.0, C<when (1..10)> will not work to test
+whether a given value is an integer between 1 and 10; you should use
+C<when ([1..10])> instead (note the array reference).
+
+=end original
+
+perl 5.10.0 では、C<when (1..10)> としても、与えられた値が 1 から 10 の間の
+数値かどうかをテストするようには動作しないことに注意してください;
+代わりに C<when ([1..10])> を使うべきです (配列リファレンスに
+注意してください)。
+
+=begin original
+
+However, contrary to 5.10.0, evaluating the flip-flop operators in
+boolean context ensures it can now be useful in a C<when()>, notably
+for implementing bistable conditions, like in:
+
+=end original
+
+しかし、5.10.0 とは反対に、C<when()> でブール値コンテキストで
+フリップフロップ演算子が評価されることが保証されることで、
+特に以下のように双安定条件を実装するときに便利です:
+
+    when (/^=begin/ .. /^=end/) {
+      # do something
+    }
+
+=item defined-or operator
+
+(定義性和 (defined-or) 演算子)
+
+=begin original
+
+A compound expression involving the defined-or operator, as in
+C<when (expr1 // expr2)>, will be treated as boolean if the first
+expression is boolean. (This just extends the existing rule that applies
+to the regular or operator, as in C<when (expr1 || expr2)>.)
+
+=end original
+
+C<when (expr1 // expr2)> のような、定義性和 (defined-or) を含む複合式は、
+最初の式が真偽値なら真偽値として扱われます。
+(これは単に、C<when (expr1 || expr2)> のような通常の or 演算子に
+適用されるすでにあるルールの拡張です。
+
+=back
+
+=head2 Smart match changes
+
+(スマートマッチングの変更)
+
+=begin original
+
+Since Perl 5.10.0, Perl's developers have made a number of changes to
+the smart match operator. These, of course, also alter the behaviour
+of the switch statements where smart matching is implicitly used.
+These changes were also made for the 5.10.1 release, and will remain in
+subsequent 5.10 releases.
+
+=end original
+
+Since Perl 5.10.0, Perl's developers have made a number of changes to
+the smart match operator.
+これらは、当然ながら暗黙にスマートマッチングを使っている switch 文の
+振る舞いも変えます。
+These changes were also made for the 5.10.1 release, and will remain in
+subsequent 5.10 releases.
+(TBT)
+
+=head3 Changes to type-based dispatch
+
+(型ベースの発行(dispatch)への変更)
+
+=begin original
+
+The smart match operator C<~~> is no longer commutative. The behaviour of
+a smart match now depends primarily on the type of its right hand
+argument. Moreover, its semantics have been adjusted for greater
+consistency or usefulness in several cases. While the general backwards
+compatibility is maintained, several changes must be noted:
+
+=end original
+
+スマートマッチング演算子 C<~~> はもはや可換性を持ちません。
+スマートマッチングの振る舞いは、まず右側の引数の型に依存します。
+さらに、その文法は一貫性と有用性をより高めるために調整されました。
+一般的な後方互換性は維持されている一方、いくつかの変更点には
+注意しなければなりません:
+
+=over 4
+
+=item *
+
+=begin original
+
+Code references with an empty prototype are no longer treated specially.
+They are passed an argument like the other code references (even if they
+choose to ignore it).
+
+=end original
+
+空のプロトタイプを持つコードリファレンスは特別扱いされなくなりました。
+(たとえ無視されることになるとしても)これらはその他のコードリファレンスと同様に
+引数として渡されます。
+
+=item *
+
+=begin original
+
+C<%hash ~~ sub {}> and C<@array ~~ sub {}> now test that the subroutine
+returns a true value for each key of the hash (or element of the
+array), instead of passing the whole hash or array as a reference to
+the subroutine.
+
+=end original
+
+C<%hash ~~ sub {}> と C<@array ~~ sub {}> は、
+ハッシュや配列全体をリファレンスとしてサブルーチンに渡すのではなく、
+ハッシュのそれぞれのキー(または配列の要素)に対してサブルーチンが
+真を返すかどうかをテストするようになりました。
+
+=item *
+
+=begin original
+
+Due to the commutativity breakage, code references are no longer
+treated specially when appearing on the left of the C<~~> operator,
+but like any vulgar scalar.
+
+=end original
+
+可換性の破綻により、コードリファレンスは C<~~> 演算子の左側に
+現れたときにはもはや特別扱いされず、普通のスカラと同じように扱われます。
+
+=item *
+
+=begin original
+
+C<undef ~~ %hash> is always false (since C<undef> can't be a key in a
+hash). No implicit conversion to C<""> is done (as was the case in perl
+5.10.0).
+
+=end original
+
+C<undef ~~ %hash> は常に偽となります (なぜなら C<undef> はハッシュのキーとして
+使えないからです)。
+(perl 5.10.0 の場合のように)C<""> への暗黙の変換は行われません。
+
+=item *
+
+=begin original
+
+C<$scalar ~~ @array> now always distributes the smart match across the
+elements of the array. It's true if one element in @array verifies
+C<$scalar ~~ $element>. This is a generalization of the old behaviour
+that tested whether the array contained the scalar.
+
+=end original
+
+C<$scalar ~~ @array> は常に配列の要素に対してスマートマッチングを
+分配するようになりました。
+これは、もし @array の一つの要素が C<$scalar ~~ $element> で検証されれば
+真となります。
+これは、配列にあるスカラが含まれているかどうかをテストする古い振る舞いの
+一般化です。
+
+=back
+
+=begin original
+
+The full dispatch table for the smart match operator is given in
+L<perlsyn/"Smart matching in detail">.
+
+=end original
+
+スマートマッチング演算子に関する完全な発行テーブルは
+L<perlsyn/"Smart matching in detail"> にあります。
+
+=head3 Smart match and overloading
+
+(スマートマッチングとオーバーロード)
+
+=begin original
+
+According to the rule of dispatch based on the rightmost argument type,
+when an object overloading C<~~> appears on the right side of the
+operator, the overload routine will always be called (with a 3rd argument
+set to a true value, see L<overload>.) However, when the object will
+appear on the left, the overload routine will be called only when the
+rightmost argument is a simple scalar. This way, distributivity of smart
+match across arrays is not broken, as well as the other behaviours with
+complex types (coderefs, hashes, regexes). Thus, writers of overloading
+routines for smart match mostly need to worry only with comparing
+against a scalar, and possibly with stringification overloading; the
+other common cases will be automatically handled consistently.
+
+=end original
+
+一番右の引数の型に依存するという発行ルールによれば、
+演算子の右側にオブジェクトのオーバーロード C<~~> が現れたとき、
+オーバーロードルーチンは(3 番目の引数に真の値を設定して; L<overload> を
+参照してください) 常に呼び出されます。
+しかし、オブジェクトが左側に現れたとき、オーバーロードルーチンは
+一番右の引数が単純なスカラの場合にのみ呼び出されます。
+これによって配列に対するスマートマッチングの分配性や
+複合型(コードリファレンス、ハッシュ、正規表現)に対するその他の振る舞いは
+壊れません。
+従って、スマートマッチングのためのローバーロードルーチンの作者は
+ほとんどの場合、スカラの比較と、可能性があるなら文字列化のオーバーロードに
+関してのみ心配する必要があります; その他の一般的な場合は
+一貫性を持って自動的に扱われます。
+
+=begin original
+
+C<~~> will now refuse to work on objects that do not overload it (in order
+to avoid relying on the object's underlying structure). (However, if the
+object overloads the stringification or the numification operators, and
+if overload fallback is active, it will be used instead, as usual.)
+
+=end original
+
+C<~~> は、オーバーロードしていないオブジェクトに対して動作しなくなりました
+(オブジェクトの基礎となる構造に依存することを避けるためです)。
+しかし、オブジェクトが文字列化か数値化演算子をオーバーロードしていて、
+オーバーロードのフォールバックが有効の場合は、通常通りに使われます。)
+
+=head2 Other potentially incompatible changes
+
+(その他の互換性のなくなる可能性のある変更)
+
+=over 4
+
+=item *
+
+=begin original
+
+The definitions of a number of Unicode properties have changed to match
+those of the current Unicode standard. These are listed above under
+L</Unicode overhaul>. This change may break code that expects the old
+definitions.
+
+=end original
+
+
+=item *
+
+=begin original
+
+The boolkeys op has moved to the group of hash ops. This breaks binary
+compatibility.
+
+=end original
+
+
+=item *
+
+=begin original
+
+Filehandles are now always blessed into C<IO::File>.
+
+=end original
+
+
+=begin original
+
+The previous behaviour was to bless Filehandles into L<FileHandle>
+(an empty proxy class) if it was loaded into memory and otherwise
+to bless them into C<IO::Handle>.
+
+=end original
+
+
+=item *
+
+=begin original
+
+The semantics of C<use feature :5.10*> have changed slightly.
+See L<"Modules and Pragmata"> for more information.
+
+=end original
+
+C<use feature :5.10*> の文法が少し変更されました。
+さらなる情報については L<"Modules and Pragmata"> を参照してください。
+
+=item *
+
+=begin original
+
+Perl's developers now use git, rather than Perforce.  This should be
+a purely internal change only relevant to people actively working on
+the core.  However, you may see minor difference in perl as a consequence
+of the change.  For example in some of details of the output of C<perl
+-V>. See L<perlrepository> for more information.
+
+=end original
+
+Perl's developers now use git, rather than Perforce.  This should be
+a purely internal change only relevant to people actively working on
+the core.  However, you may see minor difference in perl as a consequence
+of the change.  For example in some of details of the output of C<perl
+-V>. See L<perlrepository> for more information.
+しかし、変更の結果として、perl にも多少の変更が見られます。
+と田江波、C<perl -V> の出力の詳細の一部です。
+さらなる情報については L<perlrepository> を参照してください。
+(TBT)
+
+=item *
+
+=begin original
+
+As part of the C<Test::Harness> 2.x to 3.x upgrade, the experimental
+C<Test::Harness::Straps> module has been removed.
+See L</"Modules and Pragmata"> for more details.
+
+=end original
+
+C<Test::Harness> 2.x から 3.x へのアップグレードへの一部として、
+実験的な C<Test::Harness::Straps> モジュールは取り除かれました。
+さらなる詳細については L</"Modules and Pragmata"> を参照してください。
+
+=item *
+
+=begin original
+
+As part of the C<ExtUtils::MakeMaker> upgrade, the
+C<ExtUtils::MakeMaker::bytes> and C<ExtUtils::MakeMaker::vmsish> modules
+have been removed from this distribution.
+
+=end original
+
+C<ExtUtils::MakeMaker> のアップグレードの一部として、
+C<ExtUtils::MakeMaker::bytes> と C<ExtUtils::MakeMaker::vmsish> の
+モジュールはこの配布から取り除かれました。
+
+=item *
+
+=begin original
+
+C<Module::CoreList> no longer contains the C<%:patchlevel> hash.
+
+=end original
+
+C<Module::CoreList> はもはや C<%:patchlevel> ハッシュを含まなくなりました。
+
+=item *
+
+=begin original
+
+C<length undef> now returns undef.
+
+=end original
+
+
+=item *
+
+=begin original
+
+Unsupported private C API functions are now declared "static" to prevent
+leakage to Perl's public API.
+
+=end original
+
+
+=item *
+
+=begin original
+
+To support the bootstrapping process, F<miniperl> no longer builds with
+UTF-8 support in the regexp engine.
+
+=end original
+
+
+=begin original
+
+This allows a build to complete with PERL_UNICODE set and a UTF-8 locale.
+Without this there's a bootstrapping problem, as miniperl can't load
+the UTF-8 components of the regexp engine, because they're not yet built.
+
+=end original
+
+
+=item *
+
+=begin original
+
+F<miniperl>'s @INC is now restricted to just C<-I...>, the split of
+C<$ENV{PERL5LIB}>, and "C<.>"
+
+=end original
+
+
+=item *
+
+=begin original
+
+A space or a newline is now required after a C<"#line XXX"> directive.
+
+=end original
+
+
+=item *
+
+=begin original
+
+Tied filehandles now have an additional method EOF which provides the
+EOF type.
+
+=end original
+
+
+=item *
+
+=begin original
+
+To better match all other flow control statements, C<foreach> may no
+longer be used as an attribute.
+
+=end original
+
+
+=item *
+
+=begin original
+
+Perl's command-line switch "-P", which was deprecated in version 5.10.0, has
+now been removed.
+
+=end original
+
+
+=back
+
+
+=head1 Deprecations
+
+(非推奨)
+
+=begin original
+
+From time to time, Perl's developers find it necessary to deprecate
+features or modules we've previously shipped as part of the core
+distribution. We are well aware of the pain and frustration that a
+backwards-incompatible change to Perl can cause for developers building
+or maintaining software in Perl. You can be sure that when we deprecate
+a functionality or syntax, it isn't a choice we make lightly. Sometimes,
+we choose to deprecate functionality or syntax because it was found to
+be poorly designed or implemented. Sometimes, this is because they're
+holding back other features or causing performance problems. Sometimes,
+the reasons are more complex. Wherever possible, we try to keep deprecated
+functionality available to developers in its previous form for at least
+one major release. So long as a deprecated feature isn't actively
+disrupting our ability to maintain and extend Perl, we'll try to leave
+it in place as long as possible.
+
+=end original
+
+From time to time, Perl's developers find it necessary to deprecate
+features or modules we've previously shipped as part of the core
+distribution. We are well aware of the pain and frustration that a
+backwards-incompatible change to Perl can cause for developers building
+or maintaining software in Perl. You can be sure that when we deprecate
+a functionality or syntax, it isn't a choice we make lightly. Sometimes,
+we choose to deprecate functionality or syntax because it was found to
+be poorly designed or implemented. Sometimes, this is because they're
+holding back other features or causing performance problems. Sometimes,
+the reasons are more complex. Wherever possible, we try to keep deprecated
+functionality available to developers in its previous form for at least
+one major release. So long as a deprecated feature isn't actively
+disrupting our ability to maintain and extend Perl, we'll try to leave
+it in place as long as possible.
+(TBT)
+
+=begin original
+
+The following items are now deprecated:
+
+=end original
+
+以下のものは非推奨となりました:
+
+=over
+
+=item suidperl
+
+=begin original
+
+C<suidperl> is no longer part of Perl. It used to provide a mechanism to
+emulate setuid permission bits on systems that don't support it properly.
+
+=end original
+
+C<suidperl> はもはや Perl の一部ではありません。
+これは setuid 許可ビットを正しく扱えないシステムで、これを
+エミュレートする機構を提供していました。
+
+=item Use of C<:=> to mean an empty attribute list
+
+=begin original
+
+An accident of Perl's parser meant that these constructions were all
+equivalent:
+
+=end original
+
+
+    my $pi := 4;
+    my $pi : = 4;
+    my $pi :  = 4;
+
+=begin original
+
+with the C<:> being treated as the start of an attribute list, which
+ends before the C<=>. As whitespace is not significant here, all are
+parsed as an empty attribute list, hence all the above are equivalent
+to, and better written as
+
+=end original
+
+
+    my $pi = 4;
+
+=begin original
+
+because no attribute processing is done for an empty list.
+
+=end original
+
+
+=begin original
+
+As is, this meant that C<:=> cannot be used as a new token, without
+silently changing the meaning of existing code. Hence that particular
+form is now deprecated, and will become a syntax error. If it is
+absolutely necessary to have empty attribute lists (for example,
+because of a code generator) then avoid the warning by adding a space
+before the C<=>.
+
+=end original
+
+
+=item C<< UNIVERSAL->import() >>
+
+=begin original
+
+The method C<< UNIVERSAL->import() >> is now deprecated. Attempting to
+pass import arguments to a C<use UNIVERSAL> statement will result in a
+deprecation warning.
+
+=end original
+
+
+
+=item Use of "goto" to jump into a construct
+
+=begin original
+
+Using C<goto> to jump from an outer scope into an inner scope is now
+deprecated. This rare use case was causing problems in the
+implementation of scopes.
+
+=end original
+
+
+=item Custom character names in \N{name} that don't look like names
+
+=begin original
+
+In C<\N{I<name>}>, I<name> can be just about anything. The standard
+Unicode names have a very limited domain, but a custom name translator
+could create names that are, for example, made up entirely of punctuation
+symbols. It is now deprecated to make names that don't begin with an
+alphabetic character, and aren't alphanumeric or contain other than
+a very few other characters, namely spaces, dashes, parentheses
+and colons. Because of the added meaning of C<\N> (See L</C<\N>
+experimental regex escape>), names that look like curly brace -enclosed
+quantifiers won't work. For example, C<\N{3,4}> now means to match 3 to
+4 non-newlines; before a custom name C<3,4> could have been created.
+
+=end original
+
+
+=item Deprecated Modules
+
+=begin original
+
+The following modules will be removed from the core distribution in a
+future release, and should be installed from CPAN instead. Distributions
+on CPAN which require these should add them to their prerequisites. The
+core versions of these modules warnings will issue a deprecation warning.
+
+=end original
+
+
+=begin original
+
+If you ship a packaged version of Perl, either alone or as part of a
+larger system, then you should carefully consider the reprecussions of
+core module deprecations. You may want to consider shipping your default
+build of Perl with packages for some or all deprecated modules which
+install into C<vendor> or C<site> perl library directories. This will
+inhibit the deprecation warnings.
+
+=end original
+
+
+=begin original
+
+Alternatively, you may want to consider patching F<lib/deprecate.pm>
+to provide deprecation warnings specific to your packaging system
+or distribution of Perl, consistent with how your packaging system
+or distribution manages a staged transition from a release where the
+installation of a single package provides the given functionality, to
+a later release where the system administrator needs to know to install
+multiple packages to get that same functionality.
+
+=end original
+
+
+=begin original
+
+You can silence these deprecation warnings by installing the modules
+in question from CPAN.  To install the latest version of all of them,
+just install C<Task::Deprecations::5_12>.
+
+=end original
+
+
+=over
+
+=item L<Class::ISA>
+
+=item L<Pod::Plainer>
+
+=item L<Shell>
+
+=item L<Switch>
+
+=begin original
+
+Switch is buggy and should be avoided. You may find Perl's new
+C<given>/C<when> feature a suitable replacement.  See L<perlsyn/"Switch
+statements"> for more information.
+
+=end original
+
+C<Switch> はバグが多いので避けるべきです。
+You may find Perl's new
+C<given>/C<when> feature a suitable replacement.  See L<perlsyn/"Switch
+statements"> for more information.
+(TBT)
+
+=back
+
+=item Assignment to $[
+
+=item Use of the attribute :locked on subroutines
+
+=item Use of "locked" with the attributes pragma
+
+=item Use of "unique" with the attributes pragma
+
+=item Perl_pmflag
+
+=begin original
+
+C<Perl_pmflag> is no longer part of Perl's public API. Calling it now
+generates a deprecation warning, and it will be removed in a future
+release. Although listed as part of the API, it was never documented,
+and only ever used in F<toke.c>, and prior to 5.10, F<regcomp.c>. In
+core, it has been replaced by a static function.
+
+=end original
+
+
+=item Numerous Perl 4-era libraries
+
+=begin original
+
+F<termcap.pl>, F<tainted.pl>, F<stat.pl>, F<shellwords.pl>, F<pwd.pl>,
+F<open3.pl>, F<open2.pl>, F<newgetopt.pl>, F<look.pl>, F<find.pl>,
+F<finddepth.pl>, F<importenv.pl>, F<hostname.pl>, F<getopts.pl>,
+F<getopt.pl>, F<getcwd.pl>, F<flush.pl>, F<fastcwd.pl>, F<exceptions.pl>,
+F<ctime.pl>, F<complete.pl>, F<cacheout.pl>, F<bigrat.pl>, F<bigint.pl>,
+F<bigfloat.pl>, F<assert.pl>, F<abbrev.pl>, F<dotsh.pl>, and
+F<timelocal.pl> are all now deprecated.  Earlier, Perl's developers
+intended to remove these libraries from Perl's core for the 5.14.0 release.
+
+=end original
+
+
+=begin original
+
+During final testing before the release of 5.12.0, several developers
+discovered current production code using these ancient libraries, some
+inside the Perl core itself.  Accordingly, the pumpking granted them
+a stay of execution. They will begin to warn about their deprecation
+in the 5.14.0 release and will be removed in the 5.16.0 release.
+
+=end original
+
+
+
+=back
+
+=head1 Unicode overhaul
+
+=begin original
+
+Perl's developers have made a concerted effort to update Perl to be in
+sync with the latest Unicode standard. Changes for this include:
+
+=end original
+
+
+=begin original
+
+Perl can now handle every Unicode character property. New documentation,
+L<perluniprops>, lists all available non-Unihan character properties. By
+default, perl does not expose Unihan, deprecated or Unicode-internal
+properties.  See below for more details on these; there is also a section
+in the pod listing them, and explaining why they are not exposed.
+
+=end original
+
+
+=begin original
+
+Perl now fully supports the Unicode compound-style of using C<=>
+and C<:> in writing regular expressions: C<\p{property=value}> and
+C<\p{property:value}> (both of which mean the same thing).
+
+=end original
+
+
+=begin original
+
+Perl now fully supports the Unicode loose matching rules for text between
+the braces in C<\p{...}> constructs. In addition, Perl allows underscores
+between digits of numbers.
+
+=end original
+
+
+=begin original
+
+Perl now accepts all the Unicode-defined synonyms for properties and
+property values.
+
+=end original
+
+
+=begin original
+
+C<qr/\X/>, which matches a Unicode logical character, has
+been expanded to work better with various Asian languages. It
+now is defined as an I<extended grapheme cluster>. (See
+L<http://www.unicode.org/reports/tr29/>).  Anything matched previously
+and that made sense will continue to be accepted.   Additionally:
+
+=end original
+
+
+=over
+
+=item *
+
+=begin original
+
+C<\X> will not break apart a C<S<CR LF>> sequence.
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<\X> will now match a sequence which includes the C<ZWJ> and C<ZWNJ>
+characters.
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<\X> will now always match at least one character, including an initial
+mark.  Marks generally come after a base character, but it is possible in
+Unicode to have them in isolation, and C<\X> will now handle that case,
+for example at the beginning of a line, or after a C<ZWSP>. And this is
+the part where C<\X> doesn't match the things that it used to that don't
+make sense. Formerly, for example, you could have the nonsensical case
+of an accented LF.
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<\X> will now match a (Korean) Hangul syllable sequence, and the Thai
+and Lao exception cases.
+
+=end original
+
+
+=back
+
+=begin original
+
+Otherwise, this change should be transparent for the non-affected
+languages.
+
+=end original
+
+
+=begin original
+
+C<\p{...}> matches using the Canonical_Combining_Class property were
+completely broken in previous releases of Perl.  They should now work
+correctly.
+
+=end original
+
+
+=begin original
+
+Before Perl 5.12, the Unicode C<Decomposition_Type=Compat> property
+and a Perl extension had the same name, which led to neither matching
+all the correct values (with more than 100 mistakes in one, and several
+thousand in the other). The Perl extension has now been renamed to be
+C<Decomposition_Type=Noncanonical> (short: C<dt=noncanon>). It has the
+same meaning as was previously intended, namely the union of all the
+non-canonical Decomposition types, with Unicode C<Compat> being just
+one of those.
+
+=end original
+
+
+=begin original
+
+C<\p{Decomposition_Type=Canonical}> now includes the Hangul syllables.
+
+=end original
+
+
+=begin original
+
+C<\p{Uppercase}> and C<\p{Lowercase}> now work as the Unicode standard
+says they should.  This means they each match a few more characters than
+they used to.
+
+=end original
+
+
+=begin original
+
+C<\p{Cntrl}> now matches the same characters as C<\p{Control}>. This
+means it no longer will match Private Use (gc=co), Surrogates (gc=cs),
+nor Format (gc=cf) code points. The Format code points represent the
+biggest possible problem. All but 36 of them are either officially
+deprecated or strongly discouraged from being used. Of those 36, likely
+the most widely used are the soft hyphen (U+00AD), and BOM, ZWSP, ZWNJ,
+WJ, and similar characters, plus bidirectional controls.
+
+=end original
+
+
+=begin original
+
+C<\p{Alpha}> now matches the same characters as C<\p{Alphabetic}>. Before
+5.12, Perl's definition definition included a number of things that aren't
+really alpha (all marks) while omitting many that were. The definitions
+of C<\p{Alnum}> and C<\p{Word}> depend on Alpha's definition and have
+changed accordingly.
+
+=end original
+
+
+=begin original
+
+C<\p{Word}> no longer incorrectly matches non-word characters such
+as fractions.
+
+=end original
+
+
+=begin original
+
+C<\p{Print}> no longer matches the line control characters: Tab, LF,
+CR, FF, VT, and NEL. This brings it in line with standards and the
+documentation.
+
+=end original
+
+
+=begin original
+
+C<\p{XDigit}> now matches the same characters as C<\p{Hex_Digit}>. This
+means that in addition to the characters it currently matches,
+C<[A-Fa-f0-9]>, it will also match the 22 fullwidth equivalents, for
+example U+FF10: FULLWIDTH DIGIT ZERO.
+
+=end original
+
+
+=begin original
+
+The Numeric type property has been extended to include the Unihan
+characters.
+
+=end original
+
+
+=begin original
+
+There is a new Perl extension, the 'Present_In', or simply 'In',
+property. This is an extension of the Unicode Age property, but
+C<\p{In=5.0}> matches any code point whose usage has been determined
+I<as of> Unicode version 5.0. The C<\p{Age=5.0}> only matches code points
+added in I<precisely> version 5.0.
+
+=end original
+
+
+=begin original
+
+A number of properties now have the correct values for unassigned
+code points. The affected properties are Bidi_Class, East_Asian_Width,
+Joining_Type, Decomposition_Type, Hangul_Syllable_Type, Numeric_Type,
+and Line_Break.
+
+=end original
+
+
+=begin original
+
+The Default_Ignorable_Code_Point, ID_Continue, and ID_Start properties
+are now up to date with current Unicode definitions.
+
+=end original
+
+
+=begin original
+
+Earlier versions of Perl erroneously exposed certain properties that
+are supposed to be Unicode internal-only.  Use of these in regular
+expressions will now generate, if enabled, a deprecation warning message.
+The properties are: Other_Alphabetic, Other_Default_Ignorable_Code_Point,
+Other_Grapheme_Extend, Other_ID_Continue, Other_ID_Start, Other_Lowercase,
+Other_Math, and Other_Uppercase.
+
+=end original
+
+
+=begin original
+
+It is now possible to change which Unicode properties Perl understands
+on a per-installation basis. As mentioned above, certain properties
+are turned off by default.  These include all the Unihan properties
+(which should be accessible via the CPAN module Unicode::Unihan) and any
+deprecated or Unicode internal-only property that Perl has never exposed.
+
+=end original
+
+
+=begin original
+
+The generated files in the C<lib/unicore/To> directory are now more
+clearly marked as being stable, directly usable by applications.  New hash
+entries in them give the format of the normal entries, which allows for
+easier machine parsing. Perl can generate files in this directory for
+any property, though most are suppressed.  You can find instructions
+for changing which are written in L<perluniprops>.
+
+=end original
+
+
+=head1 Modules and Pragmata
+
+(モジュールとプラグマ)
+
+=head2 New Modules and Pragmata
+
+(新しいモジュールとプラグマ)
+
+=over 4
+
+=item C<autodie>
+
+=begin original
+
+C<autodie> is a new lexically-scoped alternative for the C<Fatal> module.
+The bundled version is 2.06_01. Note that in this release, using a string
+eval when C<autodie> is in effect can cause the autodie behaviour to leak
+into the surrounding scope. See L<autodie/"BUGS"> for more details.
+
+=end original
+
+C<autodie> は C<Fatal> モジュール代用品で、新しくレキシカルスコープを
+持つものです。
+同梱されているバージョンは 2.06_01 です。
+このリリースでは、C<autodie> が有効の時に文字列 eval を使うと、
+autodie の振る舞いが周りのスコープに漏れるかもしれないことに
+注意してください。
+さらなる詳細については L<autodie/"BUGS"> を参照してください。
+
+=begin original
+
+Version 2.06_01 has been added to the Perl core.
+
+=end original
+
+Version 2.06_01 has been added to the Perl core.
+(TBT)
+
+=item C<Compress::Raw::Bzip2>
+
+=begin original
+
+Version 2.024 has been added to the Perl core.
+
+=end original
+
+Version 2.024 has been added to the Perl core.
+(TBT)
+
+=item C<overloading>
+
+=begin original
+
+C<overloading> allows you to lexically disable or enable overloading
+for some or all operations.
+
+=end original
+
+このプラグマは、演算子の一部あるいは全部を、レキシカルに無効化あるいは
+有効化します。
+
+=begin original
+
+Version 0.001 has been added to the Perl core.
+
+=end original
+
+
+=item C<parent>
+
+=begin original
+
+C<parent> establishes an ISA relationship with base classes at compile
+time. It provides the key feature of C<base> without further unwanted
+behaviors.
+
+=end original
+
+C<parent> は、基底クラスとの ISA 関係をコンパイル時に構築します。
+これは、更なる望まない振る舞いなしに C<base> の主となる機能を
+提供します。
+
+=begin original
+
+Version 0.223 has been added to the Perl core.
+
+=end original
+
+
+=item C<Parse::CPAN::Meta>
+
+=begin original
+
+Version 1.40 has been added to the Perl core.
+
+=end original
+
+
+=item C<VMS::DCLsym>
+
+=begin original
+
+Version 1.03 has been added to the Perl core.
+
+=end original
+
+
+=item C<VMS::Stdio>
+
+=begin original
+
+Version 2.4 has been added to the Perl core.
+
+=end original
+
+
+=item C<XS::APItest::KeywordRPN>
+
+=begin original
+
+Version 0.003 has been added to the Perl core.
+
+=end original
+
+
+=back
+
+=head2 Updated Pragmata
+
+=over 4
+
+=item C<base>
+
+=begin original
+
+Upgraded from version 2.13 to 2.15.
+
+=end original
+
+
+=item C<bignum>
+
+=begin original
+
+Upgraded from version 0.22 to 0.23.
+
+=end original
+
+
+=item C<charnames>
+
+=begin original
+
+C<charnames> now contains the Unicode F<NameAliases.txt> database file.
+This has the effect of adding some extra C<\N> character names that
+formerly wouldn't have been recognised; for example, C<"\N{LATIN CAPITAL
+LETTER GHA}">.
+
+=end original
+
+C<charnames> は Unicode F<NameAliases.txt> データベースファイルを
+含むようになりました。
+これにより、以前は認識されなかった追加の C<\N> 文字名(例えば
+C<"\N{LATIN CAPITAL LETTER GHA}">) が追加される効果があります。
+
+=begin original
+
+Upgraded from version 1.06 to 1.07.
+
+=end original
+
+
+=item C<constant>
+
+=begin original
+
+Upgraded from version 1.13 to 1.20.
+
+=end original
+
+
+=item C<diagnostics>
+
+=begin original
+
+C<diagnostics> now supports %.0f formatting internally.
+
+=end original
+
+
+=begin original
+
+C<diagnostics> no longer suppresses C<Use of uninitialized value in range
+(or flip)> warnings. [perl #71204]
+
+=end original
+
+
+=begin original
+
+Upgraded from version 1.17 to 1.19.
+
+=end original
+
+
+=item C<feature>
+
+=begin original
+
+In C<feature>, the meaning of the C<:5.10> and C<:5.10.X> feature
+bundles has changed slightly. The last component, if any (i.e. C<X>) is
+simply ignored.  This is predicated on the assumption that new features
+will not, in general, be added to maintenance releases. So C<:5.10>
+and C<:5.10.X> have identical effect. This is a change to the behaviour
+documented for 5.10.0.
+
+=end original
+
+C<feature> では、C<:5.10> および C<:5.10.X> で組み込まれる機能が僅かに
+変更されました。
+最後の要素 (つまり C<X>) がもしあっても、単に無視されます。 
+これは、一般的にはメンテナンスリリースでは新しい機能はないという仮定に
+基づいています。
+従って、C<:5.10> と C<:5.10.X> は同じ効果を持ちます。
+これは 5.10.0 で文書化されている振る舞いへの変更です。
+
+=begin original
+
+C<feature> now includes the C<unicode_strings> feature:
+
+=end original
+
+
+    use feature "unicode_strings";
+
+=begin original
+
+This pragma turns on Unicode semantics for the case-changing operations
+(C<uc>, C<lc>, C<ucfirst>, C<lcfirst>) on strings that don't have the
+internal UTF-8 flag set, but that contain single-byte characters between
+128 and 255.
+
+=end original
+
+
+=begin original
+
+Upgraded from version 1.11 to 1.16.
+
+=end original
+
+
+=item C<less>
+
+=begin original
+
+C<less> now includes the C<stash_name> method to allow subclasses of
+C<less> to pick where in %^H to store their stash.
+
+=end original
+
+
+=begin original
+
+Upgraded from version 0.02 to 0.03.
+
+=end original
+
+
+=item C<lib>
+
+=begin original
+
+Upgraded from version 0.5565 to 0.62.
+
+=end original
+
+
+=item C<mro>
+
+=begin original
+
+C<mro> is now implemented as an XS extension. The documented interface has
+not changed. Code relying on the implementation detail that some C<mro::>
+methods happened to be available at all times gets to "keep both pieces".
+
+=end original
+
+
+=begin original
+
+Upgraded from version 1.00 to 1.02.
+
+=end original
+
+
+=item C<overload>
+
+=begin original
+
+C<overload> now allow overloading of 'qr'.
+
+=end original
+
+
+=begin original
+
+Upgraded from version 1.06 to 1.10.
+
+=end original
+
+
+=item C<threads>
+
+=begin original
+
+Upgraded from version 1.67 to 1.75.
+
+=end original
+
+
+=item C<threads::shared>
+
+=begin original
+
+Upgraded from version 1.14 to 1.32.
+
+=end original
+
+
+=item C<version>
+
+=begin original
+
+C<version> now has support for L</Version number formats> as described
+earlier in this document and in its own documentation.
+
+=end original
+
+
+=begin original
+
+Upgraded from version 0.74 to 0.82.
+
+=end original
+
+
+=item C<warnings>
+
+=begin original
+
+C<warnings> has a new C<warnings::fatal_enabled()> function.  It also
+includes a new C<illegalproto> warning category. See also L</New or
+Changed Diagnostics> for this change.
+
+=end original
+
+
+=begin original
+
+Upgraded from version 1.06 to 1.09.
+
+=end original
+
+
+=back
+
+=head2 Updated Modules
+
+(更新されたモジュール)
+
+=over 4
+
+=item C<Archive::Extract>
+
+=begin original
+
+Upgraded from version 0.24 to 0.38.
+
+=end original
+
+
+=item C<Archive::Tar>
+
+=begin original
+
+Upgraded from version 1.38 to 1.54.
+
+=end original
+
+
+=item C<Attribute::Handlers>
+
+=begin original
+
+Upgraded from version 0.79 to 0.87.
+
+=end original
+
+
+=item C<AutoLoader>
+
+=begin original
+
+Upgraded from version 5.63 to 5.70.
+
+=end original
+
+
+=item C<B::Concise>
+
+=begin original
+
+Upgraded from version 0.74 to 0.78.
+
+=end original
+
+
+=item C<B::Debug>
+
+=begin original
+
+Upgraded from version 1.05 to 1.12.
+
+=end original
+
+
+=item C<B::Deparse>
+
+=begin original
+
+Upgraded from version 0.83 to 0.96.
+
+=end original
+
+
+=item C<B::Lint>
+
+=begin original
+
+Upgraded from version 1.09 to 1.11_01.
+
+=end original
+
+
+=item C<CGI>
+
+=begin original
+
+Upgraded from version 3.29 to 3.48.
+
+=end original
+
+
+=item C<Class::ISA>
+
+=begin original
+
+Upgraded from version 0.33 to 0.36.
+
+=end original
+
+
+=begin original
+
+NOTE: C<Class::ISA> is deprecated and may be removed from a future
+version of Perl.
+
+=end original
+
+
+=item C<Compress::Raw::Zlib>
+
+=begin original
+
+Upgraded from version 2.008 to 2.024.
+
+=end original
+
+
+=item C<CPAN>
+
+=begin original
+
+Upgraded from version 1.9205 to 1.94_56.
+
+=end original
+
+
+=item C<CPANPLUS>
+
+=begin original
+
+Upgraded from version 0.84 to 0.90.
+
+=end original
+
+
+=item C<CPANPLUS::Dist::Build>
+
+=begin original
+
+Upgraded from version 0.06_02 to 0.46.
+
+=end original
+
+
+=item C<Data::Dumper>
+
+=begin original
+
+Upgraded from version 2.121_14 to 2.125.
+
+=end original
+
+
+=item C<DB_File>
+
+=begin original
+
+Upgraded from version 1.816_1 to 1.820.
+
+=end original
+
+
+=item C<Devel::PPPort>
+
+=begin original
+
+Upgraded from version 3.13 to 3.19.
+
+=end original
+
+
+=item C<Digest>
+
+=begin original
+
+Upgraded from version 1.15 to 1.16.
+
+=end original
+
+
+=item C<Digest::MD5>
+
+=begin original
+
+Upgraded from version 2.36_01 to 2.39.
+
+=end original
+
+
+=item C<Digest::SHA>
+
+=begin original
+
+Upgraded from version 5.45 to 5.47.
+
+=end original
+
+
+=item C<Encode>
+
+=begin original
+
+Upgraded from version 2.23 to 2.39.
+
+=end original
+
+
+=item C<Exporter>
+
+=begin original
+
+Upgraded from version 5.62 to 5.64_01.
+
+=end original
+
+
+=item C<ExtUtils::CBuilder>
+
+=begin original
+
+Upgraded from version 0.21 to 0.27.
+
+=end original
+
+
+=item C<ExtUtils::Command>
+
+=begin original
+
+Upgraded from version 1.13 to 1.16.
+
+=end original
+
+
+=item C<ExtUtils::Constant>
+
+=begin original
+
+Upgraded from version 0.2 to 0.22.
+
+=end original
+
+
+=item C<ExtUtils::Install>
+
+=begin original
+
+Upgraded from version 1.44 to 1.55.
+
+=end original
+
+
+=item C<ExtUtils::MakeMaker>
+
+=begin original
+
+Upgraded from version 6.42 to 6.56.
+
+=end original
+
+
+=item C<ExtUtils::Manifest>
+
+=begin original
+
+Upgraded from version 1.51_01 to 1.57.
+
+=end original
+
+
+=item C<ExtUtils::ParseXS>
+
+=begin original
+
+Upgraded from version 2.18_02 to 2.21.
+
+=end original
+
+
+=item C<File::Fetch>
+
+=begin original
+
+Upgraded from version 0.14 to 0.24.
+
+=end original
+
+
+=item C<File::Path>
+
+=begin original
+
+Upgraded from version 2.04 to 2.08_01.
+
+=end original
+
+
+=item C<File::Temp>
+
+=begin original
+
+Upgraded from version 0.18 to 0.22.
+
+=end original
+
+
+=item C<Filter::Simple>
+
+=begin original
+
+Upgraded from version 0.82 to 0.84.
+
+=end original
+
+
+=item C<Filter::Util::Call>
+
+=begin original
+
+Upgraded from version 1.07 to 1.08.
+
+=end original
+
+
+=item C<Getopt::Long>
+
+=begin original
+
+Upgraded from version 2.37 to 2.38.
+
+=end original
+
+
+=item C<IO>
+
+=begin original
+
+Upgraded from version 1.23_01 to 1.25_02.
+
+=end original
+
+
+=item C<IO::Zlib>
+
+=begin original
+
+Upgraded from version 1.07 to 1.10.
+
+=end original
+
+
+=item C<IPC::Cmd>
+
+=begin original
+
+Upgraded from version 0.40_1 to 0.54.
+
+=end original
+
+
+=item C<IPC::SysV>
+
+=begin original
+
+Upgraded from version 1.05 to 2.01.
+
+=end original
+
+
+=item C<Locale::Maketext>
+
+=begin original
+
+Upgraded from version 1.12 to 1.14.
+
+=end original
+
+
+=item C<Locale::Maketext::Simple>
+
+=begin original
+
+Upgraded from version 0.18 to 0.21.
+
+=end original
+
+
+=item C<Log::Message>
+
+=begin original
+
+Upgraded from version 0.01 to 0.02.
+
+=end original
+
+
+=item C<Log::Message::Simple>
+
+=begin original
+
+Upgraded from version 0.04 to 0.06.
+
+=end original
+
+
+=item C<Math::BigInt>
+
+=begin original
+
+Upgraded from version 1.88 to 1.89_01.
+
+=end original
+
+
+=item C<Math::BigInt::FastCalc>
+
+=begin original
+
+Upgraded from version 0.16 to 0.19.
+
+=end original
+
+
+=item C<Math::BigRat>
+
+=begin original
+
+Upgraded from version 0.21 to 0.24.
+
+=end original
+
+
+=item C<Math::Complex>
+
+=begin original
+
+Upgraded from version 1.37 to 1.56.
+
+=end original
+
+
+=item C<Memoize>
+
+=begin original
+
+Upgraded from version 1.01_02 to 1.01_03.
+
+=end original
+
+
+=item C<MIME::Base64>
+
+=begin original
+
+Upgraded from version 3.07_01 to 3.08.
+
+=end original
+
+
+=item C<Module::Build>
+
+=begin original
+
+Upgraded from version 0.2808_01 to 0.3603.
+
+=end original
+
+
+=item C<Module::CoreList>
+
+=begin original
+
+Upgraded from version 2.12 to 2.29.
+
+=end original
+
+
+=item C<Module::Load>
+
+=begin original
+
+Upgraded from version 0.12 to 0.16.
+
+=end original
+
+
+=item C<Module::Load::Conditional>
+
+=begin original
+
+Upgraded from version 0.22 to 0.34.
+
+=end original
+
+
+=item C<Module::Loaded>
+
+=begin original
+
+Upgraded from version 0.01 to 0.06.
+
+=end original
+
+
+=item C<Module::Pluggable>
+
+=begin original
+
+Upgraded from version 3.6 to 3.9.
+
+=end original
+
+
+=item C<Net::Ping>
+
+=begin original
+
+Upgraded from version 2.33 to 2.36.
+
+=end original
+
+
+=item C<NEXT>
+
+=begin original
+
+Upgraded from version 0.60_01 to 0.64.
+
+=end original
+
+
+=item C<Object::Accessor>
+
+=begin original
+
+Upgraded from version 0.32 to 0.36.
+
+=end original
+
+
+=item C<Package::Constants>
+
+=begin original
+
+Upgraded from version 0.01 to 0.02.
+
+=end original
+
+
+=item C<PerlIO>
+
+=begin original
+
+Upgraded from version 1.04 to 1.06.
+
+=end original
+
+
+=item C<Pod::Parser>
+
+=begin original
+
+Upgraded from version 1.35 to 1.37.
+
+=end original
+
+
+=item C<Pod::Perldoc>
+
+=begin original
+
+Upgraded from version 3.14_02 to 3.15_02.
+
+=end original
+
+
+=item C<Pod::Plainer>
+
+=begin original
+
+Upgraded from version 0.01 to 1.02.
+
+=end original
+
+
+=begin original
+
+NOTE: C<Pod::Plainer> is deprecated and may be removed from a future
+version of Perl.
+
+=end original
+
+
+=item C<Pod::Simple>
+
+=begin original
+
+Upgraded from version 3.05 to 3.13.
+
+=end original
+
+
+=item C<Safe>
+
+=begin original
+
+Upgraded from version 2.12 to 2.22.
+
+=end original
+
+
+=item C<SelfLoader>
+
+=begin original
+
+Upgraded from version 1.11 to 1.17.
+
+=end original
+
+
+=item C<Storable>
+
+=begin original
+
+Upgraded from version 2.18 to 2.22.
+
+=end original
+
+
+=item C<Switch>
+
+=begin original
+
+Upgraded from version 2.13 to 2.16.
+
+=end original
+
+
+=begin original
+
+NOTE: C<Switch> is deprecated and may be removed from a future version
+of Perl.
+
+=end original
+
+
+=item C<Sys::Syslog>
+
+=begin original
+
+Upgraded from version 0.22 to 0.27.
+
+=end original
+
+
+=item C<Term::ANSIColor>
+
+=begin original
+
+Upgraded from version 1.12 to 2.02.
+
+=end original
+
+
+=item C<Term::UI>
+
+=begin original
+
+Upgraded from version 0.18 to 0.20.
+
+=end original
+
+
+=item C<Test>
+
+=begin original
+
+Upgraded from version 1.25 to 1.25_02.
+
+=end original
+
+
+=item C<Test::Harness>
+
+=begin original
+
+Upgraded from version 2.64 to 3.17.
+
+=end original
+
+
+=item C<Test::Simple>
+
+=begin original
+
+Upgraded from version 0.72 to 0.94.
+
+=end original
+
+
+=item C<Text::Balanced>
+
+=begin original
+
+Upgraded from version 2.0.0 to 2.02.
+
+=end original
+
+
+=item C<Text::ParseWords>
+
+=begin original
+
+Upgraded from version 3.26 to 3.27.
+
+=end original
+
+
+=item C<Text::Soundex>
+
+=begin original
+
+Upgraded from version 3.03 to 3.03_01.
+
+=end original
+
+
+=item C<Thread::Queue>
+
+=begin original
+
+Upgraded from version 2.00 to 2.11.
+
+=end original
+
+
+=item C<Thread::Semaphore>
+
+=begin original
+
+Upgraded from version 2.01 to 2.09.
+
+=end original
+
+
+=item C<Tie::RefHash>
+
+=begin original
+
+Upgraded from version 1.37 to 1.38.
+
+=end original
+
+
+=item C<Time::HiRes>
+
+=begin original
+
+Upgraded from version 1.9711 to 1.9719.
+
+=end original
+
+
+=item C<Time::Local>
+
+=begin original
+
+Upgraded from version 1.18 to 1.1901_01.
+
+=end original
+
+
+=item C<Time::Piece>
+
+=begin original
+
+Upgraded from version 1.12 to 1.15.
+
+=end original
+
+
+=item C<Unicode::Collate>
+
+=begin original
+
+Upgraded from version 0.52 to 0.52_01.
+
+=end original
+
+
+=item C<Unicode::Normalize>
+
+=begin original
+
+Upgraded from version 1.02 to 1.03.
+
+=end original
+
+
+=item C<Win32>
+
+=begin original
+
+Upgraded from version 0.34 to 0.39.
+
+=end original
+
+
+=item C<Win32API::File>
+
+=begin original
+
+Upgraded from version 0.1001_01 to 0.1101.
+
+=end original
+
+
+=item C<XSLoader>
+
+=begin original
+
+Upgraded from version 0.08 to 0.10.
+
+=end original
+
+
+=back
+
+=head2 Removed Modules and Pragmata
+
+=over 4
+
+=item C<attrs>
+
+=begin original
+
+Removed from the Perl core.  Prior version was 1.02.
+
+=end original
+
+
+=item C<CPAN::API::HOWTO>
+
+=begin original
+
+Removed from the Perl core.  Prior version was 'undef'.
+
+=end original
+
+
+=item C<CPAN::DeferedCode>
+
+=begin original
+
+Removed from the Perl core.  Prior version was 5.50.
+
+=end original
+
+
+=item C<CPANPLUS::inc>
+
+=begin original
+
+Removed from the Perl core.  Prior version was 'undef'.
+
+=end original
+
+
+=item C<DCLsym>
+
+=begin original
+
+Removed from the Perl core.  Prior version was 1.03.
+
+=end original
+
+
+=item C<ExtUtils::MakeMaker::bytes>
+
+=begin original
+
+Removed from the Perl core.  Prior version was 6.42.
+
+=end original
+
+
+=item C<ExtUtils::MakeMaker::vmsish>
+
+=begin original
+
+Removed from the Perl core.  Prior version was 6.42.
+
+=end original
+
+
+=item C<Stdio>
+
+=begin original
+
+Removed from the Perl core.  Prior version was 2.3.
+
+=end original
+
+
+=item C<Test::Harness::Assert>
+
+=begin original
+
+Removed from the Perl core.  Prior version was 0.02.
+
+=end original
+
+
+=item C<Test::Harness::Iterator>
+
+=begin original
+
+Removed from the Perl core.  Prior version was 0.02.
+
+=end original
+
+
+=item C<Test::Harness::Point>
+
+=begin original
+
+Removed from the Perl core.  Prior version was 0.01.
+
+=end original
+
+
+=item C<Test::Harness::Results>
+
+=begin original
+
+Removed from the Perl core.  Prior version was 0.01.
+
+=end original
+
+
+=item C<Test::Harness::Straps>
+
+=begin original
+
+Removed from the Perl core.  Prior version was 0.26_01.
+
+=end original
+
+
+=item C<Test::Harness::Util>
+
+=begin original
+
+Removed from the Perl core.  Prior version was 0.01.
+
+=end original
+
+
+=item C<XSSymSet>
+
+=begin original
+
+Removed from the Perl core.  Prior version was 1.1.
+
+=end original
+
+
+=back
+
+=head2 Deprecated Modules and Pragmata
+
+=begin original
+
+See L</Deprecated Modules> above.
+
+=end original
+
+
+
+=head1 Documentation
+
+(文書)
+
+=head2 New Documentation
+
+(新しい文書)
+
+=over 4
+
+=item *
+
+=begin original
+
+L<perlhaiku> contains instructions on how to build perl for the Haiku
+platform.
+
+=end original
+
+L<perlhaiku> には、Haiku プラットフォームで perl をビルドする方法に
+ついての説明が含まれています。
+
+=item *
+
+=begin original
+
+L<perlmroapi> describes the new interface for pluggable Method Resolution
+Orders.
+
+=end original
+
+L<perlmroapi> は、プラグ可能なメソッド解決順序の新しい
+インターフェースを記述しています。
+
+=item *
+
+=begin original
+
+L<perlperf>, by Richard Foley, provides an introduction to the use of
+performance and optimization techniques which can be used with particular
+reference to perl programs.
+
+=end original
+
+L<perlperf> は Richard Foley によるもので、perl プログラムの個々の
+参照で使えるパフォーマンスと最適化の技術の使用に関する導入を
+提供します。
+
+=item *
+
+=begin original
+
+L<perlrepository> describes how to access the perl source using the I<git>
+version control system.
+
+=end original
+
+L<perlrepository> は、I<git> バージョン管理システムを使って perl の
+ソースにアクセスする方法について記述しています。
+
+=item *
+
+=begin original
+
+L<perlpolicy> extends the "Social contract about contributed modules" into
+the beginnings of a document on Perl porting policies.
+
+=end original
+
+
+=back
+
+=head2 Changes to Existing Documentation
+
+(既存の文書の変更)
+
+=over
+
+=item *
+
+=begin original
+
+The various large F<Changes*> files (which listed every change made
+to perl over the last 18 years) have been removed, and replaced by a
+small file, also called F<Changes>, which just explains how that same
+information may be extracted from the git version control system.
+
+=end original
+
+(過去 18 年間にわたって perl に対して行われた全ての変更の一覧である)
+様々な大きな F<Changes*> ファイルが取り除かれ、
+単に git バージョン制御システムから同じ情報を取り出す方法を説明した
+小さいファイル F<Changes> に置き換えられました。
+
+=item *
+
+=begin original
+
+F<Porting/patching.pod> has been deleted, as it mainly described
+interacting with the old Perforce-based repository, which is now obsolete.
+Information still relevant has been moved to L<perlrepository>.
+
+=end original
+
+F<Porting/patching.pod> は削除されました; これは主に古い
+Perforce を基としたレポジトリとの相互作用について記述していて、
+これは古いものです。
+まだ関連のある情報は L<perlrepository> に移動しました。
+
+=item *
+
+=begin original
+
+The syntax C<unless (EXPR) BLOCK else BLOCK> is now documented as valid,
+as is the syntax C<unless (EXPR) BLOCK elsif (EXPR) BLOCK ... else
+BLOCK>, although actually using the latter may not be the best idea for
+the readability of your source code.
+
+=end original
+
+
+
+=item *
+
+=begin original
+
+Documented -X overloading.
+
+=end original
+
+
+=item *
+
+=begin original
+
+Documented that C<when()> treats specially most of the filetest operators
+
+=end original
+
+
+=item *
+
+=begin original
+
+Documented C<when> as a syntax modifier.
+
+=end original
+
+
+=item *
+
+=begin original
+
+Eliminated "Old Perl threads tutorial", which described 5005 threads.
+
+=end original
+
+
+=begin original
+
+F<pod/perlthrtut.pod> is the same material reworked for ithreads.
+
+=end original
+
+
+=item *
+
+=begin original
+
+Correct previous documentation: v-strings are not deprecated
+
+=end original
+
+
+=begin original
+
+With version objects, we need them to use MODULE VERSION syntax. This
+patch removes the deprecation notice.
+
+=end original
+
+
+=item *
+
+=begin original
+
+Security contact information is now part of L<perlsec>.
+
+=end original
+
+
+=item *
+
+=begin original
+
+A significant fraction of the core documentation has been updated to
+clarify the behavior of Perl's Unicode handling.
+
+=end original
+
+
+=begin original
+
+Much of the remaining core documentation has been reviewed and edited
+for clarity, consistent use of language, and to fix the spelling of Tom
+Christiansen's name.
+
+=end original
+
+
+=item *
+
+=begin original
+
+The Pod specification (L<perlpodspec>) has been updated to bring the
+specification in line with modern usage already supported by most Pod
+systems. A parameter string may now follow the format name in a
+"begin/end" region. Links to URIs with a text description are now
+allowed. The usage of C<LE<lt>"section"E<gt>> has been marked as
+deprecated.
+
+=end original
+
+
+=item *
+
+=begin original
+
+L<if.pm|if> has been documented in L<perlfunc/use> as a means to get
+conditional loading of modules despite the implicit BEGIN block around
+C<use>.
+
+=end original
+
+
+=item *
+
+=begin original
+
+The documentation for C<$1> in perlvar.pod has been clarified.
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<\N{U+I<wide hex char>}> is now documented.
+
+=end original
+
+
+=back
+
+=head1 Selected Performance Enhancements
+
+(パフォーマンスの向上の一部)
+
+=over 4
+
+=item *
+
+=begin original
+
+A new internal cache means that C<isa()> will often be faster.
+
+=end original
+
+新しい内部キャッシュにより、C<isa()> はしばしばより速くなります。
+
+=item *
+
+=begin original
+
+The implementation of C<C3> Method Resolution Order has been
+optimised - linearisation for classes with single inheritance is 40%
+faster. Performance for multiple inheritance is unchanged.
+
+=end original
+
+
+=item *
+
+=begin original
+
+Under C<use locale>, the locale-relevant information is now cached on
+read-only values, such as the list returned by C<keys %hash>. This makes
+operations such as C<sort keys %hash> in the scope of C<use locale>
+much faster.
+
+=end original
+
+C<use locale> の元では、ロケール関係の情報は、C<keys %hash> で
+返されるリストのように、読み込み専用値としてキャッシュされるように
+なりました。
+これによって、C<use locale> での C<sort keys %hash> のような操作が
+とても速くなります。
+
+=item *
+
+=begin original
+
+Empty C<DESTROY> methods are no longer called.
+
+=end original
+
+空の C<DESTROY> メソッドはもはや呼び出されなくなります。
+
+=item *
+
+=begin original
+
+C<Perl_sv_utf8_upgrade()> is now faster.
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<keys> on empty hash is now faster.
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<if (%foo)> has been optimized to be faster than C<if (keys %foo)>.
+
+=end original
+
+
+=item *
+
+=begin original
+
+The string repetition operator (C<$str x $num>) is now several times
+faster when C<$str> has length one or C<$num> is large.
+
+=end original
+
+
+=item *
+
+=begin original
+
+Reversing an array to itself (as in C<@a = reverse @a>) in void context
+now happens in-place and is several orders of magnitude faster than
+it used to be. It will also preserve non-existent elements whenever
+possible, i.e. for non magical arrays or tied arrays with C<EXISTS>
+and C<DELETE> methods.
+
+=end original
+
+
+=back
+
+=head1 Installation and Configuration Improvements
+
+(インストールと設定の改良)
+
+=over 4
+
+=item *
+
+=begin original
+
+L<perlapi>, L<perlintern>, L<perlmodlib> and L<perltoc> are now all
+generated at build time, rather than being shipped as part of the release.
+
+=end original
+
+L<perlapi>, L<perlintern>, L<perlmodlib>, L<perltoc> はリリースの
+一部としてではなく、全てビルド時に生成されるようになりました。
+
+=item *
+
+=begin original
+
+If C<vendorlib> and C<vendorarch> are the same, then they are only added
+to C<@INC> once.
+
+=end original
+
+C<vendorlib> と C<vendorarch> が同じなら、C<@INC> には 1 回だけ
+追加されます。
+
+=item *
+
+=begin original
+
+C<$Config{usedevel}> and the C-level C<PERL_USE_DEVEL> are now defined if
+perl is built with  C<-Dusedevel>.
+
+=end original
+
+もし perl が C<-Dusedevel> 付きでビルドされたなら、
+C<$Config{usedevel}> と C レベルの C<PERL_USE_DEVEL> が定義されるように
+なりました。
+
+=item *
+
+=begin original
+
+F<Configure> will enable use of C<-fstack-protector>, to provide protection
+against stack-smashing attacks, if the compiler supports it.
+
+=end original
+
+F<Configure> は、もしコンパイラが対応しているなら、
+スタック破壊攻撃に対する防御のために、C<-fstack-protector> の使用を
+有効にします。
+
+=item *
+
+=begin original
+
+F<Configure> will now determine the correct prototypes for re-entrant
+functions and for C<gconvert> if you are using a C++ compiler rather
+than a C compiler.
+
+=end original
+
+F<Configure> は、もし C コンパイラでなく C++ コンパイラを使うなら、
+再入可能な関数と C<gconvert> のための正しいプロトタイプを
+決定するようになりました。
+
+=item *
+
+=begin original
+
+On Unix, if you build from a tree containing a git repository, the
+configuration process will note the commit hash you have checked out, for
+display in the output of C<perl -v> and C<perl -V>. Unpushed local commits
+are automatically added to the list of local patches displayed by
+C<perl -V>.
+
+=end original
+
+Unix では、もし git レポジトリを含むツリーからビルドするなら、
+設定プロセスは C<perl -v> と C<perl -V> の出力での表示のために、
+チェックアウトしたコミットハッシュを記録します。
+プッシュされないローカルのコミットは自動的に
+C<perl -V> によって表示されるローカルパッチの一覧に追加されます。
+
+=item *
+
+=begin original
+
+Perl now supports SystemTap's C<dtrace> compatibility layer and an
+issue with linking C<miniperl> has been fixed in the process.
+
+=end original
+
+
+=item *
+
+=begin original
+
+perldoc now uses C<less -R> instead of C<less> for improved behaviour
+in the face of C<groff>'s new usage of ANSI escape codes.
+
+=end original
+
+
+=item *
+
+
+=begin original
+
+C<perl -V> now reports use of the compile-time options C<USE_PERL_ATOF> and
+C<USE_ATTRIBUTES_FOR_PERLIO>.
+
+=end original
+
+
+=item *
+
+=begin original
+
+As part of the flattening of F<ext>, all extensions on all platforms are
+built by F<make_ext.pl>. This replaces the Unix-specific
+F<ext/util/make_ext>, VMS-specific F<make_ext.com> and Win32-specific
+F<win32/buildext.pl>.
+
+=end original
+
+F<ext> のフラット化の一部として、全てのプラットフォームの全ての
+エクステンションは F<make_ext.pl> でビルドされます。
+これは Unix 固有の F<ext/util/make_ext>、VMS 固有の F<make_ext.com>、
+Win32 固有の F<win32/buildext.pl> を置き換えます。
+
+=back
+
+=head1 Internal Changes
+
+(内部の変更)
+
+=begin original
+
+Each release of Perl sees numerous internal changes which shouldn't
+affect day to day usage but may still be notable for developers working
+with Perl's source code.
+
+=end original
+
+
+=over
+
+=item *
+
+=begin original
+
+The J.R.R. Tolkien quotes at the head of C source file have been checked
+and proper citations added, thanks to a patch from Tom Christiansen.
+
+=end original
+
+C ソースファイルの先頭にある J.R.R. Tolkien の引用文がチェックされ、
+適切な言及が追加されました; Tom Christiansen からのパッチに感謝します。
+
+=item *
+
+=begin original
+
+The internal structure of the dual-life modules traditionally found in
+the F<lib/> and F<ext/> directories in the perl source has changed
+significantly. Where possible, dual-lifed modules have been extracted
+from F<lib/> and F<ext/>.
+
+=end original
+
+
+=begin original
+
+Dual-lifed modules maintained by Perl's developers as part of the Perl
+core now live in F<dist/>.  Dual-lifed modules maintained primarily on
+CPAN now live in F<cpan/>.  When reporting a bug in a module located
+under F<cpan/>, please send your bug report directly to the module's
+bug tracker or author, rather than Perl's bug tracker.
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<\N{...}> now compiles better, always forces UTF-8 internal representation
+
+=end original
+
+
+=begin original
+
+Perl's developers have fixed several problems with the recognition of
+C<\N{...}> constructs.  As part of this, perl will store any scalar
+or regex containing C<\N{I<name>}> or C<\N{U+I<wide hex char>}> in its
+definition in UTF-8 format. (This was true previously for all occurences
+of C<\N{I<name>}> that did not use a custom translator, but now it's
+always true.)
+
+=end original
+
+
+=item *
+
+=begin original
+
+Perl_magic_setmglob now knows about globs, fixing RT #71254.
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<SVt_RV> no longer exists. RVs are now stored in IVs.
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<Perl_vcroak()> now accepts a null first argument. In addition, a full
+audit was made of the "not NULL" compiler annotations, and those for
+several other internal functions were corrected.
+
+=end original
+
+C<Perl_vcroak()> は最初の引数として null も受け付けるようになりました。
+さらに、「非 NULL」に関するコンパイラ注釈の完全な監査が行われ、
+その他のいくつかの内部関数が修正されました。
+
+=item *
+
+=begin original
+
+New macros C<dSAVEDERRNO>, C<dSAVE_ERRNO>, C<SAVE_ERRNO>, C<RESTORE_ERRNO>
+have been added to formalise the temporary saving of the C<errno>
+variable.
+
+=end original
+
+C<errno> 変数を一時的に補完することを形式化するための、
+C<dSAVEDERRNO>, C<dSAVE_ERRNO>, C<SAVE_ERRNO>, C<RESTORE_ERRNO> という
+新しいマクロが追加されました。
+
+=item *
+
+=begin original
+
+The function C<Perl_sv_insert_flags> has been added to augment
+C<Perl_sv_insert>.
+
+=end original
+
+C<Perl_sv_insert> 関数を拡大するために、C<Perl_sv_insert_flags> 関数が
+追加されました。
+
+=item *
+
+=begin original
+
+The function C<Perl_newSV_type(type)> has been added, equivalent to
+C<Perl_newSV()> followed by C<Perl_sv_upgrade(type)>.
+
+=end original
+
+C<Perl_newSV()> の後 C<Perl_sv_upgrade(type)> を実行するのと等価な、
+C<Perl_newSV_type(type)> 関数が追加されました。
+
+=item *
+
+=begin original
+
+The function C<Perl_newSVpvn_flags()> has been added, equivalent to
+C<Perl_newSVpvn()> and then performing the action relevant to the flag.
+
+=end original
+
+C<Perl_newSVpvn_flags()> 関数が追加されました; これは C<Perl_newSVpvn()> と
+等価で、それからフラグに関連する動作を行います。
+
+=begin original
+
+Two flag bits are currently supported.
+
+=end original
+
+現在のところ二つのフラグビットに対応しています。
+
+=over 4
+
+=item *
+
+=begin original
+
+C<SVf_UTF8> will call C<SvUTF8_on()> for you. (Note that this does
+not convert an sequence of ISO 8859-1 characters to UTF-8). A wrapper,
+C<newSVpvn_utf8()> is available for this.
+
+=end original
+
+C<SVf_UTF8> はあなたのために C<SvUTF8_on()> を呼び出します。
+(これは ISO 8859-1 文字のシーケンスを UTF-8 に変換しないことに
+注意してください。)
+これのためのラッパである C<newSVpvn_utf8()> が利用可能です。
+
+=item *
+
+=begin original
+
+C<SVs_TEMP> now calls C<Perl_sv_2mortal()> on the new SV.
+
+=end original
+
+C<SVs_TEMP> は新しい SV に対して C<sv_2mortal()> を呼び出すようになります。
+
+=back
+
+=begin original
+
+There is also a wrapper that takes constant strings, C<newSVpvs_flags()>.
+
+=end original
+
+定数文字列を取るラッパである C<newSVpvs_flags()> もあります。
+
+=item *
+
+=begin original
+
+The function C<Perl_croak_xs_usage> has been added as a wrapper to
+C<Perl_croak>.
+
+=end original
+
+C<Perl_croak> へのラッパとして、C<Perl_croak_xs_usage> 関数が追加されました。
+
+=item *
+
+=begin original
+
+Perl now exports the functions C<PerlIO_find_layer> and C<PerlIO_list_alloc>.
+
+=end original
+
+C<PerlIO_find_layer> 関数と C<PerlIO_list_alloc> 関数が
+エクスポートされるようになりました。
+
+=item *
+
+=begin original
+
+C<PL_na> has been exterminated from the core code, replaced by local
+STRLEN temporaries, or C<*_nolen()> calls. Either approach is faster than
+C<PL_na>, which is a pointer dereference into the interpreter structure
+under ithreads, and a global variable otherwise.
+
+=end original
+
+C<PL_na> はコアコードから全て取り除かれ、ローカルな STRLEN テンポラリか
+C<*_nolen()> 呼び出しに置き換えられました。
+どちらの手法も、ithreads ではインタプリタ構造体へ、さもなければ
+グローバル変数へポインタへのデリファレンスである C<PL_na> よりも高速です。
+
+=item *
+
+=begin original
+
+C<Perl_mg_free()> used to leave freed memory accessible via C<SvMAGIC()>
+on the scalar. It now updates the linked list to remove each piece of
+magic as it is freed.
+
+=end original
+
+C<Perl_mg_free()> は、スカラでの C<SvMAGIC()> 経由でアクセスできる
+開放されたメモリをそのままにしていました。
+それぞれのマジックのかけらが開放されるごとに削除されるように、
+リンクリストが更新されるようになりました。
+
+=item *
+
+=begin original
+
+Under ithreads, the regex in C<PL_reg_curpm> is now reference
+counted. This eliminates a lot of hackish workarounds to cope with it
+not being reference counted.
+
+=end original
+
+ithreads において、C<PL_reg_curpm> 内の正規表現は参照カウントを
+行うようにありました。
+これにより、参照カウントを行っていないことによる多くのハックっぽい
+回避方法が不要になります。
+
+=item *
+
+=begin original
+
+C<Perl_mg_magical()> would sometimes incorrectly turn on C<SvRMAGICAL()>.
+This has been fixed.
+
+=end original
+
+C<Perl_mg_magical()> は時々間違って C<SvRMAGICAL()> を作動させていました。
+これは修正されました。
+
+=item *
+
+=begin original
+
+The I<public> IV and NV flags are now not set if the string value has
+trailing "garbage". This behaviour is consistent with not setting the
+public IV or NV flags if the value is out of range for the type.
+
+=end original
+
+IV と NV の I<public> フラグは、もし文字列値の末尾に「ゴミ」が
+ついている場合はセットされなくなりました。
+この振る舞いは、値が型の範囲を超えているときに IV や NV の
+public フラグがセットされないことと一貫しています。
+
+=item *
+
+=begin original
+
+Uses of C<Nullav>, C<Nullcv>, C<Nullhv>, C<Nullop>, C<Nullsv> etc have
+been replaced by C<NULL> in the core code, and non-dual-life modules,
+as C<NULL> is clearer to those unfamiliar with the core code.
+
+=end original
+
+C<Nullav>, C<Nullcv>, C<Nullhv>, C<Nullop>, C<Nullsv> などは、
+コアコードおよび 2 重管理されていないモジュールでは
+C<NULL> に置き換えられました; C<NULL> はコアコードに親しんでいなくても
+より明確だからです。
+
+=item *
+
+=begin original
+
+A macro C<MUTABLE_PTR(p)> has been added, which on (non-pedantic) gcc will
+not cast away C<const>, returning a C<void *>. Macros C<MUTABLE_SV(av)>,
+C<MUTABLE_SV(cv)> etc build on this, casting to C<AV *> etc without
+casting away C<const>. This allows proper compile-time auditing of
+C<const> correctness in the core, and helped picked up some errors
+(now fixed).
+
+=end original
+
+C<MUTABLE_PTR(p)> マクロが追加されました; これは (pedantic でない) gcc では
+C<const> 状態を捨てずに、C<void *> を返します。
+C<MUTABLE_SV(av)>, C<MUTABLE_SV(cv)> などのマクロはこれを使って
+作成され、C<const> 状態を捨てることなく C<AV *> などにキャストします。
+これにより C<const> の正当性の適切なコンパイル時の監査が可能になり、
+いくつかのエラーの発見に役立ちました(これらは修正されました)。
+
+=item *
+
+=begin original
+
+Macros C<mPUSHs()> and C<mXPUSHs()> have been added, for pushing SVs on the
+stack and mortalizing them.
+
+=end original
+
+SV をスタックにプッシュし、それを揮発化させるための、
+C<mPUSHs()> と C<mXPUSHs()> のマクロが追加されました。
+
+=item *
+
+=begin original
+
+Use of the private structure C<mro_meta> has changed slightly. Nothing
+outside the core should be accessing this directly anyway.
+
+=end original
+
+プライベート構造体 C<mro_meta> の使用が少し変更されました。
+どちらにしろ、コアの外側からこれにアクセスすることは出来ません。
+
+=item *
+
+=begin original
+
+A new tool, F<Porting/expand-macro.pl> has been added, that allows you
+to view how a C preprocessor macro would be expanded when compiled.
+This is handy when trying to decode the macro hell that is the perl
+guts.
+
+=end original
+
+新しいツールである F<Porting/expand-macro.pl> が追加され、
+コンパイル時に C プリプロセッサマクロがどのように展開されるかを見られます。
+これは perl の内部でマクロを展開しようとする時に便利です。
+
+=back
+
+=head1 Testing
+
+(テスト)
+
+=head2 Testing improvements
+
+(テストの改良)
+
+=over 4
+
+=item Parallel tests
+
+(並列テスト)
+
+=begin original
+
+The core distribution can now run its regression tests in parallel on
+Unix-like platforms. Instead of running C<make test>, set C<TEST_JOBS> in
+your environment to the number of tests to run in parallel, and run
+C<make test_harness>. On a Bourne-like shell, this can be done as
+
+=end original
+
+コア配布は、Unix 風プラットフォームでは退行テストを並列に実行できるように
+なりました。
+C<make test> を実行する代わりに、環境変数 C<TEST_JOBS> に並列に
+実行するテスト数を設定して、C<make test_harness> を実行します。 
+Bourne-風のシェルでは、これは以下のようにします
+
+    TEST_JOBS=3 make test_harness  # Run 3 tests in parallel
+
+=begin original
+
+An environment variable is used, rather than parallel make itself, because
+L<TAP::Harness> needs to be able to schedule individual non-conflicting test
+scripts itself, and there is no standard interface to C<make> utilities to
+interact with their job schedulers.
+
+=end original
+
+並列 make 自身ではなく、環境変数を使います; なぜなら
+L<TAP::Harness> はここの競合しないテストスクリプト自身を計画できる必要が
+ありますが、C<make> ユーティリティのジョブスケジューラと相互作用するための
+標準的なインターフェースはないからです。
+
+=begin original
+
+Note that currently some test scripts may fail when run in parallel (most
+notably C<ext/IO/t/io_dir.t>). If necessary run just the failing scripts
+again sequentially and see if the failures go away.
+
+=end original
+
+いくつかのテストスクリプト(特に C<ext/IO/t/io_dir.t>)は並列に実行すると
+失敗するかもしれないことに注意してください。
+もし必要なら、失敗したスクリプトを順番に再実行して、失敗しなくなることを
+確認してください。
+
+=item Test harness flexibility
+
+=begin original
+
+It's now possible to override C<PERL5OPT> and friends in F<t/TEST>
+
+=end original
+
+
+=item Test watchdog
+
+=begin original
+
+Several tests that have the potential to hang forever if they fail now
+incorporate a "watchdog" functionality that will kill them after a timeout,
+which helps ensure that C<make test> and C<make test_harness> run to
+completion automatically.
+
+=end original
+
+いくつかのテストは、テストが時間切れになった後に kill することで
+C<make test> と C<make test_harness> が自動的に実行を終了することを
+確実にするために組み込まれた「番犬」機能で失敗すると、
+ハングアップしてしまう可能性がありました。
+
+=back
+
+=head2 New Tests
+
+(新しいテスト)
+
+=begin original
+
+Perl's developers have added a number of new tests to the core.
+In addition to the items listed below, many modules updated from CPAN
+incorporate new tests.
+
+=end original
+
+
+=over 4
+
+=item *
+
+=begin original
+
+Significant cleanups to core tests to ensure that language and
+interpreter features are not used before they're tested.
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<make test_porting> now runs a number of important pre-commit checks
+which might be of use to anyone working on the Perl core.
+
+=end original
+
+
+=item *
+
+=begin original
+
+F<t/porting/podcheck.t> automatically checks the well-formedness of
+POD found in all .pl, .pm and .pod files in the F<MANIFEST>, other than in
+dual-lifed modules which are primarily maintained outside the Perl core.
+
+=end original
+
+
+=item *
+
+=begin original
+
+F<t/porting/manifest.t> now tests that all files listed in MANIFEST
+are present.
+
+=end original
+
+
+=item *
+
+=begin original
+
+F<t/op/while_readdir.t> tests that a bare readdir in while loop sets $_.
+
+=end original
+
+
+=item *
+
+=begin original
+
+F<t/comp/retainedlines.t> checks that the debugger can retain source
+lines from C<eval>.
+
+=end original
+
+F<t/comp/retainedlines.t> は、
+デバッガが C<eval> からソース行を得られるかをチェックします。
+
+=item *
+
+=begin original
+
+F<t/io/perlio_fail.t> checks that bad layers fail.
+
+=end original
+
+F<t/io/perlio_fail.t> は
+間違った層が失敗するかをチェックします。
+
+=item *
+
+=begin original
+
+F<t/io/perlio_leaks.t> checks that PerlIO layers are not leaking.
+
+=end original
+
+F<t/io/perlio_leaks.t> は
+PerlIO 層がリークしていないかをチェックします。
+
+=item *
+
+=begin original
+
+F<t/io/perlio_open.t> checks that certain special forms of open work.
+
+=end original
+
+F<t/io/perlio_open.t> は
+open のある種の特殊な形式が動作するかをチェックします。
+
+=item *
+
+=begin original
+
+F<t/io/perlio.t> includes general PerlIO tests.
+
+=end original
+
+F<t/io/perlio.t> は
+PerlIO を全体的にテストします。
+
+=item *
+
+=begin original
+
+F<t/io/pvbm.t> checks that there is no unexpected interaction between
+the internal types C<PVBM> and C<PVGV>.
+
+=end original
+
+F<t/io/pvbm.t> は
+内部型 C<PVBM> と C<PVGV> の間で想定外の相互作用がないことを
+チェックします。
+
+=item *
+
+=begin original
+
+F<t/mro/package_aliases.t> checks that mro works properly in the presence
+of aliased packages.
+
+=end original
+
+F<t/mro/package_aliases.t> は
+エイリアス化されたパッケージが存在したときに MRO が適切に動作するかを
+チェックします。
+
+=item *
+
+=begin original
+
+F<t/op/dbm.t> tests C<dbmopen> and C<dbmclose>.
+
+=end original
+
+F<t/op/dbm.t> は
+C<dbmopen> と C<dbmclose> をテストします。
+
+=item *
+
+=begin original
+
+F<t/op/index_thr.t> tests the interaction of C<index> and threads.
+
+=end original
+
+F<t/op/index_thr.t> は
+C<index> とスレッドの相互作用をテストします。
+
+=item *
+
+=begin original
+
+F<t/op/pat_thr.t> tests the interaction of esoteric patterns and threads.
+
+=end original
+
+F<t/op/pat_thr.t> は
+難解なパターンとスレッドの相互作用をテストします。
+
+=item *
+
+=begin original
+
+F<t/op/qr_gc.t> tests that C<qr> doesn't leak.
+
+=end original
+
+F<t/op/qr_gc.t> は
+C<qr> がリークしていないことをテストします。
+
+=item *
+
+=begin original
+
+F<t/op/reg_email_thr.t> tests the interaction of regex recursion and threads.
+
+=end original
+
+F<t/op/reg_email_thr.t> は
+regex 再帰とスレッドの相互作用をテストします。
+
+=item *
+
+=begin original
+
+F<t/op/regexp_qr_embed_thr.t> tests the interaction of patterns with
+embedded C<qr//> and threads.
+
+=end original
+
+F<t/op/regexp_qr_embed_thr.t> は
+組み込みの C<qr//> があるパターンとスレッドの相互作用をテストします。
+
+=item *
+
+=begin original
+
+F<t/op/regexp_unicode_prop.t> tests Unicode properties in regular
+expressions.
+
+=end original
+
+F<t/op/regexp_unicode_prop.t> は
+正規表現中の Unicode 特性をテストします。
+
+=item *
+
+=begin original
+
+F<t/op/regexp_unicode_prop_thr.t> tests the interaction of Unicode
+properties and threads.
+
+=end original
+
+F<t/op/regexp_unicode_prop_thr.t> は
+Unicode 特性とスレッドの相互作用をテストします。
+
+=item *
+
+=begin original
+
+F<t/op/reg_nc_tie.t> tests the tied methods of C<Tie::Hash::NamedCapture>.
+
+=end original
+
+F<t/op/reg_nc_tie.t> は
+C<Tie::Hash::NamedCapture> の tie されたメソッドをテストします。
+
+=item *
+
+=begin original
+
+F<t/op/reg_posixcc.t> checks that POSIX character classes behave
+consistently.
+
+=end original
+
+F<t/op/reg_posixcc.t> は
+POSIX 文字クラスが一貫性を持って振る舞うかをチェックします。
+
+=item *
+
+=begin original
+
+F<t/op/re.t> checks that exportable C<re> functions in F<universal.c> work.
+
+=end original
+
+F<t/op/re.t> 
+F<universal.c> のエクスポート可能な C<re> 関数が動作するかを
+チェックします。
+
+=item *
+
+=begin original
+
+F<t/op/setpgrpstack.t> checks that C<setpgrp> works.
+
+=end original
+
+F<t/op/setpgrpstack.t> は
+C<setpgrp> が動作するかをチェックします。
+
+=item *
+
+=begin original
+
+F<t/op/substr_thr.t> tests the interaction of C<substr> and threads.
+
+=end original
+
+F<t/op/substr_thr.t> は
+C<substr> とスレッドの相互作用をテストします。
+
+=item *
+
+=begin original
+
+F<t/op/upgrade.t> checks that upgrading and assigning scalars works.
+
+=end original
+
+F<t/op/upgrade.t> は
+スカラの昇格と代入が動作するかをチェックします。
+
+=item *
+
+=begin original
+
+F<t/uni/lex_utf8.t> checks that Unicode in the lexer works.
+
+=end original
+
+F<t/uni/lex_utf8.t> は
+文法解析器中の Unicode が動作するかをチェックします。
+
+=item *
+
+=begin original
+
+F<t/uni/tie.t> checks that Unicode and C<tie> work.
+
+=end original
+
+F<t/uni/tie.t> は
+Unicode と C<tie> が動作するかをチェックします。
+
+=item *
+
+=begin original
+
+F<t/comp/final_line_num.t> tests whether line numbers are correct at EOF
+
+=end original
+
+
+=item *
+
+=begin original
+
+F<t/comp/form_scope.t> tests format scoping.
+
+=end original
+
+
+=item *
+
+=begin original
+
+F<t/comp/line_debug.t> tests whether C<< @{"_<$file"} >> works.
+
+=end original
+
+
+=item *
+
+=begin original
+
+F<t/op/filetest_t.t> tests if -t file test works.
+
+=end original
+
+
+=item *
+
+=begin original
+
+F<t/op/qr.t> tests C<qr>.
+
+=end original
+
+
+=item *
+
+=begin original
+
+F<t/op/utf8cache.t> tests malfunctions of the utf8 cache.
+
+=end original
+
+
+=item *
+
+=begin original
+
+F<t/re/uniprops.t> test unicodes C<\p{}> regex constructs.
+
+=end original
+
+
+=item *
+
+=begin original
+
+F<t/op/filehandle.t> tests some suitably portable filetest operators
+to check that they work as expected, particularly in the light of some
+internal changes made in how filehandles are blessed.
+
+=end original
+
+
+=item *
+
+=begin original
+
+F<t/op/time_loop.t> tests that unix times greater than C<2**63>, which
+can now be handed to C<gmtime> and C<localtime>, do not cause an internal
+overflow or an excessively long loop.
+
+=end original
+
+
+=back
+
+
+=head1 New or Changed Diagnostics
+
+(新しい、または変更された診断メッセージ)
+
+=head2 New Diagnostics
+
+(新しい診断メッセージ)
+
+=over
+
+=item *
+
+=begin original
+
+SV allocation tracing has been added to the diagnostics enabled by C<-Dm>.
+The tracing can alternatively output via the C<PERL_MEM_LOG> mechanism, if
+that was enabled when the F<perl> binary was compiled.
+
+=end original
+
+C<-Dm> で有効になる診断に、SV 割り当てトレースが追加されました。
+トレースは、もし F<perl> バイナリがコンパイルされたときに
+C<PERL_MEM_LOG> 機構が有効になっていた場合には、これを通しても出力されます。
+
+=item *
+
+=begin original
+
+Smartmatch resolution tracing has been added as a new diagnostic. Use
+C<-DM> to enable it.
+
+=end original
+
+
+=item *
+
+=begin original
+
+A new debugging flag C<-DB> now dumps subroutine definitions, leaving
+C<-Dx> for its original purpose of dumping syntax trees.
+
+=end original
+
+
+=item *
+
+=begin original
+
+Perl 5.12 provides a number of new diagnostic messages to help you write
+better code.  See L<perldiag> for details of these new messages.
+
+=end original
+
+
+=over 4
+
+=item *
+
+=begin original
+
+C<Bad plugin affecting keyword '%s'>
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<gmtime(%.0f) too large>
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<Lexing code attempted to stuff non-Latin-1 character into Latin-1 input>
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<Lexing code internal error (%s)>
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<localtime(%.0f) too large>
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<Overloaded dereference did not return a reference>
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<Overloaded qr did not return a REGEXP>
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<Perl_pmflag() is deprecated, and will be removed from the XS API>
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<lvalue attribute ignored after the subroutine has been defined>
+
+=end original
+
+
+=begin original
+
+This new warning is issued when one attempts to mark a subroutine as
+lvalue after it has been defined.
+
+=end original
+
+
+=item *
+
+=begin original
+
+Perl now warns you if C<++> or C<--> are unable to change the value
+because it's beyond the limit of representation.
+
+=end original
+
+
+=begin original
+
+This uses a new warnings category: "imprecision".
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<lc>, C<uc>, C<lcfirst>, and C<ucfirst> warn when passed undef.
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<Show constant in "Useless use of a constant in void context">
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<Prototype after '%s'>
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<panic: sv_chop %s>
+
+=end original
+
+
+=begin original
+
+This new fatal error occurs when the C routine C<Perl_sv_chop()> was
+passed a position that is not within the scalar's string buffer. This
+could be caused by buggy XS code, and at this point recovery is not
+possible.
+
+=end original
+
+これは、C ルーチン C<Perl_sv_chop()> に、スカラの文字列バッファ内でない
+位置が渡された時に発生する、新しい致命的エラーです。
+これはバグっぽい XS コードによって引き起こされ、この時点では
+回復は不可能です。
+
+=item *
+
+=begin original
+
+The fatal error C<Malformed UTF-8 returned by \N> is now produced if the
+C<charnames> handler returns malformed UTF-8.
+
+=end original
+
+
+=item *
+
+=begin original
+
+If an unresolved named character or sequence was encountered when
+compiling a regex pattern then the fatal error C<\N{NAME} must be resolved
+by the lexer> is now produced. This can happen, for example, when using a
+single-quotish context like C<$re = '\N{SPACE}'; /$re/;>. See L<perldiag>
+for more examples of how the lexer can get bypassed.
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<Invalid hexadecimal number in \N{U+...}> is a new fatal error
+triggered when the character constant represented by C<...> is not a
+valid hexadecimal number.
+
+=end original
+
+
+=item *
+
+=begin original
+
+The new meaning of C<\N> as C<[^\n]> is not valid in a bracketed character
+class, just like C<.> in a character class loses its special meaning,
+and will cause the fatal error C<\N in a character class must be a named
+character: \N{...}>.
+
+=end original
+
+
+=item *
+
+=begin original
+
+The rules on what is legal for the C<...> in C<\N{...}> have been
+tightened up so that unless the C<...> begins with an alphabetic
+character and continues with a combination of alphanumerics, dashes,
+spaces, parentheses or colons then the warning C<Deprecated character(s)
+in \N{...} starting at '%s'> is now issued.
+
+=end original
+
+
+=item *
+
+=begin original
+
+The warning C<Using just the first characters returned by \N{}> will
+be issued if the C<charnames> handler returns a sequence of characters
+which exceeds the limit of the number of characters that can be used. The
+message will indicate which characters were used and which were discarded.
+
+=end original
+
+
+=back
+
+=back
+
+=head2 Changed Diagnostics
+
+=begin original
+
+A number of existing diagnostic messages have been improved or corrected:
+
+=end original
+
+
+=over
+
+=item *
+
+=begin original
+
+A new warning category C<illegalproto> allows finer-grained control of
+warnings around function prototypes.
+
+=end original
+
+
+=begin original
+
+The two warnings:
+
+=end original
+
+
+=over
+
+=item C<Illegal character in prototype for %s : %s>
+
+=item C<Prototype after '%c' for %s : %s>
+
+=back
+
+=begin original
+
+have been moved from the C<syntax> top-level warnings category into a new
+first-level category, C<illegalproto>. These two warnings are currently
+the only ones emitted during parsing of an invalid/illegal prototype,
+so one can now use
+
+=end original
+
+
+  no warnings 'illegalproto';
+
+=begin original
+
+to suppress only those, but not other syntax-related warnings. Warnings
+where prototypes are changed, ignored, or not met are still in the
+C<prototype> category as before.
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<Deep recursion on subroutine "%s">
+
+=end original
+
+
+=begin original
+
+It is now possible to change the depth threshold for this warning from the
+default of 100, by recompiling the F<perl> binary, setting the C
+pre-processor macro C<PERL_SUB_DEPTH_WARN> to the desired value.
+
+=end original
+
+この警告が出る深さの閾値は、デフォルトでは 100 ですが、C プリプロセッサ
+マクロ C<PERL_SUB_DEPTH_WARN> を好みの値に変えて F<perl> バイナリを
+再コンパイルすることによって、変更できるようになりました。
+
+=item *
+
+=begin original
+
+C<Illegal character in prototype> warning is now more precise
+when reporting illegal characters after _
+
+=end original
+
+
+=item *
+
+=begin original
+
+mro merging error messages are now very similar to those produced by
+L<Algorithm::C3>.
+
+=end original
+
+
+=item *
+
+=begin original
+
+Amelioration of the error message "Unrecognized character %s in column %d"
+
+=end original
+
+
+=begin original
+
+Changes the error message to "Unrecognized character %s; marked by E<lt>--
+HERE after %sE<lt>-- HERE near column %d". This should make it a little
+simpler to spot and correct the suspicious character.
+
+=end original
+
+
+=item *
+
+=begin original
+
+Perl now explicitly points to C<$.> when it causes an uninitialized
+warning for ranges in scalar context.
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<split> now warns when called in void context.
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<printf>-style functions called with too few arguments will now issue the
+warning C<"Missing argument in %s"> [perl #71000]
+
+=end original
+
+
+=item *
+
+=begin original
+
+Perl now properly returns a syntax error instead of segfaulting
+if C<each>, C<keys>, or C<values> is used without an argument.
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<tell()> now fails properly if called without an argument and when no
+previous file was read.
+
+=end original
+
+
+=begin original
+
+C<tell()> now returns C<-1>, and sets errno to C<EBADF>, thus restoring
+the 5.8.x behaviour.
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<overload> no longer implicitly unsets fallback on repeated 'use
+overload' lines.
+
+=end original
+
+
+=item *
+
+=begin original
+
+POSIX::strftime() can now handle Unicode characters in the format string.
+
+=end original
+
+
+=item *
+
+=begin original
+
+The C<syntax> category was removed from 5 warnings that should only be in
+C<deprecated>.
+
+=end original
+
+
+=item *
+
+=begin original
+
+Three fatal C<pack>/C<unpack> error messages have been normalized to
+C<panic: %s>
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<Unicode character is illegal> has been rephrased to be more accurate
+
+=end original
+
+
+=begin original
+
+It now reads C<Unicode non-character is illegal in interchange> and the
+perldiag documentation has been expanded a bit.
+
+=end original
+
+
+=item *
+
+=begin original
+
+Currently, all but the first of the several characters that the
+C<charnames> handler may return are discarded when used in a regular
+expression pattern bracketed character class. If this happens then the
+warning C<Using just the first character returned by \N{} in character
+class> will be issued.
+
+=end original
+
+
+=item *
+
+=begin original
+
+The warning C<Missing right brace on \N{} or unescaped left brace after
+\N.  Assuming the latter> will be issued if Perl encounters a C<\N{>
+but doesn't find a matching C<}>. In this case Perl doesn't know if it
+was mistakenly omitted, or if "match non-newline" followed by "match
+a C<{>" was desired.  It assumes the latter because that is actually a
+valid interpretation as written, unlike the other case.  If you meant
+the former, you need to add the matching right brace.  If you did mean
+the latter, you can silence this warning by writing instead C<\N\{>.
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<gmtime> and C<localtime> called with numbers smaller than they can
+reliably handle will now issue the warnings C<gmtime(%.0f) too small>
+and C<localtime(%.0f) too small>.
+
+=end original
+
+
+=back
+
+=begin original
+
+The following diagnostic messages have been removed:
+
+=end original
+
+
+=over 4
+
+=item *
+
+=begin original
+
+C<Runaway format>
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<Can't locate package %s for the parents of %s>
+
+=end original
+
+
+=begin original
+
+In general this warning it only got produced in
+conjunction with other warnings, and removing it allowed an ISA lookup
+optimisation to be added.
+
+=end original
+
+一般的に、この警告は他の警告と同時にのみ生成され、これを取り除くことによって
+ISA 読み出しの最適化が追加できるようになりました。
+
+=item *
+
+=begin original
+
+C<v-string in use/require is non-portable>
+
+=end original
+
+
+=back
+
+=head1 Utility Changes
+
+(ツールの変更)
+
+=over 4
+
+=item *
+
+=begin original
+
+F<h2ph> now looks in C<include-fixed> too, which is a recent addition
+to gcc's search path.
+
+=end original
+
+F<h2ph> は、
+最近 gcc の検索パスとして追加された、C<include-fixed> を見るように
+なりました。
+
+=item *
+
+=begin original
+
+F<h2xs> no longer incorrectly treats enum values like macros.
+It also now handles C++ style comments (C<//>) properly in enums.
+
+=end original
+
+F<h2xs> は
+マクロのような enum 値を間違って扱わなくなりました。
+また、enum での C++ 形式のコメント (C<//>) を扱うようになりました。
+
+=item *
+
+=begin original
+
+F<perl5db.pl> now supports C<LVALUE> subroutines.  Additionally, the
+debugger now correctly handles proxy constant subroutines, and
+subroutine stubs.
+
+=end original
+
+F<perl5db.pl> は
+C<LVALUE> サブルーチンを対応するようになりました。
+さらに、デバッガは代理定数サブルーチンとサブルーチンスタブを正しく
+扱えるようになりました。
+
+=item *
+
+=begin original
+
+F<perlbug> now uses C<%Module::CoreList::bug_tracker> to print out
+upstream bug tracker URLs.  If a user identifies a particular module
+as the topic of their bug report and we're able to divine the URL for
+its upstream bug tracker, perlbug now provide a message to the user
+explaining that the core copies the CPAN version directly, and provide
+the URL for reporting the bug directly to the upstream author.
+
+=end original
+
+
+=begin original
+
+F<perlbug> no longer reports "Message sent" when it hasn't actually sent
+the message
+
+=end original
+
+
+=item *
+
+=begin original
+
+F<perlthanks> is a new utility for sending non-bug-reports to the
+authors and maintainers of Perl. Getting nothing but bug reports can
+become a bit demoralising. If Perl 5.12 works well for you, please try
+out F<perlthanks>. It will make the developers smile.
+
+=end original
+
+F<perlthanks> is a new utility for sending non-bug-reports to the
+authors and maintainers of Perl.
+バグレポートでしかないものを受け取るのは少しがっかりさせるものに
+なりつつあります。
+If Perl 5.12 works well for you, please try
+out F<perlthanks>. It will make the developers smile.
+(TBT)
+
+=item *
+
+=begin original
+
+Perl's developers have fixed bugs in F<a2p> having to do with the
+C<match()> operator in list context.  Additionally, F<a2p> no longer
+generates code that uses the C<$[> variable.
+
+=end original
+
+
+=back
+
+=head1 Selected Bug Fixes
+
+(バグ修正の抜粋)
+
+=over 4
+
+=item *
+
+=begin original
+
+U+0FFFF is now a legal character in regular expressions.
+
+=end original
+
+
+=item *
+
+=begin original
+
+pp_qr now always returns a new regexp SV. Resolves RT #69852.
+
+=end original
+
+
+=begin original
+
+Instead of returning a(nother) reference to the (pre-compiled) regexp
+in the optree, use reg_temp_copy() to create a copy of it, and return a
+reference to that. This resolves issues about Regexp::DESTROY not being
+called in a timely fashion (the original bug tracked by RT #69852), as
+well as bugs related to blessing regexps, and of assigning to regexps,
+as described in correspondence added to the ticket.
+
+=end original
+
+
+=begin original
+
+It transpires that we also need to undo the SvPVX() sharing when ithreads
+cloning a Regexp SV, because mother_re is set to NULL, instead of a
+cloned copy of the mother_re. This change might fix bugs with regexps
+and threads in certain other situations, but as yet neither tests nor
+bug reports have indicated any problems, so it might not actually be an
+edge case that it's possible to reach.
+
+=end original
+
+
+=item *
+
+=begin original
+
+Several compilation errors and segfaults when perl was built with C<-Dmad>
+were fixed.
+
+=end original
+
+
+=item *
+
+=begin original
+
+Fixes for lexer API changes in 5.11.2 which broke NYTProf's savesrc option.
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<-t> should only return TRUE for file handles connected to a TTY
+
+=end original
+
+
+=begin original
+
+The Microsoft C version of C<isatty()> returns TRUE for all character mode
+devices, including the F</dev/null>-style "nul" device and printers like
+"lpt1".
+
+=end original
+
+
+=item *
+
+=begin original
+
+Fixed a regression caused by commit fafafbaf which caused a panic during
+parameter passing [perl #70171]
+
+=end original
+
+
+=item *
+
+=begin original
+
+On systems which in-place edits without backup files, -i'*' now works as
+the documentation says it does [perl #70802]
+
+=end original
+
+
+=item *
+
+=begin original
+
+Saving and restoring magic flags no longer loses readonly flag.
+
+=end original
+
+
+=item *
+
+=begin original
+
+The malformed syntax C<grep EXPR LIST> (note the missing comma) no longer
+causes abrupt and total failure.
+
+=end original
+
+
+=item *
+
+=begin original
+
+Regular expressions compiled with C<qr{}> literals properly set C<$'> when
+matching again.
+
+=end original
+
+
+=item *
+
+=begin original
+
+Using named subroutines with C<sort> should no longer lead to bus errors
+[perl #71076]
+
+=end original
+
+
+=item *
+
+=begin original
+
+Numerous bugfixes catch small issues caused by the recently-added Lexer API.
+
+=end original
+
+
+=item *
+
+=begin original
+
+Smart match against C<@_> sometimes gave false negatives. [perl #71078]
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<$@> may now be assigned a read-only value (without error or busting
+the stack).
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<sort> called recursively from within an active comparison subroutine no
+longer causes a bus error if run multiple times. [perl #71076]
+
+=end original
+
+
+=item *
+
+=begin original
+
+Tie::Hash::NamedCapture::* will not abort if passed bad input (RT #71828)
+
+=end original
+
+
+=item *
+
+=begin original
+
+@_ and $_ no longer leak under threads (RT #34342 and #41138, also
+#70602, #70974)
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<-I> on shebang line now adds directories in front of @INC
+as documented, and as does C<-I> when specified on the command-line.
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<kill> is now fatal when called on non-numeric process identifiers.
+Previously, an C<undef> process identifier would be interpreted as a
+request to kill process 0, which would terminate the current process
+group on POSIX systems. Since process identifiers are always integers,
+killing a non-numeric process is now fatal.
+
+=end original
+
+
+=item *
+
+=begin original
+
+5.10.0 inadvertently disabled an optimisation, which caused a measurable
+performance drop in list assignment, such as is often used to assign
+function parameters from C<@_>. The optimisation has been re-instated, and
+the performance regression fixed. (This fix is also present in 5.10.1)
+
+=end original
+
+5.10.0 では不注意によって最適化が無効化されていたため、
+例えば C<@_> から関数の引数への代入でよく使われるような、
+リスト代入において目に見えるほどの性能低下を引き起こしていました。
+この最適化は再導入され、性能面の退行が修正されました。
+(この修正は 5.10.1 でも行われています)
+
+=item *
+
+=begin original
+
+Fixed memory leak on C<while (1) { map 1, 1 }> [RT #53038].
+
+=end original
+
+C<while (1) { map 1, 1 }> でのメモリリークが修正されました [RT #53038]。
+
+=item *
+
+=begin original
+
+Some potential coredumps in PerlIO fixed [RT #57322,54828].
+
+=end original
+
+PerlIO でのコアダンプの可能性が修正されました [RT #57322,54828]。
+
+=item *
+
+=begin original
+
+The debugger now works with lvalue subroutines.
+
+=end original
+
+デバッガは左辺値サブルーチンでも動作するようになりました。
+
+=item *
+
+=begin original
+
+The debugger's C<m> command was broken on modules that defined constants
+[RT #61222].
+
+=end original
+
+定数が定義されたモジュールでは、デバッガの C<m> コマンドが壊れていました
+[RT #61222]。
+
+=item *
+
+=begin original
+
+C<crypt> and string complement could return tainted values for untainted
+arguments [RT #59998].
+
+=end original
+
+C<crypt> と文字列補完は汚染されていない引数から汚染された値を返すことが
+ありました [RT #59998].
+
+=item *
+
+=begin original
+
+The C<-i>I<.suffix> command-line switch now recreates the file using
+restricted permissions, before changing its mode to match the original
+file. This eliminates a potential race condition [RT #60904].
+
+=end original
+
+C<-i>I<.suffix> コマンドラインオプションは、元のファイルに一致するように
+モードを変更する前に、制限されたパーミッションを使ってファイルを
+再作成します。
+これは競合条件の可能性を除去します [RT #60904]。
+
+=item *
+
+=begin original
+
+On some Unix systems, the value in C<$?> would not have the top bit set
+(C<$? & 128>) even if the child core dumped.
+
+=end original
+
+Unix システムによっては、C<$?> の値が、子がコアダンプしたときでも
+最上位ビット (C<$? & 128>) がされないことがありました。
+
+=item *
+
+=begin original
+
+Under some circumstances, C<$^R> could incorrectly become undefined
+[RT #57042].
+
+=end original
+
+状況によっては、C<$^R> が間違って未定義になりました [RT #57042]。
+
+=item *
+
+=begin original
+
+In the XS API, various hash functions, when passed a pre-computed hash where
+the key is UTF-8, might result in an incorrect lookup.
+
+=end original
+
+XS API で、様々なハッシュ関数において、キーが UTF-8 の時に予め
+計算されたハッシュを渡すと、読み出しを間違うことがありました。
+
+=item *
+
+=begin original
+
+XS code including F<XSUB.h> before F<perl.h> gave a compile-time error
+[RT #57176].
+
+=end original
+
+F<perl.h> の前に F<XSUB.h> をインクルードした XS コードでコンパイル時
+エラーが発生していました [RT #57176]。
+
+=item *
+
+=begin original
+
+C<< $object-E<gt>isa('Foo') >> would report false if the package C<Foo>
+didn't exist, even if the object's C<@ISA> contained C<Foo>.
+
+=end original
+
+C<< $object-E<gt>isa('Foo') >> は、たとえ オブジェクトの C<@ISA> に
+C<Foo> を含んでいても、パッケージに C<Foo> が存在していなければ偽を
+返すようになりました。
+
+=item *
+
+=begin original
+
+Various bugs in the new-to 5.10.0 mro code, triggered by manipulating
+C<@ISA>, have been found and fixed.
+
+=end original
+
+5.10.0 で新規導入された mro コードで、C<@ISA> を操作することによって
+引き起こされる様々なバグが発見され、修正されました。
+
+=item *
+
+=begin original
+
+Bitwise operations on references could crash the interpreter, e.g.
+C<$x=\$y; $x |= "foo"> [RT #54956].
+
+=end original
+
+C<$x=\$y; $x |= "foo"> のような、リファレンスに対するビット単位演算子が
+インタプリタをクラッシュさせることがありました [RT #54956]。
+
+=item *
+
+=begin original
+
+Patterns including alternation might be sensitive to the internal UTF-8
+representation, e.g.
+
+=end original
+
+代替を含むパターンが内部 UTF-8 表現に敏感になっていました;
+
+    my $byte = chr(192);
+    my $utf8 = chr(192); utf8::upgrade($utf8);
+    $utf8 =~ /$byte|X}/i;	# failed in 5.10.0
+
+=item *
+
+=begin original
+
+Within UTF8-encoded Perl source files (i.e. where C<use utf8> is in
+effect), double-quoted literal strings could be corrupted where a C<\xNN>,
+C<\0NNN> or C<\N{}> is followed by a literal character with ordinal value
+greater than 255 [RT #59908].
+
+=end original
+
+UTF8-エンコードされた (つまり C<use utf8> が有効な) Perl ソースファイル内で、
+ダブルクォートされたリテラル文字列が、
+could be corrupted where a C<\xNN>, C<\0NNN>, C<\N{}> の後に
+その値が 255 を超えるリテラル文字が続いている場合に、壊れることがありました
+[RT #59908]。
+
+=item *
+
+=begin original
+
+C<B::Deparse> failed to correctly deparse various constructs:
+C<readpipe STRING> [RT #62428], C<CORE::require(STRING)> [RT #62488],
+C<sub foo(_)> [RT #62484].
+
+=end original
+
+C<B::Deparse> は様々な構造を逆パースするのに失敗していました:
+C<readpipe STRING> [RT #62428], C<CORE::require(STRING)> [RT #62488],
+C<sub foo(_)> [RT #62484].
+
+=item *
+
+=begin original
+
+Using C<setpgrp> with no arguments could corrupt the perl stack.
+
+=end original
+
+C<setpgrp> を引数なしで使うと、perl のスタックが壊れることがありました。
+
+=item *
+
+=begin original
+
+The block form of C<eval> is now specifically trappable by C<Safe> and
+C<ops>. Previously it was erroneously treated like string C<eval>.
+
+=end original
+
+ブロック形式の C<eval> は特別に C<Safe> と C<ops> でトラップ可能に
+なりました。
+以前は間違って文字列の C<eval> のように扱われていました。
+
+=item *
+
+=begin original
+
+In 5.10.0, the two characters C<[~> were sometimes parsed as the smart
+match operator (C<~~>) [RT #63854].
+
+=end original
+
+5.10.0 では、2 つの文字 C<[~> が時々スマートマッチング演算子
+(C<~~>) としてパースされていました [RT #63854]。
+
+=item *
+
+=begin original
+
+In 5.10.0, the C<*> quantifier in patterns was sometimes treated as
+C<{0,32767}> [RT #60034, #60464]. For example, this match would fail:
+
+=end original
+
+5.10.0 では、パターン中の C<*> 量指定子が時々
+C<{0,32767}> として扱われていました[RT #60034, #60464]。
+例えば、以下はマッチングに失敗していました:
+
+    ("ab" x 32768) =~ /^(ab)*$/
+
+=item *
+
+=begin original
+
+C<shmget> was limited to a 32 bit segment size on a 64 bit OS [RT #63924].
+
+=end original
+
+C<shmget> は 64 ビット OS で 32 ビットセグメントサイズに制限されていました
+[RT #63924]。
+
+=item *
+
+=begin original
+
+Using C<next> or C<last> to exit a C<given> block no longer produces a
+spurious warning like the following:
+
+=end original
+
+C<given> ブロックから出るために C<next> や C<last> を使ったときに、
+以下のような誤った警告が出力されなくなりました:
+
+    Exiting given via last at foo.pl line 123
+
+=item *
+
+=begin original
+
+Assigning a format to a glob could corrupt the format; e.g.:
+
+=end original
+
+以下のように、フォーマットからグロブへの代入を行うと、
+フォーマットが壊れることがありました:
+
+     *bar=*foo{FORMAT}; # foo format now bad
+
+=item *
+
+=begin original
+
+Attempting to coerce a typeglob to a string or number could cause an
+assertion failure. The correct error message is now generated,
+C<Can't coerce GLOB to I<$type>>.
+
+=end original
+
+型グロブを文字列や数値に変換しようとすると、アサーション失敗が
+発生することがありました。
+正しいエラーメッセージである C<Can't coerce GLOB to I<$type>> が
+生成されるようになりました。
+
+=item *
+
+=begin original
+
+Under C<use filetest 'access'>, C<-x> was using the wrong access
+mode. This has been fixed [RT #49003].
+
+=end original
+
+C<use filetest 'access'> 中に、C<-x> は間違ったアクセスモードを
+使っていました。
+これは修正されました [RT #49003]。
+
+=item *
+
+=begin original
+
+C<length> on a tied scalar that returned a Unicode value would not be
+correct the first time. This has been fixed.
+
+=end original
+
+Unicode 値を返す tie されたスカラに対する C<length> が、初回は
+正しく動作していませんでした。
+これは修正されました。
+
+=item *
+
+=begin original
+
+Using an array C<tie> inside in array C<tie> could SEGV. This has been
+fixed. [RT #51636]
+
+=end original
+
+配列 C<tie> の中で配列 C<tie> を使うと SEGV になることがありました。
+これは修正されました。
+[RT #51636]
+
+=item *
+
+=begin original
+
+A race condition inside C<PerlIOStdio_close()> has been identified and
+fixed. This used to cause various threading issues, including SEGVs.
+
+=end original
+
+C<PerlIOStdio_close()> 内での競合条件が識別され、修正されました。
+これは SEGV を含む、様々なスレッドの問題を引き起こしていました。
+
+=item *
+
+=begin original
+
+In C<unpack>, the use of C<()> groups in scalar context was internally
+placing a list on the interpreter's stack, which manifested in various
+ways, including SEGVs. This is now fixed [RT #50256].
+
+=end original
+
+C<unpack> で、スカラコンテキストで C<()> グループを使うと、内部的に
+インタプリタのスタックにリストが置かれ、SEGV を含む様々な現象が
+起きていました。
+これは修正されました [RT #50256]。
+
+=item *
+
+=begin original
+
+Magic was called twice in C<substr>, C<\&$x>, C<tie $x, $m> and C<chop>.
+These have all been fixed.
+
+=end original
+
+C<substr>, C<\&$x>, C<tie $x, $m>, C<chop> で、マジックが 2 回
+呼び出されていました。
+これらは全て修正されました。
+
+=item *
+
+=begin original
+
+A 5.10.0 optimisation to clear the temporary stack within the implicit
+loop of C<s///ge> has been reverted, as it turned out to be the cause of
+obscure bugs in seemingly unrelated parts of the interpreter [commit
+ef0d4e17921ee3de].
+
+=end original
+
+5.10.0 での、C<s///ge> の暗黙のループ中の一時的なスタックをクリアするという
+最適化は差し戻されました; これがインタプリタの無関係な部分での
+不明瞭なバグの原因となっていたからです [commit ef0d4e17921ee3de]。
+
+=item *
+
+=begin original
+
+The line numbers for warnings inside C<elsif> are now correct.
+
+=end original
+
+C<elsif> 内での警告の行番号が正しくなりました。
+
+=item *
+
+=begin original
+
+The C<..> operator now works correctly with ranges whose ends are at or
+close to the values of the smallest and largest integers.
+
+=end original
+
+C<..> 演算子は、どちらかの端が整数の最小値や最大値に近い値でも
+正しく動作するようになりました。
+
+=item *
+
+=begin original
+
+C<binmode STDIN, ':raw'> could lead to segmentation faults on some platforms.
+This has been fixed [RT #54828].
+
+=end original
+
+C<binmode STDIN, ':raw'> は、プラットフォームによってはセグメンテーション
+フォルトを引き起こすことがありました。
+これは修正されました [RT #54828]。
+
+=item *
+
+=begin original
+
+An off-by-one error meant that C<index $str, ...> was effectively being
+executed as C<index "$str\0", ...>. This has been fixed [RT #53746].
+
+=end original
+
+C<index $str, ...> が実際には C<index "$str\0", ...> として実行されるという
+境界条件のエラーがありました。
+これは修正されました [RT #53746]。
+
+=item *
+
+=begin original
+
+Various leaks associated with named captures in regexes have been fixed
+[RT #57024].
+
+=end original
+
+正規表現での名前付き捕捉に関連する様々なリークが修正されました
+[RT #57024]。
+
+=item *
+
+=begin original
+
+A weak reference to a hash would leak. This was affecting C<DBI>
+[RT #56908].
+
+=end original
+
+ハッシュへの弱いリファレンスがリークを起こすことがありました。
+これは C<DBI> に影響を与えていました [RT #56908]。
+
+=item *
+
+=begin original
+
+Using (?|) in a regex could cause a segfault [RT #59734].
+
+=end original
+
+正規表現で (?|) を使うとセグメンテンションフォールトを引き起こすことが
+ありました [RT #59734]。
+
+=item *
+
+=begin original
+
+Use of a UTF-8 C<tr//> within a closure could cause a segfault [RT #61520].
+
+=end original
+
+クロージャ内で UTF-8 の C<tr//> を使うとセグメンテンションフォールトを
+引き起こすことがありました [RT #61520]。
+
+=item *
+
+=begin original
+
+Calling C<Perl_sv_chop()> or otherwise upgrading an SV could result in an
+unaligned 64-bit access on the SPARC architecture [RT #60574].
+
+=end original
+
+C<Perl_sv_chop()> やその他で SV を昇格させると、SPARC アーキテクチャでは
+アライメントされていない 64-ビットアクセスをする場合がありました
+[RT #60574]。
+
+=item *
+
+=begin original
+
+In the 5.10.0 release, C<inc_version_list> would incorrectly list
+C<5.10.*> after C<5.8.*>; this affected the C<@INC> search order
+[RT #67628].
+
+=end original
+
+5.10.0 リリースでは、C<inc_version_list> は間違って C<5.8.*> の後に
+C<5.10.*> をリストしていました; これは C<@INC> の検索順に影響を
+与えていました [RT #67628]。
+
+=item *
+
+=begin original
+
+In 5.10.0, C<pack "a*", $tainted_value> returned a non-tainted value
+[RT #52552].
+
+=end original
+
+5.10.0 では、C<pack "a*", $tainted_value> は汚染されていない値を
+返していました [RT #52552]。
+
+=item *
+
+=begin original
+
+In 5.10.0, C<printf> and C<sprintf> could produce the fatal error
+C<panic: utf8_mg_pos_cache_update> when printing UTF-8 strings
+[RT #62666].
+
+=end original
+
+5.10.0 では、C<printf> と C<sprintf> で UTF-8 文字列を表示するときに
+致命的エラー C<panic: utf8_mg_pos_cache_update> が出ることがありました
+[RT #62666]。
+
+=item *
+
+=begin original
+
+In the 5.10.0 release, a dynamically created C<AUTOLOAD> method might be
+missed (method cache issue) [RT #60220,60232].
+
+=end original
+
+5.10.0 リリースでは、動的に作成した C<AUTOLOAD> メソッドが失われることが
+ありました (メソッドキャッシュの問題です) [RT #60220,60232]。
+
+=item *
+
+=begin original
+
+In the 5.10.0 release, a combination of C<use feature> and C<//ee> could
+cause a memory leak [RT #63110].
+
+=end original
+
+5.10.0 リリースでは、C<use feature> と C<//ee> の組み合わせで
+メモリリークを起こすことがありました [RT #63110]。
+
+=item *
+
+=begin original
+
+C<-C> on the shebang (C<#!>) line is once more permitted if it is also
+specified on the command line. C<-C> on the shebang line used to be a
+silent no-op I<if> it was not also on the command line, so perl 5.10.0
+disallowed it, which broke some scripts. Now perl checks whether it is
+also on the command line and only dies if it is not [RT #67880].
+
+=end original
+
+shebang (C<#!>) 行 での C<-C> は、コマンドラインでも指定されている場合は
+再び許可されるようになりました。
+shebang 行での C<-C> は、I<もし> コマンドラインで指定されていなかった
+場合には暗黙に no-op となっていました; これは perl 5.10.0 では
+不許可となりましたが、これによって動かなくなるスクリプトもありました。
+perl はコマンドラインでも指定されているかどうかを調べて、
+指定されていないときにだけ die するようになりました [RT #67880]。
+
+=item *
+
+=begin original
+
+In 5.10.0, certain types of re-entrant regular expression could crash,
+or cause the following assertion failure [RT #60508]:
+
+=end original
+
+5.10.0 で、ある種の再入可能な正規表現によってクラッシュしたり、
+以下のアサーション失敗を出力したりすることがありました [RT #60508]:
+
+    Assertion rx->sublen >= (s - rx->subbeg) + i failed
+
+=item *
+
+=begin original
+
+Perl now includes previously missing files from the Unicode Character
+Database.
+
+=end original
+
+
+=item *
+
+=begin original
+
+Perl now honors C<TMPDIR> when opening an anonymous temporary file.
+
+=end original
+
+
+=back
+
+
+=head1 Platform Specific Changes
+
+(プラットフォーム固有の変更)
+
+=begin original
+
+Perl is incredibly portable. In general, if a platform has a C compiler,
+someone has ported Perl to it (or will soon).  We're happy to announce
+that Perl 5.12 includes support for several new platforms.  At the same
+time, it's time to bid farewell to some (very) old friends.
+
+=end original
+
+
+=head2 New Platforms
+
+=over
+
+=item Haiku
+
+=begin original
+
+Perl's developers have merged patches from Haiku's maintainers. Perl
+should now build on Haiku.
+
+=end original
+
+Perl の開発者は Haiku 管理者からのパッチがマージしました。
+Perl は Haiku でビルドできるようになったはずです。
+
+=item MirOS BSD
+
+=begin original
+
+Perl should now build on MirOS BSD.
+
+=end original
+
+Perl は MirOS BSD でビルドできるようになったはずです。
+
+=back
+
+=head2 Discontinued Platforms
+
+=over
+
+=item Domain/OS
+
+=item MiNT
+
+=item Tenon MachTen
+
+=back
+
+=head2 Updated Platforms
+
+=over 4
+
+=item AIX
+
+=over 4
+
+=item *
+
+=begin original
+
+Removed F<libbsd> for AIX 5L and 6.1. Only C<flock()> was used from
+F<libbsd>.
+
+=end original
+
+AIX 5L と 6.1 のための F<libbsd> が取り除かれました。
+C<flock()> だけが F<libbsd> を使っていました。
+
+=item *
+
+=begin original
+
+Removed F<libgdbm> for AIX 5L and 6.1 if F<libgdbm> < 1.8.3-5 is
+installed.  The F<libgdbm> is delivered as an optional package with the
+AIX Toolbox.  Unfortunately the versions below 1.8.3-5 are broken.
+
+=end original
+
+F<libgdbm> < 1.8.3-5 がインストールされている場合、
+AIX 5L and 6.1 のための F<libgdbm> が取り除かれました。
+F<libgdbm> は AIX Toolbox の追加パッケージとして配布されています。
+残念ながらバージョン 1.8.3-5 以前のものは壊れています。
+
+=item *
+
+=begin original
+
+Hints changes mean that AIX 4.2 should work again.
+
+=end original
+
+AIX 4.2 で再び動作するようにヒントが変更されました。
+
+=back
+
+=item Cygwin
+
+=over 4
+
+=item *
+
+=begin original
+
+Perl now supports IPv6 on Cygwin 1.7 and newer.
+
+=end original
+
+
+=item *
+
+=begin original
+
+On Cygwin we now strip the last number from the DLL. This has been the
+behaviour in the cygwin.com build for years. The hints files have been
+updated.
+
+=end original
+
+Cygwin においては、DLL から最後の番号を取り除くことにしました。
+これは何年間も cygwin.com のビルドの振る舞いとなっています。
+ヒントファイルが更新されました。
+
+=back
+
+=item Darwin (Mac OS X)
+
+=over 4
+
+=item *
+
+=begin original
+
+Skip testing the be_BY.CP1131 locale on Darwin 10 (Mac OS X 10.6),
+as it's still buggy.
+
+=end original
+
+
+=item *
+
+=begin original
+
+Correct infelicities in the regexp used to identify buggy locales
+on Darwin 8 and 9 (Mac OS X 10.4 and 10.5, respectively).
+
+=end original
+
+
+=back
+
+=item DragonFly BSD
+
+=over 4
+
+=item *
+
+=begin original
+
+Fix thread library selection [perl #69686]
+
+=end original
+
+
+=back
+
+=item FreeBSD
+
+=over 4
+
+=item *
+
+=begin original
+
+The hints files now identify the correct threading libraries on FreeBSD 7
+and later.
+
+=end original
+
+ヒントファイルは FreeBSD 7 以降での正しいスレッドライブラリを
+識別するようになりました。
+
+=back
+
+=item Irix
+
+=over 4
+
+=item *
+
+=begin original
+
+We now work around a bizarre preprocessor bug in the Irix 6.5 compiler:
+C<cc -E -> unfortunately goes into K&R mode, but C<cc -E file.c> doesn't.
+
+=end original
+
+Irix 6.5 コンパイラのプリプロセッサにある奇妙なバグを回避するように
+なりました:
+C<cc -E -> は残念ながら K&R モードになりますが、C<cc -E file.c> では
+なりません。
+
+=back
+
+=item NetBSD
+
+=over 4
+
+=item *
+
+=begin original
+
+Hints now supports versions 5.*.
+
+=end original
+
+ヒントがバージョン 5.* に対応しました。
+
+=back
+
+=item OpenVMS
+
+=over 4
+
+=item *
+
+=begin original
+
+C<-UDEBUGGING> is now the default on VMS.
+
+=end original
+
+
+=begin original
+
+Like it has been everywhere else for ages and ages. Also make command-line
+selection of -UDEBUGGING and -DDEBUGGING work in configure.com; before
+the only way to turn it off was by saying no in answer to the interactive
+question.
+
+=end original
+
+
+=item *
+
+=begin original
+
+The default pipe buffer size on VMS has been updated to 8192 on 64-bit
+systems.
+
+=end original
+
+
+=item *
+
+=begin original
+
+Reads from the in-memory temporary files of C<PerlIO::scalar> used to fail
+if C<$/> was set to a numeric reference (to indicate record-style reads).
+This is now fixed.
+
+=end original
+
+C<PerlIO::scalar> のメモリ内一時ファイルからの読み込みは、
+C<$/> が(レコード風読み込みを示すために)数値リファレンスにセットされていると
+失敗していました。
+これは修正されました。
+
+=item *
+
+=begin original
+
+VMS now supports C<getgrgid>.
+
+=end original
+
+VMS が C<getgrgid> に対応するようになりました。
+
+=item *
+
+=begin original
+
+Many improvements and cleanups have been made to the VMS file name handling
+and conversion code.
+
+=end original
+
+VMS ファイル名の扱いと変換に関するコードに対して多くの改良と整理が
+行われました。
+
+=item *
+
+=begin original
+
+Enabling the C<PERL_VMS_POSIX_EXIT> logical name now encodes a POSIX exit
+status in a VMS condition value for better interaction with GNV's bash
+shell and other utilities that depend on POSIX exit values. See
+L<perlvms/"$?"> for details.
+
+=end original
+
+論理名 C<PERL_VMS_POSIX_EXIT> を有効にすることで、VMS 条件値を
+POSIX 返りステータスに変換し、GNV の bash シェルやその他の POSIX 返り値に
+依存しているユーティリティとの相互作用を高めます。
+詳細については L<perlvms/"$?"> を参照してください。
+
+=item *
+
+=begin original
+
+C<File::Copy> now detects Unix compatibility mode on VMS.
+
+=end original
+
+
+=back
+
+=item Stratus VOS
+
+=over 4
+
+=item *
+
+=begin original
+
+Various changes from Stratus have been merged in.
+
+=end original
+
+Stratus からの様々な変更がマージされました。
+
+=back
+
+=item Symbian
+
+=over 4
+
+=item *
+
+=begin original
+
+There is now support for Symbian S60 3.2 SDK and S60 5.0 SDK.
+
+=end original
+
+Symbian S60 3.2 SDK と S60 5.0 SDK に対応するようになりました。
+
+=back
+
+=item Windows
+
+=over 4
+
+=item *
+
+=begin original
+
+Perl 5.12 supports Windows 2000 and later. The supporting code for
+legacy versions of Windows is still included, but will be removed
+during the next development cycle.
+
+=end original
+
+
+=item *
+
+=begin original
+
+Initial support for building Perl with MinGW-w64 is now available.
+
+=end original
+
+
+=item *
+
+=begin original
+
+F<perl.exe> now includes a manifest resource to specify the C<trustInfo>
+settings for Windows Vista and later. Without this setting Windows
+would treat F<perl.exe> as a legacy application and apply various
+heuristics like redirecting access to protected file system areas
+(like the "Program Files" folder) to the users "VirtualStore"
+instead of generating a proper "permission denied" error.
+
+=end original
+
+
+=begin original
+
+The manifest resource also requests the Microsoft Common-Controls
+version 6.0 (themed controls introduced in Windows XP).  Check out the
+Win32::VisualStyles module on CPAN to switch back to old style
+unthemed controls for legacy applications.
+
+=end original
+
+
+=item *
+
+=begin original
+
+The C<-t> filetest operator now only returns true if the filehandle
+is connected to a console window.  In previous versions of Perl it
+would return true for all character mode devices, including F<NUL>
+and F<LPT1>.
+
+=end original
+
+
+=item *
+
+=begin original
+
+The C<-p> filetest operator now works correctly, and the
+Fcntl::S_IFIFO constant is defined when Perl is compiled with
+Microsoft Visual C.  In previous Perl versions C<-p> always
+returned a false value, and the Fcntl::S_IFIFO constant
+was not defined.
+
+=end original
+
+
+=begin original
+
+This bug is specific to Microsoft Visual C and never affected
+Perl binaries built with MinGW.
+
+=end original
+
+
+=item *
+
+=begin original
+
+The socket error codes are now more widely supported:  The POSIX
+module will define the symbolic names, like POSIX::EWOULDBLOCK,
+and stringification of socket error codes in $! works as well
+now;
+
+=end original
+
+
+  C:\>perl -MPOSIX -E "$!=POSIX::EWOULDBLOCK; say $!"
+  A non-blocking socket operation could not be completed immediately.
+
+=item *
+
+=begin original
+
+flock() will now set sensible error codes in $!.  Previous Perl versions
+copied the value of $^E into $!, which caused much confusion.
+
+=end original
+
+
+=item *
+
+=begin original
+
+select() now supports all empty C<fd_set>s more correctly.
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<'.\foo'> and C<'..\foo'>  were treated differently than
+C<'./foo'> and C<'../foo'> by C<do> and C<require> [RT #63492].
+
+=end original
+
+C<do> と C<require> において、C<'.\foo'> と C<'..\foo'> が
+C<'./foo'> と C<'../foo'> とは異なって扱われていました [RT #63492]。
+
+=item *
+
+=begin original
+
+Improved message window handling means that C<alarm> and C<kill> messages
+will no longer be dropped under race conditions.
+
+=end original
+
+メッセージウィンドウの扱いが改良され、C<alarm> と C<kill> のメッセージが
+競合状態でも欠落しなくなりました。
+
+=item *
+
+=begin original
+
+Various bits of Perl's build infrastructure are no longer converted to
+win32 line endings at release time. If this hurts you, please report the
+problem with the L<perlbug> program included with perl.
+
+=end original
+
+
+=back
+
+=back
+
+
+=head1 Known Problems
+
+=begin original
+
+This is a list of some significant unfixed bugs, which are regressions
+from either 5.10.x or 5.8.x.
+
+=end original
+
+以下はいくつかの重要な未修正のバグの一覧で、5.10.x か 5.8.x からの
+退行です。
+
+=over 4
+
+=item *
+
+=begin original
+
+Some CPANPLUS tests may fail if there is a functioning file
+F<../../cpanp-run-perl> outside your build directory. The failure
+shouldn't imply there's a problem with the actual functional
+software. The bug is already fixed in [RT #74188] and is scheduled for
+inclusion in perl-v5.12.1.
+
+=end original
+
+
+=item *
+
+=begin original
+
+C<List::Util::first> misbehaves in the presence of a lexical C<$_>
+(typically introduced by C<my $_> or implicitly by C<given>). The variable
+which gets set for each iteration is the package variable C<$_>, not the
+lexical C<$_> [RT #67694].
+
+=end original
+
+C<List::Util::first> は (典型的には C<my $_> や C<given> による)
+レキシカルな C<$_> の存在について振る舞いを間違えていました。
+each の反復で設定される変数はレキシカルな C<$_> ではなくパッケージ変数の
+C<$_> です [RT #67694]。
+
+=begin original
+
+A similar issue may occur in other modules that provide functions which
+take a block as their first argument, like
+
+=end original
+
+同様の問題は、以下のように、最初の引数としてブロックを取る関数を提供している
+その他のモジュールにも発生するかもしれません。
+
+    foo { ... $_ ...} list
+
+=item *
+
+=begin original
+
+Some regexes may run much more slowly when run in a child thread compared
+with the thread the pattern was compiled into [RT #55600].
+
+=end original
+
+正規表現によっては、パターンをコンパイルしたスレッドで実行するのに比べて
+子スレッドではとても遅くなることがあります [RT #55600]。
+
+=item *
+
+=begin original
+
+Things like C<"\N{LATIN SMALL LIGATURE FF}" =~ /\N{LATIN SMALL LETTER F}+/>
+will appear to hang as they get into a very long running loop [RT #72998].
+
+=end original
+
+
+=item *
+
+=begin original
+
+Several porters have reported mysterious crashes when Perl's entire
+test suite is run after a build on certain Windows 2000 systems. When
+run by hand, the individual tests reportedly work fine.
+
+=end original
+
+
+=back
+
+=head1 Errata
+
+=over
+
+=item *
+
+=begin original
+
+This one is actually a change introduced in 5.10.0, but it was missed
+from that release's perldelta, so it is mentioned here instead.
+
+=end original
+
+これは実際には 5.10.0 で導入された変更ですが、5.10.0 の perldelta からは
+漏れているので、代わりにここで言及します。
+
+=begin original
+
+A bugfix related to the handling of the C</m> modifier and C<qr> resulted
+in a change of behaviour between 5.8.x and 5.10.0:
+
+=end original
+
+C</m> 修飾子と C<qr> の扱いに関するバグ修正の結果、5.8.x と 5.10.0 で
+振る舞いが変わっています:
+
+    # matches in 5.8.x, doesn't match in 5.10.0
+    $re = qr/^bar/; "foo\nbar" =~ /$re/m;
+
+=back
+
+=head1 Acknowledgements
+
+=begin original
+
+Perl 5.12.0 represents approximately two years of development since
+Perl 5.10.0 and contains over 750,000 lines of changes across over
+3,000 files from over 200 authors and committers.
+
+=end original
+
+
+=begin original
+
+Perl continues to flourish into its third decade thanks to a vibrant
+community of users and developers.  The following people are known to
+have contributed the improvements that became Perl 5.12.0:
+
+=end original
+
+
+=begin original
+
+Aaron Crane, Abe Timmerman, Abhijit Menon-Sen, Abigail, Adam Russell,
+Adriano Ferreira, Ævar Arnfjörð Bjarmason, Alan Grover, Alexandr
+Ciornii, Alex Davies, Alex Vandiver, Andreas Koenig, Andrew Rodland,
+andrew@sundale.net, Andy Armstrong, Andy Dougherty, Jose AUGUSTE-ETIENNE,
+Benjamin Smith, Ben Morrow, bharanee rathna, Bo Borgerson, Bo Lindbergh,
+Brad Gilbert, Bram, Brendan O'Dea, brian d foy, Charles Bailey,
+Chip Salzenberg, Chris 'BinGOs' Williams, Christoph Lamprecht, Chris
+Williams, chromatic, Claes Jakobsson, Craig A. Berry, Dan Dascalescu,
+Daniel Frederick Crisman, Daniel M. Quinlan, Dan Jacobson, Dan Kogai,
+Dave Mitchell, Dave Rolsky, David Cantrell, David Dick, David Golden,
+David Mitchell, David M. Syzdek, David Nicol, David Wheeler, Dennis
+Kaarsemaker, Dintelmann, Peter, Dominic Dunlop, Dr.Ruud, Duke Leto,
+Enrico Sorcinelli, Eric Brine, Father Chrysostomos, Florian Ragwitz,
+Frank Wiegand, Gabor Szabo, Gene Sullivan, Geoffrey T. Dairiki, George
+Greer, Gerard Goossen, Gisle Aas, Goro Fuji, Graham Barr, Green, Paul,
+Hans Dieter Pearcey, Harmen, H. Merijn Brand, Hugo van der Sanden,
+Ian Goodacre, Igor Sutton, Ingo Weinhold, James Bence, James Mastros,
+Jan Dubois, Jari Aalto, Jarkko Hietaniemi, Jay Hannah, Jerry Hedden,
+Jesse Vincent, Jim Cromie, Jody Belka, John E. Malmberg, John Malmberg,
+John Peacock, John Peacock via RT, John P. Linderman, John Wright,
+Josh ben Jore, Jos I. Boumans, Karl Williamson, Kenichi Ishigaki, Ken
+Williams, Kevin Brintnall, Kevin Ryde, Kurt Starsinic, Leon Brocard,
+Lubomir Rintel, Luke Ross, Marcel Grünauer, Marcus Holland-Moritz, Mark
+Jason Dominus, Marko Asplund, Martin Hasch, Mashrab Kuvatov, Matt Kraai,
+Matt S Trout, Max Maischein, Michael Breen, Michael Cartmell, Michael
+G Schwern, Michael Witten, Mike Giroux, Milosz Tanski, Moritz Lenz,
+Nicholas Clark, Nick Cleaton, Niko Tyni, Offer Kaye, Osvaldo Villalon,
+Paul Fenwick, Paul Gaborit, Paul Green, Paul Johnson, Paul Marquess,
+Philip Hazel, Philippe Bruhat, Rafael Garcia-Suarez, Rainer Tammer,
+Rajesh Mandalemula, Reini Urban, Renée Bäcker, Ricardo Signes,
+Ricardo SIGNES, Richard Foley, Rich Rauenzahn, Rick Delaney, Risto
+Kankkunen, Robert May, Roberto C. Sanchez, Robin Barker, SADAHIRO
+Tomoyuki, Salvador Ortiz Garcia, Sam Vilain, Scott Lanning, Sébastien
+Aperghis-Tramoni, Sérgio Durigan Júnior, Shlomi Fish, Simon 'corecode'
+Schubert, Sisyphus, Slaven Rezic, Smylers, Steffen Müller, Steffen
+Ullrich, Stepan Kasal, Steve Hay, Steven Schubiger, Steve Peters, Tels,
+The Doctor, Tim Bunce, Tim Jenness, Todd Rinaldo, Tom Christiansen,
+Tom Hukins, Tom Wyant, Tony Cook, Torsten Schoenfeld, Tye McQueen,
+Vadim Konovalov, Vincent Pit, Hio YAMASHINA, Yasuhiro Matsumoto,
+Yitzchak Scott-Thoennes, Yuval Kogman, Yves Orton, Zefram, Zsban Ambrus
+
+=end original
+
+
+=begin original
+
+This is woefully incomplete as it's automatically generated from version
+control history.  In particular, it doesn't include the names of the
+(very much appreciated) contributors who reported issues in previous
+versions of Perl that helped make Perl 5.12.0 better. For a more complete
+list of all of Perl's historical contributors, please see the C<AUTHORS>
+file in the Perl 5.12.0 distribution.
+
+=end original
+
+
+=begin original
+
+Our "retired" pumpkings Nicholas Clark and Rafael Garcia-Suarez
+deserve special thanks for their brilliant and substantive ongoing
+contributions. Nicholas personally authored over 30% of the patches
+since 5.10.0. Rafael comes in second in patch authorship with 11%,
+but is first by a long shot in committing patches authored by others,
+pushing 44% of the commits since 5.10.0 in this category, often after
+providing considerable coaching to the patch authors. These statistics
+in no way comprise all of their contributions, but express in shorthand
+that we couldn't have done it without them.
+
+=end original
+
+
+=begin original
+
+Many of the changes included in this version originated in the CPAN
+modules included in Perl's core. We're grateful to the entire CPAN
+community for helping Perl to flourish.
+
+=end original
+
+
+=head1 Reporting Bugs
+
+(バグ報告)
+
+=begin original
+
+If you find what you think is a bug, you might check the articles
+recently posted to the comp.lang.perl.misc newsgroup and the perl
+bug database at L<http://rt.perl.org/perlbug/>. There may also be
+information at L<http://www.perl.org/>, the Perl Home Page.
+
+=end original
+
+もしバグと思われるものを見つけたら、comp.lang.perl.misc ニュースグループに
+最近投稿された記事や L<http://rt.perl.org/perlbug/> にある perl バグ
+データベースを確認してください。
+Perl ホームページ、L<http://www.perl.org> にも情報があります。
+
+=begin original
+
+If you believe you have an unreported bug, please run the B<perlbug>
+program included with your release. Be sure to trim your bug down
+to a tiny but sufficient test case. Your bug report, along with the
+output of C<perl -V>, will be sent off to perlbug@perl.org to be
+analyzed by the Perl porting team.
+
+=end original
+
+もしまだ報告されていないバグだと確信したら、そのリリースに含まれている
+perlbug プログラムをを実行してください。
+バグの再現スクリプトを十分小さく、しかし有効なコードに切りつめることを
+意識してください。バグレポートは perl -V の出力と一緒に
+perlbug@perl.org に送られ Perl porting チームによって解析されます。
+
+=begin original
+
+If the bug you are reporting has security implications, which make it
+inappropriate to send to a publicly archived mailing list, then please send
+it to perl5-security-report@perl.org. This points to a closed subscription
+unarchived mailing list, which includes all the core committers, who be able
+to help assess the impact of issues, figure out a resolution, and help
+co-ordinate the release of patches to mitigate or fix the problem across all
+platforms on which Perl is supported. Please only use this address for
+security issues in the Perl core, not for modules independently
+distributed on CPAN.
+
+=end original
+
+もし報告しようとしているバグがセキュリティに関するもので、公開されている
+メーリングリストに送るのが不適切なものなら、
+perl5-security-report@perl.org に送ってください。
+このアドレスは、問題の影響を評価し、解決法を見つけ、Perl が対応している
+全てのプラットフォームで問題を軽減または解決するパッチをリリースするのを
+助けることが出来る、全てのコアコミッタが参加している非公開の
+メーリングリストになっています。
+このアドレスは、独自に CPAN で配布されているモジュールではなく、
+Perl コアのセキュリティ問題だけに使ってください。
+
+=head1 SEE ALSO
+
+=begin original
+
+The F<Changes> file for an explanation of how to view exhaustive details
+on what changed.
+
+=end original
+
+F<Changes> ファイルに変更点の完全な詳細を見る方法についての説明があります。
+
+=begin original
+
+The F<INSTALL> file for how to build Perl.
+
+=end original
+
+F<INSTALL> ファイルに Perl のビルド方法があります。
+
+=begin original
+
+The F<README> file for general stuff.
+
+=end original
+
+F<README> ファイルに一般的なことがあります。
+
+=begin original
+
+The F<Artistic> and F<Copying> files for copyright information.
+
+=end original
+
+F<Artistic> 及び F<Copying> ファイルに著作権情報があります。
+
+=begin original
+
+L<http://dev.perl.org/perl5/errata.html> for a list of issues
+found after this release, as well as a list of CPAN modules known
+to be incompatible with this release.
+
+=end original
+
+
+=cut
