@@ -1,0 +1,695 @@
+=encoding utf8
+
+=encoding utf8
+
+=head1 名前
+
+=begin original
+
+Furl::HTTP - Low level interface to Furl
+
+=end original
+
+Furl::HTTP - Furlの低レベルのインターフェース
+
+=head1 概要
+
+    use Furl;
+
+    my $furl = Furl::HTTP->new(
+        agent   => 'MyGreatUA/2.0',
+        timeout => 10,
+    );
+
+    my ($minor_version, $code, $msg, $headers, $body) = $furl->request(
+        method     => 'GET',
+        host       => 'example.com',
+        port       => 80,
+        path_query => '/'
+    );
+    # or
+
+    # Accept-Encoding is supported but optional
+    $furl = Furl->new(
+        headers => [ 'Accept-Encoding' => 'gzip' ],
+    );
+    my $body = $furl->get('http://example.com/some/compressed');
+
+=head1 説明
+
+=begin original
+
+Furl is yet another HTTP client library. LWP is the de facto standard HTTP
+client for Perl5, but it is too slow for some critical jobs, and too complex
+for weekend hacking. Furl resolves these issues. Enjoy it!
+
+=end original
+
+Furlはもう一つのHTTPクライアントライブラリです。LWPはPerl5のデファクトスタンダードな
+HTTPクライアントですが、クリティカルなジョブでは遅すぎますし、週末のハッキングには
+複雑過ぎます。Furlはこれらの問題を解決します。楽しんで下さい！
+
+=begin original
+
+This library is an B<beta> software. Any API may change without notice.
+
+=end original
+
+このライブラリは B<ベータ>ソフトウェアです。予告なくAPIが変更されるかも知れません。
+
+=head1 インターフェース
+
+=head2 クラスメソッド
+
+=head3 C<< Furl::HTTP->new(%args | \%args) :Furl >>
+
+=begin original
+
+Creates and returns a new Furl client with I<%args>. Dies on errors.
+
+=end original
+
+
+
+
+I<%args> might be:
+
+=over
+
+=item agent :Str = "Furl/$VERSION"
+
+=item timeout :Int = 10
+
+Seconds until the call to $furl->request returns a timeout error (as an internally generated 500 error). The timeout might not be accurate since some underlying modules / built-ins function may block longer than the specified timeout. See the FAQ for how to support timeout during name resolution.
+
+=item max_redirects :Int = 7
+
+=item proxy :Str
+
+=item no_proxy :Str
+
+=item headers :ArrayRef
+
+=item header_format :Int = HEADERS_AS_ARRAYREF
+
+This option choose return value format of C<< $furl->request >>.
+
+This option allows HEADERS_NONE or HEADERS_AS_ARRAYREF.
+
+B<HEADERS_AS_ARRAYREF> is a default value. This makes B<$headers> as ArrayRef.
+
+B<HEADERS_NONE> makes B<$headers> as undef. Furl does not return parsing result of headers. You should take needed headers from B<special_headers>.
+
+=item connection_pool
+
+This is the connection pool object for keep-alive requests. By default, it is a instance of L<Furl::ConnectionCache>.
+
+You may not customize this variable otherwise to use L<Coro>. This attribute requires a duck type object. It has two methods, C<< $obj->steal($host, $port >> and C<< $obj->push($host, $port, $sock) >>.
+
+=item stop_if
+
+A callback function that is called by Furl after when a blocking function call returns EINTR. Furl will abort the HTTP request and return immediately if the callback returns true. Otherwise the operation is continued (the default behaviour).
+
+=item inet_aton
+
+A callback function to customize name resolution. Takes two arguments: ($hostname, $timeout_in_seconds). If omitted, Furl calls L<Socket::inet_aton>.
+
+=back
+
+=head2 Instance Methods
+
+=head3 C<< $furl->request(%args) :($protocol_minor_version, $code, $msg, \@headers, $body) >>
+
+Sends an HTTP request to a specified URL and returns a protocol minor version,
+status code, status message, response headers, response body respectively.
+
+I<%args> might be:
+
+=over
+
+=item scheme :Str = "http"
+
+=begin original
+
+Protocol scheme. May be C<http> or C<https>.
+
+=end original
+
+プロトコロスキーマ。C<http> か C<https> でしょう。
+
+=item host :Str
+
+=begin original
+
+Server host to connect.
+
+=end original
+
+接続するサーバホスト。
+
+=begin original
+
+You must specify at least C<host> or C<url>.
+
+=end original
+
+C<host> か C<url>のいずれかを指定しなければいけません。
+
+=item port :Int = 80
+
+=begin original
+
+Server port to connect. The default is 80 on C<< scheme => 'http' >>,
+or 443 on C<< scheme => 'https' >>.
+
+=end original
+
+接続するサーバのポート。デフォルトは、C<< schema => 'http' >>なら80で、
+C<< scheme => 'https' >>なら、443です。
+
+=item path_query :Str = "/"
+
+=begin original
+
+Path and query to request.
+
+=end original
+
+リクエストするパスとクエリ。
+
+=item url :Str
+
+=begin original
+
+URL to request.
+
+=end original
+
+リクエストするURL。
+
+=begin original
+
+You can use C<url> instead of C<scheme>, C<host>, C<port> and C<path_query>.
+
+=end original
+
+C<schema>、C<host>、C<port>、C<path_query>を指定する代わりにC<url>を使えます。
+
+=item headers :ArrayRef
+
+=begin original
+
+HTTP request headers. e.g. C<< headers => [ 'Accept-Encoding' => 'gzip' ] >>.
+
+=end original
+
+HTTPリクエストヘッダ。例 C<< headers => [ 'Accept-Encoding' => 'gzip' ] >>.
+
+=item content : Str | ArrayRef[Str] | HashRef[Str] | FileHandle
+
+=begin original
+
+Content to request.
+
+=end original
+
+リクエストする内容。
+
+=item write_file : FileHandle
+
+=begin original
+
+If this parameter is set, the response content will be saved here instead of in the response object.
+
+=end original
+
+このパラメータがセットされていると、レスポンスの内容はレスポンスオブジェクトではなく指定されたファイルハンドル
+に保存されます。
+
+=begin original
+
+It's like a ':content_file' in L<LWP::UserAgent>.
+
+=end original
+
+L<LWP::UserAgent>の':content_file'と似ています。
+
+=item write_code : CodeRef
+
+=begin original
+
+If a callback is provided with the "write_code" option
+then this function will be called for each chunk of the response
+content as it is received from the server.
+
+=end original
+
+"write_code"オプションでコールバックを指定した場合、
+この関数は、サーバから受け取るレスポンスの内容のチャンク毎に呼ばれます。
+
+=begin original
+
+It's like a ':content_cb' in L<LWP::UserAgent>.
+
+=end original
+
+L<LWP::UserAgent>の':content_cb'と似ています。
+
+=back
+
+=begin original
+
+The C<request()> method assumes the first argument to be an instance
+of C<HTTP::Request> if the arguments are an odd number:
+
+=end original
+
+C<response()> メソッドは引数が奇数の場合、最初の引数をC<HTTP::Request>のインスタンスと想定します。
+
+    my $req = HTTP::Request->new(...);
+    my @res = $furl->request($req); # allowed
+
+=begin original
+
+You must encode all the queries or this method will die, saying
+C<Wide character in ...>.
+
+=end original
+
+すべてのクエリをエンコードする必要があります。さもなくば、C<Wide character in ...>
+を吐いて死にます。
+
+=head3 C<< $furl->get($url :Str, $headers :ArrayRef[Str] ) >>
+
+=begin original
+
+This is an easy-to-use alias to C<request()>, sending the C<GET> method.
+
+=end original
+
+C<request()>簡単に使うためのエイリアスです。C<GET>メソッドを送ります。
+
+=head3 C<< $furl->head($url :Str, $headers :ArrayRef[Str] ) >>
+
+=begin original
+
+This is an easy-to-use alias to C<request()>, sending the C<HEAD> method.
+
+=end original
+
+C<request()>簡単に使うためのエイリアスです。C<HED>メソッドを送ります。
+
+=head3 C<< $furl->post($url :Str, $headers :ArrayRef[Str], $content :Any) >>
+
+=begin original
+
+This is an easy-to-use alias to C<request()>, sending the C<POST> method.
+
+=end original
+
+C<request()>簡単に使うためのエイリアスです。C<POST>メソッドを送ります。
+
+=head3 C<< $furl->put($url :Str, $headers :ArrayRef[Str], $content :Any) >>
+
+=begin original
+
+This is an easy-to-use alias to C<request()>, sending the C<PUT> method.
+
+=end original
+
+C<request()>簡単に使うためのエイリアスです。C<PUT>メソッドを送ります。
+
+=head3 C<< $furl->delete($url :Str, $headers :ArrayRef[Str] ) >>
+
+=begin original
+
+This is an easy-to-use alias to C<request()>, sending the C<DELETE> method.
+
+=end original
+
+C<request()>簡単に使うためのエイリアスです。C<DELETE>メソッドを送ります。
+
+=head1 FAQ
+
+=over 4
+
+=item どうして IO::Socket::SSL?
+
+=begin original
+
+=item Why IO::Socket::SSL?
+
+=end original
+
+=begin original
+
+Net::SSL is not well documented.
+
+=end original
+
+Net::SSL はドキュメントが貧弱です。
+
+=begin original
+
+=item Why is env_proxy optional?
+
+=end original
+
+=item env_proxy はなぜオプショナルなのですか?
+
+=begin original
+
+Environment variables are highly dependent on each users' environment,
+and we think it may confuse users when something doesn't go right.
+
+=end original
+
+環境変数はユーザーの環境に強く依存します。
+うまく動かないときにユーザーを混乱させます。
+
+=begin original
+
+=item What operating systems are supported?
+
+=end original
+
+=item どのオペレーティングシステムをサポートしますか?
+
+=begin original
+
+Linux 2.6 or higher, OSX Tiger or higher, Windows XP or higher.
+
+=end original
+
+Linux 2.6 以上、 OSX Tiger 以上、 Windows XP 以上。
+
+=begin original
+
+And other operating systems will be supported if you send a patch.
+
+=end original
+
+あなたがパッチを送れば、他のオペレーティングシステムもサポートされるでしょう。
+
+=begin original
+
+=item Why doesn't Furl support chunked upload?
+
+=end original
+
+=item なぜFurlはチャンクされたアップロードをサポートしないのですか?
+
+=begin original
+
+There are reasons why chunked POST/PUTs should not be used in general.
+
+=end original
+
+一般的に、チャンクされたPOST/PUTをなぜ使うべきではないかという理由があります。
+
+=begin original
+
+First, you cannot send chunked requests unless the peer server at the other end of the established TCP connection is known to be a HTTP/1.1 server.
+
+=end original
+
+まず、確立されたTCPの接続のもう一方の終端のピアサーバがHTTP/1.1のサーバとわかっていなければ、チャンクされたリクエストを送ることができません。
+
+=begin original
+
+Second, HTTP/1.1 servers disconnect their persistent connection quite quickly (compared to the time they wait for the first request), so it is not a good idea to post non-idempotent requests (e.g. POST, PUT, etc.) as a succeeding request over persistent connections.
+
+=end original
+
+次に、HTTP/1.1のサーバは永続的な接続を非常に速く切断します(最初のリクエストを待つ時間に比べて)。
+そのため、永続的な接続越しに、連続するリクエストとして不変でないリクエスト(例 POST,PUTなど)をポストするのは良くありません。
+
+=begin original
+
+These facts together makes using chunked requests virtually impossible (unless you _know_ that the server supports HTTP/1.1), and this is why we decided that supporting the feature is NOT of high priority.
+
+=end original
+
+These facts together makes using chunked requests virtually impossible (unless you _know_ that the server supports HTTP/1.1), and this is why we decided that supporting the feature is NOT of high priority.
+
+=begin original
+
+=item How do you build the response content as it arrives?
+
+=end original
+
+=item 到達したレスポンスの内容をどのように作れますか?
+
+=begin original
+
+You can use L<IO::Callback> for this purpose.
+
+=end original
+
+そのためにL<IO::Callback>が使えます。
+
+    my $fh = IO::Callback->new(
+        '<',
+        sub {
+            my $x = shift @data;
+            $x ? "-$x" : undef;
+        }
+    );
+    my ( $code, $msg, $headers, $content ) =
+      $furl->put( "http://127.0.0.1:$port/", [ 'Content-Length' => $len ], $fh,
+      );
+
+=begin original
+
+=item How do you use gzip/deflate compressed communication?
+
+=end original
+
+=item gzip/deflate 圧縮されたコミュニケーションを使えますか?
+
+=begin original
+
+Add an B<Accept-Encoding> header to your request. Furl inflates response bodies transparently according to the B<Content-Encoding> response header.
+
+=end original
+
+B<Accept-Encoding>ヘッダをリクエストに追加してください。FurlレスポンスボディーをB<Content-Encoding>レスポンスヘッダに従って透過的にインフレートします。
+
+=begin original
+
+=item How do you use mutipart/form-data?
+
+=end original
+
+=item mutipart/form-data を使うには?
+
+=begin original
+
+You can use multipart/form-data with L<HTTP::Request::Common>.
+
+=end original
+
+L<HTTP::Request::Common>を使って、multipart/form-dataを使えます。
+
+    use HTTP::Request::Common;
+
+    my $furl = Furl->new();
+    $req = POST 'http://www.perl.org/survey.cgi',
+      Content_Type => 'form-data',
+      Content      => [
+        name   => 'Hiromu Tokunaga',
+        email  => 'tokuhirom@example.com',
+        gender => 'F',
+        born   => '1978',
+        init   => ["$ENV{HOME}/.profile"],
+      ];
+    $furl->request($req);
+
+=begin original
+
+Native multipart/form-data support for L<Furl> is available if you can send a patch for me.
+
+=end original
+
+パッチを送ることができるなら、L<Furl>でネイティブのmultipart/form-dataサポートは利用可能です。
+
+=begin original
+
+=item How do you use Keep-Alive and what happens on the HEAD method?
+
+=end original
+
+=item Kee-Alive をどうやって使うのかとHEADメソッドでは何が起きるのか?
+
+=begin original
+
+Furl supports HTTP/1.1, hence C<Keep-Alive>. However, if you use the HEAD
+method, the connection is closed immediately.
+
+=end original
+
+FurlはHTTP/1.1をサポートします。従って、C<Keep-Alive>もサポートします。
+ですが、HEADメソッドで使っても、接続は即座に切断されます。
+
+=begin original
+
+RFC 2616 section 9.4 says:
+
+=end original
+
+RFC 2616 section 9.4 によると:
+
+=begin original
+
+    The HEAD method is identical to GET except that the server MUST NOT
+    return a message-body in the response.
+
+=end original
+
+    HEADメソッドは、サーバがレスポンスにメッセージボディを返さしてはいけないことを
+    除いて、GETメソッドと同一です。
+
+=begin original
+
+Some web applications, however, returns message bodies on the HEAD method,
+which might confuse C<Keep-Alive> processes, so Furl closes connection in
+such cases.
+
+=end original
+
+ですがWebアプリケーションによっては、HEADメソッドでメッセージボディを
+返すこともありますが、C<Kee-Alive>プロセスを混乱させます。そのためFurl
+はそのようなケースでは接続を閉じます。
+
+=begin original
+
+Anyway, the HEAD method is not so useful nowadays. The GET method and
+C<If-Modified-Sinse> are more suitable to cache HTTP contents.
+
+=end original
+
+いずれにせよ、HEADメソッドは、今日では、そんなに有用ではありません。GETメソッドと
+C<If-Modified-Sinse>のほうがHTTPコンテンツをキャッシュするのに合っています。
+
+=begin original
+
+=item Why does Furl take longer than specified until it returns a timeout error?
+
+=end original
+
+=item Why does Furl take longer than specified until it returns a timeout error?
+
+なぜFurlはタイムアウトエラーを返すまで指定より長くかかるのですか?
+
+=begin original
+
+Although Furl itself supports timeout, some underlying modules / functions do not. And the most noticeable one is L<Socket::inet_aton>, the function used for name resolution (a function that converts hostnames to IP addresses). If you need accurate and short timeout for name resolution, the use of L<Net::DNS::Lite> is recommended. The following code snippet describes how to use the module in conjunction with Furl.
+
+=end original
+
+Furl自身はタイムアウトをサポートしますが、基礎的なモジュールや関数はサポートしません。もっとも顕著な例としては、L<Socket::inet_aton>です。この関数は名前解決(ホストネームからIPアドレスへの変換)に使われています。
+もし名前解決に正確で短かいタイムアウトが必要なら、L<Net::DNS::Lite>をお勧めします。下記のコードスニペットは、Furlでどのように使うかを説明しています。
+
+    use Net::DNS::Lite qw();
+
+    my $furl = Furl->new(
+        timeout   => $my_timeout_in_seconds,
+        inet_aton => sub { Net::DNS::Lite::inet_aton(@_) },
+    );
+
+=back
+
+=head1 TODO
+
+    - AnyEvent::Furl?
+    - ipv6 support
+    - better docs for NO_PROXY
+
+=head1 オプショナルな機能
+
+=begin original
+
+=head2 Internationalized Domain Name (IDN)
+
+=end original
+
+=head2 国際ドメイン名(IDN)
+
+=begin original
+
+This feature requires Net::IDN::Encode.
+
+=end original
+
+この機能は Net::IDN::Encode が必要です。
+
+=head2 SSL
+
+=begin original
+
+This feature requires IO::Socket::SSL.
+
+=end original
+
+この機能は IO::Socket::SSL が必要です。
+
+=head2 Content-Encoding (deflate, gzip)
+
+=begin original
+
+This feature requires Compress::Raw::Zlib.
+
+=end original
+
+この機能は Compress::Raw::Zlib が必要です。
+
+=head1 開発
+
+=begin original
+
+To setup your environment:
+
+=end original
+
+環境のセットアップ:
+
+    $ git clone http://github.com/tokuhirom/p5-Furl.git
+    $ cd p5-Furl
+
+=begin original
+
+To get picohttpparser:
+
+=end original
+
+picohttpparser の取得:
+
+    $ git submodule init
+    $ git submodule update
+
+    $ perl Makefile.PL
+    $ make
+    $ sudo make install
+
+=head2 貢献するには
+
+Please send the pull-req via L<http://github.com/tokuhirom/p5-Furl/>.
+
+=head1 参照
+
+L<LWP>
+
+HTTP specs:
+L<http://www.w3.org/Protocols/HTTP/1.0/spec.html>
+L<http://www.w3.org/Protocols/HTTP/1.1/spec.html>
+
+=head1 LICENSE
+
+Copyright (C) Tokuhiro Matsuno.
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+
+=cut
+
