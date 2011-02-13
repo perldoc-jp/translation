@@ -109,80 +109,6 @@ NOTE: Test::Exception only checks for exceptions. It will ignore other methods o
 program execution - including exit(). If you have an exit() in evalled code Test::Exception
 will not catch this with any of its testing functions.
 
-=cut
-
-sub _quiet_caller (;$) { ## no critic Prototypes
-    my $height = $_[0];
-    $height++;
-
-    if ( CORE::caller() eq 'DB' ) {
-        # passthrough the @DB::args trick
-        package DB;
-        if( wantarray ) {
-            if ( !@_ ) {
-                return (CORE::caller($height))[0..2];
-            }
-            else {
-                # If we got here, we are within a Test::Exception test, and
-                # something is producing a stacktrace. In case this is a full
-                # trace (i.e. confess() ), we have to make sure that the sub
-                # args are not visible. If we do not do this, and the test in
-                # question is throws_ok() with a regex, it will end up matching
-                # against itself in the args to throws_ok().
-                #
-                # While it is possible (and maybe wise), to test if we are
-                # indeed running under throws_ok (by crawling the stack right
-                # up from here), the old behavior of Test::Exception was to
-                # simply obliterate @DB::args altogether in _quiet_caller, so
-                # we are just preserving the behavior to avoid surprises
-                #
-                my @frame_info = CORE::caller($height);
-                @DB::args = ();
-                return @frame_info;
-            }
-        }
-
-        # fallback if nothing above returns
-        return CORE::caller($height);
-    }
-    else {
-        if( wantarray and !@_ ) {
-            return (CORE::caller($height))[0..2];
-        }
-        else {
-            return CORE::caller($height);
-        }
-    }
-}
-
-sub _try_as_caller {
-    my $coderef = shift;
-
-    # local works here because Sub::Uplevel has already overridden caller
-    local *CORE::GLOBAL::caller;
-    { no warnings 'redefine'; *CORE::GLOBAL::caller = \&_quiet_caller; }
-
-    eval { uplevel 3, $coderef };
-    return $@;
-};
-
-
-sub _is_exception {
-    my $exception = shift;
-    return ref $exception || $exception ne '';
-};
-
-
-sub _exception_as_string {
-    my ( $prefix, $exception ) = @_;
-    return "$prefix normal exit" unless _is_exception( $exception );
-    my $class = ref $exception;
-    $exception = "$class ($exception)"
-            if $class && "$exception" !~ m/^\Q$class/;
-    chomp $exception;
-    return "$prefix $exception";
-};
-
 
 =over 4
 
@@ -232,34 +158,6 @@ automatically add the current script line number, input line number and a newlin
 form part of the string that throws_ok regular expressions match against.
 
 
-=cut
-
-
-sub throws_ok (&$;$) {
-    my ( $coderef, $expecting, $description ) = @_;
-    unless (defined $expecting) {
-      require Carp;
-      Carp::croak( "throws_ok: must pass exception class/object or regex" );
-    }
-    $description = _exception_as_string( "threw", $expecting )
-    	unless defined $description;
-    my $exception = _try_as_caller( $coderef );
-    my $regex = $Tester->maybe_regex( $expecting );
-    my $ok = $regex
-        ? ( $exception =~ m/$regex/ )
-        : eval {
-            $exception->isa( ref $expecting ? ref $expecting : $expecting )
-        };
-    $Tester->ok( $ok, $description );
-    unless ( $ok ) {
-        $Tester->diag( _exception_as_string( "expecting:", $expecting ) );
-        $Tester->diag( _exception_as_string( "found:", $exception ) );
-    };
-    $@ = $exception;
-    return $ok;
-};
-
-
 =item B<dies_ok>
 
 Checks that a piece of code dies, rather than returning normally. For example:
@@ -279,17 +177,6 @@ A true value is returned if the test succeeds, false otherwise. On exit $@ is gu
 Remember: This test will pass if the code dies for any reason. If you care about the reason it might be more sensible to write a more specific test using throws_ok().
 
 The test description is optional, but recommended.
-
-=cut
-
-sub dies_ok (&;$) {
-    my ( $coderef, $description ) = @_;
-    my $exception = _try_as_caller( $coderef );
-    my $ok = $Tester->ok( _is_exception($exception), $description );
-    $@ = $exception;
-    return $ok;
-}
-
 
 =item B<lives_ok>
 
@@ -318,17 +205,6 @@ Should a lives_ok() test fail it produces appropriate diagnostic messages. For e
 A true value is returned if the test succeeds, false otherwise. On exit $@ is guaranteed to be the cause of death (if any).
 
 The test description is optional, but recommended.
-
-=cut
-
-sub lives_ok (&;$) {
-    my ( $coderef, $description ) = @_;
-    my $exception = _try_as_caller( $coderef );
-    my $ok = $Tester->ok( ! _is_exception( $exception ), $description );
-	$Tester->diag( _exception_as_string( "died:", $exception ) ) unless $ok;
-    $@ = $exception;
-    return $ok;
-}
 
 
 =item B<lives_and>
@@ -359,30 +235,6 @@ A true value is returned if the test succeeds, false otherwise. On exit $@ is gu
 
 The test description is optional, but recommended.
 
-=cut
-
-sub lives_and (&;$) {
-    my ( $test, $description ) = @_;
-    {
-        local $Test::Builder::Level = $Test::Builder::Level + 1;
-        my $ok = \&Test::Builder::ok;
-        no warnings;
-        local *Test::Builder::ok = sub {
-            $_[2] = $description unless defined $_[2];
-            $ok->(@_);
-        };
-        use warnings;
-        eval { $test->() } and return 1;
-    };
-    my $exception = $@;
-    if ( _is_exception( $exception ) ) {
-        $Tester->ok( 0, $description );
-        $Tester->diag( _exception_as_string( "died:", $exception ) );
-    };
-    $@ = $exception;
-    return;
-}
-
 =back
 
 =end original
@@ -394,80 +246,6 @@ Test::Moreに慣れ親しんでいない場合, 今が調べる機会になる�
 C<use Test::Exception>した場合のテスト数の指定は C<use Test::More>した場合と同じです. 詳しくは L<Test::More>を参照してください.
 
 注記: Test::Exceptionは例外のみをチェックします. exit()を含むようなプログラムを停止するようなメソッドは対象外です. もし評価するコードに exit()があれば, Test::Exceptionのいかなる関数もこれを補足することはできません.
-
-=cut
-
-sub _quiet_caller (;$) { ## no critic Prototypes
-    my $height = $_[0];
-    $height++;
-
-    if ( CORE::caller() eq 'DB' ) {
-        # passthrough the @DB::args trick
-        package DB;
-        if( wantarray ) {
-            if ( !@_ ) {
-                return (CORE::caller($height))[0..2];
-            }
-            else {
-                # Test::Exceptionを使ったテストがここに到達した場合,
-                # スタックトレースに何かしら積まれます. この場合は, 完全な
-                # トレース(すなわち confess())で, 関数の引数が見えないことを
-                # 確認する必要があります. 正規表現を伴う throws_okの呼び出しで,
-                # これを行わないのであれば, throws_ok()の引数自身とマッチングを
-                # 行うことになるでしょう.
-                #
-                # 一方実際に thrwos_ok下でテストを走行させることが可能です
-                # (ここからすぐスタックを巡回することで), Test::Exceptionの
-                # かつての振る舞いは予期しない振る舞いを避けるために_quiet_callerの
-                # @DB::argsを単純に取り除いていました.
-                #
-                my @frame_info = CORE::caller($height);
-                @DB::args = ();
-                return @frame_info;
-            }
-        }
-
-        # fallback if nothing above returns
-        return CORE::caller($height);
-    }
-    else {
-        if( wantarray and !@_ ) {
-            return (CORE::caller($height))[0..2];
-        }
-        else {
-            return CORE::caller($height);
-        }
-    }
-}
-
-sub _try_as_caller {
-    my $coderef = shift;
-
-    # Sub::Uplevelはすでに callerを上書きしているので, localを使用します.
-    local *CORE::GLOBAL::caller;
-    { no warnings 'redefine'; *CORE::GLOBAL::caller = \&_quiet_caller; }
-
-    eval { uplevel 3, $coderef };
-    return $@;
-};
-
-
-sub _is_exception {
-    my $exception = shift;
-    return ref $exception || $exception ne '';
-};
-
-
-sub _exception_as_string {
-    my ( $prefix, $exception ) = @_;
-    return "$prefix normal exit" unless _is_exception( $exception );
-    my $class = ref $exception;
-    $exception = "$class ($exception)"
-            if $class && "$exception" !~ m/^\Q$class/;
-    chomp $exception;
-    return "$prefix $exception";
-};
-
 
 =over 4
 
@@ -516,34 +294,6 @@ Trueが返る場合はテストは成功し, その他は Falseが返ります. 
 改行を挿入します. これによって構築された文字列と throws_okの引数である正規表現との
 マッチが行われます.
 
-=cut
-
-
-sub throws_ok (&$;$) {
-    my ( $coderef, $expecting, $description ) = @_;
-    unless (defined $expecting) {
-      require Carp;
-      Carp::croak( "throws_ok: must pass exception class/object or regex" );
-    }
-    $description = _exception_as_string( "threw", $expecting )
-    	unless defined $description;
-    my $exception = _try_as_caller( $coderef );
-    my $regex = $Tester->maybe_regex( $expecting );
-    my $ok = $regex
-        ? ( $exception =~ m/$regex/ )
-        : eval {
-            $exception->isa( ref $expecting ? ref $expecting : $expecting )
-        };
-    $Tester->ok( $ok, $description );
-    unless ( $ok ) {
-        $Tester->diag( _exception_as_string( "expecting:", $expecting ) );
-        $Tester->diag( _exception_as_string( "found:", $exception ) );
-    };
-    $@ = $exception;
-    return $ok;
-};
-
-
 =item B<dies_ok>
 
 コードが正常にリターンするのではなく, dieするかをチェックします. 例えば
@@ -563,16 +313,6 @@ Trueが返る場合はテストは成功し, その他は Falseが返ります. 
 覚書: このテストは何らかの理由でコードが dieしたらパスします. もし dieの原因についても気にするのであれば, throws_ok()を使ってより具体的なテストを記述することができます.
 
 テストの説明はオプショナルですが, 書くことを推奨します.
-
-=cut
-
-sub dies_ok (&;$) {
-    my ( $coderef, $description ) = @_;
-    my $exception = _try_as_caller( $coderef );
-    my $ok = $Tester->ok( _is_exception($exception), $description );
-    $@ = $exception;
-    return $ok;
-}
 
 
 =item B<lives_ok>
@@ -603,18 +343,6 @@ Trueが返る場合はテストは成功し, その他は Falseが返ります. 
 
 テストの説明はオプショナルですが, 書くことを推奨します.
 
-=cut
-
-sub lives_ok (&;$) {
-    my ( $coderef, $description ) = @_;
-    my $exception = _try_as_caller( $coderef );
-    my $ok = $Tester->ok( ! _is_exception( $exception ), $description );
-	$Tester->diag( _exception_as_string( "died:", $exception ) ) unless $ok;
-    $@ = $exception;
-    return $ok;
-}
-
-
 =item B<lives_and>
 
 例外を投げるテストの実行. 例えば, このようなことをする場合.
@@ -642,30 +370,6 @@ C<read_file('answer.txt')>が dieしなければ, lives_okと同様の種類の�
 Trueが返る場合はテストは成功し, その他は Falseが返ります. テスト終了時 $@は dieした原因であることが保証します. (もし $@に格納されるものがあれば)
 
 テストの説明はオプショナルですが, 書くことを推奨します.
-
-=cut
-
-sub lives_and (&;$) {
-    my ( $test, $description ) = @_;
-    {
-        local $Test::Builder::Level = $Test::Builder::Level + 1;
-        my $ok = \&Test::Builder::ok;
-        no warnings;
-        local *Test::Builder::ok = sub {
-            $_[2] = $description unless defined $_[2];
-            $ok->(@_);
-        };
-        use warnings;
-        eval { $test->() } and return 1;
-    };
-    my $exception = $@;
-    if ( _is_exception( $exception ) ) {
-        $Tester->ok( 0, $description );
-        $Tester->diag( _exception_as_string( "died:", $exception ) );
-    };
-    $@ = $exception;
-    return;
-}
 
 =back
 
