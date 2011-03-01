@@ -1,0 +1,446 @@
+=encoding utf-8
+
+=head1 NAME
+
+=begin original
+
+Test::Warn - Perl extension to test methods for warnings
+
+=end original
+
+Test::Warn - 警告についてテストするための Perl拡張
+
+=head1 SYNOPSIS
+
+  use Test::Warn;
+
+  warning_is    {foo(-dri => "/")} "Unknown Parameter 'dri'", "dri != dir gives warning";
+  warnings_are  {bar(1,1)} ["Width very small", "Height very small"];
+
+  warning_is    {add(2,2)} undef, "No warnings for calc 2+2"; # or
+  warnings_are  {add(2,2)} [],    "No warnings for calc 2+2"; # what reads better :-)
+
+  warning_like  {foo(-dri => "/")} qr/unknown param/i, "an unknown parameter test";
+  warnings_like {bar(1,1)} [qr/width.*small/i, qr/height.*small/i];
+
+  warning_is    {foo()} {carped => "didn't found the right parameters"};
+  warnings_like {foo()} [qr/undefined/,qr/undefined/,{carped => qr/no result/i}];
+
+  warning_like {foo(undef)}                 'uninitialized';
+  warning_like {bar(file => '/etc/passwd')} 'io';
+
+  warning_like {eval q/"$x"; $x;/}
+               [qw/void uninitialized/],
+               "some warnings at compile time";
+
+  warnings_exist {...} [qr/expected warning/], "Expected warning is thrown";
+
+=head1 DESCRIPTION
+
+=begin original
+
+A good style of Perl programming calls for a lot of diverse regression tests.
+
+This module provides a few convenience methods for testing warning based code.
+
+If you are not already familiar with the Test::More manpage
+now would be the time to go take a look.
+
+=head2 FUNCTIONS
+
+=over 4
+
+=item warning_is BLOCK STRING, TEST_NAME
+
+Tests that BLOCK gives exactly the one specified warning.
+The test fails if the BLOCK warns more then one times or doesn't warn.
+If the string is undef,
+then the tests succeeds if the BLOCK doesn't give any warning.
+Another way to say that there aren't any warnings in the block,
+is C<warnings_are {foo()} [], "no warnings in">.
+
+If you want to test for a warning given by carp,
+You have to write something like:
+C<warning_is {carp "msg"} {carped =E<gt> 'msg'}, "Test for a carped warning">.
+The test will fail,
+if a "normal" warning is found instead of a "carped" one.
+
+Note: C<warn "foo"> would print something like C<foo at -e line 1>.
+This method ignores everything after the at. That means, to match this warning
+you would have to call C<warning_is {warn "foo"} "foo", "Foo succeeded">.
+If you need to test for a warning at an exactly line,
+try better something like C<warning_like {warn "foo"} qr/at XYZ.dat line 5/>.
+
+warning_is and warning_are are only aliases to the same method.
+So you also could write
+C<warning_is {foo()} [], "no warning"> or something similar.
+I decided to give two methods to have some better readable method names.
+
+A true value is returned if the test succeeds, false otherwise.
+
+The test name is optional, but recommended.
+
+
+=item warnings_are BLOCK ARRAYREF, TEST_NAME
+
+Tests to see that BLOCK gives exactly the specified warnings.
+The test fails if the BLOCK warns a different number than the size of the ARRAYREf
+would have expected.
+If the ARRAYREF is equal to [],
+then the test succeeds if the BLOCK doesn't give any warning.
+
+Please read also the notes to warning_is as these methods are only aliases.
+
+If you want more than one tests for carped warnings look that way:
+C<warnings_are {carp "c1"; carp "c2"} {carped => ['c1','c2'];> or
+C<warnings_are {foo()} ["Warning 1", {carped => ["Carp 1", "Carp 2"]}, "Warning 2"]>.
+Note that C<{carped => ...}> has always to be a hash ref.
+
+=item warning_like BLOCK REGEXP, TEST_NAME
+
+Tests that BLOCK gives exactly one warning and it can be matched to the given regexp.
+If the string is undef,
+then the tests succeeds iff the BLOCK doesn't give any warning.
+
+The REGEXP is matched after the whole warn line,
+which consists in general of "WARNING at __FILE__ line __LINE__".
+So you can check for a warning in at File Foo.pm line 5 with
+C<warning_like {bar()} qr/at Foo.pm line 5/, "Testname">.
+I don't know whether it's sensful to do such a test :-(
+However, you should be prepared as a matching with 'at', 'file', '\d'
+or similar will always pass.
+Think to the qr/^foo/ if you want to test for warning "foo something" in file foo.pl.
+
+You can also write the regexp in a string as "/.../"
+instead of using the qr/.../ syntax.
+Note that the slashes are important in the string,
+as strings without slashes are reserved for warning categories
+(to match warning categories as can be seen in the perllexwarn man page).
+
+Similar to C<warning_is>,
+you can test for warnings via C<carp> with:
+C<warning_like {bar()} {carped => qr/bar called too early/i};>
+
+Similar to C<warning_is>/C<warnings_are>,
+C<warning_like> and C<warnings_like> are only aliases to the same methods.
+
+A true value is returned if the test succeeds, false otherwise.
+
+The test name is optional, but recommended.
+
+=item warning_like BLOCK STRING, TEST_NAME
+
+Tests whether a BLOCK gives exactly one warning of the passed category.
+The categories are grouped in a tree,
+like it is expressed in perllexwarn.
+Note, that they have the hierarchical structure from perl 5.8.0,
+wich has a little bit changed to 5.6.1 or earlier versions
+(You can access the internal used tree with C<$Test::Warn::Categorization::tree>,
+although I wouldn't recommend it)
+
+Thanks to the grouping in a tree,
+it's simple possible to test for an 'io' warning,
+instead for testing for a 'closed|exec|layer|newline|pipe|unopened' warning.
+
+Note, that warnings occuring at compile time,
+can only be catched in an eval block. So
+
+  warning_like {eval q/"$x"; $x;/}
+               [qw/void uninitialized/],
+               "some warnings at compile time";
+
+will work,
+while it wouldn't work without the eval.
+
+Note, that it isn't possible yet,
+to test for own categories,
+created with warnings::register.
+
+=item warnings_like BLOCK ARRAYREF, TEST_NAME
+
+Tests to see that BLOCK gives exactly the number of the specified warnings
+and all the warnings have to match in the defined order to the
+passed regexes.
+
+Please read also the notes to warning_like as these methods are only aliases.
+
+Similar to C<warnings_are>,
+you can test for multiple warnings via C<carp>
+and for warning categories, too:
+
+  warnings_like {foo()}
+                [qr/bar warning/,
+                 qr/bar warning/,
+                 {carped => qr/bar warning/i},
+                 'io'
+                ],
+                "I hope, you'll never have to write a test for so many warnings :-)";
+
+=item warnings_exist BLOCK STRING|ARRAYREF, TEST_NAME
+
+Same as warning_like, but will warn() all warnings that do not match the supplied regex/category,
+instead of registering an error. Use this test when you just want to make sure that specific
+warnings were generated, and couldn't care less if other warnings happened in the same block
+of code.
+
+  warnings_exist {...} [qr/expected warning/], "Expected warning is thrown";
+
+  warnings_exist {...} ['uninitialized'], "Expected warning is thrown";
+
+=back
+
+=head2 EXPORT
+
+C<warning_is>,
+C<warnings_are>,
+C<warning_like>,
+C<warnings_like>,
+C<warnings_exist> by default.
+
+=end original
+
+良い Perlプログラミングスタイルは, 多くの種類のリグレッションテストを行うことです.
+
+このモジュールは, 警告をテストするための便利なメソッドを提供します.
+
+もし Test::Moreの manpageになじみがないのであれば, それを先に
+見ておいてください.
+
+=head2 FUNCTIONS
+
+=over 4
+
+=item warning_is BLOCK STRING, TEST_NAME
+
+与えられた BLOCKでただ一つ警告が発生するかをテストします.
+BLOCKで一つより多い警告が起こるか, 何も警告が発生しなければテストは失敗します.
+もし stringが undefであれば, BLOCKで警告が発生しなければテストが成功します.
+別の言い方をすれば, ブロックで警告が発生しないのであれば
+C<warnings_are {foo()} [], "no warnings in">のように記述することができます.
+
+もし carpにより発生する警告をテストしたいのであれば, 次のように書く必要があります:
+C<warning_is {carp "msg"} {carped =E<gt> 'msg'}, "Test for a carped warning">.
+"carped"の代わりに, 普通の警告が検出された場合はテストは失敗します.
+
+注記: C<warn "foo">は, C<foo at -e line 1>のような出力となります.
+このメソッドは atより後ろにくるすべてを無視します. これにより
+この警告にマッチさせるには C<warning_is {warn "foo"} "foo", "Foo succeeded">
+と記述する必要があります.
+もし行番号も厳密にテストするのであれば,
+C<warning_like {warn "foo"} qr/at XYZ.dat line 5/>のように書くのが良い方法です.
+
+warning_isと warning_areは同じメソッドのエイリアスです.
+なので, C<warning_is {foo()} [], "no warning">と書くこともできます.
+
+二つのメソッドを提供するに至った理由は, メソッド名により可動区政が向上するためです.
+
+真となる値が返る場合テストは成功で, 偽となる値が返る場合は失敗です.
+
+テスト名はオプショナルですが, 設定することを推奨します.
+
+=item warnings_are BLOCK ARRAYREF, TEST_NAME
+
+引数として与えた BLOCKで, 指定した警告が発生するかをテストします.
+ARRAYREFのサイズと異なる数の警告が発生した場合, テストは失敗します.
+
+もし ARRAYREFが []であるとき, BLOCKでいかなる警告も発生しなければ
+テストは成功します.
+
+warning_isの注記を読んでもらえれば, これらのメソッドがエイリアスでしか
+ないことがわかります.
+
+carpによる一つ以上の警告をテストしたい場合は以下のようにしてください.
+C<warnings_are {carp "c1"; carp "c2"} {carped => ['c1','c2'];> もしくは
+C<warnings_are {foo()} ["Warning 1", {carped => ["Carp 1", "Carp 2"]}, "Warning 2"]>.
+注記 C<{carped => ...}>はハッシュリファレンスである必要があります.
+
+=item warning_like BLOCK REGEXP, TEST_NAME
+
+引数として与えた BLOCKでただ一つの警告が発生し, その警告メッセージが引数として与えた正規表現と
+マッチするかをテストします.
+もし REGEXPが undefであれば, BLOCKでいかなる警告も起きない場合にテストが成功します.
+
+REGEXPを警告行全体とマッチさせるには,
+"WARNING at __FILE__ line __LINE__"という構成である必要があります.
+なので, ファイル Foo.pmの 5行目の警告を調べるには,
+C<warning_like {bar()} qr/at Foo.pm line 5/, "Testname">とする
+必要があります.
+ただこのようなテストに意味があるかについては分かっていませんが :-(
+しかしながら, 'at', 'file', '\d'とのマッチングであれば必ずテストを
+パスしておくことは意識しておいてください.
+
+foo.plの "foo something"という警告をテストするのに, qr/^foo/と
+することを考えてみてください.
+
+qr/.../記法の代わりに "/.../"のような文字列も正規表現として記述することができます.
+注記 スラッシュなしの文字列は警告カテゴリのために予約されているので,
+文字列中のスラッシュは重要になります.
+警告カテゴリのマッチについては perllexwarn manページを見てください.
+
+同様に C<warning_is>では, C<carp>による警告のテストは
+C<warning_like {bar()} {carped => qr/bar called too early/i};>
+と記述することができます.
+
+C<warning_is>/C<warnings_are>と同様に
+C<warning_like>と C<warnings_like>も同じメソッドのエイリアスでしかありません.
+
+真となる値が返る場合テストは成功で, 偽となる値が返る場合は失敗です.
+
+テスト名はオプショナルですが, 設定することを推奨します.
+
+=item warning_like BLOCK STRING, TEST_NAME
+
+引数として与えた BLOCKで指定されたカテゴリの警告がただ一つ発生するかをテストします.
+カテゴリはツリーでグループ分けされており, perllexwarnで詳細が述べられています.
+
+注記: カテゴリは perl 5.8.0で階層型の構成になっており, 5.6.1より以前のものとは
+少し異なっています.
+(おすすめしませんが, C<$Test::Warn::Categorization::tree>で内部で使用する
+ツリーにアクセスすることは可能です.)
+
+ツリーでグループ分けされているおかげで,
+'closed|exec|layer|newline|pipe|unopened'の警告をすべて調べることなく,
+'入出力'の警告のテストが簡単に行えます.
+
+注記, コンパイル時に発生する警告を補足する唯一の方法は evalブロックを
+利用することです. よって
+
+  warning_like {eval q/"$x"; $x;/}
+               [qw/void uninitialized/],
+               "some warnings at compile time";
+
+は正しく動作します. もし evalがなければうまくいきません.
+
+注記, warnings::registerによって作成した独自のカテゴリの
+テストは今のところできません.
+
+=item warnings_like BLOCK ARRAYREF, TEST_NAME
+
+引数として与えた BLOCKで期待する数の警告が発生することと, 発生したすべての警告が
+ARRAYREFに含まれる REGEXPに順番通りマッチするかテストします.
+
+
+warning_likeとエイリアスでしかないということについては, warning_likeの
+注記を参照してください.
+
+C<warnings_are>と同様に, C<carp>により複数の警告と
+複数の警告カテゴリについてテストすることができます.
+
+  warnings_like {foo()}
+                [qr/bar warning/,
+                 qr/bar warning/,
+                 {carped => qr/bar warning/i},
+                 'io'
+                ],
+                "I hope, you'll never have to write a test for so many warnings :-)";
+
+=item warnings_exist BLOCK STRING|ARRAYREF, TEST_NAME
+
+warning_likeと類似していますが, エラーを記録する代わりに, すべての警告について正規表現/カテゴリ
+とマッチするか確認しません.
+
+特定の警告が発生することを保証したいが, 同じブロックで発生する他の警告は無視したい
+という場合にこのテストは利用できます.
+
+  warnings_exist {...} [qr/expected warning/], "Expected warning is thrown";
+
+  warnings_exist {...} ['uninitialized'], "Expected warning is thrown";
+
+=back
+
+=head2 EXPORT
+
+C<warning_is>,
+C<warnings_are>,
+C<warning_like>,
+C<warnings_like>,
+C<warnings_exist> by default.
+
+=head1 BUGS
+
+=begin original
+
+Please note that warnings with newlines inside are making a lot of trouble.
+The only sensible way to handle them is to use are the C<warning_like> or
+C<warnings_like> methods. Background for these problems is that there is no
+really secure way to distinguish between warnings with newlines and a tracing
+stacktrace.
+
+If a method has it's own warn handler,
+overwriting C<$SIG{__WARN__}>,
+my test warning methods won't get these warnings.
+
+The C<warning_like BLOCK CATEGORY, TEST_NAME> method isn't extremely tested.
+Please use this calling style with higher attention and
+tell me if you find a bug.
+
+=end original
+
+改行が含まれる警告では多くの問題があることを留めておいてください.
+この問題を扱う場合は C<warning_like>か C<warnings_like>メソッドを使う方が
+賢明です. この問題は警告の改行とスタックトレースの改行を確実に区別する方法が
+ないことに起因しています.
+
+C<$SIG{__WARN__}>に独自の警告ハンドラを設定している場合,
+このモジュールの警告メソッドは機能しないことでしょう.
+
+C<warning_like BLOCK CATEGORY, TEST_NAME>形式のメソッドは十分にテストされている
+わけではありません. この呼び出し形式を使う場合は十分注意してください. もしバグを
+見つけたのであれば連絡してください.
+
+=head1 TODO
+
+=begin original
+
+Improve this documentation.
+
+The code has some parts doubled - especially in the test scripts.
+This is really awkward and has to be changed.
+
+Please feel free to suggest me any improvements.
+
+=end original
+
+このドキュメントを改良すること.
+
+特にテストスクリプトで重複することがコードが見られます.
+これは本当によろしくないので, 改善する必要があります.
+
+改良に関する提案は, ご自由に述べてください.
+
+=head1 SEE ALSO
+
+=begin original
+
+Have a look to the similar L<Test::Exception> module. Test::Trap
+
+=end original
+
+同様のモジュールである L<Test::Exception>. Test::Trap
+
+=head1 THANKS
+
+=begin original
+
+Many thanks to Adrian Howard, chromatic and Michael G. Schwern,
+who have given me a lot of ideas.
+
+=end original
+
+たくさんのアイデアを与えてくれた Adrian Howard, chromatic及び G. Schewernに
+感謝します.
+
+=head1 AUTHOR
+
+Janek Schleicher, E<lt>bigj AT kamelfreund.deE<gt>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2002 by Janek Schleicher
+
+Copyright 2007-2011 by Alexandr Ciornii, L<http://chorny.net/>
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=cut
