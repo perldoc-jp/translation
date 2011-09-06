@@ -1,0 +1,679 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+autodie::hints - Provide hints about user subroutines to autodie
+
+=end original
+
+autodie::hints - ユーザーのサブルーチンを autodie させるヒントを提供する
+
+=head1 SYNOPSIS
+
+    package Your::Module;
+
+    our %DOES = ( 'autodie::hints::provider' => 1 );
+
+    sub AUTODIE_HINTS {
+        return {
+            foo => { scalar => HINTS, list => SOME_HINTS },
+            bar => { scalar => HINTS, list => MORE_HINTS },
+        }
+    }
+
+    # Later, in your main program...
+
+    use Your::Module qw(foo bar);
+    use autodie      qw(:default foo bar);
+
+    foo();         # succeeds or dies based on scalar hints
+
+    # Alternatively, hints can be set on subroutines we've
+    # imported.
+
+    use autodie::hints;
+    use Some::Module qw(think_positive);
+
+    BEGIN {
+        autodie::hints->set_hints_for(
+            \&think_positive,
+            {
+                fail => sub { $_[0] <= 0 }
+            }
+        )
+    }
+    use autodie qw(think_positive);
+
+    think_positive(...);    # Returns positive or dies.
+
+
+=head1 DESCRIPTION
+
+=head2 Introduction
+
+=begin original
+
+The L<autodie> pragma is very smart when it comes to working with
+Perl's built-in functions.  The behaviour for these functions are
+fixed, and C<autodie> knows exactly how they try to signal failure.
+
+=end original
+
+L<autodie> プラグマは、Perl の組み込み関数に対する動作はとても
+賢いです。
+これらの関数の振る舞いは固定されていて、C<autodie> はこれらがどのように
+失敗を知らせるかを正確に知っています。
+
+=begin original
+
+But what about user-defined subroutines from modules?  If you use
+C<autodie> on a user-defined subroutine then it assumes the following
+behaviour to demonstrate failure:
+
+=end original
+
+But what about user-defined subroutines from modules?  If you use
+C<autodie> on a user-defined subroutine then it assumes the following
+behaviour to demonstrate failure:
+(TBT)
+
+=over
+
+=item *
+
+=begin original
+
+A false value, in scalar context
+
+=end original
+
+A false value, in scalar context
+(TBT)
+
+=item * 
+
+=begin original
+
+An empty list, in list context
+
+=end original
+
+An empty list, in list context
+(TBT)
+
+=item *
+
+=begin original
+
+A list containing a single undef, in list context
+
+=end original
+
+A list containing a single undef, in list context
+(TBT)
+
+=back
+
+=begin original
+
+All other return values (including the list of the single zero, and the
+list containing a single empty string) are considered successful.  However,
+real-world code isn't always that easy.  Perhaps the code you're working
+with returns a string containing the word "FAIL" upon failure, or a
+two element list containing C<(undef, "human error message")>.  To make
+autodie work with these sorts of subroutines, we have
+the I<hinting interface>.
+
+=end original
+
+All other return values (including the list of the single zero, and the
+list containing a single empty string) are considered successful.  However,
+real-world code isn't always that easy.  Perhaps the code you're working
+with returns a string containing the word "FAIL" upon failure, or a
+two element list containing C<(undef, "human error message")>.  To make
+autodie work with these sorts of subroutines, we have
+the I<hinting interface>.
+(TBT)
+
+=begin original
+
+The hinting interface allows I<hints> to be provided to C<autodie>
+on how it should detect failure from user-defined subroutines.  While
+these I<can> be provided by the end-user of C<autodie>, they are ideally
+written into the module itself, or into a helper module or sub-class
+of C<autodie> itself.
+
+=end original
+
+The hinting interface allows I<hints> to be provided to C<autodie>
+on how it should detect failure from user-defined subroutines.  While
+these I<can> be provided by the end-user of C<autodie>, they are ideally
+written into the module itself, or into a helper module or sub-class
+of C<autodie> itself.
+(TBT)
+
+=head2 What are hints?
+
+=begin original
+
+A I<hint> is a subroutine or value that is checked against the
+return value of an autodying subroutine.  If the match returns true,
+C<autodie> considers the subroutine to have failed.
+
+=end original
+
+A I<hint> is a subroutine or value that is checked against the
+return value of an autodying subroutine.  If the match returns true,
+C<autodie> considers the subroutine to have failed.
+(TBT)
+
+=begin original
+
+If the hint provided is a subroutine, then C<autodie> will pass
+the complete return value to that subroutine.  If the hint is
+any other value, then C<autodie> will smart-match against the
+value provided.  In Perl 5.8.x there is no smart-match operator, and as such
+only subroutine hints are supported in these versions.
+
+=end original
+
+If the hint provided is a subroutine, then C<autodie> will pass
+the complete return value to that subroutine.  If the hint is
+any other value, then C<autodie> will smart-match against the
+value provided.  In Perl 5.8.x there is no smart-match operator, and as such
+only subroutine hints are supported in these versions.
+(TBT)
+
+=begin original
+
+Hints can be provided for both scalar and list contexts.  Note
+that an autodying subroutine will never see a void context, as
+C<autodie> always needs to capture the return value for examination.
+Autodying subroutines called in void context act as if they're called
+in a scalar context, but their return value is discarded after it
+has been checked.
+
+=end original
+
+Hints can be provided for both scalar and list contexts.  Note
+that an autodying subroutine will never see a void context, as
+C<autodie> always needs to capture the return value for examination.
+Autodying subroutines called in void context act as if they're called
+in a scalar context, but their return value is discarded after it
+has been checked.
+(TBT)
+
+=head2 Example hints
+
+=begin original
+
+Hints may consist of scalars, array references, regular expressions and
+subroutine references.  You can specify different hints for how
+failure should be identified in scalar and list contexts.
+
+=end original
+
+Hints may consist of scalars, array references, regular expressions and
+subroutine references.  You can specify different hints for how
+failure should be identified in scalar and list contexts.
+(TBT)
+
+=begin original
+
+These examples apply for use in the C<AUTODIE_HINTS> subroutine and when
+calling C<autodie::hints->set_hints_for()>.
+
+=end original
+
+These examples apply for use in the C<AUTODIE_HINTS> subroutine and when
+calling C<autodie::hints->set_hints_for()>.
+(TBT)
+
+=begin original
+
+The most common context-specific hints are:
+
+=end original
+
+The most common context-specific hints are:
+(TBT)
+
+        # Scalar failures always return undef:
+            {  scalar => undef  }
+
+        # Scalar failures return any false value [default expectation]:
+            {  scalar => sub { ! $_[0] }  }
+
+        # Scalar failures always return zero explicitly:
+            {  scalar => '0'  }
+
+        # List failures always return an empty list:
+            {  list => []  }
+
+        # List failures return () or (undef) [default expectation]:
+            {  list => sub { ! @_ || @_ == 1 && !defined $_[0] }  }
+
+        # List failures return () or a single false value:
+            {  list => sub { ! @_ || @_ == 1 && !$_[0] }  }
+
+        # List failures return (undef, "some string")
+            {  list => sub { @_ == 2 && !defined $_[0] }  }
+
+        # Unsuccessful foo() returns 'FAIL' or '_FAIL' in scalar context,
+        #                    returns (-1) in list context...
+        autodie::hints->set_hints_for(
+            \&foo,
+            {
+                scalar => qr/^ _? FAIL $/xms,
+                list   => [-1],
+            }
+        );
+
+        # Unsuccessful foo() returns 0 in all contexts...
+        autodie::hints->set_hints_for(
+            \&foo,
+            {
+                scalar => 0,
+                list   => [0],
+            }
+        );
+
+=begin original
+
+This "in all contexts" construction is very common, and can be
+abbreviated, using the 'fail' key.  This sets both the C<scalar>
+and C<list> hints to the same value:
+
+=end original
+
+This "in all contexts" construction is very common, and can be
+abbreviated, using the 'fail' key.  This sets both the C<scalar>
+and C<list> hints to the same value:
+(TBT)
+
+        # Unsuccessful foo() returns 0 in all contexts...
+        autodie::hints->set_hints_for(
+            \&foo,
+            {
+                fail => sub { @_ == 1 and defined $_[0] and $_[0] == 0 }
+            }
+	);
+
+        # Unsuccessful think_positive() returns negative number on failure...
+        autodie::hints->set_hints_for(
+            \&think_positive,
+            {
+                fail => sub { $_[0] < 0 }
+            }
+	);
+
+        # Unsuccessful my_system() returns non-zero on failure...
+        autodie::hints->set_hints_for(
+            \&my_system,
+            {
+                fail => sub { $_[0] != 0 }
+            }
+	);
+
+=head1 Manually setting hints from within your program
+
+=begin original
+
+If you are using a module which returns something special on failure, then
+you can manually create hints for each of the desired subroutines.  Once
+the hints are specified, they are available for all files and modules loaded
+thereafter, thus you can move this work into a module and it will still
+work.
+
+=end original
+
+If you are using a module which returns something special on failure, then
+you can manually create hints for each of the desired subroutines.  Once
+the hints are specified, they are available for all files and modules loaded
+thereafter, thus you can move this work into a module and it will still
+work.
+(TBT)
+
+	use Some::Module qw(foo bar);
+	use autodie::hints;
+
+	autodie::hints->set_hints_for(
+		\&foo,
+		{
+			scalar => SCALAR_HINT,
+			list   => LIST_HINT,
+		}
+	);
+	autodie::hints->set_hints_for(
+		\&bar,
+                { fail => SOME_HINT, }
+	);
+
+=begin original
+
+It is possible to pass either a subroutine reference (recommended) or a fully
+qualified subroutine name as the first argument.  This means you can set hints
+on modules that I<might> get loaded:
+
+=end original
+
+It is possible to pass either a subroutine reference (recommended) or a fully
+qualified subroutine name as the first argument.  This means you can set hints
+on modules that I<might> get loaded:
+(TBT)
+
+	use autodie::hints;
+	autodie::hints->set_hints_for(
+		'Some::Module:bar', { fail => SCALAR_HINT, }
+	);
+
+=begin original
+
+This technique is most useful when you have a project that uses a
+lot of third-party modules.  You can define all your possible hints
+in one-place.  This can even be in a sub-class of autodie.  For
+example:
+
+=end original
+
+This technique is most useful when you have a project that uses a
+lot of third-party modules.  You can define all your possible hints
+in one-place.  This can even be in a sub-class of autodie.  For
+example:
+(TBT)
+
+        package my::autodie;
+
+        use parent qw(autodie);
+        use autodie::hints;
+
+        autodie::hints->set_hints_for(...);
+
+        1;
+
+=begin original
+
+You can now C<use my::autodie>, which will work just like the standard
+C<autodie>, but is now aware of any hints that you've set.
+
+=end original
+
+You can now C<use my::autodie>, which will work just like the standard
+C<autodie>, but is now aware of any hints that you've set.
+(TBT)
+
+=head1 Adding hints to your module
+
+=begin original
+
+C<autodie> provides a passive interface to allow you to declare hints for
+your module.  These hints will be found and used by C<autodie> if it
+is loaded, but otherwise have no effect (or dependencies) without autodie.
+To set these, your module needs to declare that it I<does> the
+C<autodie::hints::provider> role.  This can be done by writing your
+own C<DOES> method, using a system such as C<Class::DOES> to handle
+the heavy-lifting for you, or declaring a C<%DOES> package variable
+with a C<autodie::hints::provider> key and a corresponding true value.
+
+=end original
+
+C<autodie> provides a passive interface to allow you to declare hints for
+your module.  These hints will be found and used by C<autodie> if it
+is loaded, but otherwise have no effect (or dependencies) without autodie.
+To set these, your module needs to declare that it I<does> the
+C<autodie::hints::provider> role.  This can be done by writing your
+own C<DOES> method, using a system such as C<Class::DOES> to handle
+the heavy-lifting for you, or declaring a C<%DOES> package variable
+with a C<autodie::hints::provider> key and a corresponding true value.
+(TBT)
+
+=begin original
+
+Note that checking for a C<%DOES> hash is an C<autodie>-only
+short-cut.  Other modules do not use this mechanism for checking
+roles, although you can use the C<Class::DOES> module from the
+CPAN to allow it.
+
+=end original
+
+Note that checking for a C<%DOES> hash is an C<autodie>-only
+short-cut.  Other modules do not use this mechanism for checking
+roles, although you can use the C<Class::DOES> module from the
+CPAN to allow it.
+(TBT)
+
+=begin original
+
+In addition, you must define a C<AUTODIE_HINTS> subroutine that returns
+a hash-reference containing the hints for your subroutines:
+
+=end original
+
+In addition, you must define a C<AUTODIE_HINTS> subroutine that returns
+a hash-reference containing the hints for your subroutines:
+(TBT)
+
+        package Your::Module;
+
+        # We can use the Class::DOES from the CPAN to declare adherence
+        # to a role.
+
+        use Class::DOES 'autodie::hints::provider' => 1;
+
+        # Alternatively, we can declare the role in %DOES.  Note that
+        # this is an autodie specific optimisation, although Class::DOES
+        # can be used to promote this to a true role declaration.
+
+        our %DOES = ( 'autodie::hints::provider' => 1 );
+
+        # Finally, we must define the hints themselves.
+
+	sub AUTODIE_HINTS {
+	    return {
+	        foo => { scalar => HINTS, list => SOME_HINTS },
+	        bar => { scalar => HINTS, list => MORE_HINTS },
+	        baz => { fail => HINTS },
+	    }
+	}
+
+=begin original
+
+This allows your code to set hints without relying on C<autodie> and
+C<autodie::hints> being loaded, or even installed.  In this way your
+code can do the right thing when C<autodie> is installed, but does not
+need to depend upon it to function.
+
+=end original
+
+This allows your code to set hints without relying on C<autodie> and
+C<autodie::hints> being loaded, or even installed.  In this way your
+code can do the right thing when C<autodie> is installed, but does not
+need to depend upon it to function.
+(TBT)
+
+=head1 Insisting on hints
+
+=begin original
+
+When a user-defined subroutine is wrapped by C<autodie>, it will
+use hints if they are available, and otherwise reverts to the
+I<default behaviour> described in the introduction of this document.
+This can be problematic if we expect a hint to exist, but (for
+whatever reason) it has not been loaded.
+
+=end original
+
+When a user-defined subroutine is wrapped by C<autodie>, it will
+use hints if they are available, and otherwise reverts to the
+I<default behaviour> described in the introduction of this document.
+This can be problematic if we expect a hint to exist, but (for
+whatever reason) it has not been loaded.
+(TBT)
+
+=begin original
+
+We can ask autodie to I<insist> that a hint be used by prefixing
+an exclamation mark to the start of the subroutine name.  A lone
+exclamation mark indicates that I<all> subroutines after it must
+have hints declared.
+
+=end original
+
+We can ask autodie to I<insist> that a hint be used by prefixing
+an exclamation mark to the start of the subroutine name.  A lone
+exclamation mark indicates that I<all> subroutines after it must
+have hints declared.
+(TBT)
+
+	# foo() and bar() must have their hints defined
+	use autodie qw( !foo !bar baz );
+
+	# Everything must have hints (recommended).
+	use autodie qw( ! foo bar baz );
+
+	# bar() and baz() must have their hints defined
+	use autodie qw( foo ! bar baz );
+
+        # Enable autodie for all of Perl's supported built-ins,
+        # as well as for foo(), bar() and baz().  Everything must
+        # have hints.
+        use autodie qw( ! :all foo bar baz );
+
+=begin original
+
+If hints are not available for the specified subroutines, this will cause a
+compile-time error.  Insisting on hints for Perl's built-in functions
+(eg, C<open> and C<close>) is always successful.
+
+=end original
+
+If hints are not available for the specified subroutines, this will cause a
+compile-time error.  Insisting on hints for Perl's built-in functions
+(eg, C<open> and C<close>) is always successful.
+(TBT)
+
+=begin original
+
+Insisting on hints is I<strongly> recommended.
+
+=end original
+
+Insisting on hints is I<strongly> recommended.
+(TBT)
+
+=head1 Diagnostics
+
+=over 4
+
+=item Attempts to set_hints_for unidentifiable subroutine
+
+=begin original
+
+You've called C<< autodie::hints->set_hints_for() >> using a subroutine
+reference, but that reference could not be resolved back to a
+subroutine name.  It may be an anonymous subroutine (which can't
+be made autodying), or may lack a name for other reasons.
+
+=end original
+
+You've called C<< autodie::hints->set_hints_for() >> using a subroutine
+reference, but that reference could not be resolved back to a
+subroutine name.  It may be an anonymous subroutine (which can't
+be made autodying), or may lack a name for other reasons.
+(TBT)
+
+=begin original
+
+If you receive this error with a subroutine that has a real name,
+then you may have found a bug in autodie.  See L<autodie/BUGS>
+for how to report this.
+
+=end original
+
+If you receive this error with a subroutine that has a real name,
+then you may have found a bug in autodie.  See L<autodie/BUGS>
+for how to report this.
+(TBT)
+
+=item fail hints cannot be provided with either scalar or list hints for %s
+
+=begin original
+
+When defining hints, you can either supply both C<list> and
+C<scalar> keywords, I<or> you can provide a single C<fail> keyword.
+You can't mix and match them.
+
+=end original
+
+When defining hints, you can either supply both C<list> and
+C<scalar> keywords, I<or> you can provide a single C<fail> keyword.
+You can't mix and match them.
+(TBT)
+
+=item %s hint missing for %s
+
+=begin original
+
+You've provided either a C<scalar> hint without supplying
+a C<list> hint, or vice-versa.  You I<must> supply both C<scalar>
+and C<list> hints, I<or> a single C<fail> hint.
+
+=end original
+
+You've provided either a C<scalar> hint without supplying
+a C<list> hint, or vice-versa.  You I<must> supply both C<scalar>
+and C<list> hints, I<or> a single C<fail> hint.
+(TBT)
+
+=back
+
+=head1 ACKNOWLEDGEMENTS
+
+=over 
+
+=item *
+
+=begin original
+
+Dr Damian Conway for suggesting the hinting interface and providing the
+example usage.
+
+=end original
+
+Dr Damian Conway for suggesting the hinting interface and providing the
+example usage.
+(TBT)
+
+=item *
+
+=begin original
+
+Jacinta Richardson for translating much of my ideas into this
+documentation.
+
+=end original
+
+Jacinta Richardson for translating much of my ideas into this
+documentation.
+(TBT)
+
+=back
+
+=head1 AUTHOR
+
+Copyright 2009, Paul Fenwick E<lt>pjf@perltraining.com.auE<gt>
+
+=head1 LICENSE
+
+This module is free software.  You may distribute it under the
+same terms as Perl itself.
+
+=head1 SEE ALSO
+
+L<autodie>, L<Class::DOES>
+
+=cut
+
