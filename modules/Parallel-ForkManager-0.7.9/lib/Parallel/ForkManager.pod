@@ -1,0 +1,763 @@
+=encoding utf8
+
+=head1 名前
+
+=begin original
+
+Parallel::ForkManager - A simple parallel processing fork manager
+
+=end original
+
+Parallel::ForkManager - 簡単な並列処理によるforkマネージャー
+
+=head1 概要
+
+  use Parallel::ForkManager;
+
+  $pm = new Parallel::ForkManager($MAX_PROCESSES);
+
+  foreach $data (@all_data) {
+    # Forks and returns the pid for the child:
+    my $pid = $pm->start and next;
+
+    ... do some work with $data in the child process ...
+    ... 子プロセスにより$dataに関するいくつかの処理を行う ...
+
+    $pm->finish; # Terminates the child process
+  }
+
+=head1 説明
+
+=begin original
+
+This module is intended for use in operations that can be done in parallel
+where the number of processes to be forked off should be limited. Typical
+use is a downloader which will be retrieving hundreds/thousands of files.
+
+=end original
+
+このモジュールは稼動中において並列処理されることを意図している.
+その際,プロセスの分岐数は制限されるべきものである.
+典型的な使われ方としてはファイルの数百/数千を取得するダウンローダーとしてである.
+
+=begin original
+
+The code for a downloader would look something like this:
+
+=end original
+
+ダウンローダーのコードとしてはこのようになるでしょう:
+
+
+  use LWP::Simple;
+  use Parallel::ForkManager;
+
+  ...
+
+  @links=(
+    ["http://www.foo.bar/rulez.data","rulez_data.txt"],
+    ["http://new.host/more_data.doc","more_data.doc"],
+    ...
+  );
+
+  ...
+
+  # Max 30 processes for parallel download
+  # 最大30プロセスで並列的にダウンロードを行います
+  my $pm = new Parallel::ForkManager(30);
+
+  foreach my $linkarray (@links) {
+    $pm->start and next; # do the fork
+                         # forkさせます
+
+    my ($link,$fn) = @$linkarray;
+    warn "Cannot get $fn from $link"
+      if getstore($link,$fn) != RC_OK;
+
+    $pm->finish; # do the exit in the child process
+                 # 子プロセスをexitします
+  }
+  $pm->wait_all_children;
+
+=begin original
+
+First you need to instantiate the ForkManager with the "new" constructor.
+You must specify the maximum number of processes to be created. If you
+specify 0, then NO fork will be done; this is good for debugging purposes.
+
+=end original
+
+まず初めにForkManagerの"new"コンストラクタを具体化する必要があります.
+コンストラクタを作成する際に,プロセス数の最大値を指定しなければなりません.
+もしプロセス数を0と指定した場合はforkはされないでしょう;これはデバッグを行う為のよい方法です.
+
+=begin original
+
+Next, use $pm->start to do the fork. $pm returns 0 for the child process,
+and child pid for the parent process (see also L<perlfunc(1p)/fork()>).
+The "and next" skips the internal loop in the parent process. NOTE:
+$pm->start dies if the fork fails.
+
+=end original
+
+次に,forkする為に$pm->startを使います. $pmは子プロセスの為に0にを返し,
+親プロセスの為に子pidを返します (または, L<perlfunc(1p)/fork()>を見て下さい).
+"and next"は親プロセスにおける内部の繰り返しをスキップします. 注意:
+$pm->startはforkが失敗すれば死にます.
+
+=begin original
+
+$pm->finish terminates the child process (assuming a fork was done in the
+"start").
+
+=end original
+
+$pm->finishは子プロセスを終了させます ("start"でforkを開始したと仮定した場合).
+
+=begin original
+
+NOTE: You cannot use $pm->start if you are already in the child process.
+If you want to manage another set of subprocesses in the child process,
+you must instantiate another Parallel::ForkManager object!
+
+=end original
+
+注意:あなたがすでに子プロセスに居るのならば,$pm->startを使うことはできません.
+子プロセスをもう1セット,サブプロセスとして管理したいのならば,
+別のParallel::ForkManagerオブジェクトを具体化する必要があります.
+
+=head1 メソッド
+
+=begin original
+
+The comment letter indicates where the method should be run. P for parent,
+C for child.
+
+=end original
+
+後ろのコメントはどこでメソッドを使うかを示しています.P は親プロセスで,
+Cが子プロセスです.
+
+=over 5
+
+=item new $processes [, $tempdir]  # P
+
+=begin original
+
+Instantiate a new Parallel::ForkManager object. You must specify the maximum
+number of children to fork off. If you specify 0 (zero), then no children
+will be forked. This is intended for debugging purposes.
+
+=end original
+
+新しいParallel::ForkManagerオブジェクトを具体化します. 
+子プロセスを分岐させる最大数を指定しなければなりません.
+0を指定した場合は分岐される子はありません.
+これはデバッグ目的のために意図されます.
+
+=begin original
+
+The optional second parameter, $tempdir, is only used if you want the
+children to send back a reference to some data (see RETRIEVING DATASTRUCTURES
+below). If not provided, it is set to $L<File::Spec>->tmpdir().
+
+=end original
+
+オプションの二番目のパラメータ$tempdirは,子プロセスから何らかのデータをリファレンスとして
+戻したい場合にのみ使います(後述のRETRIEVING DATASTRUCTURES を参照).
+与えられなければ,$L<File::Spec>->tmpdir() をセットします.
+
+=begin original
+
+The new method will die if the temporary directory does not exist or it is not
+a directory, whether you provided this parameter or the
+$L<File::Spec>->tmpdir() is used.
+
+=end original
+
+new メソッドはテンポラリディレクトリが存在しないか,それがディレクトリでなければ死にます.
+パラメタを渡しても,$L<File::Spec>->tmpdir()が使われても同じです.
+
+=item start [ $process_identifier ]  # P
+
+This method does the fork. It returns the pid of the child process for
+the parent, and 0 for the child process. If the $processes parameter
+for the constructor is 0 then, assuming you're in the child process,
+$pm->start simply returns 0.
+
+=end original
+
+このメソッドはforkを実行します.
+子プロセスのpidを親プロセスに返し,子プロセスには0を返します.
+$processesパラメータがコンストラクタに0として渡された場合,
+あなたがすでに子プロセスに居ると仮定され,
+$pm->startは単に0を返します.
+
+=begin original
+
+An optional $process_identifier can be provided to this method... It is used by
+the "run_on_finish" callback (see CALLBACKS) for identifying the finished
+process.
+
+=end original
+
+任意で$process_identifier（プロセス識別子）をメソッドに提供することができます...
+これは"run_on_finish"で終了したプロセスを特定し回収する為に使われます.
+(CALLBACKSの項目を見て下さい)
+
+=item finish [ $exit_code [, $data_structure_reference] ]  # C
+
+=begin original
+
+Closes the child process by exiting and accepts an optional exit code
+(default exit code is 0) which can be retrieved in the parent via callback.
+If the second optional parameter is provided, the child attempts to send
+it's contents back to the parent. If you use the program in debug mode
+($processes == 0), this method just calls the callback.
+
+=end original
+
+exit で子プロセスを閉じ,オプションとして終了コードを取ります(規定の 終了コードは 0 です).
+終了コードは,コールバック経由で親プロセスが取得できます.
+２番目のパラメータを渡した場合,子プロセスは親プロセスにその内容を送ろうとします.
+このプログラムをデバッグモードで使用する場合 ($processes == 0 の場合), 
+このメソッドは単にコールバックを呼びます.
+
+=begin original
+
+If the $data_structure_reference is provided, then it is serialized and
+passed to the parent process. See RETRIEVING DATASTRUCTURES for more info.
+
+=end original
+
+$data_structure_reference が渡された場合は,シリアライズされて親プロセスに渡されます.
+詳細はRETRIEVING DATASTRUCTURES を見てください.
+
+=item set_max_procs $processes  # P
+
+=begin original
+
+Allows you to set a new maximum number of children to maintain.
+
+=end original
+
+新しく子プロセス数の最大値を設定することができます.
+
+=item wait_all_children  # P
+
+=begin original
+
+You can call this method to wait for all the processes which have been
+forked. This is a blocking wait.
+
+=end original
+
+forkされた全ての子プロセスを待つ為にこのメソッドを呼ぶことができます.
+これはブロッキングする wait です.
+
+=back
+
+=head1 コールバック
+
+=begin original
+
+You can define callbacks in the code, which are called on events like starting
+a process or upon finish. Declare these before the first call to start().
+
+=end original
+
+プロセスの開始時または終了時のイベントで呼ばれるコールバックを定義することができます.
+これらは最初のstart()の呼び出しより前に定義してください.
+
+=begin original
+
+The callbacks can be defined with the following methods:
+
+=end original
+
+コールバックは以下のメソッドで定義することができます:
+
+=over 4
+
+=item run_on_finish $code [, $pid ]  # P
+
+=begin original
+
+You can define a subroutine which is called when a child is terminated. It is
+called in the parent process.
+
+=end original
+
+子プロセスが終了する際に呼ばれるサブルーチンを定義することができます.
+これは親プロセスから呼ばれます.
+
+=begin original
+
+The paremeters of the $code are the following:
+
+=end original
+
+$codeのパラメータは以下です:
+
+=begin original
+
+  - pid of the process, which is terminated
+  - exit code of the program
+  - identification of the process (if provided in the "start" method)
+  - exit signal (0-127: signal name)
+  - core dump (1 if there was core dump at exit)
+  - datastructure reference or undef (see RETRIEVING DATASTRUCTURES)
+
+=end original
+
+  - 終了するプロセスのpid
+  - プログラムの終了コード
+  - プロセスの識別 ("start"メソッドで提供される場合)
+  - 終了シグナル (0-127: シグナル名)
+  - コアダンプ (1 はコアダンプによる終了です)
+  - データ構造のリファレンスundef (RETRIEVING DATASTRUCTURES 参照)
+
+=item run_on_start $code  # P
+
+=begin original
+
+You can define a subroutine which is called when a child is started. It called
+after the successful startup of a child in the parent process.
+
+=end original
+
+子プロセスが開始する際に呼ばれるサブルーチンを定義することができます.
+親プロセスの中で子プロセスが正常に開始された後に呼ばれます.
+
+=begin original
+
+The parameters of the $code are the following:
+
+=end original
+
+$codeのパラメータは以下です:
+
+=begin original
+
+  - pid of the process which has been started
+  - identification of the process (if provided in the "start" method)
+
+=end original
+
+  - 開始されたプロセスのpid
+  - プロセスの識別 ("start"メソッドで提供される場合)
+
+=item run_on_wait $code, [$period]  # P
+
+=begin original
+
+You can define a subroutine which is called when the child process needs to wait
+for the startup. If $period is not defined, then one call is done per
+child. If $period is defined, then $code is called periodically and the
+module waits for $period seconds betwen the two calls. Note, $period can be
+fractional number also. The exact "$period seconds" is not guarranteed,
+signals can shorten and the process scheduler can make it longer (on busy
+systems).
+
+=end original
+
+子プロセスが開始時に待ちを必要とする場合に呼ばれるサブルーチンを定義することができます.
+$periodが定義されていない場合,一つの子プロセス単位で呼びます.
+$periodが定義されている場合,$codeは定期的に呼ばれ,モジュールは$period秒の間に
+２度呼ばれるのをモジュールは待ちます
+注意,$periodは断片的な数であるかもしれません.
+正確な"$period seconds"であることは保障しません,
+シグナルは短縮することができ,プロセススケジューラーでは長くすることができます (忙しいシステムでは).
+
+=begin original
+
+The $code called in the "start" and the "wait_all_children" method also.
+
+=end original
+
+$codeは"start"や"wait_all_children"メソッドにより呼ぶことができる.
+
+=begin original
+
+No parameters are passed to the $code on the call.
+
+=end original
+
+パラメータがない場合は呼び出しの際に$codeはパスすることができる.
+
+=back
+
+=head1 例
+
+=head1 RETRIEVING DATASTRUCTURES from child processes
+
+=begin original
+
+The ability for the parent to retrieve data structures is new as of version
+0.7.6.
+
+=end original
+
+親プロセスでデータ構造を取得する機能は0.7.6の新機能です.
+
+=begin original
+
+Each child process may optionally send 1 data structure back to the parent.
+By data structure, we mean a reference to a string, hash or array. The
+contents of the data structure are written out to temporary files on disc
+using the L<Storable> modules' store() method. The reference is then
+retrieved from within the code you send to the run_on_finish callback.
+
+=end original
+
+各子プロセスはオプションとして1つのデータ構造を親プロセスに戻せます.
+データ構造とは,ここでは,文字列,ハッシュ,配列のリファレンスのことです.
+データ構造の内容はディスクに一時ファイルにL<Storable>モジュールのstore()メソッドで書き出されます.
+リファレンスはrun_on_finish コールバックに送ったコード内で取得されます.
+
+=begin original
+
+The data structure can be any scalar perl data structure which makes sense:
+string, numeric value or a reference to an array, hash or object.
+
+=end original
+
+データ構造は,次のようなどのようなスカラのデータ構造でも可能です:
+文字列,数値,配列やハッシュやオブジェクトのリファレンス
+
+=begin original
+
+There are 2 steps involved in retrieving data structures:
+
+=end original
+
+データ構造の取得に際して,2つのステップがあります.
+
+=begin original
+
+1) A reference to the data structure the child wishes to send back to the
+parent is provided as the second argument to the finish() call. It is up
+to the child to decide whether or not to send anything back to the parent.
+
+=end original
+
+1) 子プロセスが親プロセスに返したいデータ構造のリファレンスは
+finish()呼び出しの二番目の引数として与えられます.
+親に何かを返すかどうかは,子プロセス次第です.
+
+=begin original
+
+2) The data structure reference is retrieved using the callback provided in
+the run_on_finish() method.
+
+=end original
+
+2) データ構造のリファレンスはrun_on_finish メソッドで与えられたコールバックを使って
+取得されます.
+
+=begin original
+
+Keep in mind that data structure retrieval is not the same as returning a
+data structure from a method call. That is not what actually occurs. The
+data structure referenced in a given child process is serialized and
+written out to a file by L<Storable>. The file is subsequently read back
+into memory and a new data structure belonging to the parent process is
+created. Please consider the performance penality it can imply, so try to
+keep the returned structure small.
+
+=end original
+
+データ構造の取得はメソッド呼び出しからデータ構造が戻ってくるのとは,同じではないことを
+覚えておいてください.それは実際に起きているこではありません.
+子プロセスでリファレンスにされたデータ構造はシリアライズされ,L<Storable>でファイルに
+書き出されます.ファイルは順番にメモリに読み戻され,親プロセスに属する新しいデータ構造が
+作られます.これによるパフォーマンスの低下をよく考えて下さい.そして,戻す構造は小さく
+してください.
+
+=head1 例
+
+=head2 並列 get
+
+=begin original
+
+This small example can be used to get URLs in parallel.
+
+=end original
+
+並列的にURLを取得する為に使用される簡単な例です.
+
+  use Parallel::ForkManager;
+  use LWP::Simple;
+  my $pm=new Parallel::ForkManager(10);
+  for my $link (@ARGV) {
+    $pm->start and next;
+    my ($fn)= $link =~ /^.*\/(.*?)$/;
+    if (!$fn) {
+      warn "Cannot determine filename from $fn\n";
+    } else {
+      $0.=" ".$fn;
+      print "Getting $fn from $link\n";
+      my $rc=getstore($link,$fn);
+      print "$link downloaded. response code: $rc\n";
+    };
+    $pm->finish;
+  };
+
+=head2 コールバック
+
+=begin original
+
+Example of a program using callbacks to get child exit codes:
+
+=end original
+
+コールバックを使って,子プロセスがの終了コードを得る場合の例です:
+
+  use strict;
+  use Parallel::ForkManager;
+
+  my $max_procs = 5;
+  my @names = qw( Fred Jim Lily Steve Jessica Bob Dave Christine Rico Sara );
+  # hash to resolve PID's back to child specific information
+
+  my $pm = new Parallel::ForkManager($max_procs);
+
+  # Setup a callback for when a child finishes up so we can
+  # get it's exit code
+  # 子プロセスが終了する際に終了コードを取得する為の設定
+  $pm->run_on_finish(
+    sub { my ($pid, $exit_code, $ident) = @_;
+      print "** $ident just got out of the pool ".
+        "with PID $pid and exit code: $exit_code\n";
+    }
+  );
+
+  $pm->run_on_start(
+    sub { my ($pid,$ident)=@_;
+      print "** $ident started, pid: $pid\n";
+    }
+  );
+
+  $pm->run_on_wait(
+    sub {
+      print "** Have to wait for one children ...\n"
+    },
+    0.5
+  );
+
+  foreach my $child ( 0 .. $#names ) {
+    my $pid = $pm->start($names[$child]) and next;
+
+    # This code is the child process
+    # このコードは子プロセスです
+    print "This is $names[$child], Child number $child\n";
+    sleep ( 2 * $child );
+    print "$names[$child], Child $child is about to get out...\n";
+    sleep 1;
+    $pm->finish($child); # pass an exit code to finish
+  }
+
+  print "Waiting for Children...\n";
+  $pm->wait_all_children;
+  print "Everybody is out of the pool!\n";
+
+=head2 データ構造の取得
+
+=begin original
+
+In this simple example, each child sends back a string reference.
+
+=end original
+
+この例では,各子プロセスは文字列のリファレンスを送っています.
+
+  use Parallel::ForkManager 0.7.6;
+  use strict;
+  
+  my $pm = new Parallel::ForkManager(2, '/server/path/to/temp/dir/');
+  
+  # data structure retrieval and handling
+  # データ構造の取得と取扱
+  $pm -> run_on_finish ( # called BEFORE the first call to start()
+    sub {
+      my ($pid, $exit_code, $ident, $exit_signal, $core_dump, $data_structure_reference) = @_;
+
+      # retrieve data structure from child
+      # データ構造を子プロセスから取得
+      if (defined($data_structure_reference)) {  # children are not forced to send anything
+        my $string = ${$data_structure_reference};  # child passed a string reference
+        print "$string\n";
+      } else {  # problems occuring during storage or retrieval will throw a warning
+        print qq|No message received from child process $pid!\n|;
+      }
+    }
+  );
+  
+  # prep random statement components
+  my @foods = ('chocolate', 'ice cream', 'peanut butter', 'pickles', 'pizza', 'bacon', 'pancakes', 'spaghetti', 'cookies');
+  my @preferences = ('loves', q|can't stand|, 'always wants more', 'will walk 100 miles for', 'only eats', 'would starve rather than eat');
+  
+  # run the parallel processes
+  # 並列プロセスを実行
+  my $person = '';
+  foreach $person (qw(Fred Wilma Ernie Bert Lucy Ethel Curly Moe Larry)) {
+    $pm->start() and next;
+  
+    # generate a random statement about food preferences
+    my $statement = $person . ' ' . $preferences[int(rand @preferences)] . ' ' . $foods[int(rand @foods)];
+  
+    # send it back to the parent process
+    # 親プロセスへ戻す
+    $pm->finish(0, \$statement);  # note that it's a scalar REFERENCE, not the scalar itself
+  }
+  $pm->wait_all_children;
+
+=begin original
+
+A second datastructure retrieval example demonstrates how children decide
+whether or not to send anything back, what to send and how the parent should
+process whatever is retrieved.
+
+=end original
+
+次のデータ構造を取得する例では,どのように子プロセスが何かを返すかどうかを決めているかと,
+どのように親プロセスが取得したものを処理するかをデモンストレーションしています.
+
+=for example begin
+
+  use Parallel::ForkManager 0.7.6;
+  use Data::Dumper;  # to display the data structures retrieved.
+  use strict;
+  
+  my $pm = new Parallel::ForkManager(20);  # using the system temp dir $L<File::Spec>->tmpdir()
+  
+  # data structure retrieval and handling
+  my %retrieved_responses = ();  # for collecting responses
+  $pm -> run_on_finish (
+    sub {
+      my ($pid, $exit_code, $ident, $exit_signal, $core_dump, $data_structure_reference) = @_;
+  
+      # see what the child sent us, if anything
+      if (defined($data_structure_reference)) {  # test rather than assume child sent anything
+        my $reftype = ref($data_structure_reference);
+        print qq|ident "$ident" returned a "$reftype" reference.\n\n|;
+        if (1) {  # simple on/off switch to display the contents
+          print &Dumper($data_structure_reference) . qq|end of "$ident" sent structure\n\n|;
+        }
+        
+        # we can also collect retrieved data structures for processing after all children have exited
+        $retrieved_responses{$ident} = $data_structure_reference;
+      } else {
+        print qq|ident "$ident" did not send anything.\n\n|;  
+      }
+    }
+  );
+  
+  # generate a list of instructions
+  my @instructions = (  # a unique identifier and what the child process should send
+    {'name' => '%ENV keys as a string', 'send' => 'keys'},
+    {'name' => 'Send Nothing'},  # not instructing the child to send anything back to the parent
+    {'name' => 'Childs %ENV', 'send' => 'all'},
+    {'name' => 'Child chooses randomly', 'send' => 'random'},
+    {'name' => 'Invalid send instructions', 'send' => 'Na Na Nana Na'},
+    {'name' => 'ENV values in an array', 'send' => 'values'},
+  );
+  
+  my $instruction = '';
+  foreach $instruction (@instructions) {
+    $pm->start($instruction->{'name'}) and next;  # this time we are using an explicit, unique child process identifier
+  
+    # last step in child processing
+    $pm->finish(0) unless $instruction->{'send'};  # no data structure is sent unless this child is told what to send.
+    
+    if ($instruction->{'send'} eq 'keys') {
+      $pm->finish(0, \join(', ', keys %ENV));
+      
+    } elsif ($instruction->{'send'} eq 'values') {
+      $pm->finish(0, [values %ENV]);  # kinda useless without knowing which keys they belong to...
+      
+    } elsif ($instruction->{'send'} eq 'all') {
+      $pm->finish(0, \%ENV);  # remember, we are not "returning" anything, just copying the hash to disc
+    
+    # demonstrate clearly that the child determines what type of reference to send
+    } elsif ($instruction->{'send'} eq 'random') {
+      my $string = q|I'm just a string.|;
+      my @array = qw(I am an array);
+      my %hash = (type => 'associative array', synonym => 'hash', cool => 'very :)');
+      my $return_choice = ('string', 'array', 'hash')[int(rand 3)];  # randomly choose return data type
+      $pm->finish(0, \$string) if ($return_choice eq 'string');
+      $pm->finish(0, \@array) if ($return_choice eq 'array');
+      $pm->finish(0, \%hash) if ($return_choice eq 'hash');
+      
+    # as a responsible child, inform parent that their instruction was invalid
+    } else {  
+      $pm->finish(0, \qq|Invalid instructions: "$instruction->{'send'}".|);  # ordinarily I wouldn't include invalid input in a response...
+    }
+  }
+  $pm->wait_all_children;  # blocks until all forked processes have exited
+  
+  # post fork processing of returned data structures
+  for (sort keys %retrieved_responses) {
+    print qq|Post processing "$_"...\n|;
+  }
+
+=for example end
+
+=head1 バグ と 制限
+
+=begin original
+
+Do not use Parallel::ForkManager in an environment, where other child
+processes can affect the run of the main program, so using this module
+is not recommended in an environment where fork() / wait() is already used.
+
+=end original
+
+Parallel::ForkManagerはこのような環境では使うことができません,
+別の子プロセスがメインプログラムに影響を与える場合,
+したがってこのモジュールを使用するのはfork() / wait()が既に使用される環境で推薦されません.
+
+=begin original
+
+If you want to use more than one copies of the Parallel::ForkManager, then
+you have to make sure that all children processes are terminated, before you
+use the second object in the main program.
+
+=end original
+
+一つ以上のParallel::ForkManagerを使用したい場合,主プログラムで第二のオブジェクトを使用する前に,
+全ての子プロセスが終了するのを確実にしなければなりません,
+
+=begin original
+
+You are free to use a new copy of Parallel::ForkManager in the child
+processes, although I don't think it makes sense.
+
+=end original
+
+あなたは子プロセスに自由にParallel::ForkManagerの新しいコピーを使用することができます,
+私はそれに意味があるとは思いませんが.
+
+=head1 COPYRIGHT
+
+Copyright (c) 2000-2010 Szabó, Balázs (dLux)
+
+All right reserved. This program is free software; you can redistribute it
+and/or modify it under the same terms as Perl itself.
+
+=head1 作者
+
+  dLux (Szabó, Balázs) <dlux@kapu.hu>
+
+=head1 クレジット
+
+  Noah Robin <sitz@onastick.net> (documentation tweaks)
+  Chuck Hirstius <chirstius@megapathdsl.net> (callback exit status, example)
+  Grant Hopwood <hopwoodg@valero.com> (win32 port)
+  Mark Southern <mark_southern@merck.com> (bugfix)
+  Ken Clarke <www.perlprogrammer.net>  (datastructure retrieval)
+
+=head1 翻訳者
+
+ atsushi kobayashi(nekokak@users.sourceforge.jp)
+ Atsushi Kato (ktat@cpan.org) -- 0.75 から 0.79 の差分を翻訳
