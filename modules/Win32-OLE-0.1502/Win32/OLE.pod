@@ -1,0 +1,1956 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+Win32::OLE - OLE Automation extensions
+
+=end original
+
+Win32::OLE - OLE オートメーション拡張
+
+=head1 SYNOPSIS
+
+    $ex = Win32::OLE->new('Excel.Application') or die "oops\n";
+    $ex->Amethod("arg")->Bmethod->{'Property'} = "foo";
+    $ex->Cmethod(undef,undef,$Arg3);
+    $ex->Dmethod($RequiredArg1, {NamedArg1 => $Value1, NamedArg2 => $Value2});
+
+    $wd = Win32::OLE->GetObject("D:\\Data\\Message.doc");
+    $xl = Win32::OLE->GetActiveObject("Excel.Application");
+
+=head1 DESCRIPTION
+
+=begin original
+
+This module provides an interface to OLE Automation from Perl.
+OLE Automation brings VisualBasic like scripting capabilities and
+offers powerful extensibility and the ability to control many Win32
+applications from Perl scripts.
+
+=end original
+
+このモジュールは Perl からの OLE オートメーションへのインターフェースを
+提供します。
+OLE オートメーションは VisualBasic のようなスクリプトの能力を提供し、
+強力な拡張性と Perl スクリプトから数多くの Win32 アプリケーションを
+制御する能力を提供します。
+
+=begin original
+
+The Win32::OLE module uses the IDispatch interface exclusively.  It is
+not possible to access a custom OLE interface.  OLE events and OCX's are
+currently not supported.
+
+=end original
+
+Win32::OLE モジュールは IDispatch インターフェースを独占的に使用します。
+カスタム OLE インターフェースにアクセスすることはできません。
+OLE インベントと OCX は現在のところサポートされていません。
+
+=begin original
+
+Actually, that's no longer strictly true.  This module now contains
+B<ALPHA> level support for OLE events.  This is largely untested and the
+specific interface might still change in the future.
+
+=end original
+
+実際には、これは厳密には正しくありません。
+このモジュールは OLE イベントを B<アルファ> レベルでサポートをしています。
+これはあまりテストされていませんし、インタフェース仕様は将来
+変更される可能性があります。
+
+=head2 Methods
+
+(メソッド)
+
+=over 8
+
+=item Win32::OLE->new(PROGID[, DESTRUCTOR])
+
+=begin original
+
+The new() class method starts a new instance of an OLE Automation object.
+It returns a reference to this object or C<undef> if the creation failed.
+
+=end original
+
+
+new() クラスメソッドは OLE オートメーションオブジェクトの新しい
+インスタンスを開始します。
+このオブジェクトのリファレンスか、もし作成が失敗すれば C<undef> を返します。
+
+=begin original
+
+The PROGID argument must be either the OLE I<program id> or the I<class id>
+of the required application.  The optional DESTRUCTOR specifies a DESTROY-like
+method.  This can be either a CODE reference or a string containing an OLE
+method name.  It can be used to cleanly terminate OLE applications in case the
+Perl program dies.
+
+=end original
+
+PROGID 引数は必要なアプリケーションの OLE I<プログラム ID> または
+I<クラス ID> でなければなりません。
+オプションの DESTRUCTOR には DESTROY のようなメソッドを指定します。
+これは CODE リファレンスまたは OLE メソッド名の入った文字列のどちらかに
+することができます。
+これは Perl プログラムが die するときに、OLE アプリケーションを
+きれいに終らせるために使われます。
+
+=begin original
+
+To create an object via DCOM on a remote server you can use an array
+reference in place of PROGID.  The referenced array must contain the
+machine name and the I<program id> or I<class id>.  For example:
+
+=end original
+
+DCOM を通じてリモートサーバーにオブジェクトを作成するためには、PROGID の
+ところに配列リファレンスを使うことができます。
+参照される配列にはマシン名と I<プログラム ID> または I<クラス ID> が
+入らなければなりません。
+例えば:
+
+	my $obj = Win32::OLE->new(['my.machine.com', 'Program.Id']);
+
+=begin original
+
+If the PROGID is a I<program id> then Win32::OLE will try to resolve the
+corresponding I<class id> locally.  If the I<program id> is not registered
+locally then the remote registry is queried.  This will only succeed if
+the local process has read access to the remote registry.  The safest
+(and fastest) method is to specify the C<class id> directly.
+
+=end original
+
+PROGID が I<プログラム ID> であれば、Win32::OLE はローカルに対応する
+I<クラス ID> を解決しようとします。
+もしローカルに I<プログラム ID> が登録されていなければ、リモートレジストリが
+問い合わせられます。
+これはローカルなプロセスがリモートレジストリに読み込みアクセスを
+もっているときにのみ成功します。
+もっとも安全な(そしても最も速い)方法は、C<クラス ID> を直接指定することです。
+
+=item Win32::OLE->EnumAllObjects([CALLBACK])
+
+=begin original
+
+This class method returns the number Win32::OLE objects currently in
+existance.  It will call the optional CALLBACK function for each of
+these objects:
+
+=end original
+
+このクラスメソッドは現在存在する Win32::OLE オブジェクトの数を返します。
+オプションで各オブジェクトへの CALLBACK 関数を呼ぶこともできます:
+
+	$Count = Win32::OLE->EnumAllObjects(sub {
+	    my $Object = shift;
+	    my $Class = Win32::OLE->QueryObjectType($Object);
+	    printf "# Object=%s Class=%s\n", $Object, $Class;
+	});
+
+=begin original
+
+The EnumAllObjects() method is primarily a debugging tool.  It can be
+used e.g. in an END block to check if all external connections have
+been properly destroyed.
+
+=end original
+
+EnumAllObjects() メソッドは主にデバッグのためのツールです。
+これは例えば、すべての外部コメンクションが適切に破壊されているかを
+チェックするために END ブロックに入れて使うことができます。
+
+=item Win32::OLE->FreeUnusedLibraries()
+
+=begin original
+
+The FreeUnusedLibraries() class method unloads all unused OLE
+resources.  These are the libraries of those classes of which all
+existing objects have been destroyed.  The unloading of object
+libraries is really only important for long running processes that
+might instantiate a huge number of B<different> objects over time.
+
+=end original
+
+FreeUnusedLibraries() クラスメソッドは使われていない OLE リソースの
+すべてをアンロードします。
+これらは破壊されたすべての存在しているオブジェクトのクラスのライブラリです。
+オブジェクトライブラリのアンロードは、長時間とても多くの異なる
+オブジェクトを繰り返し、インスタンス生成するプロセスを実行したときにだけ本当に重要です。
+
+=begin original
+
+Be aware that objects implemented in Visual Basic have a buggy
+implementation of this functionality: They pretend to be unloadable
+while they are actually still running their cleanup code.  Unloading
+the DLL at that moment typically produces an access violation.  The
+probability for this problem can be reduced by calling the
+SpinMessageLoop() method and sleep()ing for a few seconds.
+
+=end original
+
+Visual Baiscで実装されたオブジェクトはこの機能についてバグを持っているかもしれないことに注意してください。
+実際に彼らのクリーンアップコードを実行するまではアンロード可能にすることを拒みます。
+その時点でDLLをアンロードすることは典型的には、アクセスバイオレーションを発生させます。
+この問題の可能性はSpinMessageLoop() メソッドを呼び出し、２、３秒sleep()することにより減らすことができます。
+
+=item Win32::OLE->GetActiveObject(CLASS[, DESTRUCTOR])
+
+=begin original
+
+The GetActiveObject() class method returns an OLE reference to a
+running instance of the specified OLE automation server.  It returns
+C<undef> if the server is not currently active.  It will croak if
+the class is not even registered.  The optional DESTRUCTOR method takes
+either a method name or a code reference.  It is executed when the last
+reference to this object goes away.  It is generally considered C<impolite>
+to stop applications that you did not start yourself.
+
+=end original
+
+GetActiveObject() クラスメソッドは指定された OLE オートメーションサーバーの
+動いているインスタンスへの OLE リファレンスを返します。
+もしサーバーが現在アクティブでなければ、C<undef> を返します。
+そのクラス登録さえもしていなければ、croak します。
+オプションの DESTRUCTOR メソッドはメソッド名、あるいはコードリファレンスを
+とります。
+このオブジェクトへの最後のリファレンスが失われるときに実行されます。
+一般的にあなたが起動したのではないアプリケーションを止めることは
+一般的には無作法だと考えられます。
+
+=item Win32::OLE->GetObject(MONIKER[, DESTRUCTOR])
+
+=begin original
+
+The GetObject() class method returns an OLE reference to the specified
+object.  The object is specified by a pathname optionally followed by
+additional item subcomponent separated by exclamation marks '!'.  The
+optional DESTRUCTOR argument has the same semantics as the DESTRUCTOR in
+new() or GetActiveObject().
+
+=end original
+
+GetObject() クラスメソッドは指定されたオブジェクトへの OLE リファレンスを
+返します。
+そのオブジェクトはパス名で指定され、オプションで後ろに
+エクスクラメーションマーク '!'によって区切られた追加の要素
+サブコンポーネントがつきます。
+オプションの DESTRUCTOR 引数は new() や GetActiveObject()と同じ意味を持ちます。
+
+=item Win32::OLE->Initialize([COINIT])
+
+=begin original
+
+The Initialize() class method can be used to specify an alternative
+apartment model for the Perl thread.  It must be called B<before> the
+first OLE object is created.  If the C<Win32::OLE::Const> module is
+used then the call to the Initialize() method must be made from a BEGIN
+block before the first C<use> statement for the C<Win32::OLE::Const>
+module.
+
+=end original
+
+Initialize() クラスメソッドは Perl スレッドのための代わりの
+アパートメントモデルを指定するために使うことができます。
+これは最初の OLE オブジェクトが作成される B<前> に呼ばれなければなりません。
+もし C<Win32::OLE::Const> モジュールが使われていれば、Initialize() メソッドの
+呼び出しは最初の C<Win32::OLE::Const> モジュールのための C<use>
+ステートメントの前の BEGIN ブロックでされなければなりません。
+
+=begin original
+
+Valid values for COINIT are:
+
+=end original
+
+COINTへの正しい値は以下の通りです:
+
+=begin original
+
+  Win32::OLE::COINIT_APARTMENTTHREADED  - single threaded
+  Win32::OLE::COINIT_MULTITHREADED      - the default
+  Win32::OLE::COINIT_OLEINITIALIZE      - single threaded, additional OLE stuff
+
+=end original
+
+  Win32::OLE::COINIT_APARTMENTTHREADED  - スングルスレッディド
+  Win32::OLE::COINIT_MULTITHREADED      - デフォルト
+  Win32::OLE::COINIT_OLEINITIALIZE      - スングルスレッディド、追加のOLEスタッフ
+
+=begin original
+
+COINIT_OLEINITIALIZE is sometimes needed when an OLE object uses
+additional OLE compound document technologies not available from the
+normal COM subsystem (for example MAPI.Session seems to require it).
+Both COINIT_OLEINITIALIZE and COINIT_APARTMENTTHREADED create a hidden
+top level window and a message queue for the Perl process.  This may
+create problems with other application, because Perl normally doesn't
+process its message queue.  This means programs using synchronous
+communication between applications (such as DDE initiation), may hang
+until Perl makes another OLE method call/property access or terminates.
+This applies to InstallShield setups and many things started to shell
+associations.  Please try to utilize the C<Win32::OLE-E<gt>SpinMessageLoop>
+and C<Win32::OLE-E<gt>Uninitialize> methods if you can not use the default
+COINIT_MULTITHREADED model.
+
+=end original
+
+COINIT_OLEINITIALIZE は OLE オブジェクトが、通常の COM サブシステムでは
+利用できない、追加の OLE コンパウンドドキュメント技術を使っているさいに、
+ときおり必要になります(例えば MAPI セッションはこれが必要なようです)。
+COINIT_OLEINITIALIZE と COINIT_APARTMENTTHREADED は隠れたトップレベル
+ウィンドウと Perl プロセスのためのメッセージキューを作成します。
+これは他のアプリケーションとの問題を発生させるかもしれません。
+というのも Perl は通常そのメッセージキューを処理しないからです。
+つまりアプリケーション間で同期型通信(DDE イニシエーションのような)を
+使っているプログラムは Perl が他の OLE メソッド呼び出し/プロパティアクセスを
+おこすか、終了するまで止まってしまうかもしれません。
+これは InstallShield セットアップやシェル関連から発生する多くの事柄に
+あてはまります。
+デフォルトの COINIT_MULTITHREADED モデルを使うことができないのであれば、
+C<Win32::OLE-E<gt>SpinMessageLoop> と <Win32::OLE-E<gt>Uninitialize>
+メソッドをを使ってみてください。
+
+=item OBJECT->Invoke(METHOD[, ARGS])
+
+=begin original
+
+The Invoke() object method is an alternate way to invoke OLE
+methods.  It is normally equivalent to C<$OBJECT->METHOD(@ARGS)>.  This
+function must be used if the METHOD name contains characters not valid
+in a Perl variable name (like foreign language characters).  It can
+also be used to invoke the default method of an object even if the
+default method has not been given a name in the type library.  In this
+case use <undef> or C<''> as the method name.  To invoke an OLE objects
+native Invoke() method (if such a thing exists), please use:
+
+=end original
+
+Invoke() オブジェクトメソッドは OLE メソッドを呼び出す代替方法です。
+これは通常 C<$OBJECT-E<gt>METHOD(@ARGS)> と同じです。
+この関数は METHOD 名に Perl 変数名として正しくない文字 (例えば外国の文字) が
+入っているときに使わなければなりません。
+もしデフォルトのメソッドがライブラリで名前を与えられていなくても、その
+オブジェクトのデフォルトのメソッドを呼び出すために使うことができます。
+この場合には C<undef> または C<''> をメソッド名として使います。
+OLE オブジェクトネイティブの Invoke() メソッドを (もしそのようなものが
+あったとして) 呼び出すためには、以下のようにします:
+
+	$Object->Invoke('Invoke', @Args);
+
+=item Win32::OLE->LastError()
+
+=begin original
+
+The LastError() class method returns the last recorded OLE
+error.  This is a dual value like the C<$!> variable: in a numeric
+context it returns the error number and in a string context it returns
+the error message.  The error number is a signed HRESULT value.  Please
+use the L<HRESULT(ERROR)> function to convert an unsigned hexadecimal
+constant to a signed HRESULT.
+
+=end original
+
+LastError() クラスメソッドは最後に記録された OLE エラーを返します。
+これは C<$!> 変数のように二つの値を持ちます:数値コンテキストではそれは
+エラー番号を返します、そして文字列コンテキストではそれはエラーメッセージを
+返します。
+エラー番号は符号付きの HRESULT の値です。
+符号なしの 16 進定数を符号付きの HRESULT に変換するためには
+L<HRESULT(ERROR)> 関数を使ってください。
+
+=begin original
+
+The last OLE error is automatically reset by a successful OLE
+call.  The numeric value can also explicitly be set by a call (which will
+discard the string value):
+
+=end original
+
+最後の OLE エラーは、後の正常な OLE 呼び出しによって自動的にリセットされます。
+数値は明示的に呼び出すことによって設定することができます(それは文字列の値を
+捨てます):
+
+	Win32::OLE->LastError(0);
+
+=item OBJECT->LetProperty(NAME,ARGS,VALUE)
+
+=begin original
+
+In Win32::OLE property assignment using the hash syntax is equivalent
+to the Visual Basic C<Set> syntax (I<by reference> assignment):
+
+=end original
+
+Win32::OLE では、ハッシュの書き方を使ったプロパティ設定は Visual Basic の
+Set と同じです(I<リファレンスによる> 代入):
+
+	$Object->{Property} = $OtherObject;
+
+=begin original
+
+corresponds to this Visual Basic statement:
+
+=end original
+
+はこの Visual Basic ステートメントに対応します:
+
+	Set Object.Property = OtherObject
+
+=begin original
+
+To get the I<by value> treatment of the Visual Basic C<Let> statement
+
+=end original
+
+以下のような Visual Basic の C<Let> ステートメントの I<値による> 扱いを
+得るには:
+
+	Object.Property = OtherObject
+
+=begin original
+
+you have to use the LetProperty() object method in Perl:
+
+=end original
+
+Perl では LetProperty() オブジェクトメソッドを使わなければなりません:
+
+	$Object->LetProperty($Property, $OtherObject);
+
+=begin original
+
+LetProperty() also supports optional arguments for the property assignment.
+See L<OBJECT->SetProperty(NAME,ARGS,VALUE)> for details.
+
+=end original
+
+LetProperty() はプロパティ設定のためのオプションの引数もサポートしています。
+詳しくは L<OBJECT-E<gt>SetProperty(NAME,ARGS,VALUE)> をご覧ください。
+
+=item Win32::OLE->MessageLoop()
+
+=begin original
+
+The MessageLoop() class method will run a standard Windows message
+loop, dispatching messages until the QuitMessageLoop() class method is
+called.  It is used to wait for OLE events.
+
+=end original
+
+MessageLoop() クラスメソッドは標準の Windows メッセージループを実行します。
+QuitMessageLoop() クラスメソッドが呼ばれるまで、メッセージを処理します。
+これは OLE イベントを待つために使われます。
+
+=item Win32::OLE->Option(OPTION)
+
+=begin original
+
+The Option() class method can be used to inspect and modify
+L<Module Options>.  The single argument form retrieves the value of
+an option:
+
+=end original
+
+Option() クラスメソッドは L<Module Options> を検査し、
+変更するために使うことができます。
+一つだけ引数を指定すると、そのオプションの値を取り出します:
+
+	my $CP = Win32::OLE->Option('CP');
+
+=begin original
+
+A single call can be used to set multiple options simultaneously:
+
+=end original
+
+一回の呼び出しで複数のオプションを同時に設定することもできます。
+
+	Win32::OLE->Option(CP => CP_ACP, Warn => 3);
+
+=item Win32::OLE->QueryObjectType(OBJECT)
+
+=begin original
+
+The QueryObjectType() class method returns a list of the type library
+name and the objects class name.  In a scalar context it returns the
+class name only.  It returns C<undef> when the type information is not
+available.
+
+=end original
+
+QueryObjectType() クラスメソッドはタイプライブラリ名と
+オブジェクトクラス名のリストを返します。
+スカラコンテキストではそれはクラス名だけを返します。
+タイプ情報が使えなければ、C<undef> を返します。
+
+=item Win32::OLE->QuitMessageLoop()
+
+=begin original
+
+The QuitMessageLoop() class method posts a (user-level) "Quit" message
+to the current threads message loop.  QuitMessageLoop() is typically
+called from an event handler.  The MessageLoop() class method will
+return when it receives this "Quit" method.
+
+=end original
+
+QuitMessageLoop() クラスメソッドは(ユーザーレベルで)
+"Quit" メッセージを現在のスレッドメッセージループにポストします。
+QuitMessageLoop() は典型的にはイベントハンドラから呼ばれます。
+MessageLoop() クラスメソッドは、この "Quit" メソッドを受け取ると、戻ります。
+
+=item OBJECT->SetProperty(NAME,ARGS,VALUE)
+
+=begin original
+
+The SetProperty() method allows to modify properties with arguments,
+which is not supported by the hash syntax.  The hash form
+
+=end original
+
+SetProperty() メソッドはハッシュの書き方をサポートしていないプロパティを
+引数の値に変更することができます。
+ハッシュ形式は以下の通りです
+
+	$Object->{Property} = $Value;
+
+=begin original
+
+is equivalent to
+
+=end original
+
+これは以下のものと同じです
+
+	$Object->SetProperty('Property', $Value);
+
+=begin original
+
+Arguments must be specified between the property name and the new value:
+
+=end original
+
+引数はプロパティ名と新しい値の間に指定されなければなりません:
+
+	$Object->SetProperty('Property', @Args, $Value);
+
+=begin original
+
+It is not possible to use "named argument" syntax with this function
+because the new value must be the last argument to SetProperty().
+
+=end original
+
+新しい値は SetProperty() への最後の引数でなければならないので、この関数で
+「名前付き引数」の書き方を使うことはできません。
+
+=begin original
+
+This method hides any native OLE object method called SetProperty().
+The native method will still be available through the Invoke() method:
+
+=end original
+
+このメソッドは SetProperty() と呼ばれるネイティブな OLE
+オブジェクトメソッドを隠してしまいます。
+そのネイティブなメソッドは Invoke() メソッドを使って呼び出すことができます:
+
+	$Object->Invoke('SetProperty', @Args);
+
+=item Win32::OLE->SpinMessageLoop
+
+=begin original
+
+This class method retrieves all pending messages from the message queue
+and dispatches them to their respective window procedures.  Calling this
+method is only necessary when not using the COINIT_MULTITHREADED model.
+All OLE method calls and property accesses automatically process the
+message queue.
+
+=end original
+
+このクラスメソッドはすべてのメッセージキューに保留されている
+メッセージを取り出し、対応する Windows プロシ−ジャーに処理させます。
+このメソッドは COINIT_MULTITHREADED モデルを使っていないときにだけ
+必要になります。
+すべての OLE メソッド呼び出しとプロパティアクセスは自動的に
+メッセージキューを処理します。
+
+=item Win32::OLE->Uninitialize
+
+=begin original
+
+The Uninitialize() class method uninitializes the OLE subsystem.  It
+also destroys the hidden top level window created by OLE for single
+threaded apartments.  All OLE objects will become invalid after this call!
+It is possible to call the Initialize() class method again with a different
+apartment model after shutting down OLE with Uninitialize().
+
+=end original
+
+Uninitialize() クラスメソッドは OLE サブシステムの反初期化をします。
+これはシングルスレッディド分離のための OLE によって作られた隠れた
+トップレベルウィンドウを破壊もします。
+これを呼び出した後には、すべての OLE オブジェクトが不適切になります!
+Uninitialize() で OLE を終了させた後、再び Initialize() クラスメソッドを
+異なる分離モデルで呼び出すことは可能です。
+
+=item Win32::OLE->WithEvents(OBJECT[, HANDLER[, INTERFACE]])
+
+=begin original
+
+This class method enables and disables the firing of events by the
+specified OBJECT.  If no HANDLER is specified, then events are
+disconnected.  For some objects Win32::OLE is not able to
+automatically determine the correct event interface.  In this case the
+INTERFACE argument must contain either the COCLASS name of the OBJECT
+or the name of the event DISPATCH interface.  Please read the L<Events>
+section below for detailed explanation of the Win32::OLE event
+support.
+
+=end original
+
+このクラスメソッドは OBJECT によって指定されたイベントを発火させるのを
+可能にも不可能にもできます。
+HANDLER が指定されなければ、イベントは接続されません。
+いくつかのオブジェクトでは Win32::OLE は自動的に正しい
+イベントインターフェースを判定できません。
+その場合、INTERFACE 引数は OBJECT の COCLASS 名またはイベント
+DISPATCH インターフェースの名前のどちらかが入っていなければなりません。
+Win32::OLE イベントサポートの詳細な説明については下記の
+L<Events> セクションをお読みださい。
+
+=back
+
+=begin original
+
+Whenever Perl does not find a method name in the Win32::OLE package it
+is automatically used as the name of an OLE method and this method call
+is dispatched to the OLE server.
+
+=end original
+
+Perl が Win32::OLE パッケージでメソッド名を見つけられなかった場合、それは
+自動的に OLE メソッドの名前として使われます。
+そしてこのメソッド呼び出しは OLE サーバーによって処理されます。
+
+=begin original
+
+There is one special hack built into the module: If a method or property
+name could not be resolved with the OLE object, then the default method
+of the object is called with the method name as its first parameter.  So
+
+=end original
+
+このモジュールには一つの特別な方法が組み込まれています。
+もしメソッドまたはプロパティ名が OLE オブジェクトによって解決されなければ、
+オブジェクトのデフォルトメソッドがそのメソッド名を第1引数として呼ばれます。
+そこで
+
+	my $Sheet = $Worksheets->Table1;
+
+=begin original
+
+or
+
+=end original
+
+または
+
+	my $Sheet = $Worksheets->{Table1};
+
+=begin original
+
+is resolved as
+
+=end original
+
+は以下のように解決されます
+
+	my $Sheet = $Worksheet->Item('Table1');
+
+=begin original
+
+provided that the $Worksheets object doesnot have a C<Table1> method
+or property.  This hack has been introduced to call the default method
+of collections which did not name the method in their type library.  The
+recommended way to call the "unnamed" default method is:
+
+=end original
+
+$Worksheeets オブジェクトが C<Table1> メソッドまたはプロパティを
+持っていない場合です。
+この方法はタイプライブラリではメソッドに名前をつけないコレクションの
+デフォルトメソッドを呼び出すために導入されています。
+「名無しの」デフォルトメソッドを呼び出す推奨される方法は以下の通りです:
+
+	my $Sheet = $Worksheets->Invoke('', 'Table1');
+
+=begin original
+
+This special hack is disabled under C<use strict 'subs';>.
+
+=end original
+
+この特殊な方法は C<use strict 'subs'> の元では使えません。
+
+=head2 Object methods and properties
+
+(オブジェクトメソッドとプロパティ)
+
+=begin original
+
+The object returned by the new() method can be used to invoke
+methods or retrieve properties in the same fashion as described
+in the documentation for the particular OLE class (eg. Microsoft
+Excel documentation describes the object hierarchy along with the
+properties and methods exposed for OLE access).
+
+=end original
+
+new() メソッドによって返されるオブジェクトは、特定の OLE クラスのための
+ドキュメントで説明されているのと同じ形式で、メソッドを呼び出したり、
+プロパティを取り出したりするのに使うことができます。
+(例えば Microsoft Excel ドキュメントは OLE アクセスのために公開されている
+プロパティやメソッドを持ったオブジェクト階層について説明しています。)
+
+=begin original
+
+Optional parameters on method calls can be omitted by using C<undef>
+as a placeholder.  A better way is to use named arguments, as the
+order of optional parameters may change in later versions of the OLE
+server application.  Named parameters can be specified in a reference
+to a hash as the last parameter to a method call.
+
+=end original
+
+メソッド呼び出しでのオプションのパラメータは C<undef> をプレースホルダとして
+使うことによって省略することができます。
+オプションのパラメータの順序は OLE サーバーアプリケーションの後の
+バージョンでは変更されてしまうかもしれないので、よりよい方法は名前付き
+引数を使うことです。
+名前付きパラメータはハッシュへのリファレンスをメソッド呼び出しのへの
+最後のパラメータとして指定することでできます。
+
+=begin original
+
+Properties can be retrieved or set using hash syntax, while methods
+can be invoked with the usual perl method call syntax.  The C<keys>
+and C<each> functions can be used to enumerate an object's properties.
+Beware that a property is not always writable or even readable (sometimes
+raising exceptions when read while being undefined).
+
+=end original
+
+プロパティはハッシュの書き方を使って取得、設定するすることができます。
+メソッドは通常のperlメソッド呼び出しの書き方で呼び出すことができます。
+C<keys> と C<each> 関数はオブジェクトのプロパティを列挙するために
+使うことができます。
+プロパティは常に書込可能そして、読込可能でさえあるわけではないことに
+注意してください
+(時には未定義である間は読み込んだときに例外を起こすこともあります)。
+
+=begin original
+
+If a method or property returns an embedded OLE object, method
+and property access can be chained as shown in the examples below.
+
+=end original
+
+もしメソッドやプロパティが埋め込まれた OLE オブジェクトを返すのであれば、
+メソッドとプロパティアクセスは以下の例にあるようにチェーンされます。
+
+=head2 Functions
+
+(関数)
+
+=begin original
+
+The following functions are not exported by default.
+
+=end original
+
+以下の関数はデフォルトではエクスポートされません。
+
+=over 8
+
+=item HRESULT(ERROR)
+
+=begin original
+
+The HRESULT() function converts an unsigned number into a signed HRESULT
+error value as used by OLE internally.  This is necessary because Perl
+treats all hexadecimal constants as unsigned.  To check if the last OLE
+function returned "Member not found" (0x80020003) you can write:
+
+=end original
+
+HRESULT() 関数は符号なしの数値を符号付きの OLE によって内部的に使われるような
+HRESULT エラー値に変換します。
+これは Perl が全ての 16 進数定数を符号なしとして扱うために必要です。
+最後の OLE 関数が "Member not found" (0x80020003) を返したかどうかを
+チェックしたければ、以下のようにすることができます:
+
+	if (Win32::OLE->LastError == HRESULT(0x80020003)) {
+	    # your error recovery here
+	}
+
+=item in(COLLECTION)
+
+=begin original
+
+If COLLECTION is an OLE collection object then C<in $COLLECTION>
+returns a list of all members of the collection.  This is a shortcut
+for C<Win32::OLE::Enum->All($COLLECTION)>.  It is most commonly used in
+a C<foreach> loop:
+
+=end original
+
+もし COLLECTION が OLE コレクンションオブジェクトであれば、
+C<in $COLLECTION> は、そのコレクションのすべての要素のリストを返します。
+これは C<Win32::OLE::Enum-E<gt>All($COLLECTION)> のショートカットです。
+これは一般的に C<foreach> ループで使われます:
+
+	foreach my $value (in $collection) {
+	    # do something with $value here
+	}
+
+=item valof(OBJECT)
+
+=begin original
+
+Normal assignment of Perl OLE objects creates just another reference
+to the OLE object.  The valof() function explictly dereferences the
+object (through the default method) and returns the value of the object.
+
+=end original
+
+Perl OLE オブジェクトの通常の代入は他の OLE オブジェクトへの他の
+リファレンスを作成します。
+valof() 関数は明示的にオブジェクト(デフォルトメソッドを通じた)と
+オブジェトの値を区別します。
+
+	my $RefOf = $Object;
+	my $ValOf = valof $Object;
+        $Object->{Value} = $NewValue;
+
+=begin original
+
+Now $ValOf still contains the old value wheras $RefOf would
+resolve to the $NewValue because it is still a reference to
+$Object.
+
+=end original
+
+いまや $ValOf はまだ古い値を持っているのに、$RefOf はまだ $Object への
+リファレンスなので、$NewValue を解決します。
+
+=begin original
+
+The valof() function can also be used to convert Win32::OLE::Variant
+objects to Perl values.
+
+=end original
+
+valof() 関数は Win32::OLE::Variant オブジェクトを Perl 変数に
+変換するためにも使うことができます。
+
+=item with(OBJECT, PROPERTYNAME => VALUE, ...)
+
+=begin original
+
+This function provides a concise way to set the values of multiple
+properties of an object.  It iterates over its arguments doing
+C<$OBJECT->{PROPERTYNAME} = $VALUE> on each trailing pair.
+
+=end original
+
+この関数はあるオブジェクトの複数のプロパティを設定するための簡単な方法を
+提供します。
+これは後ろについている各組合わせに対して 
+C<$OBJECT-E<gt>{PROPERTYNAME} = $VALUE> を繰り返しおこないます。
+
+=back
+
+=head2 Overloading
+
+(オーバーロード)
+
+=begin original
+
+The Win32::OLE objects can be overloaded to automatically convert to
+their values whenever they are used in a bool, numeric or string
+context.  This is not enabled by default.  You have to request it
+through the OVERLOAD pseudoexport:
+
+=end original
+
+Win32::OLE オブジェクトはブール値、数値、文字列コンテキストで
+使われたときにはいつでも、自動的にそれらの値に変換するために
+オーバーロードすることができます。
+これはデフォルトでは可能ではありません。
+OVERLOAD 疑似エクスポートを通して要求する必要があります:
+
+	use Win32::OLE qw(in valof with OVERLOAD);
+
+=begin original
+
+You can still get the original string representation of an object
+(C<Win32::OLE=0xDEADBEEF>), e.g. for debugging, by using the
+C<overload::StrVal()> method:
+
+=end original
+
+例えばデバッグのために C<overload::StrVal()> メソッドを使って、元の
+オブジェクトの文字列表現 (C<Win32::OLE=0xDEADBEEF>) を取得することもできます:
+
+	print overload::StrVal($object), "\n";
+
+=begin original
+
+Please note that C<OVERLOAD> is a global setting.  If any module enables
+Win32::OLE overloading then it's active everywhere.
+
+=end original
+
+C<OVERLOAD> はグローバルな設定であることに注意してください。
+もしなんらかのモジュールが Win32::OLE オーバーロードを可能にすると、
+それはいつでも有効です。
+
+=head2 Events
+
+(イベント)
+
+=begin original
+
+The Win32::OLE module now contains B<ALPHA> level event support.  This
+support is only available when Perl is running in a single threaded
+apartment.  This can most easily be assured by using the C<EVENTS>
+pseudo-import:
+
+=end original
+
+Win32::OLE モジュールは今は B<アルファ> レベルのイベントサポートを持っています。
+このサポートは Perl がシングルスレッディド分離レベルで実行しているときにだけ
+利用できます。
+これはとても簡単に C<EVENTS> 疑似インポートを使うことによって、
+保証することができます:
+
+	use Win32::OLE qw(EVENTS);
+
+=begin original
+
+which implicitly does something like:
+
+=end original
+
+これは暗黙のうちに以下のようなことをしています:
+
+	use Win32::OLE;
+	Win32::OLE->Initialize(Win32::OLE::COINIT_OLEINITIALIZE);
+
+=begin original
+
+The current interface to OLE events should be considered experimental
+and is subject to change.  It works as expected for normal OLE
+applications, but OLE control events often don't seem to work yet.
+
+=end original
+
+現在の OLE イベントへのインターフェースは実験的なものであると考えられ、
+変更されやすいものです。
+通常の OLE アプリケーションでは予定通りに機能しますが、OLE 制御イベントは
+まだうまく機能していないようです。
+
+=begin original
+
+Events must be enabled explicitly for an OLE object through the
+Win32::OLE->WithEvents() class method.  The Win32::OLE module uses the
+IProvideClassInfo2 interface to determine the default event source of
+the object.  If this interface is not supported, then the user must
+specify the name of the event source explicitly in the WithEvents()
+method call.  It is also possible to specify the class name of the
+object as the third parameter.  In this case Win32::OLE will try to
+look up the default source interface for this COCLASS.
+
+=end original
+
+イベントは Win32::OLE->WithEvents() クラスメソッドを通して、
+OLE オブジェクトのために明示的に可能にされなければなりません。
+Win32::OLE モジュールはオブジェクトのデフォルトイベントソースを
+判定するために IProvideClassInfo2 インターフェースを利用しています。
+このインターフェースがサポートされていなければ、ユーザは
+WithEvents() メソッドで明示的にイベントソースの名前を
+指定しなければなりません。
+オブジェクトのクラス名を 3 番目のパラメータとして指定することも可能です。
+この場合、Win32::OLE は、この COCLASS のための
+デフォルトソースインターフェースを見つけようとします。
+
+=begin original
+
+The HANDLER argument to Win32::OLE->WithEvents() can either be a CODE
+reference or a package name.  In the first case, all events will invoke
+this particular function.  The first two arguments to this function will
+be the OBJECT itself and the name of the event.  The remaining arguments
+will be event specific.
+
+=end original
+
+Win32::OLE->WithEvents() への HANDLER 引数は CODE リファレンスまたは
+パッケージ名のどちらかにすることができます。
+前者の場合、すべてのイベントはこの特定の関数を呼び出します。
+この関数への最初の二つの引数はOBJECTそのものとイベントの名前になります。
+残りの引数はイベントによります:
+
+	sub Event {
+	    my ($Obj,$Event,@Args) = @_;
+	    print "Event triggered: '$Event'\n";
+	}
+	Win32::OLE->WithEvents($Obj, \&Event);
+
+=begin original
+
+Alternatively the HANDLER argument can specify a package name.  When the
+OBJECT fires an event, Win32::OLE will try to find a function of the same
+name as the event in this package.  This function will be called with the
+OBJECT as the first argument followed again by the event specific parameters:
+
+=end original
+
+代わりに HANDLER 引数がパッケージ名を指定することができます。
+OBJECT がイベントを発火したとき、Win32::OLE は、このパッケージでイベントと
+同じ名前の関数を見つけようとします。
+この関数は OBJECT を最初の引数とし、イベント特有のパラメータが後ろについて
+呼び出されます:
+
+	package MyEvents;
+	sub EventName1 {
+	    my ($Obj,@Args) = @_;
+	    print "EventName1 event triggered\n";
+	}
+
+	package main;
+	Win32::OLE->WithEvents($Obj, 'MyEvents', 'IEventInterface');
+
+=begin original
+
+If Win32::OLE doesn't find a function with the name of the event then nothing
+happens.
+
+=end original
+
+Win32::OLE がイベント名の関数を見つけなければ、何も起こりません。
+ 
+
+=begin original
+
+Event parameters passed I<by reference> are handled specially.  They are not
+converted to the corresponding Perl datatype but passed as Win32::OLE::Variant
+objects.  You can assign a new value to these objects with the help of the
+Put() method.  This value will be passed back to the object when the event
+function returns:
+
+=end original
+
+リファレンスによって渡されたイベントパラメータは特別に扱われます。
+これらは対応する Perl データ型に変換されず、
+Win32::OLE::Variant オブジェクトとして渡されます。
+これらのオブジェクトに Put() メソッドの助けを借りて新しい値を
+代入することができます。
+この値はイベント関数が戻るとき、オブジェクトに戻されます:
+
+	package MyEvents;
+	sub BeforeClose {
+	    my ($self,$Cancel) = @_;
+	    $Cancel->Put(1) unless $MayClose;
+	}
+
+=begin original
+
+Direct assignment to $Cancel would have no effect on the original value and
+would therefore not command the object to abort the closing action.
+
+=end original
+
+$Cancel への直接の代入は元の値に何も影響を与えません。
+そしてこのためオブジェクトにアクションを閉じるのを中止させるように命令しません。
+
+=head2 Module Options
+
+(モジュールオプション)
+
+=begin original
+
+The following module options can be accessed and modified with the
+C<Win32::OLE->Option> class method.  In earlier versions of the Win32::OLE
+module these options were manipulated directly as class variables.  This
+practice is now deprecated.
+
+=end original
+
+以下のモジュールオプションは C<Win32::OLE-E<gt>Option> クラスメソッドで
+アクセス、変更することができます。
+Win32::OLE モジュールの始めのころのバージョンでは、これらのオプションは
+クラス変数として直接操作されました。
+この実装はいまや非難されます:
+
+=over 8
+
+=item CP
+
+=begin original
+
+This variable is used to determine the codepage used by all
+translations between Perl strings and Unicode strings used by the OLE
+interface.  The default value is CP_ACP, which is the default ANSI
+codepage.  Other possible values are CP_OEMCP, CP_MACCP, CP_UTF7 and
+CP_UTF8.  These constants are not exported by default.
+
+=end original
+
+この変数は Perl 文字列と OLE インターフェースによって使われる Unicode 文字列の
+間のすべての変換によって使われるコードページです。
+デフォルトの値は CP_ACP です。
+これはデフォルトの ANSI コードページです。
+他に可能な値は、CP_OEMCP, CP_MACCP, CP_UTF7 そして CP_UTF8です。
+これらの定数はデフォルトではエクスポートされません。
+
+=item LCID
+
+=begin original
+
+This variable controls the locale idnetifier used for all OLE calls.
+It is set to LOCALE_NEUTRAL by default.  Please check the
+L<Win32::OLE::NLS> module for other locale related information.
+
+=end original
+
+この変数は全ての OLE 呼び出しに使われるロケール識別子を制御します。
+それはデフォルトでは LOCALE_NEUTRAL に設定されます。
+他のロケール関連情報については L<Win32::OLE::NLS> モジュールを
+チェックしてください。
+
+=item Warn
+
+=begin original
+
+This variable determines the behavior of the Win32::OLE module when
+an error happens.  Valid values are:
+
+=end original
+
+この変数はエラーが発生したときの Win32::OLE モジュールの動きを決定します。
+適切な値は以下の通りです:
+
+=begin original
+
+	0	Ignore error, return undef
+	1	Carp::carp if $^W is set (-w option)
+	2	always Carp::carp
+	3	Carp::croak
+
+=end original
+
+        0       エラーを無視して undef を返す
+        1       $^W が設定されていれば(-w オプション)Carp::carp
+        2       常に Carp::carp
+        3       Carp::croak
+
+=begin original
+
+The error number and message (without Carp line/module info) are
+available through the C<Win32::OLE->LastError> class method.
+
+=end original
+
+エラー番号とメッセージ(Carp 行/モジュール情報は無し)は
+C<Win32::OLE->LastError> クラスメソッドを通して利用することができます。
+
+=begin original
+
+Alternatively the Warn option can be set to a CODE reference.  E.g.
+
+=end original
+
+代わりに CODE リファレンスに Warn オプションを設定することができます。
+例えば
+
+    Win32::OLE->Option(Warn => 3);
+
+=begin original
+
+is equivalent to
+
+=end original
+
+これは以下のものと同じです。
+
+    Win32::OLE->Option(Warn => \&Carp::croak);
+
+=begin original
+
+This can even be used to emulate the VisualBasic C<On Error Goto
+Label> construct:
+
+=end original
+
+これは VisualBasic の C<On Error Goto Label> 構造をエミュレートするために
+使うことさえもできます:
+
+    Win32::OLE->Option(Warn =>  sub {goto CheckError});
+    # ... your normal OLE code here ...
+
+  CheckError:
+    # ... your error handling code here ...
+
+=item _NewEnum
+
+=begin original
+
+This option enables additional enumeration support for collection
+objects.  When the C<_NewEnum> option is set, all collections will
+receive one additional property: C<_NewEnum>.  The value of this
+property will be a reference to an array containing all the elements
+of the collection.  This option can be useful when used in conjunction
+with an automatic tree traversal program, like C<Data::Dumper> or an
+object tree browser.  The value of this option should be either 1
+(enabled) or 0 (disabled, default).
+
+=end original
+
+このオプションはコレクションオブジェクトのための追加の列挙子のサポートを
+可能にします。
+_C<NewEnum> オプションが設定されたとき、すべてのコレクションは一つの
+追加のプロパティ: C<_NewEnum> を受け取ります。
+このプロパティの値はコレクションのすべての要素が入った配列への
+リファレンスになります。
+このオプションは C<Data::Dumper> やオブジェクトツリーブラウザのような
+自動的なツリー構造横断プログラムと一緒に使うときに便利でしょう。
+このオプションの値は1(有効)または0(無効、デフォルト)でなければなりません。
+
+    Win32::OLE->Option(_NewEnum => 1);
+    # ...
+    my @sheets = @{$Excel->Worksheets->{_NewEnum}};
+
+=begin original
+
+In normal application code, this would be better written as:
+
+=end original
+
+通常のアプリケーションコードでは、これは以下のように書いた方がよいでしょう:
+
+    use Win32::OLE qw(in);
+    # ...
+    my @sheets = in $Excel->Worksheets;
+
+=item _Unique
+
+=begin original
+
+The C<_Unique> options guarantees that Win32::OLE will maintain a
+one-to-one mapping between Win32::OLE objects and the native COM/OLE
+objects.  Without this option, you can query the same property twice
+and get two different Win32::OLE objects for the same underlying COM
+object.
+
+=end original
+
+C<_Unique> オプションは Win32::OLE がネイティブの COM/OLE オブジェクトと
+1 対 1 のマッピングを維持することを保証します。
+このオプションがないと、元になっている同じ COM オブジェクトのために異なる
+Win32::OLE オブジェクトを取得し、同じプロパティを重複して
+問い合わせることになりかねません。
+
+=begin original
+
+Using a unique proxy makes life easier for tree traversal algorithms
+to recognize they already visited a particular node.  This option
+comes at a price: Win32::OLE has to maintain a global hash of all
+outstanding objects and their corresponding proxies.  Identity checks
+on COM objects can also be expensive if the objects reside
+out-of-process or even on a different computer.  Therefore this option
+is off by default unless the program is being run in the debugger.
+
+=end original
+
+ユニークプロキシーを使うと、特定のノードを既に訪れたことを
+理解するためのツリー構造横断アルゴリズムは簡単になります。
+このオプションは大きな犠牲を払います: Win32::OLE がすべての存在する
+オブジェクトと対応するプロキシーのグローバルなハッシュと
+維持しなければなりません。
+オブジェクトがプロセスの外側に、あるいは異なるコンピュータにあったりしたら、
+COM オブジェクトの識別子チェックも同様に高価になりかねません。
+このためこのオプションはプログラムがデバッガで実行されるのでなければ、
+デフォルトではオフです。
+
+=begin original
+
+Unfortunately, this option doesn't always help.  Some programs will
+return new COM objects for even the same property when asked for it
+multiple times (especially for collections).  In this case, there is
+nothing Win32::OLE can do to detect that these objects are in fact
+identical (because they aren't at the COM level).
+
+=end original
+
+残念ながら、このオプションは常に助けにはなりません。
+いくつかのプログラムは同じプロパティであってさえも、何度も聞くと新しい
+COM オブジェクトを返すことがあります(特にコレクションについては)。
+この場合、これらのオブジェクトが事実上同じであると見分けるために
+Win32::OLE ができることは何もありません(というのもそれは COM レベルでは
+ないからです)。
+
+=begin original
+
+The C<_Unique> option can be set to either 1 (enabled) or 0 (disabled,
+default).
+
+=end original
+
+C<_Unique> オプションは1(有効)または0(無効、デフォルト)のどちらかに
+設定することができます。
+
+=back
+
+=head1 EXAMPLES
+
+(例)
+
+=begin original
+
+Here is a simple Microsoft Excel application.
+
+=end original
+
+これは簡単な Microsoft Excel アプリケーションです。
+
+	use Win32::OLE;
+
+	# use existing instance if Excel is already running
+	eval {$ex = Win32::OLE->GetActiveObject('Excel.Application')};
+	die "Excel not installed" if $@;
+	unless (defined $ex) {
+	    $ex = Win32::OLE->new('Excel.Application', sub {$_[0]->Quit;})
+		    or die "Oops, cannot start Excel";
+	}
+
+        # get a new workbook
+        $book = $ex->Workbooks->Add;
+
+	# write to a particular cell
+	$sheet = $book->Worksheets(1);
+	$sheet->Cells(1,1)->{Value} = "foo";
+
+        # write a 2 rows by 3 columns range
+        $sheet->Range("A8:C9")->{Value} = [[ undef, 'Xyzzy', 'Plugh' ],
+                                           [ 42,    'Perl',  3.1415  ]];
+
+        # print "XyzzyPerl"
+        $array = $sheet->Range("A8:C9")->{Value};
+	for (@$array) {
+	    for (@$_) {
+		print defined($_) ? "$_|" : "<undef>|";
+	    }
+	    print "\n";
+	}
+
+	# save and exit
+        $book->SaveAs( 'test.xls' );
+	undef $book;
+	undef $ex;
+
+=begin original
+
+Please note the destructor specified on the Win32::OLE->new method.  It ensures
+that Excel will shutdown properly even if the Perl program dies.  Otherwise
+there could be a process leak if your application dies after having opened
+an OLE instance of Excel.  It is the responsibility of the module user to
+make sure that all OLE objects are cleaned up properly!
+
+=end original
+
+Win32::OLE->new メソッドでデストラクタが指定されていることに
+注意してください。
+これは Perl プログラムが死んだときでさえも、Excel が適切に終了されることを
+保証します。
+そうでなければ Excel の OLE インスタンスが開いたあとで、アプリケーションが
+die とプロセスリークになりかねません。
+OLE オブジェクトが確実に適切に片づけられるようにするのはモジュール利用者の
+責任です!
+
+=begin original
+
+Here is an example of using Variant data types.
+
+=end original
+
+以下は Variant データ型を使った例です。
+
+	use Win32::OLE;
+	use Win32::OLE::Variant;
+	$ex = Win32::OLE->new('Excel.Application', \&OleQuit) or die "oops\n";
+	$ex->{Visible} = 1;
+	$ex->Workbooks->Add;
+	# should generate a warning under -w
+	$ovR8 = Variant(VT_R8, "3 is a good number");
+	$ex->Range("A1")->{Value} = $ovR8;
+	$ex->Range("A2")->{Value} = Variant(VT_DATE, 'Jan 1,1970');
+
+	sub OleQuit {
+	    my $self = shift;
+	    $self->Quit;
+	}
+
+=begin original
+
+The above will put value "3" in cell A1 rather than the string
+"3 is a good number".  Cell A2 will contain the date.
+
+=end original
+
+上記では文字列は "3 is a good number" ではなく、"3" をセル A1 に入れます。
+セル A2 は日付を持ちます:
+
+=begin original
+
+Similarly, to invoke a method with some binary data, you can
+do the following:
+
+=end original
+
+同様に、バイナリデータでメソッドを呼び出すためには、以下のようにできます:
+
+	$obj->Method( Variant(VT_UI1, "foo\000b\001a\002r") );
+
+=begin original
+
+Here is a wrapper class that basically delegates everything but
+new() and DESTROY().  The wrapper class shown here is another way to
+properly shut down connections if your application is liable to die
+without proper cleanup.  Your own wrappers will probably do something
+more specific to the particular OLE object you may be dealing with,
+like overriding the methods that you may wish to enhance with your
+own.
+
+=end original
+
+以下のものは基本的に new() と DESTROY() を除いたすべてを委任する
+ラッパークラスです。
+下記のラッパークラスは、アプリケーションが適切なクリーンアップなしに
+死ぬことが免れないときに、接続を適切に終らせるもう一つの方法です。
+あなた自身のラッパーは、独自に確証したいメソッドを
+オーバーライドするといったように、おそらくあなたの扱いたい特定の
+OLE オブジェクトにより特化したようなことをするでしょう。
+
+	package Excel;
+	use Win32::OLE;
+
+	sub new {
+	    my $s = {};
+	    if ($s->{Ex} = Win32::OLE->new('Excel.Application')) {
+		return bless $s, shift;
+	    }
+	    return undef;
+	}
+
+	sub DESTROY {
+	    my $s = shift;
+	    if (exists $s->{Ex}) {
+		print "# closing connection\n";
+		$s->{Ex}->Quit;
+		return undef;
+	    }
+	}
+
+	sub AUTOLOAD {
+	    my $s = shift;
+	    $AUTOLOAD =~ s/^.*:://;
+	    $s->{Ex}->$AUTOLOAD(@_);
+	}
+
+	1;
+
+=begin original
+
+The above module can be used just like Win32::OLE, except that
+it takes care of closing connections in case of abnormal exits.
+Note that the effect of this specific example can be easier accomplished
+using the optional destructor argument of Win32::OLE::new:
+
+=end original
+
+上記のモジュールは、異常終了の際に接続を閉じるように気をつけてくれる点を
+除いて、Win32::OLE とまったく同じように使うことができます。
+この特定の例の効果は Win32::OLE::new のデストラクタ引数を使うことによって、
+より簡単に実現できるということに注意してください:
+
+	my $Excel = Win32::OLE->new('Excel.Application', sub {$_[0]->Quit;});
+
+=begin original
+
+Note that the delegation shown in the earlier example is not the same as
+true subclassing with respect to further inheritance of method calls in your
+specialized object.  See L<perlobj>, L<perltoot> and L<perlbot> for details.
+True subclassing (available by setting C<@ISA>) is also feasible,
+as the following example demonstrates:
+
+=end original
+
+上記の例での委任は特化されたオブジェクトでのメソッド呼び出しのさらなる
+継承への見方と同じではないことに注意してください。
+詳細については L<perlobj>, L<perltoot>, L<perlbot> をご覧ください。
+本当のサブクラスか(C<@ISA> を設定することによって利用できることになる)も、
+以下のデモンストレーションのように可能です:
+
+	#
+	# Add error reporting to Win32::OLE
+	#
+
+	package Win32::OLE::Strict;
+	use Carp;
+	use Win32::OLE;
+
+	use strict qw(vars);
+	use vars qw($AUTOLOAD @ISA);
+	@ISA = qw(Win32::OLE);
+
+	sub AUTOLOAD {
+	    my $obj = shift;
+	    $AUTOLOAD =~ s/^.*:://;
+	    my $meth = $AUTOLOAD;
+	    $AUTOLOAD = "SUPER::" . $AUTOLOAD;
+	    my $retval = $obj->$AUTOLOAD(@_);
+	    unless (defined($retval) || $AUTOLOAD eq 'DESTROY') {
+		my $err = Win32::OLE::LastError();
+		croak(sprintf("$meth returned OLE error 0x%08x",$err))
+		  if $err;
+	    }
+	    return $retval;
+	}
+
+	1;
+
+=begin original
+
+This package inherits the constructor new() from the Win32::OLE
+package.  It is important to note that you cannot later rebless a
+Win32::OLE object as some information about the package is cached by
+the object.  Always invoke the new() constructor through the right
+package!
+
+=end original
+
+このパッケージはコンストラクラ new() を Win32::OLE パッケージから
+継承しています。
+パッケージについての情報がオブジェクトによってキャッシュされるために
+Win32::OLE を再び bless することはできないことに注意しすることは
+大切なことです。
+常に正しいパッケージを通して、new() コンストラクタを呼び出してください!
+
+=begin original
+
+Here's how the above class will be used:
+
+=end original
+
+以下に上記のクラスがどのように使われるかを示します:
+
+	use Win32::OLE::Strict;
+	my $Excel = Win32::OLE::Strict->new('Excel.Application', 'Quit');
+	my $Books = $Excel->Workbooks;
+	$Books->UnknownMethod(42);
+
+=begin original
+
+In the sample above the call to UnknownMethod() will be caught with
+
+=end original
+
+上記のサンプルで UnknownMethod() を呼び出すと、それは以下のように
+捕らえられます:
+
+	UnknownMethod returned OLE error 0x80020009 at test.pl line 5
+
+=begin original
+
+because the Workbooks object inherits the class C<Win32::OLE::Strict> from the
+C<$Excel> object.
+
+=end original
+
+というのも Workbooks オブジェクトは C<$Excel> オブジェクトから
+C<Win32::OLE::Strict> クラスを継承しているからです。
+
+=head1 NOTES
+
+(注意)
+
+=head2 Hints for Microsoft Office automation
+
+(Microsoft オフィス オートメーションのためのヒント)
+
+=over 8
+
+=item Documentation
+
+=begin original
+
+The object model for the Office applications is defined in the Visual Basic
+reference guides for the various applications.  These are typically not
+installed by default during the standard installation.  They can be added
+later by rerunning the setup program with the custom install option.
+
+=end original
+
+Office アプリケーションのオブジェクトモデルは、多くのアプリケーションのための
+Visual Basic リファレンスガイドで定義されています。
+これらは典型的には、標準インストールによってデフォルトで
+インストールされません。
+これらはセットアッププログラムをカスタムインストールオプションで
+実行することによって後から追加することができます。
+
+=item Class, Method and Property names
+
+=begin original
+
+The names have been changed between different versions of Office.  For
+example C<Application> was a method in Office 95 and is a property in
+Office97.  Therefore it will not show up in the list of property names
+C<keys %$object> when querying an Office 95 object.
+
+=end original
+
+Office のバージョンによっては名前は変更されています。
+例えば Office95 では Application はメソッドでしたが、Office97 では
+プロパティです。
+このため Office95 オブジェクトに問い合わせたときには、keys %$object による
+プロパティ名のリストには現れません。
+
+=begin original
+
+The class names are not always identical to the method/property names
+producing the object.  E.g. the C<Workbook> method returns an object of
+type C<Workbook> in Office 95 and C<_Workbook> in Office 97.
+
+=end original
+
+クラス名はそのオブジェクトを作るメソッド/プロパティ名と常に
+同じではありません。
+例えば Workbook メソッドは Office95 では Workbook オブジェクトを返しますが、
+Office97 では _Workbook を返します。
+
+=item Moniker (GetObject support)
+
+=begin original
+
+Office applications seem to implement file monikers only.  For example
+it seems to be impossible to retrieve a specific worksheet object through
+C<GetObject("File.XLS!Sheet")>.  Furthermore, in Excel 95 the moniker starts
+a Worksheet object and in Excel 97 it returns a Workbook object.  You can use
+either the Win32::OLE::QueryObjectType class method or the $object->{Version}
+property to write portable code.
+
+=end original
+
+Office アプリケーションはファイルモニカだけを実装しているようです。
+例えば C<GetObject("File.XLS!Sheet")> を通してあるワークシートオブジェクトを
+取り出すことはできないようです。
+さらに Excel95 ではモニカは Worksheet オブジェクトを開始し、Excel97 では
+Workbook オブジェクトを返します。
+移植性のあるコードを書くためには、Win32::OLE::QueryObjectType
+クラスメソッドまたは $object->{Version} のどちらかかを使うことができます。
+
+=item Enumeration of collection objects
+
+=begin original
+
+Enumerations seem to be incompletely implemented.  Office 95 application don't
+seem to support neither the Reset() nor the Clone() methods.  The Clone()
+method is still unimplemented in Office 97.  A single walk through the
+collection similar to Visual Basics C<for each> construct does work however.
+
+=end original
+
+列挙は不完全にしか実装されていないようです。
+Office95 アプリケーションは Reset() も Clone() メソッドも
+サポートしていないようです。
+Clone() メソッドは Office97 でも未実装です。
+しかしながら、Visual Basic と同じようにコレクションを一通りみるためには、
+C<for each> 構造が機能します。
+
+=item Localization
+
+=begin original
+
+Starting with Office 97 Microsoft has changed the localized class, method and
+property names back into English.  Note that string, date and currency
+arguments are still subject to locale specific interpretation.  Perl uses the
+system default locale for all OLE transaction whereas Visual Basic uses a
+type library specific locale.  A Visual Basic script would use "R1C1" in string
+arguments to specify relative references.  A Perl script running on a German
+language Windows would have to use "Z1S1".  Set the LCID module option
+to an English locale to write portable scripts.  This variable should
+not be changed after creating the OLE objects; some methods seem to randomly
+fail if the locale is changed on the fly.
+
+=end original
+
+Office97 から Microsoft はローカライズされたクラス、メソッド、プロパティ名を
+変更し、英語に戻しました。
+日付と通貨引数はまだ地域特有の解釈の対象となっていることに注意してください。
+Visual Basic がタイプライブラリ特有のロケールを使うのに対し、Perl は
+すべての OLE トランザクションのためにシステムデフォルトロケールを
+利用します。
+VisualBasic スクリプトは相対的な参照を指定するために文字列引数として
+"R1C1" を使うでしょう。
+ドイツ語 Windows で実行される Perl スクリプトは "Z1S1" を
+使わなければなりません。
+移植性のあるスクリプトを書くためには、LCID モジュールオプションを
+English ロケールに設定してください。
+この変数は OLE オブジェクトを作成した後に変更するべきではありません;
+途中でロケールが変更されると、メソッドによっては出たらめに失敗するようです。
+
+=item SaveAs method in Word 97 doesn't work
+
+=begin original
+
+This is an known bug in Word 97.  Search the MS knowledge base for Word /
+Foxpro incompatibility.  That problem applies to the Perl OLE interface as
+well.  A workaround is to use the WordBasic compatibility object.  It doesn't
+support all the options of the native method though.
+
+=end original
+
+これは Word97 でのバグであることがわかっています。
+Word / Foxpro 互換性欠如(incompatibility)の MS knowledge base をご覧ください。
+その問題は Perl OLE インターフェースにも同じようにあてはまります。
+回避する方法は WordBasic 互換のオブジェクトを使うことです。
+しかしそれはネイティブなメソッドのすべてのオプションを
+サポートしているわけではありません。
+
+    $Word->WordBasic->FileSaveAs($file);
+
+=begin original
+
+The problem seems to be fixed by applying the Office 97 Service Release 1.
+
+=end original
+
+この問題は Office97 サービスリリース 1 を提供することにより
+修正されるようです。
+
+=item Randomly failing method calls
+
+=begin original
+
+It seems like modifying objects that are not selected/activated is sometimes
+fragile.  Most of these problems go away if the chart/sheet/document is
+selected or activated before being manipulated (just like an interactive
+user would automatically do it).
+
+=end original
+
+選択/アクティブにされていないオブジェクトを変更することは時折、
+壊れやすいようです。
+これらのほとんどの問題は、操作される前に
+グラフ/シート/ドキュメントを選択あるいは、アクティブにしておくことにより
+なくなるようです(まるで対話的なユーザーが自動的にしているかのように)。
+
+=back
+
+=head2 Incompatibilities
+
+(非互換性)
+
+=begin original
+
+There are some incompatibilities with the version distributed by Activeware
+(as of build 306).
+
+=end original
+
+Activeware によって(build306 として)配布されたバージョンとはいくつかの点で
+互換性がありません。
+
+=over 8
+
+=item 1
+
+=begin original
+
+The package name has changed from "OLE" to "Win32::OLE".
+
+=end original
+
+パッケージの名前が "OLE" から "Win32::OLE" に変更されました。
+
+=item 2
+
+=begin original
+
+All functions of the form "Win32::OLEFoo" are now "Win32::OLE::Foo",
+though the old names are temporarily accomodated.  Win32::OLECreateObject()
+was changed to Win32::OLE::CreateObject(), and is now called
+Win32::OLE::new() bowing to established convention for naming constructors.
+The old names should be considered deprecated, and will be removed in the
+next version.
+
+=end original
+
+古い名前が一時的に使えても、"Win32::OLEFoo" という形式の関数は、いまは
+すべて "Win32::OLE::Foo" です。
+Win32::OLECreateObject() は Win32::OLE::CreateObject() に変更され、
+確立された名前付きのコンストラクタの書き方に向けて Win32::OLE::new() と
+呼ばれます。
+古い名前は非難されると考えるべきです。
+そして次のバージョンでは削除されるでしょう。
+
+=item 3
+
+=begin original
+
+Package "OLE::Variant" is now "Win32::OLE::Variant".
+
+=end original
+
+パッケージ "OLE::Varinat" は今では "Win32::OLE::Variant" です。
+
+=item 4
+
+=begin original
+
+The Variant function is new, and is exported by default.  So are
+all the VT_XXX type constants.
+
+=end original
+
+Variant 関数は新しく、デフォルトでエクスポートされます。
+すべての VT_XXX タイプ定数も同様です。
+ 
+
+=item 5
+
+=begin original
+
+The support for collection objects has been moved into the package
+Win32::OLE::Enum.  The C<keys %$object> method is now used to enumerate
+the properties of the object.
+
+=end original
+
+コレクションオブジェクトのサポートは Win32::OLE::Enum パッケージに
+移りました。
+C<keys %$object> メソッドは今はオブジェクトのプロパティを列挙するために
+使われます。
+
+=back
+
+=head2 Bugs and Limitations
+
+(バグと制約)
+
+=over 8
+
+=item *
+
+=begin original
+
+To invoke a native OLE method with the same name as one of the
+Win32::OLE methods (C<Dispatch>, C<Invoke>, C<SetProperty>, C<DESTROY>,
+etc.), you have to use the C<Invoke> method:
+
+=end original
+
+Win32::OLE メソッドと同じ名前(C<Dispatch>, C<Invoke>, C<SetProperty>,
+C<DESTROY> など)のネイティブな OLE メソッドを呼び出すためには、C<Invoke> を
+使う必要があります:
+
+	$Object->Invoke('Dispatch', @AdditionalArgs);
+
+=begin original
+
+The same is true for names exported by the Exporter or the Dynaloader
+modules, e.g.: C<export>, C<export_to_level>, C<import>,
+C<_push_tags>, C<export_tags>, C<export_ok_tags>, C<export_fail>,
+C<require_version>, C<dl_load_flags>,
+C<croak>, C<bootstrap>, C<dl_findfile>, C<dl_expandspec>,
+C<dl_find_symbol_anywhere>, C<dl_load_file>, C<dl_find_symbol>,
+C<dl_undef_symbols>, C<dl_install_xsub> and C<dl_error>.
+
+=end original
+
+同じことが Exporter または Dynaloader モジュールによってエクスポートされる
+名前についてもあてはまります。
+例えば: C<export>, C<export_to_level>, C<import>,
+C<_push_tags>, C<export_tags>, C<export_ok_tags>, C<export_fail>,
+C<require_version>, C<dl_load_flags>,
+C<croak>, C<bootstrap>, C<dl_findfile>, C<dl_expandspec>,
+C<dl_find_symbol_anywhere>, C<dl_load_file>, C<dl_find_symbol>,
+C<dl_undef_symbols>, C<dl_install_xsub>, C<dl_error>
+
+=back
+
+=head1 SEE ALSO
+
+=begin original
+
+The documentation for L<Win32::OLE::Const>, L<Win32::OLE::Enum>,
+L<Win32::OLE::NLS> and L<Win32::OLE::Variant> contains additional
+information about OLE support for Perl on Win32.
+
+=end original
+
+L<Win32::OLE::Const>, L<Win32::OLE::Enum>, L<Win32::OLE::NLS>,
+L<Win32::OLE::Variant> のドキュメントには Win32 上の Perl のための
+追加の OLE サポートについての情報が入っています。
+
+=head1 AUTHORS
+
+Originally put together by the kind people at Hip and Activeware.
+
+Gurusamy Sarathy <gsar@activestate.com> subsequently fixed several
+major bugs, memory leaks, and reliability problems, along with some
+redesign of the code.
+
+Jan Dubois <jand@activestate.com> pitched in with yet more massive redesign,
+added support for named parameters, and other significant enhancements.
+He's been hacking on it ever since.
+
+Please send questions about problems with this module to the
+Perl-Win32-Users mailinglist at ActiveState.com.  The mailinglist charter
+requests that you put an [OLE] tag somewhere on the subject line (for OLE
+related questions only, of course).
+
+=head1 COPYRIGHT
+
+    (c) 1995 Microsoft Corporation. All rights reserved.
+    Developed by ActiveWare Internet Corp., now known as
+    ActiveState Tool Corp., http://www.ActiveState.com
+
+    Other modifications Copyright (c) 1997-2000 by Gurusamy Sarathy
+    <gsar@activestate.com> and Jan Dubois <jand@activestate.com>
+
+    You may distribute under the terms of either the GNU General Public
+    License or the Artistic License, as specified in the README file.
+
+=head1 VERSION
+
+Version 0.1502	  7 September 2001
+
+=begin meta
+
+Translated: Hippo2000 <GCD00051@nifty.ne.jp> (0.14)
+Updated: Kentaro SHIRAKATA <argrath@ub32.org> (0.1502)
+
+=end meta
+
+=cut
+
