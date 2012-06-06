@@ -1,0 +1,1165 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+perlapio - perl's IO abstraction interface.
+
+=end original
+
+perlapio - perl の抽象入出力インターフェース
+
+=head1 SYNOPSIS
+
+    #define PERLIO_NOT_STDIO 0    /* For co-existence with stdio only */
+    #include <perlio.h>           /* Usually via #include <perl.h> */
+
+    PerlIO *PerlIO_stdin(void);
+    PerlIO *PerlIO_stdout(void);
+    PerlIO *PerlIO_stderr(void);
+
+    PerlIO *PerlIO_open(const char *path,const char *mode);
+    PerlIO *PerlIO_fdopen(int fd, const char *mode);
+    PerlIO *PerlIO_reopen(const char *path, const char *mode, PerlIO *old);  /* deprecated */
+    int     PerlIO_close(PerlIO *f);
+
+    int     PerlIO_stdoutf(const char *fmt,...)
+    int     PerlIO_puts(PerlIO *f,const char *string);
+    int     PerlIO_putc(PerlIO *f,int ch);
+    int     PerlIO_write(PerlIO *f,const void *buf,size_t numbytes);
+    int     PerlIO_printf(PerlIO *f, const char *fmt,...);
+    int     PerlIO_vprintf(PerlIO *f, const char *fmt, va_list args);
+    int     PerlIO_flush(PerlIO *f);
+
+    int     PerlIO_eof(PerlIO *f);
+    int     PerlIO_error(PerlIO *f);
+    void    PerlIO_clearerr(PerlIO *f);
+
+    int     PerlIO_getc(PerlIO *d);
+    int     PerlIO_ungetc(PerlIO *f,int ch);
+    int     PerlIO_read(PerlIO *f, void *buf, size_t numbytes);
+
+    int     PerlIO_fileno(PerlIO *f);
+
+    void    PerlIO_setlinebuf(PerlIO *f);
+
+    Off_t   PerlIO_tell(PerlIO *f);
+    int     PerlIO_seek(PerlIO *f, Off_t offset, int whence);
+    void    PerlIO_rewind(PerlIO *f);
+
+    int     PerlIO_getpos(PerlIO *f, SV *save);        /* prototype changed */
+    int     PerlIO_setpos(PerlIO *f, SV *saved);       /* prototype changed */
+
+    int     PerlIO_fast_gets(PerlIO *f);
+    int     PerlIO_has_cntptr(PerlIO *f);
+    int     PerlIO_get_cnt(PerlIO *f);
+    char   *PerlIO_get_ptr(PerlIO *f);
+    void    PerlIO_set_ptrcnt(PerlIO *f, char *ptr, int count);
+
+    int     PerlIO_canset_cnt(PerlIO *f);              /* deprecated */
+    void    PerlIO_set_cnt(PerlIO *f, int count);      /* deprecated */
+
+    int     PerlIO_has_base(PerlIO *f);
+    char   *PerlIO_get_base(PerlIO *f);
+    int     PerlIO_get_bufsiz(PerlIO *f);
+
+    PerlIO *PerlIO_importFILE(FILE *stdio, const char *mode);
+    FILE   *PerlIO_exportFILE(PerlIO *f, int flags);
+    FILE   *PerlIO_findFILE(PerlIO *f);
+    void    PerlIO_releaseFILE(PerlIO *f,FILE *stdio);
+
+    int     PerlIO_apply_layers(PerlIO *f, const char *mode, const char *layers);
+    int     PerlIO_binmode(PerlIO *f, int ptype, int imode, const char *layers);
+    void    PerlIO_debug(const char *fmt,...)
+
+=head1 DESCRIPTION
+
+=begin original
+
+Perl's source code, and extensions that want maximum portability,
+should use the above functions instead of those defined in ANSI C's
+I<stdio.h>.  The perl headers (in particular "perlio.h") will
+C<#define> them to the I/O mechanism selected at Configure time.
+
+=end original
+
+Perl のソースコードと、最大の移植性を求めるエクステンションでは、
+ANSI C の I<stdio.h> にある関数ではなく上記の関数を使うべきです。
+perl のヘッダ (特に "perlio.h") が Configure の実行時に選択した
+I/O 機構へ C<#define> します。
+
+=begin original
+
+The functions are modeled on those in I<stdio.h>, but parameter order
+has been "tidied up a little".
+
+=end original
+
+これらの関数は I<stdio.h> にあるものがモデルになっていますが、
+それに渡すパラメーターは「ちょっとばかし整頓」されています。
+
+=begin original
+
+C<PerlIO *> takes the place of FILE *. Like FILE * it should be
+treated as opaque (it is probably safe to assume it is a pointer to
+something).
+
+=end original
+
+C<PerlIO *> は FILE * のようなものです。
+FILE * と同様に、これは不透明なものとして扱われます(これを何かへの
+ポインタとして仮定することはおそらく安全です)。
+
+=begin original
+
+There are currently three implementations:
+
+=end original
+
+現在のところ 3 つの実装があります:
+
+=over 4
+
+=item 1. USE_STDIO
+
+=begin original
+
+All above are #define'd to stdio functions or are trivial wrapper
+functions which call stdio. In this case I<only> PerlIO * is a FILE *.
+This has been the default implementation since the abstraction was
+introduced in perl5.003_02.
+
+=end original
+
+上記の全ては stdio 関数への #define か、stdio を呼び出すためのありふれた
+ラッパ関数です。
+この場合 I<のみ>、PerlIO * は FILE * です。
+抽象化が導入された perl5.003_02 以来、これがデフォルトの実装でした。
+
+=item 2. USE_SFIO
+
+=begin original
+
+A "legacy" implementation in terms of the "sfio" library. Used for
+some specialist applications on Unix machines ("sfio" is not widely
+ported away from Unix).  Most of above are #define'd to the sfio
+functions. PerlIO * is in this case Sfio_t *.
+
+=end original
+
+"sfio" ライブラリに関して、「レガシーな」実装です。
+Unix マシンでの特殊なアプリケーションで使われています
+("sfio" Unix 以外にはあまり移植されていません)。
+上記のほとんどは sfio 関数への #define です。
+この場合、PerlIO * は Sfio_t * です。
+
+=item 3. USE_PERLIO
+
+=begin original
+
+Introduced just after perl5.7.0, this is a re-implementation of the
+above abstraction which allows perl more control over how IO is done
+as it decouples IO from the way the operating system and C library
+choose to do things. For USE_PERLIO PerlIO * has an extra layer of
+indirection - it is a pointer-to-a-pointer.  This allows the PerlIO *
+to remain with a known value while swapping the implementation around
+underneath I<at run time>. In this case all the above are true (but
+very simple) functions which call the underlying implementation.
+
+=end original
+
+これはperl5.7.0 の直後に導入され、上述の抽象化の再実装です; これによって
+IO を OS と C ライブラリが物事を行うための選択と切り離すために、
+IO がどのように行われるかを perl がより制御できるようになります。
+USE_PERLIO では、PerlIO * は間接化の追加の層を持ちます - これは点対点です。
+これにより、PerlIO * は既知の値のまま、基礎となる実装を I<実行時に>
+交換することができます。
+この場合上述の全ては基礎となる実装を呼び出す本当の(しかしとても単純な)
+関数です。
+
+=begin original
+
+This is the only implementation for which C<PerlIO_apply_layers()>
+does anything "interesting".
+
+=end original
+
+これは C<PerlIO_apply_layers()> が何か「興味ある」ことを行う唯一の
+実装です。
+
+=begin original
+
+The USE_PERLIO implementation is described in L<perliol>.
+
+=end original
+
+USE_PERLIO 実装については L<perliol> に記述されています。
+
+=back
+
+=begin original
+
+Because "perlio.h" is a thin layer (for efficiency) the semantics of
+these functions are somewhat dependent on the underlying implementation.
+Where these variations are understood they are noted below.
+
+=end original
+
+"perlio.h" は(効率のために)薄い層になっているので、これらの関数の意味は
+基礎となる実装に若干依存しています。
+変化があると分かっているところは以下に言及しています。
+
+=begin original
+
+Unless otherwise noted, functions return 0 on success, or a negative
+value (usually C<EOF> which is usually -1) and set C<errno> on error.
+
+=end original
+
+特に注意がなければ、関数は成功時に 0 を返し、エラー時には負数(普通は
+-1 の値を持つ C<EOF>)を返して C<errno> をセットします。
+
+=over 4
+
+=item B<PerlIO_stdin()>, B<PerlIO_stdout()>, B<PerlIO_stderr()>
+
+=begin original
+
+Use these rather than C<stdin>, C<stdout>, C<stderr>. They are written
+to look like "function calls" rather than variables because this makes
+it easier to I<make them> function calls if platform cannot export data
+to loaded modules, or if (say) different "threads" might have different
+values.
+
+=end original
+
+C<stdin>, C<stdout>, C<stderr> の代わりに使ってください。
+これらは変数でなく“関数呼び出し”のように記述されていますが、
+これは使用するプラットフォームにおいてロードモジュールに対するデータの
+エクスポートができなかったり、あるいは異なる“スレッド”が異なる値を
+持つ可能性があるといったときに、これらを I<関数呼び出しにする> のが
+簡単になるからです。
+
+=item B<PerlIO_open(path, mode)>, B<PerlIO_fdopen(fd,mode)>
+
+=begin original
+
+These correspond to fopen()/fdopen() and the arguments are the same.
+Return C<NULL> and set C<errno> if there is an error.  There may be an
+implementation limit on the number of open handles, which may be lower
+than the limit on the number of open files - C<errno> may not be set
+when C<NULL> is returned if this limit is exceeded.
+
+=end original
+
+fopen()/fdopen() に対応し、同じ引数を取ります。
+エラーの場合は C<NULL> を返し、C<errno> をセットします。
+オープンするハンドルの数には実装の制限があるかもしれず、これはオープンする
+ファイルの数の制限より低いかもしれません -
+この制限を越えて C<NULL> を返されると、C<errno> はセットされません。
+
+=item B<PerlIO_reopen(path,mode,f)>
+
+=begin original
+
+While this currently exists in all three implementations perl itself
+does not use it. I<As perl does not use it, it is not well tested.>
+
+=end original
+
+これは現在のところ 3 つ全ての実装に存在していますが、perl 自身はこれを
+使っていません。
+I<perl が使っていないので、十分にテストされていません。>
+
+=begin original
+
+Perl prefers to C<dup> the new low-level descriptor to the descriptor
+used by the existing PerlIO. This may become the behaviour of this
+function in the future.
+
+=end original
+
+Perl は存在する PerlIO によって使われている記述子よりも、新しい低レベル
+記述子を C<dup> することを好みます。
+これは将来この関数の振る舞いになるかもしれません。
+
+=item B<PerlIO_printf(f,fmt,...)>, B<PerlIO_vprintf(f,fmt,a)>
+
+=begin original
+
+These are fprintf()/vfprintf() equivalents.
+
+=end original
+
+fprintf()/vfprintf() と等価です。
+
+=item B<PerlIO_stdoutf(fmt,...)>
+
+=begin original
+
+This is printf() equivalent. printf is #defined to this function,
+so it is (currently) legal to use C<printf(fmt,...)> in perl sources.
+
+=end original
+
+これは printf() と等価です。
+printf はこの関数に対する #define となっていますから、
+(現時点では) Perl のソースコード中で C<printf(fmt,...)> とすることは
+合法です。
+
+=item B<PerlIO_read(f,buf,count)>, B<PerlIO_write(f,buf,count)>
+
+=begin original
+
+These correspond functionally to fread() and fwrite() but the
+arguments and return values are different.  The PerlIO_read() and
+PerlIO_write() signatures have been modeled on the more sane low level
+read() and write() functions instead: The "file" argument is passed
+first, there is only one "count", and the return value can distinguish
+between error and C<EOF>.
+
+=end original
+
+fread() および fwrite() に対応する機能を持ちますが、引数と
+返り値は異なります。
+PerlIO_read() と PerlIO_write() のシグネチャは、代わりによりまともな
+低レベルの read() と write() の関数をモデルにしています: 
+"file" 引数は最初に渡され、count" は 1 つだけで、返り値はエラーと
+C<EOF> とで区別できます。
+
+=begin original
+
+Returns a byte count if successful (which may be zero or
+positive), returns negative value and sets C<errno> on error.
+Depending on implementation C<errno> may be C<EINTR> if operation was
+interrupted by a signal.
+
+=end original
+
+成功時にはバイトカウント(ゼロか正の数です)を返し、エラー時には負の数を
+返して C<errno> をセットします。
+実装に依存して、もし操作がシグナルで中断した場合は C<errno> は C<EINTR> に
+なるかもしれません。
+
+=item B<PerlIO_close(f)>
+
+=begin original
+
+Depending on implementation C<errno> may be C<EINTR> if operation was
+interrupted by a signal.
+
+=end original
+
+実装によっては、操作がシグナルで中断した場合 C<errno> は C<EINTR> に
+なることがあります。
+
+=item B<PerlIO_puts(f,s)>, B<PerlIO_putc(f,c)>
+
+=begin original
+
+These correspond to fputs() and fputc().
+Note that arguments have been revised to have "file" first.
+
+=end original
+
+fputs() および fputc() に対応します。
+最初の引数に“file”が来るということに
+注意してください。
+
+=item B<PerlIO_ungetc(f,c)>
+
+=begin original
+
+This corresponds to ungetc().  Note that arguments have been revised
+to have "file" first.  Arranges that next read operation will return
+the byte B<c>.  Despite the implied "character" in the name only
+values in the range 0..0xFF are defined. Returns the byte B<c> on
+success or -1 (C<EOF>) on error.  The number of bytes that can be
+"pushed back" may vary, only 1 character is certain, and then only if
+it is the last character that was read from the handle.
+
+=end original
+
+ungetc() に対応します。
+最初の引数に "file" が来るということに注意してください。
+次の読み込み操作でバイト B<c> を返すように準備します。
+名前の "character" が暗示しているものに関わらず、0..0xFF の範囲の値のみが
+定義されています。
+成功にはバイト B<c> が、エラー時には -1 (C<EOF>) が返されます。
+「押し返す」ことができるバイト数は異なります; 1 文字だけというのは確実で、
+従ってハンドルから読み込んだ最後の文字だけということです。
+
+=item B<PerlIO_getc(f)>
+
+=begin original
+
+This corresponds to getc().
+Despite the c in the name only byte range 0..0xFF is supported.
+Returns the character read or -1 (C<EOF>) on error.
+
+=end original
+
+getc() に対応します。
+名前に c がありますが、バイトの範囲 0..0xFF にのみ対応しています。
+読み込んだ文字か、エラーの場合は -1 (C<EOF>) を返します。
+
+=item B<PerlIO_eof(f)>
+
+=begin original
+
+This corresponds to feof().  Returns a true/false indication of
+whether the handle is at end of file.  For terminal devices this may
+or may not be "sticky" depending on the implementation.  The flag is
+cleared by PerlIO_seek(), or PerlIO_rewind().
+
+=end original
+
+feof() に対応します。
+ハンドルがファイルの最後かどうかを示す真か偽を返します。
+端末デバイスでは、実装に依存して、これは "sticky" かもしれませんし、
+そうではないかもしれません。
+フラグは PerlIO_seek() か PerlIO_rewind() で解除されます。
+
+=item B<PerlIO_error(f)>
+
+=begin original
+
+This corresponds to ferror().  Returns a true/false indication of
+whether there has been an IO error on the handle.
+
+=end original
+
+ferror()に対応します。
+ハンドルに IO エラーがあるかどうかを真偽値で返します。
+
+=item B<PerlIO_fileno(f)>
+
+=begin original
+
+This corresponds to fileno(), note that on some platforms, the meaning
+of "fileno" may not match Unix. Returns -1 if the handle has no open
+descriptor associated with it.
+
+=end original
+
+fileno() に対応します。
+一部のプラットフォームにおいては、“fileno”の
+意味するところがUNIXとは違うということに注意してください。
+Returns -1 if the handle has no open
+descriptor associated with it.
+
+=item B<PerlIO_clearerr(f)>
+
+=begin original
+
+This corresponds to clearerr(), i.e., clears 'error' and (usually)
+'eof' flags for the "stream". Does not return a value.
+
+=end original
+
+clearerr() に対応し、「ストリーム」の 'error' や (普通は) 'eof' といった
+フラグをクリアします。
+値を返しません。
+
+=item B<PerlIO_flush(f)>
+
+=begin original
+
+This corresponds to fflush().  Sends any buffered write data to the
+underlying file.  If called with C<NULL> this may flush all open
+streams (or core dump with some USE_STDIO implementations).  Calling
+on a handle open for read only, or on which last operation was a read
+of some kind may lead to undefined behaviour on some USE_STDIO
+implementations.  The USE_PERLIO (layers) implementation tries to
+behave better: it flushes all open streams when passed C<NULL>, and
+attempts to retain data on read streams either in the buffer or by
+seeking the handle to the current logical position.
+
+=end original
+
+fflush() に対応します。
+バッファリングされた書き込みデータをファイルに送ります。
+引数 C<NULL> で呼び出すと、オープンしている全てのストリームを
+フラッシュします(USE_STDIO 実装にはコアダンプするものもあります)。
+読み込み専用でオープンしているか、最後の操作がなんらかの読み込みである
+ハンドルで呼び出すと、USE_STDIO 実装には未定義の振る舞いとなるものが
+あります。
+USE_PERLIO (層) 実装はよりよく振る舞おうとします: C<NULL> が渡されると
+オープンしている全てのストリームをフラッシュし、バッファの中か、現在の
+論理位置にハンドルをシークすることで、読み込みストリームのデータを
+維持しようとします。
+
+=item B<PerlIO_seek(f,offset,whence)>
+
+=begin original
+
+This corresponds to fseek().  Sends buffered write data to the
+underlying file, or discards any buffered read data, then positions
+the file descriptor as specified by B<offset> and B<whence> (sic).
+This is the correct thing to do when switching between read and write
+on the same handle (see issues with PerlIO_flush() above).  Offset is
+of type C<Off_t> which is a perl Configure value which may not be same
+as stdio's C<off_t>.
+
+=end original
+
+fseek() に対応します。
+バッファリングされた書き込みデータを対応するファイルに送るか、
+バッファリングした読み込みデータを捨ててから、ファイル記述子の位置を
+<offset> と B<whence> で指定された場所にします(シークします)。
+これは同じハンドルの読み込みと書き込みを切り替えるときにするべき
+正しいことです(上述の PerlIO_flush() の問題を参照してください)。
+offset は perl の Configure 値である C<Off_t> 型で、stdio の C<off_t> とは
+異なるかもしれません。
+
+=item B<PerlIO_tell(f)>
+
+=begin original
+
+This corresponds to ftell().  Returns the current file position, or
+(Off_t) -1 on error.  May just return value system "knows" without
+making a system call or checking the underlying file descriptor (so
+use on shared file descriptors is not safe without a
+PerlIO_seek()). Return value is of type C<Off_t> which is a perl
+Configure value which may not be same as stdio's C<off_t>.
+
+=end original
+
+ftell() に対応します。
+現在のファイル位置か、エラーの場合は (Off_t) -1 が返されます。
+システムコールや、基礎となるファイル記述子のチェックなしに、システムが
+「知っている」値を返すかもしれません。
+(従って、共有ファイル記述子での使用は、PerlIO_seek() なしでは
+安全ではありません)。
+返り値は perl の Configure 値である C<Off_t> 型で、stdio の C<off_t> とは
+異なるかもしれません。
+
+=item B<PerlIO_getpos(f,p)>, B<PerlIO_setpos(f,p)>
+
+=begin original
+
+These correspond (loosely) to fgetpos() and fsetpos(). Rather than
+stdio's Fpos_t they expect a "Perl Scalar Value" to be passed. What is
+stored there should be considered opaque. The layout of the data may
+vary from handle to handle.  When not using stdio or if platform does
+not have the stdio calls then they are implemented in terms of
+PerlIO_tell() and PerlIO_seek().
+
+=end original
+
+それぞれ (大まかに) ftgetpos() と fsetpos() に対応します。
+stdio のFpos_t と違って、これらは「Perl スカラ値」が渡されることを
+想定しています。
+ここで保存されるものは内部が見えないものとみなれさます。
+データのレイアウトはハンドルによってさまざまです。
+stdio を使わない場合や、プラットフォームが stdio 呼び出しを持っていない
+場合にはこれらの関数は PerlIO_tell()、PerlIO_seek() によって実装されます。
+
+=item B<PerlIO_rewind(f)>
+
+=begin original
+
+This corresponds to rewind(). It is usually defined as being
+
+=end original
+
+rewind() に対応します。
+これは普通以下のように定義されています:
+
+    PerlIO_seek(f,(Off_t)0L, SEEK_SET);
+    PerlIO_clearerr(f);
+
+=item B<PerlIO_tmpfile()>
+
+=begin original
+
+This corresponds to tmpfile(), i.e., returns an anonymous PerlIO or
+NULL on error.  The system will attempt to automatically delete the
+file when closed.  On Unix the file is usually C<unlink>-ed just after
+it is created so it does not matter how it gets closed. On other
+systems the file may only be deleted if closed via PerlIO_close()
+and/or the program exits via C<exit>.  Depending on the implementation
+there may be "race conditions" which allow other processes access to
+the file, though in general it will be safer in this regard than
+ad. hoc. schemes.
+
+=end original
+
+tmpfile() に対応し、無名 PerlIO (エラー時は NULL) を返します。
+システムはファイルがクローズされると自動的にファイルを削除しようとします。
+Unix では、ファイルは普通作成された直後に C<unlink> されるので、どうやって
+クローズされるかは気にされません。
+その他のシステムでは、ファイルは PerlIO_close() で閉じられるか、プログラムが
+C<exit> で終了されたときにのみ削除されます。
+実装に依存して、他のプロセスがこのファイルにアクセスできるという
+「競合条件」が起こりえますが、一般的にはその場限りの仕組みよりこれの方が
+より安全でしょう。
+
+=item B<PerlIO_setlinebuf(f)>
+
+=begin original
+
+This corresponds to setlinebuf().  Does not return a value. What
+constitutes a "line" is implementation dependent but usually means
+that writing "\n" flushes the buffer.  What happens with things like
+"this\nthat" is uncertain.  (Perl core uses it I<only> when "dumping";
+it has nothing to do with $| auto-flush.)
+
+=end original
+
+これは setlinebuf() に対応します。
+値を返しません。
+何が「行」を構成するかは実装依存ですが、普通は "\n" を書くとバッファを
+フラッシュします。
+"this\nthat" のようなものに対して何が起こるかは不明確です。
+(Perl core は "dumping" が $| の自動フラッシュに
+関係していない I<ときにのみ> これを使います)。
+
+=back
+
+=head2 Co-existence with stdio
+
+(stdio との共存)
+
+=begin original
+
+There is outline support for co-existence of PerlIO with stdio.
+Obviously if PerlIO is implemented in terms of stdio there is no
+problem. However in other cases then mechanisms must exist to create a
+FILE * which can be passed to library code which is going to use stdio
+calls.
+
+=end original
+
+PerlIO と stdio との共存をサポートするためのアウトラインがあります。
+PerlIO が stdio を使って実装されているのであれば、明らかに問題はありません。
+しかし、その他の場合では stdio 呼び出しを使おうとするライブラリコードに
+渡すことができる FILE * を作成する機構がなければなりません。
+
+=begin original
+
+The first step is to add this line:
+
+=end original
+
+最初のステップは以下の行を追加することです:
+
+   #define PERLIO_NOT_STDIO 0
+
+=begin original
+
+I<before> including any perl header files. (This will probably become
+the default at some point).  That prevents "perlio.h" from attempting
+to #define stdio functions onto PerlIO functions.
+
+=end original
+
+あらゆる perl ヘッダファイルをインクルードする I<前> に行います。
+(これはおそらくある時点でデフォルトになります。)
+これにより "perlio.h" が stdio を PerlIO 関数に #define しようとするのを
+妨げます。
+
+=begin original
+
+XS code is probably better using "typemap" if it expects FILE *
+arguments.  The standard typemap will be adjusted to comprehend any
+changes in this area.
+
+=end original
+
+XS コードは、もし FILE * 引数を想定しているなら、おそらく"typemap" を
+使ったほうがよいでしょう。
+標準の typemap は、この分野でのあらゆる変更を把握するために調整されます。
+
+=over 4
+
+=item B<PerlIO_importFILE(f,mode)>
+
+=begin original
+
+Used to get a PerlIO * from a FILE *.
+
+=end original
+
+FILE * から PerlIO * を得るのに使います。
+
+=begin original
+
+The mode argument should be a string as would be passed to
+fopen/PerlIO_open.  If it is NULL then - for legacy support - the code
+will (depending upon the platform and the implementation) either
+attempt to empirically determine the mode in which I<f> is open, or
+use "r+" to indicate a read/write stream.
+
+=end original
+
+mode 引数は fopen/PerlIO_open に渡される文字列であるべきです。
+もしこれが NULL なら - レガシーサポートのために - コードは
+(プラットフォームと実装に依存して) I<f> がオープンされるモードを経験的に
+決定しようとするか、読み書きストリームを示すために "r+" が使われます。
+
+=begin original
+
+Once called the FILE * should I<ONLY> be closed by calling
+C<PerlIO_close()> on the returned PerlIO *.
+
+=end original
+
+一度呼び出されると、この FILE * は返された PerlIO * で C<PerlIO_close()> を
+呼び出すことによって I<のみ> クローズされるべきです。
+
+=begin original
+
+The PerlIO is set to textmode. Use PerlIO_binmode if this is
+not the desired mode.
+
+=end original
+
+PerlIO はテキストモードにセットされます。
+これが希望しているモードでない場合は、PerlIO_binmode を使います。
+
+=begin original
+
+This is B<not> the reverse of PerlIO_exportFILE().
+
+=end original
+
+これは PerlIO_exportFILE() の逆 B<ではありません> 。
+
+=item B<PerlIO_exportFILE(f,mode)>
+
+=begin original
+
+Given a PerlIO * create a 'native' FILE * suitable for passing to code
+expecting to be compiled and linked with ANSI C I<stdio.h>.  The mode
+argument should be a string as would be passed to fopen/PerlIO_open.
+If it is NULL then - for legacy support - the FILE * is opened in same
+mode as the PerlIO *.
+
+=end original
+
+PerlIO * を取り、ANSI C の I<stdio.h> と共にコンパイルされ、リンクされる
+ことが想定されるコードに渡すのに適した‘ネイティブ’な FILE * 構造体を
+作成します。
+mode 引数は fopen/PerlIO_open に渡される文字列です。
+これが NULL の場合は - レガシー対応のために - FILE * は PerlIO * と同じ
+モードでオープンします。
+
+=begin original
+
+The fact that such a FILE * has been 'exported' is recorded, (normally
+by pushing a new :stdio "layer" onto the PerlIO *), which may affect
+future PerlIO operations on the original PerlIO *.  You should not
+call C<fclose()> on the file unless you call C<PerlIO_releaseFILE()>
+to disassociate it from the PerlIO *.  (Do not use PerlIO_importFILE()
+for doing the disassociation.)
+
+=end original
+
+‘export’された FILE * は(通常は新しい :stdio 「層」を PerlIO * に
+プッシュすることで)記録され、それ以後のオリジナルの 
+PerlIO * に対する PerlIO 操作に影響を及ぼす可能性があります。
+PerlIO * との関連付けを解除するために C<PerlIO_releaseFILE()> を
+呼び出さずに C<fclose()> を呼び出すべきではありません。
+(関連付けの解除のために PerlIO_importFILE() を使ってはいけません。)
+
+=begin original
+
+Calling this function repeatedly will create a FILE * on each call
+(and will push an :stdio layer each time as well).
+
+=end original
+
+この関数を複数回呼び出すと、呼び出し毎に FILE * を作成します(そして
+毎回 :stdio 層にプッシュします)。
+
+=item B<PerlIO_releaseFILE(p,f)>
+
+=begin original
+
+Calling PerlIO_releaseFILE informs PerlIO that all use of FILE * is
+complete. It is removed from the list of 'exported' FILE *s, and the
+associated PerlIO * should revert to its original behaviour.
+
+=end original
+
+PerlIO_releaseFILE は、PerlIO にすべてのFILE * の使用が完了したことを
+知らせます。
+完了したものは‘export’された FILE * のリストから削除されます。
+そして、それに結び付けられている PerlIO * は元々の振る舞いに戻ります。
+
+=begin original
+
+Use this to disassociate a file from a PerlIO * that was associated
+using PerlIO_exportFILE().
+
+=end original
+
+PerlIO_exportFILE() を使って PerlIO * に結び付けられたファイルを
+分離するためにこれを使います。
+
+=item B<PerlIO_findFILE(f)>
+
+=begin original
+
+Returns a native FILE * used by a stdio layer. If there is none, it
+will create one with PerlIO_exportFILE. In either case the FILE *
+should be considered as belonging to PerlIO subsystem and should
+only be closed by calling C<PerlIO_close()>.
+
+=end original
+
+stdio 層で使われるネイティブな FILE * を返します。
+もしそれがなければ、PerlIO_exportFILE を使って作成されます。
+どちらの場合でも、FILE * は PerlIO サブシステムに従うと考えられ、
+C<PerlIO_close()> を呼び出すことによってのみクローズされるべきです。
+
+=back
+
+=head2 "Fast gets" Functions
+
+("Fast gets" 関数)
+
+=begin original
+
+In addition to standard-like API defined so far above there is an
+"implementation" interface which allows perl to get at internals of
+PerlIO.  The following calls correspond to the various FILE_xxx macros
+determined by Configure - or their equivalent in other
+implementations. This section is really of interest to only those
+concerned with detailed perl-core behaviour, implementing a PerlIO
+mapping or writing code which can make use of the "read ahead" that
+has been done by the IO system in the same way perl does. Note that
+any code that uses these interfaces must be prepared to do things the
+traditional way if a handle does not support them.
+
+=end original
+
+上述した標準風の API に加えて、perl が PerlIO の内部で扱うことが
+できるようにする「実装」インターフェースがあります。
+以下に挙げる呼び出しは、それぞれ Configure (あるいはその他の実装では
+これと等価なもの) で定義される FILE_xxx マクロに対応しています。
+このセクションでは、perl-core の振る舞いの詳細、PerlIO のマッピングの実装、
+また perl がする同じ方法で IO システムによって行われている
+「先行読み込み」を使えるようなコードを書くことについてのみ注目します。
+これらのインターフェースを使うコードは、もしハンドルがこれらに
+対応していないなら、伝統的な方法で準備しておく必要があることに
+注意してください。
+
+=over 4
+
+=item B<PerlIO_fast_gets(f)>
+
+=begin original
+
+Returns true if implementation has all the interfaces required to
+allow perl's C<sv_gets> to "bypass" normal IO mechanism.  This can
+vary from handle to handle.
+
+=end original
+
+もし実装が通常の IO 機構を「回避」するために perl の C<sv_gets> が
+使えるために要求される全てのインターフェースを持っているなら真を返します。
+これはハンドルによって異なる可能性があります。
+
+  PerlIO_fast_gets(f) = PerlIO_has_cntptr(f) && \
+                        PerlIO_canset_cnt(f) && \
+                        `Can set pointer into buffer'
+
+=item B<PerlIO_has_cntptr(f)>
+
+=begin original
+
+Implementation can return pointer to current position in the "buffer"
+and a count of bytes available in the buffer.  Do not use this - use
+PerlIO_fast_gets.
+
+=end original
+
+“バッファ”中のカレントポジションへのポインターとバッファにある
+バイト数を返すことのできる実装です。
+これを使わないでください - PerlIO_fast_gets を使ってください。
+
+=item B<PerlIO_get_cnt(f)>
+
+=begin original
+
+Return count of readable bytes in the buffer. Zero or negative return
+means no more bytes available.
+
+=end original
+
+バッファ中の読み出すことのできるバイト数を返します。
+0 や負数が返ると、もう読み出せないことを意味します。
+
+=item B<PerlIO_get_ptr(f)>
+
+=begin original
+
+Return pointer to next readable byte in buffer, accessing via the
+pointer (dereferencing) is only safe if PerlIO_get_cnt() has returned
+a positive value.  Only positive offsets up to value returned by
+PerlIO_get_cnt() are allowed.
+
+=end original
+
+バッファ中にある次の読み出し可能バイトへのポインターを返します;
+ポインタ経由のアクセス(デリファレンス)は、PerlIO_get_cnt() が
+正の数を返した場合にのみ安全です。
+PerlIO_get_cnt() で返される値以下の正の数のオフセットのみが使えます。
+
+=item B<PerlIO_set_ptrcnt(f,p,c)>
+
+=begin original
+
+Set pointer into buffer, and a count of bytes still in the
+buffer. Should be used only to set pointer to within range implied by
+previous calls to C<PerlIO_get_ptr> and C<PerlIO_get_cnt>. The two
+values I<must> be consistent with each other (implementation may only
+use one or the other or may require both).
+
+=end original
+
+ポインターをバッファにセットし、バッファにあるバイト数はそのままです。
+以前の C<PerlIO_get_ptr> と C<PerlIO_get_cnt> の呼び出しから
+推測される範囲内のポインターをセットすることのみに使うべきでしょう。
+2 つの値は互いに I<一貫していなければなりません> 
+(実装はどちらか片方だけを使うかもしれませんし、両方が必要かもしれません)。
+
+=item B<PerlIO_canset_cnt(f)>
+
+=begin original
+
+Implementation can adjust its idea of number of bytes in the buffer.
+Do not use this - use PerlIO_fast_gets.
+
+=end original
+
+バッファにあるバイト数を調整することのできる実装です。
+これは使わないでください - PerlIO_fast_gets を使ってください。
+
+=item B<PerlIO_set_cnt(f,c)>
+
+=begin original
+
+Obscure - set count of bytes in the buffer. Deprecated.  Only usable
+if PerlIO_canset_cnt() returns true.  Currently used in only doio.c to
+force count less than -1 to -1.  Perhaps should be PerlIO_set_empty or
+similar.  This call may actually do nothing if "count" is deduced from
+pointer and a "limit".  Do not use this - use PerlIO_set_ptrcnt().
+
+=end original
+
+不明瞭 - バッファにあるバイト数をセットします。
+非推奨です。
+PerlIO_canset_cnt() は真を返す場合にのみ利用できます。
+現在これは、doio.c でのみ -1 未満の count を 強制的に -1 にするために
+使われています。
+おそらく PerlIO_set_empty やそれに類するものがあるべきでしょう。
+この呼び出しは、“count”がポインターと“limit”から導き出される場合には
+実際にはなにもしません。
+これは使わないでください - PerlIO_set_ptrcnt() を使ってください。
+
+=item B<PerlIO_has_base(f)>
+
+=begin original
+
+Returns true if implementation has a buffer, and can return pointer
+to whole buffer and its size. Used by perl for B<-T> / B<-B> tests.
+Other uses would be very obscure...
+
+=end original
+
+実装がバッファを持っていて、バッファ全体へのポインターやその大きさを
+返すことができるなら真を返します。
+B<-T>/B<-B> テストのために perl によって使われます。
+そのほかのものは非常にはっきりしない形で使われます…
+
+=item B<PerlIO_get_base(f)>
+
+=begin original
+
+Return I<start> of buffer. Access only positive offsets in the buffer
+up to the value returned by PerlIO_get_bufsiz().
+
+=end original
+
+バッファの I<開始位置> を返します。
+バッファの中で、PerlIO_get_bufsiz() で返される値以下の正数のオフセットで
+のみアクセスできます。
+
+=item B<PerlIO_get_bufsiz(f)>
+
+=begin original
+
+Return the I<total number of bytes> in the buffer, this is neither the
+number that can be read, nor the amount of memory allocated to the
+buffer. Rather it is what the operating system and/or implementation
+happened to C<read()> (or whatever) last time IO was requested.
+
+=end original
+
+バッファの I<合計バイト数> を返します;
+これは読み込み可能な数や、バッファに割り当てられたメモリ量ではありません。
+むしろ、最後に I/O が要求されたときに OS や 実装が C<read()> (あるいは
+そのようなもの) を行ったものです。
+
+=back
+
+=head2 Other Functions
+
+(その他の関数)
+
+=over 4
+
+=item PerlIO_apply_layers(f,mode,layers)
+
+=begin original
+
+The new interface to the USE_PERLIO implementation. The layers ":crlf"
+and ":raw" are only ones allowed for other implementations and those
+are silently ignored. (As of perl5.8 ":raw" is deprecated.)  Use
+PerlIO_binmode() below for the portable case.
+
+=end original
+
+USE_PERLIO 実装への新しいインターフェースです。
+":crlf" と ":raw" の層はその他の実装では一つだけが許可され、これらは暗黙に
+無視されます。
+(perl5.8 から、":raw" は非推奨です。)
+移植性が問題になる場合は後述する PerlIO_binmode() を使ってください。
+
+=item PerlIO_binmode(f,ptype,imode,layers)
+
+=begin original
+
+The hook used by perl's C<binmode> operator.
+B<ptype> is perl's character for the kind of IO:
+
+=end original
+
+perl の C<binmode> 演算子で使われるフックです。
+B<ptype> は入出力の種類を示す perl の文字です:
+
+=over 8
+
+=item 'E<lt>' read
+
+=item 'E<gt>' write
+
+=item '+' read/write
+
+=back
+
+=begin original
+
+B<imode> is C<O_BINARY> or C<O_TEXT>.
+
+=end original
+
+B<imode> は C<O_BINARY> か C<O_TEXT> です。
+
+=begin original
+
+B<layers> is a string of layers to apply, only ":crlf" makes sense in
+the non USE_PERLIO case. (As of perl5.8 ":raw" is deprecated in favour
+of passing NULL.)
+
+=end original
+
+B<layers> は適用される層の文字列で、USE_PERLIO 以外の場合では ":crlf" のみが
+意味を持ちます。
+(perl5.8 以降、":raw" は非推奨で、NULL を渡すことが好まれます。)
+
+=begin original
+
+Portable cases are:
+
+=end original
+
+移植性のある場合は:
+
+    PerlIO_binmode(f,ptype,O_BINARY,NULL);
+and
+    PerlIO_binmode(f,ptype,O_TEXT,":crlf");
+
+=begin original
+
+On Unix these calls probably have no effect whatsoever.  Elsewhere
+they alter "\n" to CR,LF translation and possibly cause a special text
+"end of file" indicator to be written or honoured on read. The effect
+of making the call after doing any IO to the handle depends on the
+implementation. (It may be ignored, affect any data which is already
+buffered as well, or only apply to subsequent data.)
+
+=end original
+
+Unix ではこれらの呼び出しはおそらく何の効果もありません。
+それ以外では "\n" を CR,LF に変換し、特別なテキスト「ファイル終端」指示子を
+読み書き時に使います。
+ハンドルに対して I/O を行った後に呼び出した場合の効果は実装に依存します。
+(無視されるかもしれませんし、既にバッファに入っているデータにも
+適用されるかもしれませんし、以後のデータにだけ適用されるかもしれません。)
+
+=item PerlIO_debug(fmt,...)
+
+=begin original
+
+PerlIO_debug is a printf()-like function which can be used for
+debugging.  No return value. Its main use is inside PerlIO where using
+real printf, warn() etc. would recursively call PerlIO and be a
+problem.
+
+=end original
+
+PerlIO_debug は、デバッグに使える printf() 風の関数です。
+返り値はありません。
+主な用途は、実 printf, warn() などが使っている PerlIO の内部で、PerlIO の
+再帰呼び出しが問題になるようなところです。
+
+=begin original
+
+PerlIO_debug writes to the file named by $ENV{'PERLIO_DEBUG'} typical
+use might be
+
+=end original
+
+PerlIO_debug は $ENV{'PERLIO_DEBUG'} で指定されたファイルに書き込みます。
+典型的な使い方は:
+
+  Bourne shells (sh, ksh, bash, zsh, ash, ...):
+   PERLIO_DEBUG=/dev/tty ./perl somescript some args
+
+  Csh/Tcsh:
+   setenv PERLIO_DEBUG /dev/tty
+   ./perl somescript some args
+
+  If you have the "env" utility:
+   env PERLIO_DEBUG=/dev/tty ./perl somescript some args
+
+  Win32:
+   set PERLIO_DEBUG=CON
+   perl somescript some args
+
+=begin original
+
+If $ENV{'PERLIO_DEBUG'} is not set PerlIO_debug() is a no-op.
+
+=end original
+
+$ENV{'PERLIO_DEBUG'} がセットされていない場合は PerlIO_debug() は
+何もしません。
+
+=back
+
+
+=begin meta
+
+Translate: KIMURA Koichi (5.005_03)
+Update: Kentaro Shirakata <argrath@ub32.org> (5.6.1-)
+Status: completed
+
+=end meta
+
