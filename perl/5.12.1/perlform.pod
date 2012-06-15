@@ -1,0 +1,913 @@
+
+=encoding euc-jp
+
+=head1 NAME
+X<format> X<report> X<chart>
+
+=begin original
+
+perlform - Perl formats
+
+=end original
+
+perlform - Perl のフォーマット
+
+=head1 DESCRIPTION
+
+=begin original
+
+Perl has a mechanism to help you generate simple reports and charts.  To
+facilitate this, Perl helps you code up your output page close to how it
+will look when it's printed.  It can keep track of things like how many
+lines are on a page, what page you're on, when to print page headers,
+etc.  Keywords are borrowed from FORTRAN: format() to declare and write()
+to execute; see their entries in L<perlfunc>.  Fortunately, the layout is
+much more legible, more like BASIC's PRINT USING statement.  Think of it
+as a poor man's nroff(1).
+X<nroff>
+
+=end original
+
+Perl は、あなたが単純なレポートやチャートを作るのを助けてくれるような
+機構を持っています。
+これを容易にするために、Perl は出力するページを
+見栄えよくするためのプログラムの作成を助けてくれます。
+現在のページにおいて何行出力したとか、ページヘッダを出力するタイミングなどの
+ことを保持しつづけることができます。
+キーワードは FORTRAN から借りました: format() が宣言のためのもので、
+write() が実行のためのものです。
+L<perlfunc> 中のそれぞれのエントリを参照してください。
+幸運にも、そのレイアウトは非常に読みやすく、
+BASIC の PRINT USING 文のようなものです。
+貧者のための nroff(1) と考えてください。
+X<nroff>
+
+=begin original
+
+Formats, like packages and subroutines, are declared rather than
+executed, so they may occur at any point in your program.  (Usually it's
+best to keep them all together though.) They have their own namespace
+apart from all the other "types" in Perl.  This means that if you have a
+function named "Foo", it is not the same thing as having a format named
+"Foo".  However, the default name for the format associated with a given
+filehandle is the same as the name of the filehandle.  Thus, the default
+format for STDOUT is named "STDOUT", and the default format for filehandle
+TEMP is named "TEMP".  They just look the same.  They aren't.
+
+=end original
+
+パッケージやサブルーチンと同様に、フォーマットも実行されるのではなく
+宣言されるものなので、プログラムの任意の場所に置くことができます
+(ただし、通常は全てまとめておくのが良いでしょう)。
+これらは、Perl の他のすべての「型」とは分離された名前空間を持っています。
+これはつまり、"Foo" という名前の関数を持っているとき、それは "Foo" と
+名前が付けられているフォーマットとは違うものなのだということです。
+しかしながら、与えられたファイルハンドルに結び付けられたフォーマットの
+デフォルトの名前は、そのファイルハンドルと同じ名前になります。
+したがって、STDOUT のデフォルトのフォーマットの名前は "STDOUT" であり、
+TEMP というファイルハンドルに対するデフォルトフォーマットの
+名前は "TEMP" となります。
+これらは同じもののように見えますが、そうではないのです。
+
+=begin original
+
+Output record formats are declared as follows:
+
+=end original
+
+出力レコードフォーマットは以下のように宣言されます:
+
+    format NAME =
+    FORMLIST
+    .
+
+=begin original
+
+If the name is omitted, format "STDOUT" is defined. A single "." in 
+column 1 is used to terminate a format.  FORMLIST consists of a sequence 
+of lines, each of which may be one of three types:
+
+=end original
+
+名前が省略された場合、フォーマット "STDOUT" が定義されます。
+1 桁目に単一の "." を置くと、フォーマットを終了します。
+FORMLIST は、それぞれが以下の 3 つのいずれかである行の並びから構成されます。
+
+=over 4
+
+=item 1.
+
+=begin original
+
+A comment, indicated by putting a '#' in the first column.
+
+=end original
+
+第 1 カラムに `#' が置かれることによって示されるコメント。
+
+=item 2.
+
+=begin original
+
+A "picture" line giving the format for one output line.
+
+=end original
+
+出力行のフォーマットを与える「ピクチャー」行。
+
+=item 3.
+
+=begin original
+
+An argument line supplying values to plug into the previous picture line.
+
+=end original
+
+直前のピクチャー行に値を押し込むための引数行。
+
+=back
+
+=begin original
+
+Picture lines contain output field definitions, intermingled with
+literal text. These lines do not undergo any kind of variable interpolation.
+Field definitions are made up from a set of characters, for starting and
+extending a field to its desired width. This is the complete set of
+characters for field definitions:
+X<format, picture line>
+X<@> X<^> X<< < >> X<< | >> X<< > >> X<#> X<0> X<.> X<...>
+X<@*> X<^*> X<~> X<~~>
+
+=end original
+
+ピクチャー行は、リテラルなテキストが混ざった出力フィールド定義を含みます。
+これらの行はどのような変数展開も行われません。
+フィールド定義は文字の集合で行われ、フィールドの開始と、希望する幅への
+拡張を行います。
+以下はフィールド定義のための文字の完全な集合です:
+X<format, picture line>
+X<@> X<^> X<< < >> X<< | >> X<< > >> X<#> X<0> X<.> X<...>
+X<@*> X<^*> X<~> X<~~>
+
+   @    start of regular field
+   ^    start of special field
+   <    pad character for left justification
+   |    pad character for centering
+   >    pad character for right justification
+   #    pad character for a right justified numeric field
+   0    instead of first #: pad number with leading zeroes
+   .    decimal point within a numeric field
+   ...  terminate a text field, show "..." as truncation evidence
+   @*   variable width field for a multi-line value
+   ^*   variable width field for next line of a multi-line value
+   ~    suppress line with all fields empty
+   ~~   repeat line until all fields are exhausted
+
+=begin original
+
+Each field in a picture line starts with either "@" (at) or "^" (caret),
+indicating what we'll call, respectively, a "regular" or "special" field.
+The choice of pad characters determines whether a field is textual or
+numeric. The tilde operators are not part of a field.  Let's look at
+the various possibilities in detail.
+
+=end original
+
+ピクチャー行の書くフィールドは "@" (at) か "^" (caret) で開始され、
+それぞれ「通常」か「特殊」フィールドを呼び出すことを示します。
+パッド文字の選択はフィールドがテキストか数値化によって決定されます。
+チルダ演算子はフィールドの一部ではありません。
+様々な可能性に冠する詳細について見ていきましょう。
+
+=head2 Text Fields
+X<format, text field>
+
+(テキストフィールド)
+
+=begin original
+
+The length of the field is supplied by padding out the field with multiple 
+"E<lt>", "E<gt>", or "|" characters to specify a non-numeric field with,
+respectively, left justification, right justification, or centering. 
+For a regular field, the value (up to the first newline) is taken and
+printed according to the selected justification, truncating excess characters.
+If you terminate a text field with "...", three dots will be shown if
+the value is truncated. A special text field may be used to do rudimentary 
+multi-line text block filling; see L</Using Fill Mode> for details.
+
+=end original
+
+フィールドの長さは、左寄せ、右寄せ、センタリングをそれぞれ指定する
+"E<lt>", "E<gt>", "|" といった文字で埋められた非数値フィールドで
+与えられます。
+通常のフィールドでは、値(最初の改行まで)が取られ、選択された行揃えと
+余分な文字の切り詰めに従って表示されます。
+テキストフィールドが "..." で終わっている場合、もし値が切り詰められると
+3 つのドットが表示されます。
+特殊テキストフィールドは基本的に複数行テキストブロック詰め込みに使われます;
+詳細については L</Using Fill Mode> を参照してください。
+
+   Example:
+      format STDOUT =
+      @<<<<<<   @||||||   @>>>>>>
+      "left",   "middle", "right"
+      .
+   Output:
+      left      middle    right
+
+=head2 Numeric Fields
+X<#> X<format, numeric field>
+
+(数値フィールド)
+
+=begin original
+
+Using "#" as a padding character specifies a numeric field, with
+right justification. An optional "." defines the position of the
+decimal point. With a "0" (zero) instead of the first "#", the
+formatted number will be padded with leading zeroes if necessary.
+A special numeric field is blanked out if the value is undefined.
+If the resulting value would exceed the width specified the field is
+filled with "#" as overflow evidence.
+
+=end original
+
+パッディング文字として "#" を使うと、数値フィールドを右詰めすることを
+指定します。
+オプションの "." は小数点の位置を定義します。
+最初の "#" の代わりに "0" (zero) を使うと、フォーマットされた数値は
+もし必要であれば 0 でパッディングします。
+もし結果の値がフィールドで指定された幅を超えた場合、
+オーバーフローしたことを示すために "#" で埋められます。
+
+   Example:
+      format STDOUT =
+      @###   @.###   @##.###  @###   @###   ^####
+       42,   3.1415,  undef,    0, 10000,   undef
+      .
+   Output:
+        42   3.142     0.000     0   ####
+
+=head2 The Field @* for Variable Width Multi-Line Text
+X<@*>
+
+(可変長複数行テキストのための @* フィールド)
+
+=begin original
+
+The field "@*" can be used for printing multi-line, nontruncated
+values; it should (but need not) appear by itself on a line. A final
+line feed is chomped off, but all other characters are emitted verbatim.
+
+=end original
+
+フィールド "@*" は複数行で切り詰められない値を表示するために使われます;
+これはそれ自身 1 行で表示されるべきです(しかし必要ではありません)。
+最後の改行は切り落とされますが、その他の全ての文字はそのまま出力されます。
+
+=head2 The Field ^* for Variable Width One-line-at-a-time Text
+X<^*>
+
+(「1 回に 1 行」の可変長テキストのための ^* フィールド)
+
+=begin original
+
+Like "@*", this is a variable width field. The value supplied must be a 
+scalar variable. Perl puts the first line (up to the first "\n") of the 
+text into the field, and then chops off the front of the string so that 
+the next time the variable is referenced, more of the text can be printed. 
+The variable will I<not> be restored.
+
+=end original
+
+"@*" と同様、これは可変長幅フィールドです。
+指定する値はスカラ値でなければなりません。
+Perl はテキストの最初の行(最初の "\n" まで)をフィールドにいれ、それから
+次にこの変数が参照されたときに次のテキストが表示されるように、文字列の
+前の部分は切り落とされます。
+変数は復元 I<されません> 。
+
+   Example:
+      $text = "line 1\nline 2\nline 3";
+      format STDOUT =
+      Text: ^*
+            $text
+      ~~    ^*
+            $text
+      .
+   Output:
+      Text: line 1
+            line 2
+            line 3
+
+=head2 Specifying Values
+X<format, specifying values>
+
+(値の指定)
+
+=begin original
+
+The values are specified on the following format line in the same order as
+the picture fields.  The expressions providing the values must be
+separated by commas.  They are all evaluated in a list context
+before the line is processed, so a single list expression could produce
+multiple list elements.  The expressions may be spread out to more than
+one line if enclosed in braces.  If so, the opening brace must be the first
+token on the first line.  If an expression evaluates to a number with a
+decimal part, and if the corresponding picture specifies that the decimal
+part should appear in the output (that is, any picture except multiple "#"
+characters B<without> an embedded "."), the character used for the decimal
+point is B<always> determined by the current LC_NUMERIC locale.  This
+means that, if, for example, the run-time environment happens to specify a
+German locale, "," will be used instead of the default ".".  See
+L<perllocale> and L<"WARNINGS"> for more information.
+
+=end original
+
+引き続くフォーマット行で指定された値は、ピクチャーフィールドと同じ順序に
+なります。
+値を提供する式はカンマで分けられていなければなりません。
+式は、行の処理が行われるより前にリストコンテキストで評価されます。
+ですから、一つのリスト式が複数行の要素を生成することもできます。
+この式はそれが中かっこで囲まれている場合には、2 行以上に
+広げられることもできます。
+その場合、開きかっこは一行目の最初のトークンでなければなりません。
+ある式が小数部を持った数値として評価され、数値指定に対応するピクチャーは
+出力に現れます(つまり、埋め込みの "." B<以外の> 複数の "#" を除く全ての
+ピクチャーです)。
+そして、小数点のために使われるキャラクターは B<常に> カレントの
+LC_NUMERIC ロケールによって決定されます。
+これはたとえば、実行時にドイツ語ロケールが指定されている環境の場合には、
+デフォルトの "." ではなく "," が使われるということです。
+詳しい情報は L<perllocale> と L<"WARNINGS"> を参照してください。
+
+=head2 Using Fill Mode
+X<format, fill mode>
+
+(詰め込みモードを使う)
+
+=begin original
+
+On text fields the caret enables a kind of fill mode.  Instead of an
+arbitrary expression, the value supplied must be a scalar variable
+that contains a text string.  Perl puts the next portion of the text into
+the field, and then chops off the front of the string so that the next time
+the variable is referenced, more of the text can be printed.  (Yes, this
+means that the variable itself is altered during execution of the write()
+call, and is not restored.)  The next portion of text is determined by
+a crude line breaking algorithm. You may use the carriage return character
+(C<\r>) to force a line break. You can change which characters are legal 
+to break on by changing the variable C<$:> (that's 
+$FORMAT_LINE_BREAK_CHARACTERS if you're using the English module) to a 
+list of the desired characters.
+
+=end original
+
+テキストフィールドでは、キャレットが詰め込みモードを有効にします。
+指定する値は任意の式ではなく、テキスト文字列を保持しているスカラ変数の
+名前でなくてはなりません。
+Perl は次の位置のテキストをフィールドに出力してから
+文字列の先頭をたたき落とす(chop)ので、次にその変数を参照したときには
+残りの文字列を出力できるのです。
+(これはつまり、その変数自身が write() の実行中に変更されてしまうと
+いうことであり、元には戻らないということです。)
+テキストの次の位置は粗い行分割アルゴリズムによって決定されます。
+強制的に行分割を行うために復帰文字 (C<\r>) が使えます。
+C<$:> という変数(English モジュールを使っていれば
+$FORMAT_LINE_BREAK_CHARACTERS)の内容を変更することによって、
+そこで改行することのできる文字を設定できます。
+
+=begin original
+
+Normally you would use a sequence of fields in a vertical stack associated 
+with the same scalar variable to print out a block of text. You might wish 
+to end the final field with the text "...", which will appear in the output 
+if the text was too long to appear in its entirety.  
+
+=end original
+
+通常は、同じスカラ変数に結び付けられた縦方向に積み重ねられたフィールドの
+並びを使ってテキストのブロックを出力することができます。
+最後のフィールドの終端に "..." を置くと、それは出力対象のテキストが
+長すぎて全体を出力できないときに出力に付加されます。
+
+=head2 Suppressing Lines Where All Fields Are Void
+X<format, suppressing lines>
+
+(全てのフィールドが空の行を抑制する)
+
+=begin original
+
+Using caret fields can produce lines where all fields are blank. You can
+suppress such lines by putting a "~" (tilde) character anywhere in the
+line.  The tilde will be translated to a space upon output.
+
+=end original
+
+キャレットを使ったフィールドは、全てのフィールドが空白の行を
+生成することができます。
+行の任意の場所に "~"(チルダ) を置くことによって空行を
+抑制することができます。
+チルダは出力では空白に変換されます。
+
+=head2 Repeating Format Lines
+X<format, repeating lines>
+
+(フォーマット行を繰り返す)
+
+=begin original
+
+If you put two contiguous tilde characters "~~" anywhere into a line,
+the line will be repeated until all the fields on the line are exhausted,
+i.e. undefined. For special (caret) text fields this will occur sooner or
+later, but if you use a text field of the at variety, the  expression you
+supply had better not give the same value every time forever! (C<shift(@f)>
+is a simple example that would work.)  Don't use a regular (at) numeric 
+field in such lines, because it will never go blank.
+
+=end original
+
+行のどこかに 2 つの連続したチルダ文字 "~~" を置くと、その行は
+その行にある全てのフィールドが
+出力されるまで(つまり未定義になるまで)くり返されます。
+特殊(キャレット)テキストフィールドでは、これは遅かれ早かれ起こりますが、
+変化のあるテキストフィールドを使う場合、指定する式は同じ値を毎回永遠に
+返さないようにした方がよいでしょう!
+(これが起きる単純な例は C<shift(@f)> です。)
+このような行に通常の数値フィールドを使ってはいけません; なぜなら
+決して空にならないからです。
+
+=head2 Top of Form Processing
+X<format, top of form> X<top> X<header>
+
+(ページ先頭の処理)
+
+=begin original
+
+Top-of-form processing is by default handled by a format with the
+same name as the current filehandle with "_TOP" concatenated to it.
+It's triggered at the top of each page.  See L<perlfunc/write>.
+
+=end original
+
+ページの先頭の処理は、デフォルトではカレントのファイルハンドルに
+"_TOP" を付けた名前のフォーマットによって取り扱われます。
+これは、各ページの先頭で呼び出されます。
+L<perlfunc/write> を参照してください。
+
+=begin original
+
+Examples:
+
+=end original
+
+例:
+
+ # a report on the /etc/passwd file
+ format STDOUT_TOP =
+                         Passwd File
+ Name                Login    Office   Uid   Gid Home
+ ------------------------------------------------------------------
+ .
+ format STDOUT =
+ @<<<<<<<<<<<<<<<<<< @||||||| @<<<<<<@>>>> @>>>> @<<<<<<<<<<<<<<<<<
+ $name,              $login,  $office,$uid,$gid, $home
+ .
+
+ # a report from a bug report form
+ format STDOUT_TOP =
+                         Bug Reports
+ @<<<<<<<<<<<<<<<<<<<<<<<     @|||         @>>>>>>>>>>>>>>>>>>>>>>>
+ $system,                      $%,         $date
+ ------------------------------------------------------------------
+ .
+ format STDOUT =
+ Subject: @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+          $subject
+ Index: @<<<<<<<<<<<<<<<<<<<<<<<<<<<< ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+        $index,                       $description
+ Priority: @<<<<<<<<<< Date: @<<<<<<< ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+           $priority,        $date,   $description
+ From: @<<<<<<<<<<<<<<<<<<<<<<<<<<<<< ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+       $from,                         $description
+ Assigned to: @<<<<<<<<<<<<<<<<<<<<<< ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+              $programmer,            $description
+ ~                                    ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+                                      $description
+ ~                                    ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+                                      $description
+ ~                                    ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+                                      $description
+ ~                                    ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+                                      $description
+ ~                                    ^<<<<<<<<<<<<<<<<<<<<<<<...
+                                      $description
+ .
+
+=begin original
+
+It is possible to intermix print()s with write()s on the same output
+channel, but you'll have to handle C<$-> (C<$FORMAT_LINES_LEFT>)
+yourself.
+
+=end original
+
+同じ出力チャネルにおいて print() と write() を混ぜて使うことは可能ですが、
+C<$-> (C<$FORMAT_LINES_LEFT>) を自分で扱う必要があるでしょう。
+
+=head2 Format Variables
+X<format variables>
+X<format, variables>
+
+(フォーマット変数)
+
+=begin original
+
+The current format name is stored in the variable C<$~> (C<$FORMAT_NAME>),
+and the current top of form format name is in C<$^> (C<$FORMAT_TOP_NAME>).
+The current output page number is stored in C<$%> (C<$FORMAT_PAGE_NUMBER>),
+and the number of lines on the page is in C<$=> (C<$FORMAT_LINES_PER_PAGE>).
+Whether to autoflush output on this handle is stored in C<$|>
+(C<$OUTPUT_AUTOFLUSH>).  The string output before each top of page (except
+the first) is stored in C<$^L> (C<$FORMAT_FORMFEED>).  These variables are
+set on a per-filehandle basis, so you'll need to select() into a different
+one to affect them:
+
+=end original
+
+カレントのフォーマット名は C<$~> (C<$FORMAT_NAME>) という変数に格納され、
+カレントの先頭のフォーマットの名前は C<$^> (C<$FORMAT_TOP_NAME>) に
+格納されています。
+カレントの出力ページ数は C<$%> (C<$FORMAT_PAGE_NUMBER>) にあり、
+ページ当たりの行数は C<$=> (C<$FORMAT_LINES_PER_PAGE>) にあります。
+そのハンドルが出力時に自動フラッシュするかどうかは C<$|>
+(C<$OUTPUT_AUTOFLUSH>) にあります。
+各ページの先頭の前(1 ページ目を除く)に出力される文字列は
+C<$^L> (C<$FORMAT_FORMFEED>) に格納されています。
+これらの変数はファイルハンドルごとに設定されるものなので、
+異なるファイルハンドルに効果を及ぼすには、そのファイルハンドルへ
+select() を行う必要があります:
+
+    select((select(OUTF),
+	    $~ = "My_Other_Format",
+	    $^ = "My_Top_Format"
+	   )[0]);
+
+=begin original
+
+Pretty ugly, eh?  It's a common idiom though, so don't be too surprised
+when you see it.  You can at least use a temporary variable to hold
+the previous filehandle: (this is a much better approach in general,
+because not only does legibility improve, you now have intermediary
+stage in the expression to single-step the debugger through):
+
+=end original
+
+ちょっと見づらいですね。
+でもこれは一般的なイディオムなんです。
+ですからこれを見たときにもそんなに驚かないでください。
+少なくとも、以前のファイルハンドルを保持するために一時変数を
+使うことができます(一般的にはこちらのほうが良いやりかたです。
+なぜなら、読みやすくなるばかりでなく、式の途中でデバッガの
+シングルステップが使えるからです):
+
+    $ofh = select(OUTF);
+    $~ = "My_Other_Format";
+    $^ = "My_Top_Format";
+    select($ofh);
+
+=begin original
+
+If you use the English module, you can even read the variable names:
+
+=end original
+
+English モジュールを使っていれば、変数名もわかりやすいものにできます:
+
+    use English '-no_match_vars';
+    $ofh = select(OUTF);
+    $FORMAT_NAME     = "My_Other_Format";
+    $FORMAT_TOP_NAME = "My_Top_Format";
+    select($ofh);
+
+=begin original
+
+But you still have those funny select()s.  So just use the FileHandle
+module.  Now, you can access these special variables using lowercase
+method names instead:
+
+=end original
+
+しかし、これでもまだ妙な select() があります。
+FileHandle モジュールを使いましょう。
+そうすれば、これらの特殊変数の代わりに小文字のメソッド名を
+使ってアクセスできるようになります。
+
+    use FileHandle;
+    format_name     OUTF "My_Other_Format";
+    format_top_name OUTF "My_Top_Format";
+
+=begin original
+
+Much better!
+
+=end original
+
+ずいぶん良くなりましたね!
+
+=head1 NOTES
+
+(注意)
+
+=begin original
+
+Because the values line may contain arbitrary expressions (for at fields,
+not caret fields), you can farm out more sophisticated processing
+to other functions, like sprintf() or one of your own.  For example:
+
+=end original
+
+値の行には任意の式(^ フィールドではなく @ フィールドで)を含めることが
+できるので、sprintf() や自分で作ったようなその他の関数を使って
+より整った処理を行うことができます。
+例を挙げてみましょう:
+
+    format Ident =
+	@<<<<<<<<<<<<<<<
+	&commify($n)
+    .
+
+=begin original
+
+To get a real at or caret into the field, do this:
+
+=end original
+
+本当のキャレットやアットマークをフィールドに挿入するは以下のようにします:
+
+    format Ident =
+    I have an @ here.
+	    "@"
+    .
+
+=begin original
+
+To center a whole line of text, do something like this:
+
+=end original
+
+行全体を中央寄せするには以下のようにします:
+
+    format Ident =
+    @|||||||||||||||||||||||||||||||||||||||||||||||
+	    "Some text line"
+    .
+
+=begin original
+
+There is no builtin way to say "float this to the right hand side
+of the page, however wide it is."  You have to specify where it goes.
+The truly desperate can generate their own format on the fly, based
+on the current number of columns, and then eval() it:
+
+=end original
+
+「ページの幅に関係なくフィールドをページの右端に浮かせておく」ような
+組み込みの方法はありません。
+フィールドがどこに置かれるのかを指定する必要があります。
+本当にお薦めはできないのですが、カレントのカラムの数に基づいて
+その場でフォーマットを生成することが可能なので、
+そうしてから eval() するという手が使えます:
+
+    $format  = "format STDOUT = \n"
+             . '^' . '<' x $cols . "\n"
+             . '$entry' . "\n"
+             . "\t^" . "<" x ($cols-8) . "~~\n"
+             . '$entry' . "\n"
+             . ".\n";
+    print $format if $Debugging;
+    eval $format;
+    die $@ if $@;
+
+=begin original
+
+Which would generate a format looking something like this:
+
+=end original
+
+これは以下のようなフォーマットを生成するでしょう:
+
+ format STDOUT =
+ ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+ $entry
+         ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<~~
+ $entry
+ .
+
+=begin original
+
+Here's a little program that's somewhat like fmt(1):
+
+=end original
+
+以下の例は、fmt(1) のようなことをするちょっとしたプログラムです:
+
+ format =
+ ^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< ~~
+ $_
+
+ .
+
+ $/ = '';
+ while (<>) {
+     s/\s*\n\s*/ /g;
+     write;
+ }
+
+=head2 Footers
+X<format, footer> X<footer>
+
+(フッタ)
+
+=begin original
+
+While $FORMAT_TOP_NAME contains the name of the current header format,
+there is no corresponding mechanism to automatically do the same thing
+for a footer.  Not knowing how big a format is going to be until you
+evaluate it is one of the major problems.  It's on the TODO list.
+
+=end original
+
+$FORMAT_TOP_NAME はカレントのヘッダフォーマットの名前を
+保持していているのですが、フッタに対して同じことを自動的に行う適切な
+仕掛けはありません。
+評価を行ってみるまではフォーマットがどれくらい
+大きなものになるのか知ることができないということが、大きな問題です。
+これは TODO リストにあります。
+
+=begin original
+
+Here's one strategy:  If you have a fixed-size footer, you can get footers
+by checking $FORMAT_LINES_LEFT before each write() and print the footer
+yourself if necessary.
+
+=end original
+
+一つの戦略: あなたが固定サイズのフッタを使うのであれば、write() する前に
+$FORMAT_LINES_LEFT をチェックすればフッタを適切に表示できます。
+
+=begin original
+
+Here's another strategy: Open a pipe to yourself, using C<open(MYSELF, "|-")>
+(see L<perlfunc/open()>) and always write() to MYSELF instead of STDOUT.
+Have your child process massage its STDIN to rearrange headers and footers
+however you like.  Not very convenient, but doable.
+
+=end original
+
+別の戦略: C<open(MYSELF, "|-")>(L<perlfunc/open()> を参照)を使って
+自分自身に対するパイプをオープンして常に STDOUT ではなく MYSELF に
+write() するようにし、子プロセスではその STDIN からの入力を、ヘッダと
+フッタを再構成するために処理します。
+これは非常にお手軽というわけではありませんが、やればできます。
+
+=head2 Accessing Formatting Internals
+X<format, internals>
+
+(フォーマット機構の内部にアクセスする)
+
+=begin original
+
+For low-level access to the formatting mechanism.  you may use formline()
+and access C<$^A> (the $ACCUMULATOR variable) directly.
+
+=end original
+
+フォーマット機構に対する低水準アクセスのために、formline() を使ったり、
+直接 C<$^A>($ACCUMULATOR 変数) にアクセスすることができます。
+
+=begin original
+
+For example:
+
+=end original
+
+例えば:
+
+    $str = formline <<'END', 1,2,3;
+    @<<<  @|||  @>>>
+    END
+
+    print "Wow, I just stored `$^A' in the accumulator!\n";
+
+=begin original
+
+Or to make an swrite() subroutine, which is to write() what sprintf()
+is to printf(), do this:
+
+=end original
+
+また、printf() に対する sprintf() と同じことを write() に対して行う
+サブルーチン swrite() を作成するために以下のようにできます:
+
+    use Carp;
+    sub swrite {
+	croak "usage: swrite PICTURE ARGS" unless @_;
+	my $format = shift;
+	$^A = "";
+	formline($format,@_);
+	return $^A;
+    }
+
+    $string = swrite(<<'END', 1, 2, 3);
+ Check me out
+ @<<<  @|||  @>>>
+ END
+    print $string;
+
+=head1 WARNINGS
+
+(警告)
+
+=begin original
+
+The lone dot that ends a format can also prematurely end a mail
+message passing through a misconfigured Internet mailer (and based on
+experience, such misconfiguration is the rule, not the exception).  So
+when sending format code through mail, you should indent it so that
+the format-ending dot is not on the left margin; this will prevent
+SMTP cutoff.
+
+=end original
+
+フォーマットを終了する独立したドットは、間違って設定されている
+インターネットメーラー(そして経験によれば、そういった間違った設定は
+通例のものであって、例外ではありません)を通して渡されるメールメッセージを
+早まって終わらせてしまう可能性もあります。
+ですから、メイルを通じてフォーマットコードを送るときには、
+フォーマットを終端するドットがレフトマージンに乗らないように
+インデントすべきです; これにより SMTP が途中で切ってしまうことを防ぎます。
+
+=begin original
+
+Lexical variables (declared with "my") are not visible within a
+format unless the format is declared within the scope of the lexical
+variable.  (They weren't visible at all before version 5.001.)
+
+=end original
+
+("my" を使って宣言された)レキシカル変数は、フォーマットがその
+レキシカル変数のスコープの内側で宣言されていない限りは、フォーマットの
+内側では不可視になります(バージョン 5.001 までは全ての場所で不可視でした)。
+
+=begin original
+
+Formats are the only part of Perl that unconditionally use information
+from a program's locale; if a program's environment specifies an
+LC_NUMERIC locale, it is always used to specify the decimal point
+character in formatted output.  Perl ignores all other aspects of locale
+handling unless the C<use locale> pragma is in effect.  Formatted output
+cannot be controlled by C<use locale> because the pragma is tied to the
+block structure of the program, and, for historical reasons, formats
+exist outside that block structure.  See L<perllocale> for further
+discussion of locale handling.
+
+=end original
+
+フォーマットは、Perl においてプログラムのロケールからの情報に左右されない
+唯一の部分です。
+プログラムの環境が LC_NUMERIC ロケールを指定した場合でも
+常に指定した小数点文字がフォーマットされた出力に現れます。
+Perl は、C<use locale> が有効でない場合にはその他のロケールの
+処理を全て無視します。
+フォーマットされた出力を C<use locale> プラグマによって
+制御することはできません。
+なぜなら、このプラグマはプログラムのブロック構造に対して
+結び付けられるものであり、かつ、歴史的な理由により、
+フォーマットはブロック構造の外側にあるのです。
+ロケールの処理に関する議論は L<perllocale> を参照してください。
+
+=begin original
+
+Within strings that are to be displayed in a fixed length text field,
+each control character is substituted by a space. (But remember the
+special meaning of C<\r> when using fill mode.) This is done to avoid
+misalignment when control characters "disappear" on some output media.
+
+=end original
+
+固定テキストフィールドに表示される文字列中の各制御文字は空白に
+置換されます。
+(しかし、詰め込みモードでは C<\r> は特別な意味を持つことを
+忘れないでください。)
+これは、制御文字が出力メディアによっては「消える」時に揃えが乱れることを
+防ぎます。
+
+=begin meta
+
+Translate: KIMURA Koichi
+Update: SHIRAKATA Kentaro <argrath@ub32.org> (5.8.8-)
+Status: completed
+
+=end meta
+
