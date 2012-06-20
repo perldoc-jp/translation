@@ -1,0 +1,2201 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+perlopentut - tutorial on opening things in Perl
+
+=end original
+
+perlopentut - Perl でいろんなものを開くためのチュートリアル
+
+=head1 DESCRIPTION
+
+=begin original
+
+Perl has two simple, built-in ways to open files: the shell way for
+convenience, and the C way for precision.  The shell way also has 2- and
+3-argument forms, which have different semantics for handling the filename.
+The choice is yours.
+
+=end original
+
+Perl には、ファイルを開くための 2 つの単純な組み込みの手段があります:
+利便性のためのシェル風の方法と、正確性のための C 風の方法です。
+シェル風の方法には 2 引数と 3 引数があり、ファイル名の扱いに関して
+異なった動作をします。
+選択はあなた次第です。
+
+=head1 Open E<agrave> la shell
+
+(シェル風に開く)
+
+=begin original
+
+Perl's C<open> function was designed to mimic the way command-line
+redirection in the shell works.  Here are some basic examples
+from the shell:
+
+=end original
+
+Perl の C<open> 関数は、シェルでのコマンドラインのリダイレクトをまねて
+設計されています。
+以下はシェルでの基本的な例です:
+
+    $ myprogram file1 file2 file3
+    $ myprogram    <  inputfile
+    $ myprogram    >  outputfile
+    $ myprogram    >> outputfile
+    $ myprogram    |  otherprogram 
+    $ otherprogram |  myprogram
+
+=begin original
+
+And here are some more advanced examples:
+
+=end original
+
+そして以下はもう少し高度な例です:
+
+    $ otherprogram      | myprogram f1 - f2
+    $ otherprogram 2>&1 | myprogram -
+    $ myprogram     <&3
+    $ myprogram     >&4
+
+=begin original
+
+Programmers accustomed to constructs like those above can take comfort
+in learning that Perl directly supports these familiar constructs using
+virtually the same syntax as the shell.
+
+=end original
+
+上述のような方法に慣れているプログラマにとっては、Perl がシェルと事実上
+同じ文法を使った親しんでいる構造に直接対応していることは
+学ぶのが容易になります。
+
+=head2 Simple Opens
+
+(単純に開く)
+
+=begin original
+
+The C<open> function takes two arguments: the first is a filehandle,
+and the second is a single string comprising both what to open and how
+to open it.  C<open> returns true when it works, and when it fails,
+returns a false value and sets the special variable C<$!> to reflect
+the system error.  If the filehandle was previously opened, it will
+be implicitly closed first.
+
+=end original
+
+C<open> 関数は 2 つの引数を取ります: 1 つめはファイルハンドルで、
+2 つめは何を開くかとどう開くかで構成される単一の文字列です。
+C<open> は成功すると真を返し、失敗すると偽を返して特殊変数 C<$!> に
+システムエラーを反映します。
+指定されたファイルハンドルが以前に開かれていた場合は、暗黙の内に
+まず閉じられます。
+
+=begin original
+
+For example:
+
+=end original
+
+例えば:
+
+    open(INFO,      "datafile") || die("can't open datafile: $!");
+    open(INFO,   "<  datafile") || die("can't open datafile: $!");
+    open(RESULTS,">  runstats") || die("can't open runstats: $!");
+    open(LOG,    ">> logfile ") || die("can't open logfile:  $!");
+
+=begin original
+
+If you prefer the low-punctuation version, you could write that this way:
+
+=end original
+
+句読点が少ない方が好みなら、以下のようにも書けます:
+
+    open INFO,   "<  datafile"  or die "can't open datafile: $!";
+    open RESULTS,">  runstats"  or die "can't open runstats: $!";
+    open LOG,    ">> logfile "  or die "can't open logfile:  $!";
+
+=begin original
+
+A few things to notice.  First, the leading C<< < >> is optional.
+If omitted, Perl assumes that you want to open the file for reading.
+
+=end original
+
+いくつか気がつくことがあります。
+まず、先頭の C<< < >> は省略可能です。
+省略されると、Perl はファイルを読み込みのために開きたいと仮定します。
+
+=begin original
+
+Note also that the first example uses the C<||> logical operator, and the
+second uses C<or>, which has lower precedence.  Using C<||> in the latter
+examples would effectively mean
+
+=end original
+
+最初の例は C<||> 論理演算子を使っていて、二つめの例はより優先順位の低い
+C<or> を使っていることにも注意してください。
+後者の例で  C<||> を使うと、実際には以下のような意味になり
+
+    open INFO, ( "<  datafile"  || die "can't open datafile: $!" );
+
+=begin original
+
+which is definitely not what you want.
+
+=end original
+
+あなたが望んでいるのと全く違うことになります。
+
+=begin original
+
+The other important thing to notice is that, just as in the shell,
+any whitespace before or after the filename is ignored.  This is good,
+because you wouldn't want these to do different things:
+
+=end original
+
+他の注意するべき重要なこととしては、シェルと同様、ファイル名の前後の
+空白は無視されることです。
+これはよいことです; なぜなら、以下のものが違うことをすることは
+望まないだろうからです:
+
+    open INFO,   "<datafile"   
+    open INFO,   "< datafile" 
+    open INFO,   "<  datafile"
+
+=begin original
+
+Ignoring surrounding whitespace also helps for when you read a filename
+in from a different file, and forget to trim it before opening:
+
+=end original
+
+周りの空白を無視することは、ファイル名を別のファイルから読み込んで、
+開く前に空白を取り除くのを忘れたときにも助けになります:
+
+    $filename = <INFO>;         # oops, \n still there
+    open(EXTRA, "< $filename") || die "can't open $filename: $!";
+
+=begin original
+
+This is not a bug, but a feature.  Because C<open> mimics the shell in
+its style of using redirection arrows to specify how to open the file, it
+also does so with respect to extra whitespace around the filename itself
+as well.  For accessing files with naughty names, see 
+L<"Dispelling the Dweomer">.
+
+=end original
+
+これはバグではありません、仕様です。
+C<open> はどのようにファイルを開くかを指定するのにリダイレクトの矢印を
+使うことでシェルを真似ているので、ファイル名の周りの空白についても
+同じように扱います。
+行儀の悪い名前のファイルにアクセスするためには、
+L<"Dispelling the Dweomer"> を参照してください。
+
+=begin original
+
+There is also a 3-argument version of C<open>, which lets you put the
+special redirection characters into their own argument:
+
+=end original
+
+また、3 引数版の C<open> もあって、これは特殊なリダイレクト文字を
+独立した引数にしたものです:
+
+    open( INFO, ">", $datafile ) || die "Can't create $datafile: $!";
+
+=begin original
+
+In this case, the filename to open is the actual string in C<$datafile>,
+so you don't have to worry about C<$datafile> containing characters
+that might influence the open mode, or whitespace at the beginning of
+the filename that would be absorbed in the 2-argument version.  Also,
+any reduction of unnecessary string interpolation is a good thing.
+
+=end original
+
+この場合、開くファイル名は C<$datafile> の実際の文字列なので、
+C<$datafile> に開くモードに影響を与える文字や、
+2 引数版では吸収されるファイル名の先頭の空白が含まれているかどうかを
+心配する必要はありません。
+また、不必要な文字列変換が削減されるのもよいことです。
+
+=head2 Indirect Filehandles
+
+(間接ファイルハンドル)
+
+=begin original
+
+C<open>'s first argument can be a reference to a filehandle.  As of
+perl 5.6.0, if the argument is uninitialized, Perl will automatically
+create a filehandle and put a reference to it in the first argument,
+like so:
+
+=end original
+
+C<open> の最初の引数は、ファイルハンドルへのリファレンスにすることも出来ます。
+perl 5.6.0 以降、引数が初期化されていない場合、Perl は
+以下のように、自動的にファイルハンドルを作成して、それへのリファレンスを
+最初の引数に設定します:
+
+    open( my $in, $infile )   or die "Couldn't read $infile: $!";
+    while ( <$in> ) {
+	# do something with $_
+    }
+    close $in;
+
+=begin original
+
+Indirect filehandles make namespace management easier.  Since filehandles
+are global to the current package, two subroutines trying to open
+C<INFILE> will clash.  With two functions opening indirect filehandles
+like C<my $infile>, there's no clash and no need to worry about future
+conflicts.
+
+=end original
+
+間接ファイルハンドルは、名前空間管理をより容易にします。
+ファイルハンドルは現在のパッケージに対してグローバルなので、
+二つのサブルーチンが C<INFILE> を開こうとすると衝突します。 
+二つの関数が C<my $infil> のように間接ファイルハンドルで開いていると、
+衝突は発生せず、将来の衝突を気にする必要もありません。
+
+=begin original
+
+Another convenient behavior is that an indirect filehandle automatically
+closes when there are no more references to it:
+
+=end original
+
+もう一つの便利は振る舞いとして、間接ファイルハンドルは、それに対する
+参照がなくなったとき、自動的に閉じます:
+
+    sub firstline {
+	open( my $in, shift ) && return scalar <$in>;
+	# no close() required
+    }
+
+=begin original
+
+Indirect filehandles also make it easy to pass filehandles to and return
+filehandles from subroutines:
+
+=end original
+
+間接ファイルハンドルは、サブルーチンとのファイルハンドルの受け渡しも
+容易にします:
+
+    for my $file ( qw(this.conf that.conf) ) {
+        my $fin = open_or_throw('<', $file);
+        process_conf( $fin );
+        # no close() needed
+    }
+
+    use Carp;
+    sub open_or_throw {
+        my ($mode, $filename) = @_;
+        open my $h, $mode, $filename
+            or croak "Could not open '$filename': $!";
+        return $h;
+    }
+
+=head2 Pipe Opens
+
+(パイプを開く)
+
+=begin original
+
+In C, when you want to open a file using the standard I/O library,
+you use the C<fopen> function, but when opening a pipe, you use the
+C<popen> function.  But in the shell, you just use a different redirection
+character.  That's also the case for Perl.  The C<open> call 
+remains the same--just its argument differs.  
+
+=end original
+
+C では、標準 I/O ライブラリを使ってファイルを開きたいときは C<fopen> を
+使いますが、パイプを開くときには C<popen> 関数を使います。
+しかし、シェルでは、単に違うリダイレクト文字を使います。
+これは Perl の場合にも当てはまります。
+C<open> 呼び出しは同じままです -- 単にその引数が変わります。
+
+=begin original
+
+If the leading character is a pipe symbol, C<open> starts up a new
+command and opens a write-only filehandle leading into that command.
+This lets you write into that handle and have what you write show up on
+that command's standard input.  For example:
+
+=end original
+
+先頭の文字がパイプ記号の場合、C<open> は新しいコマンドを準備して、
+そのコマンドへと導かれる書き込み専用のファイルハンドルを開きます。
+これによって、あなたがこのハンドルに書き込んだものがコマンドの
+標準入力に渡されるようになります。
+例えば:
+
+    open(PRINTER, "| lpr -Plp1")    || die "can't run lpr: $!";
+    print PRINTER "stuff\n";
+    close(PRINTER)                  || die "can't close lpr: $!";
+
+=begin original
+
+If the trailing character is a pipe, you start up a new command and open a
+read-only filehandle leading out of that command.  This lets whatever that
+command writes to its standard output show up on your handle for reading.
+For example:
+
+=end original
+
+末尾の文字がパイプの場合、新しいコマンドを準備して、
+そのコマンドから導かれる読み込み専用のファイルハンドルを開きます。
+これにより、そのコマンドが標準出力にしたものはなんでも読み込み用の
+ファイルハンドルに現れます。
+例えば:
+
+    open(NET, "netstat -i -n |")    || die "can't fork netstat: $!";
+    while (<NET>) { }               # do something with input
+    close(NET)                      || die "can't close netstat: $!";
+
+=begin original
+
+What happens if you try to open a pipe to or from a non-existent
+command?  If possible, Perl will detect the failure and set C<$!> as
+usual.  But if the command contains special shell characters, such as
+C<E<gt>> or C<*>, called 'metacharacters', Perl does not execute the
+command directly.  Instead, Perl runs the shell, which then tries to
+run the command.  This means that it's the shell that gets the error
+indication.  In such a case, the C<open> call will only indicate
+failure if Perl can't even run the shell.  See L<perlfaq8/"How can I
+capture STDERR from an external command?"> to see how to cope with
+this.  There's also an explanation in L<perlipc>.
+
+=end original
+
+存在しないコマンドに対してパイプを開こうとすると何が起こるでしょうか?
+可能なら、Perl は失敗を検出していつも通り C<$!> をセットします。
+しかし、もしコマンドに「メタ文字」と呼ばれる C<E<gt>> や C<*> のような
+特殊シェル文字が含まれていると、Perl はコマンドを直接実行しません。
+その代わりに、Perl はシェルを実行し、それからコマンドを
+実行しようとします。
+これは、エラーを受け取るのはシェルであることを意味します。
+このような場合、C<open> 呼び出しは、たとえ Perl がシェルを実行できなかった
+場合でも、失敗を示すだけです。
+これを扱う方法については、
+L<perlfaq8/"How can I capture STDERR from an external command?"> を
+参照してください。
+L<perlipc> にも説明があります。
+
+=begin original
+
+If you would like to open a bidirectional pipe, the IPC::Open2
+library will handle this for you.  Check out 
+L<perlipc/"Bidirectional Communication with Another Process">
+
+=end original
+
+双方向パイプを開きたい場合は、IPC::Open2 ライブラリが使えます。
+L<perlipc/"Bidirectional Communication with Another Process"> を
+参照してください。
+
+=begin original
+
+perl-5.6.x introduced a version of piped open that executes a process
+based on its command line arguments without relying on the shell. (Similar
+to the C<system(@LIST)> notation.) This is safer and faster than executing
+a single argument pipe-command, but does not allow special shell
+constructs. (It is also not supported on Microsoft Windows, Mac OS Classic
+or RISC OS.)
+
+=end original
+
+perl-5.6.x から、シェルに頼らずにコマンドライン引数を基にしてプロセスを
+実行するパイプオープンが導入されました。
+(C<system(@LIST)> 記法と同様です。)
+これは 1 引数のパイプコマンドを実行するより安全で高速ですが、特殊シェル
+構文は使えません。
+(また、Microsoft Windows, Mac OS Classic, RISC OS でも対応していません。)
+
+=begin original
+
+Here's an example of C<open '-|'>, which prints a random Unix
+fortune cookie as uppercase:
+
+=end original
+
+以下は C<open '-|'> の例で、ランダムな Unix おみくじを大文字で表示します:
+
+    my $collection = shift(@ARGV);
+    open my $fortune, '-|', 'fortune', $collection
+        or die "Could not find fortune - $!";
+    while (<$fortune>)
+    {
+        print uc($_);
+    }
+    close($fortune);
+
+=begin original
+
+And this C<open '|-'> pipes into lpr:
+
+=end original
+
+そしてこれは C<open '|-'> パイプを lpr に送ります:
+
+    open my $printer, '|-', 'lpr', '-Plp1'
+        or die "can't run lpr: $!";
+    print {$printer} "stuff\n";
+    close($printer)
+        or die "can't close lpr: $!";
+
+=head2 The Minus File
+
+("-" ファイル)
+
+=begin original
+
+Again following the lead of the standard shell utilities, Perl's
+C<open> function treats a file whose name is a single minus, "-", in a
+special way.  If you open minus for reading, it really means to access
+the standard input.  If you open minus for writing, it really means to
+access the standard output.
+
+=end original
+
+再び標準シェルの機能に合わせるように、Perl の
+C<open> 関数は、名前がマイナス一つ "-" だけのファイルを特別に扱います。
+読み込み用にマイナスを開くと、実際には標準入力にアクセスします。
+書き込み用にマイナスを開くと、実際には標準出力にアクセスします。
+
+=begin original
+
+If minus can be used as the default input or default output, what happens
+if you open a pipe into or out of minus?  What's the default command it
+would run?  The same script as you're currently running!  This is actually
+a stealth C<fork> hidden inside an C<open> call.  See 
+L<perlipc/"Safe Pipe Opens"> for details.
+
+=end original
+
+マイナスがデフォルトの入力やデフォルトの出力として使えるとすると、
+パイプに対してマイナスを使うとどうなるでしょう?
+デフォルトのコマンドとして何が実行されるのでしょう?
+今実行している同じスクリプトです!
+これは実際には C<open> 呼び出し内で隠れた C<fork> が行われます。
+詳しくは L<perlipc/"Safe Pipe Opens"> を参照してください。
+
+=head2 Mixing Reads and Writes
+
+(読み書きを混ぜる)
+
+=begin original
+
+It is possible to specify both read and write access.  All you do is
+add a "+" symbol in front of the redirection.  But as in the shell,
+using a less-than on a file never creates a new file; it only opens an
+existing one.  On the other hand, using a greater-than always clobbers
+(truncates to zero length) an existing file, or creates a brand-new one
+if there isn't an old one.  Adding a "+" for read-write doesn't affect
+whether it only works on existing files or always clobbers existing ones.
+
+=end original
+
+読み書きアクセス双方を指定することは可能です。
+必要なことはリダイレクトの前に "+" の文字を加えるだけです。
+しかしシェルの場合と同様、ファイルに小なり記号を使っても新しいファイルが
+作成されることはありません; すでにあるファイルを開くだけです。
+一方、大なり記号を使うと、ファイルがある場合には常に上書き
+(長さ 0 に切り詰め)られ、ファイルがない場合は新しいファイルが作成されます。
+読み書き用に "+" を追加しても、既にあるファイルにだけ動作するか
+既にあるファイルを上書きするかということには影響を与えません。
+
+    open(WTMP, "+< /usr/adm/wtmp") 
+        || die "can't open /usr/adm/wtmp: $!";
+
+    open(SCREEN, "+> lkscreen")
+        || die "can't open lkscreen: $!";
+
+    open(LOGFILE, "+>> /var/log/applog")
+        || die "can't open /var/log/applog: $!";
+
+=begin original
+
+The first one won't create a new file, and the second one will always
+clobber an old one.  The third one will create a new file if necessary
+and not clobber an old one, and it will allow you to read at any point
+in the file, but all writes will always go to the end.  In short,
+the first case is substantially more common than the second and third
+cases, which are almost always wrong.  (If you know C, the plus in
+Perl's C<open> is historically derived from the one in C's fopen(3S),
+which it ultimately calls.)
+
+=end original
+
+一つ目のものは新しいファイルを作ることはなく、二つ目のものは常に古い
+ファイルを上書きします。
+三つ目のものは必要があれば新しいファイルを作りますが、古いファイルを
+上書きせず、ファイルのどの地点でも読み込むことができますが、
+書き込みは常に末尾に行われます。
+要するに、一つ目のものは(ほとんど常に間違っている)二つ目や三つ目の
+ものよりもかなり一般的です。
+(もし C を知っているなら、Perl の C<open> で使われるプラス記号が
+歴史的には (最終的に呼ばれることになる) C の fopen(3S) に由来しています。)
+
+=begin original
+
+In fact, when it comes to updating a file, unless you're working on
+a binary file as in the WTMP case above, you probably don't want to
+use this approach for updating.  Instead, Perl's B<-i> flag comes to
+the rescue.  The following command takes all the C, C++, or yacc source
+or header files and changes all their foo's to bar's, leaving
+the old version in the original filename with a ".orig" tacked
+on the end:
+
+=end original
+
+実際、ファイルを更新するとき、上述の WTMP の場合のようなバイナリファイルに
+対して作業をするのでない限り、おそらく更新のためにこの手法を
+使いたくないでしょう。
+代わりに、Perl の B<-i> フラグが助けになります。
+以下のコマンドは C, C++, yacc 全てののソースファイルとヘッダファイルを
+取って、その中の全ての foo を bar に変更し、原版は元のファイル名の末尾に
+".orig" を付けたファイルに保持します:
+
+    $ perl -i.orig -pe 's/\bfoo\b/bar/g' *.[Cchy]
+
+=begin original
+
+This is a short cut for some renaming games that are really
+the best way to update textfiles.  See the second question in 
+L<perlfaq5> for more details.
+
+=end original
+
+これは実際にはテキストファイルを更新するための最良の方法であるリネーム
+手法へのショートカットです。
+さらなる詳細については L<perlfaq5> の 2 番目の質問を参照してください。
+
+=head2 Filters 
+
+(フィルタ)
+
+=begin original
+
+One of the most common uses for C<open> is one you never
+even notice.  When you process the ARGV filehandle using
+C<< <ARGV> >>, Perl actually does an implicit open 
+on each file in @ARGV.  Thus a program called like this:
+
+=end original
+
+C<open> のもっとも一般的な使い方の一つは、使っていることを
+気づきすらしないものです。
+ARGV ファイルハンドルを C<< <ARGV> >> を使って処理するとき、Perl は
+実際は @ARGV の各ファイルを暗黙の内に開いています。
+従って、以下のようなプログラムは:
+
+    $ myprogram file1 file2 file3
+
+=begin original
+
+can have all its files opened and processed one at a time
+using a construct no more complex than:
+
+=end original
+
+以下のようなものより複雑な構文を使わなくても、それぞれのファイルを
+開いて一度に処理できます:
+
+    while (<>) {
+        # do something with $_
+    } 
+
+=begin original
+
+If @ARGV is empty when the loop first begins, Perl pretends you've opened
+up minus, that is, the standard input.  In fact, $ARGV, the currently
+open file during C<< <ARGV> >> processing, is even set to "-"
+in these circumstances.
+
+=end original
+
+ループが最初に開始したときに @ARGV が空なら、Perl はマイナス記号
+(つまり標準入力) を開いたかのように振る舞います。
+実際、C<< <ARGV> >> で現在開いているファイルを示す $ARGV には、
+この慣習によって "-" がセットされます。
+
+=begin original
+
+You are welcome to pre-process your @ARGV before starting the loop to
+make sure it's to your liking.  One reason to do this might be to remove
+command options beginning with a minus.  While you can always roll the
+simple ones by hand, the Getopts modules are good for this:
+
+=end original
+
+好みの形にするために、ループの開始前に @ARGV を前処理しても問題ありません。
+こうするための理由の一つは、マイナスから始まるコマンドオプションを
+削除するためです。
+いつでも自分で単純なものを作ることができる一方、
+Getopts モジュールはこれを行うのによいものです:
+
+    use Getopt::Std;
+
+    # -v, -D, -o ARG, sets $opt_v, $opt_D, $opt_o
+    getopts("vDo:");            
+
+    # -v, -D, -o ARG, sets $args{v}, $args{D}, $args{o}
+    getopts("vDo:", \%args);    
+
+=begin original
+
+Or the standard Getopt::Long module to permit named arguments:
+
+=end original
+
+あるいは、名前付きの引数を使えるようにするための
+標準の Getopt::Long モジュールもあります:
+
+    use Getopt::Long;
+    GetOptions( "verbose"  => \$verbose,        # --verbose
+                "Debug"    => \$debug,          # --Debug
+                "output=s" => \$output );       
+	    # --output=somestring or --output somestring
+
+=begin original
+
+Another reason for preprocessing arguments is to make an empty
+argument list default to all files:
+
+=end original
+
+引数を前処理するためのもう一つの理由は、空引数リストの時は
+デフォルトで全てのファイルとする場合です:
+
+    @ARGV = glob("*") unless @ARGV;
+
+=begin original
+
+You could even filter out all but plain, text files.  This is a bit
+silent, of course, and you might prefer to mention them on the way.
+
+=end original
+
+プレーンなテキストファイル以外をフィルタリングすることもできます。
+これはもちろん少し静かなので、途中でそれに言及したいかもしれません。
+
+    @ARGV = grep { -f && -T } @ARGV;
+
+=begin original
+
+If you're using the B<-n> or B<-p> command-line options, you
+should put changes to @ARGV in a C<BEGIN{}> block.
+
+=end original
+
+もし B<-n> や B<-p> のコマンドラインオプションを使っているなら、
+@ARGV への変更は C<BEGIN{}> ブロックで行うべきです。
+
+=begin original
+
+Remember that a normal C<open> has special properties, in that it might
+call fopen(3S) or it might called popen(3S), depending on what its
+argument looks like; that's why it's sometimes called "magic open".
+Here's an example:
+
+=end original
+
+通常の C<open> は特別な特性を持っていて、引数が何に見えるかによって、
+fopen(3S) を呼ぶかもしれませんし、popen(3S) を呼ぶかもしれません;
+これが時々「マジカルに開く」と呼ばれる理由です。
+以下は例です:
+
+    $pwdinfo = `domainname` =~ /^(\(none\))?$/
+                    ? '< /etc/passwd'
+                    : 'ypcat passwd |';
+
+    open(PWD, $pwdinfo)                 
+                or die "can't open $pwdinfo: $!";
+
+=begin original
+
+This sort of thing also comes into play in filter processing.  Because
+C<< <ARGV> >> processing employs the normal, shell-style Perl C<open>,
+it respects all the special things we've already seen:
+
+=end original
+
+このようなことはフィルタ処理でも起こります。
+C<< <ARGV> >> 処理は通常のシェル風の Perl C<open> を用いるので、
+今までに見てきた全ての特別なことが反映されます:
+
+    $ myprogram f1 "cmd1|" - f2 "cmd2|" f3 < tmpfile
+
+=begin original
+
+That program will read from the file F<f1>, the process F<cmd1>, standard
+input (F<tmpfile> in this case), the F<f2> file, the F<cmd2> command,
+and finally the F<f3> file.
+
+=end original
+
+このプログラムはファイル F<f1>、プロセス F<cmd1>、標準入力
+(この場合は F<tmpfile>)、ファイル F<f2>、コマンド F<cmd2>、
+ファイル F<f3> から読み込みます。
+
+=begin original
+
+Yes, this also means that if you have files named "-" (and so on) in
+your directory, they won't be processed as literal files by C<open>.
+You'll need to pass them as "./-", much as you would for the I<rm> program,
+or you could use C<sysopen> as described below.
+
+=end original
+
+はい、これは、"-" (あるいは同じような) 名前を持つファイルがある場合、
+C<open> によってそのまま処理することができないことも意味します。
+I<rm> プログラムに対して行うのと同様に "./-" という形で渡すか、後述する
+C<sysopen> を使う必要があります。
+
+=begin original
+
+One of the more interesting applications is to change files of a certain
+name into pipes.  For example, to autoprocess gzipped or compressed
+files by decompressing them with I<gzip>:
+
+=end original
+
+もっと興味深いアプリケーションの一つは、ある名前を持ったファイルを
+パイプに変更するものです。
+例えば、gzip や compress されたファイルを、I<gzip> を使って自動的に
+展開するには:
+
+    @ARGV = map { /\.(gz|Z)$/ ? "gzip -dc $_ |" : $_  } @ARGV;
+
+=begin original
+
+Or, if you have the I<GET> program installed from LWP,
+you can fetch URLs before processing them:
+
+=end original
+
+あるいは、LWP からインストールされる I<GET> プログラムがあるなら、
+処理する前に URL をフェッチできます:
+
+    @ARGV = map { m#^\w+://# ? "GET $_ |" : $_ } @ARGV;
+
+=begin original
+
+It's not for nothing that this is called magic C<< <ARGV> >>.
+Pretty nifty, eh?
+
+=end original
+
+これがマジカルな C<< <ARGV> >> と呼ばれるのは理由のないことではありません。
+かなりしゃれてるでしょ?
+
+=head1 Open E<agrave> la C
+
+(C 風に開く)
+
+=begin original
+
+If you want the convenience of the shell, then Perl's C<open> is
+definitely the way to go.  On the other hand, if you want finer precision
+than C's simplistic fopen(3S) provides you should look to Perl's
+C<sysopen>, which is a direct hook into the open(2) system call.
+That does mean it's a bit more involved, but that's the price of 
+precision.
+
+=end original
+
+シェルの便利さを求めているなら、Perl の  C<open> はまさにぴったりです。
+一方、C の単純な fopen(3S) が提供しているものより高い精度を求めているなら、
+open(2) システムコールへの直接的なフックである、Perl の
+C<sysopen> を見るべきです。
+これはもう少し深く関わることを意味しますが、これは精度のコストです。
+
+=begin original
+
+C<sysopen> takes 3 (or 4) arguments.
+
+=end original
+
+C<sysopen> は 3 (または 4) 引数を取ります。
+
+    sysopen HANDLE, PATH, FLAGS, [MASK]
+
+=begin original
+
+The HANDLE argument is a filehandle just as with C<open>.  The PATH is
+a literal path, one that doesn't pay attention to any greater-thans or
+less-thans or pipes or minuses, nor ignore whitespace.  If it's there,
+it's part of the path.  The FLAGS argument contains one or more values
+derived from the Fcntl module that have been or'd together using the
+bitwise "|" operator.  The final argument, the MASK, is optional; if
+present, it is combined with the user's current umask for the creation
+mode of the file.  You should usually omit this.
+
+=end original
+
+HANDLE 引数は C<open> と同様のファイルハンドルです。
+PATH はリテラルなパスで、大なりや小なりやパイプやマイナスや空白の
+無視といったことに一切注意を払いません。
+もしこれらの文字があれば、それはパスの一部です。
+FLAGS 引数は、ビット単位 "|" 演算子で結合できる、Fcntl モジュールに
+由来する一つ以上の値を指定します。
+最後の引数である MASK はオプションです; もしあれば、これは
+ファイルの作成モードのためのユーザーの現在の umask と組み合わされます。
+普通はこれは省略するべきです。
+
+=begin original
+
+Although the traditional values of read-only, write-only, and read-write
+are 0, 1, and 2 respectively, this is known not to hold true on some
+systems.  Instead, it's best to load in the appropriate constants first
+from the Fcntl module, which supplies the following standard flags:
+
+=end original
+
+読み込み専用、書き込み専用、読み書きを示す伝統的な値は
+それぞれ 0, 1, 2 ですが、これが正しくないシステムもあることが
+知られています。
+代わりに、以下の標準フラグを提供している Fcntl モジュールから
+最初に適切な定数を読み込むのが最善です:
+
+    O_RDONLY            Read only
+    O_WRONLY            Write only
+    O_RDWR              Read and write
+    O_CREAT             Create the file if it doesn't exist
+    O_EXCL              Fail if the file already exists
+    O_APPEND            Append to the file
+    O_TRUNC             Truncate the file
+    O_NONBLOCK          Non-blocking access
+
+=begin original
+
+Less common flags that are sometimes available on some operating
+systems include C<O_BINARY>, C<O_TEXT>, C<O_SHLOCK>, C<O_EXLOCK>,
+C<O_DEFER>, C<O_SYNC>, C<O_ASYNC>, C<O_DSYNC>, C<O_RSYNC>,
+C<O_NOCTTY>, C<O_NDELAY> and C<O_LARGEFILE>.  Consult your open(2)
+manpage or its local equivalent for details.  (Note: starting from
+Perl release 5.6 the C<O_LARGEFILE> flag, if available, is automatically
+added to the sysopen() flags because large files are the default.)
+
+=end original
+
+オペレーティングシステムによっては、
+ C<O_BINARY>, C<O_TEXT>, C<O_SHLOCK>, C<O_EXLOCK>,
+C<O_DEFER>, C<O_SYNC>, C<O_ASYNC>, C<O_DSYNC>, C<O_RSYNC>,
+C<O_NOCTTY>, C<O_NDELAY>, C<O_LARGEFILE> のような、それほど有名ではない
+フラグも利用可能です。
+詳しくは open(2) man ページその等価物を参照してください。
+(注意: Perl リリース 5.6 から、もし利用可能なら、sysopen() のフラグに
+自動的に C<O_LARGEFILE> フラグが付きます; 大きなファイルがデフォルトに
+なったからです。)
+
+=begin original
+
+Here's how to use C<sysopen> to emulate the simple C<open> calls we had
+before.  We'll omit the C<|| die $!> checks for clarity, but make sure
+you always check the return values in real code.  These aren't quite
+the same, since C<open> will trim leading and trailing whitespace,
+but you'll get the idea.
+
+=end original
+
+これは、前述した単純な C<open> をエミュレートするために C<sysopen> を
+使う方法です。
+明確化のために C<|| die $!> のチェックは省略しましたが、実際のコードでは
+常に返り値をチェックするようにしてください。
+C<open> は前後の空白を削除するのでこれは全く同じというわけではありませんが、
+想像はできるでしょう。
+
+=begin original
+
+To open a file for reading:
+
+=end original
+
+ファイルを読み込み用に開くには:
+
+    open(FH, "< $path");
+    sysopen(FH, $path, O_RDONLY);
+
+=begin original
+
+To open a file for writing, creating a new file if needed or else truncating
+an old file:
+
+=end original
+
+ファイルを書き込み用に開いて、必要なら新しいファイルを作り、そうでなければ
+古いファイルを切り詰めるには:
+
+    open(FH, "> $path");
+    sysopen(FH, $path, O_WRONLY | O_TRUNC | O_CREAT);
+
+=begin original
+
+To open a file for appending, creating one if necessary:
+
+=end original
+
+ファイルを追加用に開いて、もし必要なら新しいファイルを作るには:
+
+    open(FH, ">> $path");
+    sysopen(FH, $path, O_WRONLY | O_APPEND | O_CREAT);
+
+=begin original
+
+To open a file for update, where the file must already exist:
+
+=end original
+
+既に存在しているファイルを更新用に開くには:
+
+    open(FH, "+< $path");
+    sysopen(FH, $path, O_RDWR);
+
+=begin original
+
+And here are things you can do with C<sysopen> that you cannot do with
+a regular C<open>.  As you'll see, it's just a matter of controlling the
+flags in the third argument.
+
+=end original
+
+そしてここでは普通の C<open> では出来ないことを C<sysopen> でしています。
+見てきたように、これは単に 3 番目の引数のフラグの制御の問題です。
+
+=begin original
+
+To open a file for writing, creating a new file which must not previously
+exist:
+
+=end original
+
+既に存在していたりはしない新しいファイルを作成して、ファイルを書き込み用に
+開くには:
+
+    sysopen(FH, $path, O_WRONLY | O_EXCL | O_CREAT);
+
+=begin original
+
+To open a file for appending, where that file must already exist:
+
+=end original
+
+既に存在している必要があるファイルを追加用に開くには:
+
+    sysopen(FH, $path, O_WRONLY | O_APPEND);
+
+=begin original
+
+To open a file for update, creating a new file if necessary:
+
+=end original
+
+必要なら新しいファイルを作成して、ファイルを更新用に開くには:
+
+    sysopen(FH, $path, O_RDWR | O_CREAT);
+
+=begin original
+
+To open a file for update, where that file must not already exist:
+
+=end original
+
+予め存在していてはならないファイルを交信用に開くには:
+
+    sysopen(FH, $path, O_RDWR | O_EXCL | O_CREAT);
+
+=begin original
+
+To open a file without blocking, creating one if necessary:
+
+=end original
+
+必要ならファイルを作成して、ファイルをブロックせずに開くには:
+
+    sysopen(FH, $path, O_WRONLY | O_NONBLOCK | O_CREAT);
+
+=head2 Permissions E<agrave> la mode
+
+(権限モード)
+
+=begin original
+
+If you omit the MASK argument to C<sysopen>, Perl uses the octal value
+0666.  The normal MASK to use for executables and directories should
+be 0777, and for anything else, 0666.
+
+=end original
+
+C<sysopen> の MASK 引数を省略すると、Perl は 8 進数の 0666 を使います。
+実行ファイルとディレクトリに対する通常の MASK は 0777で、それ以外の
+ファイルでは 0666 です。
+
+=begin original
+
+Why so permissive?  Well, it isn't really.  The MASK will be modified
+by your process's current C<umask>.  A umask is a number representing
+I<disabled> permissions bits; that is, bits that will not be turned on
+in the created file's permissions field.
+
+=end original
+
+なぜそんなに権限を与えるのでしょう?
+えっと、実際にはそうではありません。
+MASK はプロセスの現在の C<umask> で修正されます。
+umask は I<無効にする> 許可ビットを表現する数値です; つまり、
+作成したファイルの許可フィールドを有効にすることはないということです。
+
+=begin original
+
+For example, if your C<umask> were 027, then the 020 part would
+disable the group from writing, and the 007 part would disable others
+from reading, writing, or executing.  Under these conditions, passing
+C<sysopen> 0666 would create a file with mode 0640, since C<0666 & ~027>
+is 0640.
+
+=end original
+
+例えば、C<umask> が 027 の場合、020 の部分はグループによる書き込みと
+実行を無効にし、007 の部分は他のユーザーによる読み込み、書き込み、
+実行を無効にします。
+この条件では、C<sysopen> に 0666 を渡すとモード 0640 でファイルを作ります;
+C<0666 & ~027> は 0640 だからです。
+
+=begin original
+
+You should seldom use the MASK argument to C<sysopen()>.  That takes
+away the user's freedom to choose what permission new files will have.
+Denying choice is almost always a bad thing.  One exception would be for
+cases where sensitive or private data is being stored, such as with mail
+folders, cookie files, and internal temporary files.
+
+=end original
+
+C<sysopen()> に MASK 引数を使うことはほとんどないでしょう。
+これは、新しいファイルにどのパーミッションを与えるかというユーザーの
+自由を奪います。
+選択を拒むということは、ほとんど常に悪いことです。
+一つの例外は、メールフォルダ、クッキーファイル、内部用一時ファイルのような、
+微妙な、あるいはプライベートなデータを保管する場合でしょう。
+
+=head1 Obscure Open Tricks
+
+(わかりにくい開くときの小技)
+
+=head2 Re-Opening Files (dups)
+
+(ファイルを再び開く(dup))
+
+=begin original
+
+Sometimes you already have a filehandle open, and want to make another
+handle that's a duplicate of the first one.  In the shell, we place an
+ampersand in front of a file descriptor number when doing redirections.
+For example, C<< 2>&1 >> makes descriptor 2 (that's STDERR in Perl)
+be redirected into descriptor 1 (which is usually Perl's STDOUT).
+The same is essentially true in Perl: a filename that begins with an
+ampersand is treated instead as a file descriptor if a number, or as a
+filehandle if a string.
+
+=end original
+
+既に開いているファイルハンドルを持っている時に、これを複製して
+もう一つのハンドルがほしくなる場合がときどきあります。
+シェルでは、リダイレクトをするときにファイル記述子番号の前に
+アンパサンドを置きます。
+例えば C<< 2>&1 >> は、記述子 2 (これは Perl では STDERR) を
+記述子 1 (これは Perl では普通は STDOUT) にリダイレクトします。
+同じことは Perl でも基本的には真です: アンパサンドで始まるファイル名は、
+それが数値ならファイル記述子、文字列ならファイルハンドルとして
+扱われます。
+
+    open(SAVEOUT, ">&SAVEERR") || die "couldn't dup SAVEERR: $!";
+    open(MHCONTEXT, "<&4")     || die "couldn't dup fd4: $!";
+
+=begin original
+
+That means that if a function is expecting a filename, but you don't
+want to give it a filename because you already have the file open, you
+can just pass the filehandle with a leading ampersand.  It's best to
+use a fully qualified handle though, just in case the function happens
+to be in a different package:
+
+=end original
+
+これは、もし関数がファイル名を想定しているけれども、既にファイルは
+開いているのでファイル名を渡したくない場合、単に先頭にアンパサンドを
+付けたファイルハンドルを渡せるということを意味します。
+しかし、万が一関数がたまたま違うパッケージだったときのために、完全修飾した
+ハンドルを渡すのが最善です:
+
+    somefunction("&main::LOGFILE");
+
+=begin original
+
+This way if somefunction() is planning on opening its argument, it can
+just use the already opened handle.  This differs from passing a handle,
+because with a handle, you don't open the file.  Here you have something
+you can pass to open.
+
+=end original
+
+この方法により、somefunction() が引数の値を開いた場合、
+単に既に開いているハンドルを使えます。
+これはハンドルを渡すのとは違います; なぜならハンドルではファイルを
+開かないからです。
+こちらでは開くときに指定できるものが指定できます。
+
+=begin original
+
+If you have one of those tricky, newfangled I/O objects that the C++
+folks are raving about, then this doesn't work because those aren't a
+proper filehandle in the native Perl sense.  You'll have to use fileno()
+to pull out the proper descriptor number, assuming you can:
+
+=end original
+
+もし、C++ 民が夢中になっているような巧妙で目新しい I/O オブジェクトの一つを
+使っているなら、これらはネイティブな Perl 的に適切なファイルハンドルでは
+ないので、上述のような方法は動作しません。
+適切な記述子番号を得るために fileno() を使う必要があります; それが出来ると
+仮定すれば:
+
+    use IO::Socket;
+    $handle = IO::Socket::INET->new("www.perl.com:80");
+    $fd = $handle->fileno;
+    somefunction("&$fd");  # not an indirect function call
+
+=begin original
+
+It can be easier (and certainly will be faster) just to use real
+filehandles though:
+
+=end original
+
+しかし、単に普通のファイルハンドルを使う方が簡単でしょう
+(そして確実に高速です):
+
+    use IO::Socket;
+    local *REMOTE = IO::Socket::INET->new("www.perl.com:80");
+    die "can't connect" unless defined(fileno(REMOTE));
+    somefunction("&main::REMOTE");
+
+=begin original
+
+If the filehandle or descriptor number is preceded not just with a simple
+"&" but rather with a "&=" combination, then Perl will not create a
+completely new descriptor opened to the same place using the dup(2)
+system call.  Instead, it will just make something of an alias to the
+existing one using the fdopen(3S) library call.  This is slightly more
+parsimonious of systems resources, although this is less a concern
+these days.  Here's an example of that:
+
+=end original
+
+もしファイルハンドルや記述子番号の前にあるのが単なる "&" ではなく "&=" の
+組み合わせの場合、Perl は dup(2) システムコールを使って同じ場所で開いた
+完全に新しい記述子は作りません。
+代わりに、fdopen(3S) ライブラリコールを使ってすでにある記述子の別名的な
+ものを作ります。
+これはシステムのリソースを少しケチることが出来ますが、最近ではこれは
+あまり関心を持たれなくなりました。
+以下はこの例です:
+
+    $fd = $ENV{"MHCONTEXTFD"};
+    open(MHCONTEXT, "<&=$fd")   or die "couldn't fdopen $fd: $!";
+
+=begin original
+
+If you're using magic C<< <ARGV> >>, you could even pass in as a
+command line argument in @ARGV something like C<"<&=$MHCONTEXTFD">,
+but we've never seen anyone actually do this.
+
+=end original
+
+もしマジカルな C<< <ARGV> >> を使っているなら、C<"<&=$MHCONTEXTFD"> の
+ような感じで @ARGV 内のコマンドライン引数として渡すことすら可能ですが、
+実際にこれをしている人を見たことはありません。
+
+=head2 Dispelling the Dweomer
+
+(魔法を解く)
+
+=begin original
+
+Perl is more of a DWIMmer language than something like Java--where DWIM
+is an acronym for "do what I mean".  But this principle sometimes leads
+to more hidden magic than one knows what to do with.  In this way, Perl
+is also filled with I<dweomer>, an obscure word meaning an enchantment.
+Sometimes, Perl's DWIMmer is just too much like dweomer for comfort.
+
+=end original
+
+Perl は、Java のような言語よりも「空気を読む」(DWIM)言語です --
+DWIM とは "do what I mean" の略です。
+しかし、この原則は時々利用者が知っている以上の隠れた動作をすることが
+あります。
+こんな風に、Perl は (魔法を意味する不明確な単語である) I<dweomer> にも
+満ちています。
+時々、Perl の空気の読み方は快適さのために魔法のようになります。
+
+=begin original
+
+If magic C<open> is a bit too magical for you, you don't have to turn
+to C<sysopen>.  To open a file with arbitrary weird characters in
+it, it's necessary to protect any leading and trailing whitespace.
+Leading whitespace is protected by inserting a C<"./"> in front of a
+filename that starts with whitespace.  Trailing whitespace is protected
+by appending an ASCII NUL byte (C<"\0">) at the end of the string.
+
+=end original
+
+もしマジカルな C<open> があなたにとってちょっとマジカルすぎるとしても、
+C<sysopen> にまで戻る必要はありません。
+ファイル名にどんな変な文字が含まれているファイルでも開くためには、
+先頭と末尾の空白を保護する必要があります。
+先頭の空白は、空白で始まるファイル名の前に C<"./"> を挿入することで
+保護します。
+末尾の空白は、文字列の末尾に ASCII NUL バイト (C<"\0">) を
+追加することで保護します。
+
+    $file =~ s#^(\s)#./$1#;
+    open(FH, "< $file\0")   || die "can't open $file: $!";
+
+=begin original
+
+This assumes, of course, that your system considers dot the current
+working directory, slash the directory separator, and disallows ASCII
+NULs within a valid filename.  Most systems follow these conventions,
+including all POSIX systems as well as proprietary Microsoft systems.
+The only vaguely popular system that doesn't work this way is the
+"Classic" Macintosh system, which uses a colon where the rest of us
+use a slash.  Maybe C<sysopen> isn't such a bad idea after all.
+
+=end original
+
+これはもちろん、あなたのシステムが "." をカレントディレクトリ、
+"/" をディレクトリの区切りとして扱い、ASCII NUL をファイル名として
+認めていないということを仮定しています。
+全ての POSIX システムとプロプリエタリの Microsoft システムを含む、
+ほとんどのシステムはこの慣例に従っています。
+これに従わない、一般的に有名な唯一のシステムは
+"Classic" Macintosh システムです; これは他のシステムが "/" を
+使っているところで ":" を使います。
+おそらく、とにかく C<sysopen> を使うということはそれほど悪い考えでは
+ありません。
+
+=begin original
+
+If you want to use C<< <ARGV> >> processing in a totally boring
+and non-magical way, you could do this first:
+
+=end original
+
+もし、C<< <ARGV> >> の処理を、本当に退屈かつマジカルでない方法で
+行いたいなら、まず以下のようにできます:
+
+    #   "Sam sat on the ground and put his head in his hands.  
+    #   'I wish I had never come here, and I don't want to see 
+    #   no more magic,' he said, and fell silent."
+    for (@ARGV) { 
+        s#^([^./])#./$1#;
+        $_ .= "\0";
+    } 
+    while (<>) {  
+        # now process $_
+    } 
+
+=begin original
+
+But be warned that users will not appreciate being unable to use "-"
+to mean standard input, per the standard convention.
+
+=end original
+
+但し、ユーザーは、標準入力を意味するために "-" を使うという一般的な
+慣習が使えないということを喜ばないだろうということは
+警告しておきます。
+
+=head2 Paths as Opens
+
+(open にパスを)
+
+=begin original
+
+You've probably noticed how Perl's C<warn> and C<die> functions can
+produce messages like:
+
+=end original
+
+どうやって Perl の C<warn> 関数と C<die> 関数が以下のようなメッセージを
+生成するかに気付いたでしょう:
+
+    Some warning at scriptname line 29, <FH> line 7.
+
+=begin original
+
+That's because you opened a filehandle FH, and had read in seven records
+from it.  But what was the name of the file, rather than the handle?
+
+=end original
+
+これは、あなたがファイルハンドル FH を開いて、そこから 7 レコードを
+読み込んだからです。
+しかし、ハンドルではなく、ファイル名はどうでしょう?
+
+=begin original
+
+If you aren't running with C<strict refs>, or if you've turned them off
+temporarily, then all you have to do is this:
+
+=end original
+
+もし C<strict refs> を有効にしていないか、一時的に無効にしているなら、
+する必要があるのは以下のことだけです:
+
+    open($path, "< $path") || die "can't open $path: $!";
+    while (<$path>) {
+        # whatever
+    } 
+
+=begin original
+
+Since you're using the pathname of the file as its handle,
+you'll get warnings more like
+
+=end original
+
+ファイルのパス名をハンドルとして使っているので、以下のような警告が
+出ます
+
+    Some warning at scriptname line 29, </etc/motd> line 7.
+
+=head2 Single Argument Open
+
+(1 引数の open)
+
+=begin original
+
+Remember how we said that Perl's open took two arguments?  That was a
+passive prevarication.  You see, it can also take just one argument.
+If and only if the variable is a global variable, not a lexical, you
+can pass C<open> just one argument, the filehandle, and it will 
+get the path from the global scalar variable of the same name.
+
+=end original
+
+Perl の open は 2 引数を取ると言ったことを覚えていますか?
+これは消極的なごまかしです。
+ほら、単に 1 引数を取ることもできます。
+変数がレキシカルではなくグローバルな変数の場合にのみ、C<open> に
+1 引数だけ(ファイルハンドル)を渡すことができます; こうすると、
+同じ名前を持つグローバルなスカラ変数からパスを取ります。
+
+    $FILE = "/etc/motd";
+    open FILE or die "can't open $FILE: $!";
+    while (<FILE>) {
+        # whatever
+    } 
+
+=begin original
+
+Why is this here?  Someone has to cater to the hysterical porpoises.
+It's something that's been in Perl since the very beginning, if not
+before.
+
+=end original
+
+どうしてこれはここなんでしょう?
+誰かがヒステリックなネズミイルカの要求を満たす必要があります。
+これは(遅くとも)非常に初期から Perl にあります。
+
+=head2 Playing with STDIN and STDOUT
+
+(STDIN と STDOUT を扱う)
+
+=begin original
+
+One clever move with STDOUT is to explicitly close it when you're done
+with the program.
+
+=end original
+
+STDOUT に関する一つの利口な行動は、プログラムの終了時に
+明示的に閉じることです。
+
+    END { close(STDOUT) || die "can't close stdout: $!" }
+
+=begin original
+
+If you don't do this, and your program fills up the disk partition due
+to a command line redirection, it won't report the error exit with a
+failure status.
+
+=end original
+
+これをしないままで、このプログラムがコマンドラインリダイレクトによって
+ディスクをいっぱいにしてしまっても、失敗状態でエラー終了しません。
+
+=begin original
+
+You don't have to accept the STDIN and STDOUT you were given.  You are
+welcome to reopen them if you'd like.
+
+=end original
+
+与えられた STDIN と STDOUT を受け入れる必要はありません。
+もし望むなら、これらを開き直せます。
+
+    open(STDIN, "< datafile")
+	|| die "can't open datafile: $!";
+
+    open(STDOUT, "> output")
+	|| die "can't open output: $!";
+
+=begin original
+
+And then these can be accessed directly or passed on to subprocesses.
+This makes it look as though the program were initially invoked
+with those redirections from the command line.
+
+=end original
+
+それからこれらは直接アクセスしたり子プロセスに渡したりできます。
+これらは、プログラムの起動時にコマンドラインからリダイレクトが
+与えられたかのように動作します。
+
+=begin original
+
+It's probably more interesting to connect these to pipes.  For example:
+
+=end original
+
+これらをパイプにつなぐ方がより興味深いでしょう。
+例えば:
+
+    $pager = $ENV{PAGER} || "(less || more)";
+    open(STDOUT, "| $pager")
+	|| die "can't fork a pager: $!";
+
+=begin original
+
+This makes it appear as though your program were called with its stdout
+already piped into your pager.  You can also use this kind of thing
+in conjunction with an implicit fork to yourself.  You might do this
+if you would rather handle the post processing in your own program,
+just in a different process:
+
+=end original
+
+これによって、プログラムの標準出力がが既にページャとパイプで
+つながれているかのように見えます。
+このようなことはまた、自分自身を暗黙に fork したものと結合するためにも
+使えます。
+自分自身のプログラムの別のプロセスでで後処理を扱いたい場合、
+以下のようにできます:
+
+    head(100);
+    while (<>) {
+        print;
+    } 
+
+    sub head {
+        my $lines = shift || 20;
+        return if $pid = open(STDOUT, "|-");       # return if parent
+        die "cannot fork: $!" unless defined $pid;
+        while (<STDIN>) {
+            last if --$lines < 0;
+            print;
+        } 
+        exit;
+    } 
+
+=begin original
+
+This technique can be applied to repeatedly push as many filters on your
+output stream as you wish.
+
+=end original
+
+このテクニックは、繰り返しプッシュすることで、出力ストリームに好きなだけ
+多くのフィルタを適用できます。
+
+=head1 Other I/O Issues
+
+(その他の I/O 関連の話題)
+
+=begin original
+
+These topics aren't really arguments related to C<open> or C<sysopen>,
+but they do affect what you do with your open files.
+
+=end original
+
+これらの話題は実際には C<open> や C<sysopen> に関連したものではありませんが、
+ファイルを開くときに行うことに影響を与えます。
+
+=head2 Opening Non-File Files
+
+(ファイルでないファイルを開く)
+
+=begin original
+
+When is a file not a file?  Well, you could say when it exists but
+isn't a plain file.   We'll check whether it's a symbolic link first,
+just in case.
+
+=end original
+
+ファイルがファイルでないときは?
+えっと、プレーンファイルでないもののとき、と言いたいんですよね。
+まず、念のために、それがシンボリックリンクかどうかを調べます。
+
+    if (-l $file || ! -f _) {
+        print "$file is not a plain file\n";
+    } 
+
+=begin original
+
+What other kinds of files are there than, well, files?  Directories,
+symbolic links, named pipes, Unix-domain sockets, and block and character
+devices.  Those are all files, too--just not I<plain> files.  This isn't
+the same issue as being a text file. Not all text files are plain files.
+Not all plain files are text files.  That's why there are separate C<-f>
+and C<-T> file tests.
+
+=end original
+
+えーと、ファイルの他にどんな種類のファイルがあるのでしょう?
+ディレクトリ、シンボリックリンク、名前付きパイプ、Unix ドメインソケット、
+キャラクタデバイス、ブロックデバイスです。
+これらも全てファイルです -- 単に I<プレーン> ファイルではないと
+いうだけです。
+これはテキストファイルと同じ問題ではありません。
+全てのテキストファイルがプレーンファイルではありません。
+全てのプレーンファイルがテキストファイルではありません。
+これが、C<-f> と C<-T> のファイルテストが分離している理由です。
+
+=begin original
+
+To open a directory, you should use the C<opendir> function, then
+process it with C<readdir>, carefully restoring the directory 
+name if necessary:
+
+=end original
+
+ディレクトリを開くには、C<opendir> 関数を使って、それから
+C<readdir> で処理します; もし必要なら注意深くディレクトリ名を復元します:
+
+    opendir(DIR, $dirname) or die "can't opendir $dirname: $!";
+    while (defined($file = readdir(DIR))) {
+        # do something with "$dirname/$file"
+    }
+    closedir(DIR);
+
+=begin original
+
+If you want to process directories recursively, it's better to use the
+File::Find module.  For example, this prints out all files recursively
+and adds a slash to their names if the file is a directory.
+
+=end original
+
+ディレクトリを再帰的に処理したい場合は、File::Find モジュールを使った方が
+いいでしょう。
+例えば、これは全てのファイルを再帰的に表示して、もしファイルが
+ディレクトリの場合は末尾にスラッシュを追加します。
+
+    @ARGV = qw(.) unless @ARGV;
+    use File::Find;
+    find sub { print $File::Find::name, -d && '/', "\n" }, @ARGV;
+
+=begin original
+
+This finds all bogus symbolic links beneath a particular directory:
+
+=end original
+
+以下は、特定のディレクトリ以下から偽のシンボリックリンクを全て探します:
+
+    find sub { print "$File::Find::name\n" if -l && !-e }, $dir;
+
+=begin original
+
+As you see, with symbolic links, you can just pretend that it is
+what it points to.  Or, if you want to know I<what> it points to, then
+C<readlink> is called for:
+
+=end original
+
+上述したように、シンボリックリンクの場合、単にそれが指しているもの振りを
+することができます。
+あるいは、もしそれが I<何を> 指しているのかを知りたい場合は、
+C<readlink> を呼び出します:
+
+    if (-l $file) {
+        if (defined($whither = readlink($file))) {
+            print "$file points to $whither\n";
+        } else {
+            print "$file points nowhere: $!\n";
+        } 
+    } 
+
+=head2 Opening Named Pipes
+
+(名前付きパイプを開く)
+
+=begin original
+
+Named pipes are a different matter.  You pretend they're regular files,
+but their opens will normally block until there is both a reader and
+a writer.  You can read more about them in L<perlipc/"Named Pipes">.
+Unix-domain sockets are rather different beasts as well; they're
+described in L<perlipc/"Unix-Domain TCP Clients and Servers">.
+
+=end original
+
+名前付きパイプは別の問題です。
+これらは普通のファイルのように振る舞いますが、この open は普通
+読み込み側と書き込み側の両方ができるまでブロックされます。
+これらについては L<perlipc/"Named Pipes"> でより多くのことを
+読むことができます。
+Unix ドメインソケットは同様にやや違うものです;
+これらは L<perlipc/"Unix-Domain TCP Clients and Servers"> に
+記述されています。
+
+=begin original
+
+When it comes to opening devices, it can be easy and it can be tricky.
+We'll assume that if you're opening up a block device, you know what
+you're doing.  The character devices are more interesting.  These are
+typically used for modems, mice, and some kinds of printers.  This is
+described in L<perlfaq8/"How do I read and write the serial port?">
+It's often enough to open them carefully:
+
+=end original
+
+デバイスを開くときは、簡単にもなりますしトリッキーにもなります。
+ブロックデバイスを開こうとしているなら、何をしようとしているのか
+分かっていることを仮定します。
+キャラクタデバイスはもっと興味深いです。
+これらは典型的にはモデム、マウス、ある種のプリンタのために使われます。
+これは L<perlfaq8/"How do I read and write the serial port?"> に
+記述されています。
+しばしば慎重に開くだけで充分です:
+
+    sysopen(TTYIN, "/dev/ttyS1", O_RDWR | O_NDELAY | O_NOCTTY)
+		# (O_NOCTTY no longer needed on POSIX systems)
+        or die "can't open /dev/ttyS1: $!";
+    open(TTYOUT, "+>&TTYIN")
+        or die "can't dup TTYIN: $!";
+
+    $ofh = select(TTYOUT); $| = 1; select($ofh);
+
+    print TTYOUT "+++at\015";
+    $answer = <TTYIN>;
+
+=begin original
+
+With descriptors that you haven't opened using C<sysopen>, such as
+sockets, you can set them to be non-blocking using C<fcntl>:
+
+=end original
+
+ソケットのように、C<sysopen> を使わずに開いた記述子の場合は、
+C<fcntl> を使って非ブロックモードに設定できます:
+
+    use Fcntl;
+    my $old_flags = fcntl($handle, F_GETFL, 0) 
+        or die "can't get flags: $!";
+    fcntl($handle, F_SETFL, $old_flags | O_NONBLOCK) 
+        or die "can't set non blocking: $!";
+
+=begin original
+
+Rather than losing yourself in a morass of twisting, turning C<ioctl>s,
+all dissimilar, if you're going to manipulate ttys, it's best to
+make calls out to the stty(1) program if you have it, or else use the
+portable POSIX interface.  To figure this all out, you'll need to read the
+termios(3) manpage, which describes the POSIX interface to tty devices,
+and then L<POSIX>, which describes Perl's interface to POSIX.  There are
+also some high-level modules on CPAN that can help you with these games.
+Check out Term::ReadKey and Term::ReadLine.
+
+=end original
+
+もし tty を操作しようとしているなら、全く異なる C<ioctl> の泥沼に
+迷い込むのではなく、もし stty(1) プログラムがあるならこれを呼び出して、
+さもなければ移植性のある POSIX インターフェースを使うのが最善です。
+これらのこと全てを理解するには、まず tty デバイスへの POSIX
+インターフェースについて記述している termios(3) man ページを読んで、次に
+POSIX への Perl のインターフェースについて記述している L<POSIX> を
+読む必要があります。
+これらのものを扱う助けになるような高レベルモジュールも CPAN にあります。
+Term::ReadKey と Term::ReadLine を調べてください。
+
+=head2 Opening Sockets
+
+(ソケットを開く)
+
+=begin original
+
+What else can you open?  To open a connection using sockets, you won't use
+one of Perl's two open functions.  See 
+L<perlipc/"Sockets: Client/Server Communication"> for that.  Here's an 
+example.  Once you have it, you can use FH as a bidirectional filehandle.
+
+=end original
+
+他の何を開けるの?
+ソケットを使った接続を開くには、Perl の 2 つの open 関数のどちらも
+使いません。
+そのためには L<perlipc/"Sockets: Client/Server Communication"> を
+参照してください。
+以下は例です。
+これを実行すると、FH を双方向ファイルハンドルとして使えます。
+
+    use IO::Socket;
+    local *FH = IO::Socket::INET->new("www.perl.com:80");
+
+=begin original
+
+For opening up a URL, the LWP modules from CPAN are just what
+the doctor ordered.  There's no filehandle interface, but
+it's still easy to get the contents of a document:
+
+=end original
+
+URL を開くには、CPAN にある LWP モジュールがぴったりです。
+ファイルハンドルのインターフェースはないですが、
+それでも簡単に文書の中身を得られます:
+
+    use LWP::Simple;
+    $doc = get('http://www.cpan.org/');
+
+=head2 Binary Files
+
+(バイナリファイル)
+
+=begin original
+
+On certain legacy systems with what could charitably be called terminally
+convoluted (some would say broken) I/O models, a file isn't a file--at
+least, not with respect to the C standard I/O library.  On these old
+systems whose libraries (but not kernels) distinguish between text and
+binary streams, to get files to behave properly you'll have to bend over
+backwards to avoid nasty problems.  On such infelicitous systems, sockets
+and pipes are already opened in binary mode, and there is currently no
+way to turn that off.  With files, you have more options.
+
+=end original
+
+最終的に (壊れていると言われる) I/O モデルに巻き込まれると寛大にも
+呼ばれるある種の古いシステムでは、ファイルはファイルではありません --
+少なくとも C 標準 I/O ライブラリという観点では。
+(カーネルではなく)ライブラリがテキストストリームとバイナリストリームを
+区別するような古いシステムでは、適切に振る舞うようにファイルを
+取得するためには、不愉快な問題を避けるために懸命な努力が必要です。
+このような不幸なシステムでは、ソケットとパイプは既にバイナリモードで
+開いていて、今のところこれをオフにする方法はありません。
+ファイルに対しては、もっと選択肢があります。
+
+=begin original
+
+Another option is to use the C<binmode> function on the appropriate
+handles before doing regular I/O on them:
+
+=end original
+
+もう一つの選択肢は、通常の I/O を行う前に、適切なファイルハンドルに
+C<binmode> 関数を使うことです:
+
+    binmode(STDIN);
+    binmode(STDOUT);
+    while (<STDIN>) { print } 
+
+=begin original
+
+Passing C<sysopen> a non-standard flag option will also open the file in
+binary mode on those systems that support it.  This is the equivalent of
+opening the file normally, then calling C<binmode> on the handle.
+
+=end original
+
+C<sysopen> に非標準フラグオプションを渡すことでも、そのような
+システムでバイナリモードでファイルを開けます。
+これは、ファイルを普通に開いてから、ハンドルに対して C<binmode> を
+呼び出すのと等価です。
+
+    sysopen(BINDAT, "records.data", O_RDWR | O_BINARY)
+        || die "can't open records.data: $!";
+
+=begin original
+
+Now you can use C<read> and C<print> on that handle without worrying
+about the non-standard system I/O library breaking your data.  It's not
+a pretty picture, but then, legacy systems seldom are.  CP/M will be
+with us until the end of days, and after.
+
+=end original
+
+これで、非標準システム I/O ライブラリがデータを壊す心配なしに
+ハンドルに対して C<read> と C<print> を使えるようになりました。
+これは美しい形ではありませんが、レガシーシステムとは大抵そういうものです。
+CP/M は世界が終わるまで(そしてその後も)我々と共にあるでしょう。
+
+=begin original
+
+On systems with exotic I/O systems, it turns out that, astonishingly
+enough, even unbuffered I/O using C<sysread> and C<syswrite> might do
+sneaky data mutilation behind your back.
+
+=end original
+
+風変わりな I/O システムを持つシステムでは、驚いたことに、
+C<sysread> や C<syswrite> を使ったバッファリングしない I/O でさえも
+背後でこっそりとデータ操作をすることがあります。
+
+    while (sysread(WHENCE, $buf, 1024)) {
+        syswrite(WHITHER, $buf, length($buf));
+    } 
+
+=begin original
+
+Depending on the vicissitudes of your runtime system, even these calls
+may need C<binmode> or C<O_BINARY> first.  Systems known to be free of
+such difficulties include Unix, the Mac OS, Plan 9, and Inferno.
+
+=end original
+
+実行させるシステムの紆余曲折具合によっては、これらのシステムコールですら
+最初に C<binmode> や C<O_BINARY> が必要かもしれません。
+このような問題がないと分かっているシステムには Unix, Mac OS, Plan 9,
+Inferno などがあります。
+
+=head2 File Locking
+
+(ファイルのロック)
+
+=begin original
+
+In a multitasking environment, you may need to be careful not to collide
+with other processes who want to do I/O on the same files as you
+are working on.  You'll often need shared or exclusive locks
+on files for reading and writing respectively.  You might just
+pretend that only exclusive locks exist.
+
+=end original
+
+マルチタスク環境では、あなたが触ろうとしているファイルと同じファイルを
+他のプロセスが衝突しないように気をつける必要があります。
+しばしば、ファイルを読み込みまたは書き込みするために、それぞれ
+共有ロックと排他ロックが必要になります。
+あるいは、単に排他ロックしかないような振りをするかもしれません。
+
+=begin original
+
+Never use the existence of a file C<-e $file> as a locking indication,
+because there is a race condition between the test for the existence of
+the file and its creation.  It's possible for another process to create
+a file in the slice of time between your existence check and your attempt
+to create the file.  Atomicity is critical.
+
+=end original
+
+決して、ファイルの存在 C<-e $file> をロック指示に使わないでください;
+なぜならファイルの存在のテストとその作成の間に競合条件があるからです。
+存在チェックとファイル作成のわずかな間に、他のプロセスがファイルを作る
+可能性があります。
+原子性は危機的です。
+
+=begin original
+
+Perl's most portable locking interface is via the C<flock> function,
+whose simplicity is emulated on systems that don't directly support it
+such as SysV or Windows.  The underlying semantics may affect how
+it all works, so you should learn how C<flock> is implemented on your
+system's port of Perl.
+
+=end original
+
+Perl でのもっとも移植性のあるロックインターフェースは、
+C<flock> 関数によるものです; この単純さは、SysV や Windows のような、
+これに直接対応していないシステムでもエミュレートされています。
+基礎となる動作はこれがどのように働くかに影響を与えるので、
+あなたが使うシステムの Perl で C<flock> がどのように実装されているかを
+学ぶべきです。
+
+=begin original
+
+File locking I<does not> lock out another process that would like to
+do I/O.  A file lock only locks out others trying to get a lock, not
+processes trying to do I/O.  Because locks are advisory, if one process
+uses locking and another doesn't, all bets are off.
+
+=end original
+
+ファイルロックは、他のプロセスが I/O 操作を行うことからロックするもの
+I<ではありません>。
+ファイルロックは、他のプロセスの I/O 操作をロックするのではなく、他の
+プロセスがロックを得ようとすることをロックします。
+ロックは勧告的なので、あるプロセスがロックを使っていても、他の
+プロセスがロックを使っていなければ、全ては台無しになります。
+
+=begin original
+
+By default, the C<flock> call will block until a lock is granted.
+A request for a shared lock will be granted as soon as there is no
+exclusive locker.  A request for an exclusive lock will be granted as
+soon as there is no locker of any kind.  Locks are on file descriptors,
+not file names.  You can't lock a file until you open it, and you can't
+hold on to a lock once the file has been closed.
+
+=end original
+
+デフォルトでは、C<flock> 呼び出しは、ロックが得られるまでブロックします。
+共有ロック要求は、誰も排他ロックを持っていない状態になれば直ちに
+受け入れられます。
+排他ロック要求は、誰もあらゆる種類のロックを守っていない状態になれば
+与えられます。
+ロックはファイル名に対してではなく、ファイル記述子について与えられます。
+ファイルを開かずにファイルをロックすることはできませんし、ファイルを閉じた
+後もロックを持ったままにすることもできません。
+
+=begin original
+
+Here's how to get a blocking shared lock on a file, typically used
+for reading:
+
+=end original
+
+以下はファイルに対してブロックする共有ロックを得る方法で、
+典型的には読み込み時に使われます:
+
+    use 5.004;
+    use Fcntl qw(:DEFAULT :flock);
+    open(FH, "< filename")  or die "can't open filename: $!";
+    flock(FH, LOCK_SH) 	    or die "can't lock filename: $!";
+    # now read from FH
+
+=begin original
+
+You can get a non-blocking lock by using C<LOCK_NB>.
+
+=end original
+
+C<LOCK_NB> を使うことでブロックしないロックも得られます。
+
+    flock(FH, LOCK_SH | LOCK_NB)
+        or die "can't lock filename: $!";
+
+=begin original
+
+This can be useful for producing more user-friendly behaviour by warning
+if you're going to be blocking:
+
+=end original
+
+ブロックするときに警告することで、よりユーザーにやさしい振る舞いを
+することは有用です:
+
+    use 5.004;
+    use Fcntl qw(:DEFAULT :flock);
+    open(FH, "< filename")  or die "can't open filename: $!";
+    unless (flock(FH, LOCK_SH | LOCK_NB)) {
+	$| = 1;
+	print "Waiting for lock...";
+	flock(FH, LOCK_SH)  or die "can't lock filename: $!";
+	print "got it.\n"
+    } 
+    # now read from FH
+
+=begin original
+
+To get an exclusive lock, typically used for writing, you have to be
+careful.  We C<sysopen> the file so it can be locked before it gets
+emptied.  You can get a nonblocking version using C<LOCK_EX | LOCK_NB>.
+
+=end original
+
+(典型的には書き込みのために) 排他ロックを得るためには、慎重になる
+必要があります。
+空なる前にロックするために、ファイルを C<sysopen> で開きます。
+C<LOCK_EX | LOCK_NB> を使った非ブロック版も得られます。
+
+    use 5.004;
+    use Fcntl qw(:DEFAULT :flock);
+    sysopen(FH, "filename", O_WRONLY | O_CREAT)
+        or die "can't open filename: $!";
+    flock(FH, LOCK_EX)
+        or die "can't lock filename: $!";
+    truncate(FH, 0)
+        or die "can't truncate filename: $!";
+    # now write to FH
+
+=begin original
+
+Finally, due to the uncounted millions who cannot be dissuaded from
+wasting cycles on useless vanity devices called hit counters, here's
+how to increment a number in a file safely:
+
+=end original
+
+最後に、アクセスカウンタと呼ばれる無駄で空虚な装置のために CPU パワーを
+無駄遣いすることから逃れられない無慮数百万のために、
+あるファイルの数値を安全に増加させる方法を以下に示します:
+
+    use Fcntl qw(:DEFAULT :flock);
+
+    sysopen(FH, "numfile", O_RDWR | O_CREAT)
+        or die "can't open numfile: $!";
+    # autoflush FH
+    $ofh = select(FH); $| = 1; select ($ofh);
+    flock(FH, LOCK_EX)
+        or die "can't write-lock numfile: $!";
+
+    $num = <FH> || 0;
+    seek(FH, 0, 0)
+        or die "can't rewind numfile : $!";
+    print FH $num+1, "\n"
+        or die "can't write numfile: $!";
+
+    truncate(FH, tell(FH))
+        or die "can't truncate numfile: $!";
+    close(FH)
+        or die "can't close numfile: $!";
+
+=head2 IO Layers
+
+(IO 層)
+
+=begin original
+
+In Perl 5.8.0 a new I/O framework called "PerlIO" was introduced.
+This is a new "plumbing" for all the I/O happening in Perl; for the
+most part everything will work just as it did, but PerlIO also brought
+in some new features such as the ability to think of I/O as "layers".
+One I/O layer may in addition to just moving the data also do
+transformations on the data.  Such transformations may include
+compression and decompression, encryption and decryption, and transforming
+between various character encodings.
+
+=end original
+
+Perl 5.8.0 で、"PerlIO" と呼ばれる新しい I/O フレームワークが
+導入されました。
+これは Perl で発生する全ての I/O のための新しい「配管」です;
+ほとんど全ての部分では単に今まで通りに動作しますが、
+I/O を「層」として考えるための機能のような、新しい要素も導入されています。
+ある I/O 層は単にデータを移動させるだけでなく、データを変換するかも知れません。
+このような変換には、圧縮と展開、暗号化と復号化、様々な文字エンコーディング間の
+変換を含むかも知れません。
+
+=begin original
+
+Full discussion about the features of PerlIO is out of scope for this
+tutorial, but here is how to recognize the layers being used:
+
+=end original
+
+PerlIO の機能に関する完全な議論はこのチュートリアルの対象外ですが、
+層が使われていることをどうやって認識するかを以下に示します:
+
+=over 4
+
+=item *
+
+=begin original
+
+The three-(or more)-argument form of C<open> is being used and the
+second argument contains something else in addition to the usual
+C<< '<' >>, C<< '>' >>, C<< '>>' >>, C<< '|' >> and their variants,
+for example:
+
+=end original
+
+3 (以上) 引数形式の C<open> が使われ、2 番目の引数に通常の
+C<< '<' >>, C<< '>' >>, C<< '>>' >>, C<< '|' >> およびそのバリエーション
+以外の何かが含まれている場合; 例えば:
+
+    open(my $fh, "<:crlf", $fn);
+
+=item *
+
+=begin original
+
+The two-argument form of C<binmode> is being used, for example
+
+=end original
+
+2 引数形式の C<binmode> が使われている場合; 例えば
+
+    binmode($fh, ":encoding(utf16)");
+
+=back
+
+=begin original
+
+For more detailed discussion about PerlIO see L<PerlIO>;
+for more detailed discussion about Unicode and I/O see L<perluniintro>.
+
+=end original
+
+PerlIO に関するより詳細な議論については L<PerlIO> を参照してください;
+Unicode と I/O に関するより詳細な議論については L<perluniintro> を
+参照してください。
+
+=head1 SEE ALSO 
+
+=begin original
+
+The C<open> and C<sysopen> functions in perlfunc(1);
+the system open(2), dup(2), fopen(3), and fdopen(3) manpages;
+the POSIX documentation.
+
+=end original
+
+perlfunc(1) の C<open> 及び C<sysopen> 関数;
+システムの open(2), dup(2), fopen(3), fdopen(3) の man ページ;
+POSIX 文書。
+
+=head1 AUTHOR and COPYRIGHT
+
+Copyright 1998 Tom Christiansen.  
+
+This documentation is free; you can redistribute it and/or modify it
+under the same terms as Perl itself.
+
+Irrespective of its distribution, all code examples in these files are
+hereby placed into the public domain.  You are permitted and
+encouraged to use this code in your own programs for fun or for profit
+as you see fit.  A simple comment in the code giving credit would be
+courteous but is not required.
+
+=head1 HISTORY
+
+First release: Sat Jan  9 08:09:11 MST 1999
+
+=begin meta
+
+Translate: SHIRAKATA Kentaro <argrath@ub32.org>
+Status: completed
+
+=end meta
+
