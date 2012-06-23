@@ -1,0 +1,3846 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+perlcall - Perl calling conventions from C
+
+=end original
+
+perlcall - C からの Perl 呼び出し規約
+
+=head1 DESCRIPTION
+
+=begin original
+
+The purpose of this document is to show you how to call Perl subroutines
+directly from C, i.e., how to write I<callbacks>.
+
+=end original
+
+このドキュメントの目的は、どのようにして Perl のサブルーチンを C から
+直接呼び出すか、つまり I<コールバック> の書き方を示すことです。
+
+=begin original
+
+Apart from discussing the C interface provided by Perl for writing
+callbacks the document uses a series of examples to show how the
+interface actually works in practice.  In addition some techniques for
+coding callbacks are covered.
+
+=end original
+
+コールバックを記述するための Perl から提供される C の
+インターフェースについての議論とは別に、本ドキュメントでは実践的な
+インターフェースを例で示します。
+それに加え、コールバックをコーディングするための幾つかの
+テクニックがカバーされます。
+
+=begin original
+
+Examples where callbacks are necessary include
+
+=end original
+
+必要に応じて、例を示すようにしてあります。
+
+=over 5
+
+=item * An Error Handler
+
+(エラーハンドラ)
+
+=begin original
+
+You have created an XSUB interface to an application's C API.
+
+=end original
+
+あるアプリケーションの C API へのインタフェース XSUB を作成しました。
+
+=begin original
+
+A fairly common feature in applications is to allow you to define a C
+function that will be called whenever something nasty occurs. What we
+would like is to be able to specify a Perl subroutine that will be
+called instead.
+
+=end original
+
+アプリケーションでかなり一般的な機能として、なにか面倒が起こったときに
+呼ぶことのできる C の関数を定義することができるようにすることが
+挙げられます。
+やりたいことは、代わりに Perl サブルーチンを呼ぶということです。
+
+=item * An Event-Driven Program
+
+(イベント駆動プログラム)
+
+=begin original
+
+The classic example of where callbacks are used is when writing an
+event driven program, such as for an X windows application.  In this case
+you register functions to be called whenever specific events occur,
+e.g., a mouse button is pressed, the cursor moves into a window or a
+menu item is selected.
+
+=end original
+
+どこでコールバックが使われるかの古典的な例は、
+X window アプリケーションのようなイベントドリブンなプログラムに
+見られます。
+この場合登録内容は、マウスのボタンが押されたりカーソルが
+ウィンドウやメニューアイテムを選択したといった特定のイベントが
+発生したときに呼びだされるように機能します。
+
+=back
+
+=begin original
+
+Although the techniques described here are applicable when embedding
+Perl in a C program, this is not the primary goal of this document.
+There are other details that must be considered and are specific to
+embedding Perl. For details on embedding Perl in C refer to
+L<perlembed>.
+
+=end original
+
+記述したテクニックは、Perl プログラムを C のプログラムに埋め込むときにも
+適用できますが、それはこのドキュメントの本来の目的ではありません。
+C に Perl を埋め込むことの詳細は L<perlembed> を参照してください。
+
+=begin original
+
+Before you launch yourself head first into the rest of this document,
+it would be a good idea to have read the following two documents--L<perlxs>
+and L<perlguts>.
+
+=end original
+
+このドキュメントの先に進む前に、L<perlxs> と L<perlguts> という
+二つのドキュメントを読んでおいたほうが良いでしょう。
+
+=head1 THE CALL_ FUNCTIONS
+
+(CALL_ 関数)
+
+=begin original
+
+Although this stuff is easier to explain using examples, you first need
+be aware of a few important definitions.
+
+=end original
+
+これらの性質は例を使って説明するのが簡単であるにも関らず、あなたは
+まず幾つかの重要な定義を知ることが必要です。
+
+=begin original
+
+Perl has a number of C functions that allow you to call Perl
+subroutines.  They are
+
+=end original
+
+Perl には、Perl のサブルーチンを呼ぶことを許している C の関数が
+たくさんあります。
+それを以下に示します。
+
+    I32 call_sv(SV* sv, I32 flags);
+    I32 call_pv(char *subname, I32 flags);
+    I32 call_method(char *methname, I32 flags);
+    I32 call_argv(char *subname, I32 flags, register char **argv);
+
+=begin original
+
+The key function is I<call_sv>.  All the other functions are
+fairly simple wrappers which make it easier to call Perl subroutines in
+special cases. At the end of the day they will all call I<call_sv>
+to invoke the Perl subroutine.
+
+=end original
+
+中心となる関数は I<call_sv> です。
+他の全ての関数は特別な状況で
+Perl サブルーチンを呼び出しやすくするための単純なラッパーです。
+最終的にはこれらの関数はすべて I<call_sv> を呼び出して
+Perl サブルーチンを起動します。
+
+=begin original
+
+All the I<call_*> functions have a C<flags> parameter which is
+used to pass a bit mask of options to Perl.  This bit mask operates
+identically for each of the functions.  The settings available in the
+bit mask are discussed in L<FLAG VALUES>.
+
+=end original
+
+関数 I<call_*> は Perl に対するオプションのビットマスクを
+渡すのに使われる C<flags> 引数を取ります。
+このビットマスクはそれぞれの関数で全く同じように働きます。
+設定可能なビットマスクは L<FLAG VALUES> で述べられています。
+
+=begin original
+
+Each of the functions will now be discussed in turn.
+
+=end original
+
+関数のそれぞれに対する説明を始めましょう。
+
+=over 5
+
+=item call_sv
+
+=begin original
+
+I<call_sv> takes two parameters. The first, C<sv>, is an SV*.
+This allows you to specify the Perl subroutine to be called either as a
+C string (which has first been converted to an SV) or a reference to a
+subroutine. The section, I<Using call_sv>, shows how you can make
+use of I<call_sv>.
+
+=end original
+
+I<call_sv> は二つのパラメータをとります。
+第一引数が SV* である C<sv> です。
+これにより、呼び出す Perl サブルーチンを C の文字列(この場合
+最初に SV に変換されます)としても、サブルーチンに対する
+リファレンスとしても指定することができます。
+セクション L<Using call_sv> で、
+どのように I<call_sv> を使えるかを示します。
+
+=item call_pv
+
+=begin original
+
+The function, I<call_pv>, is similar to I<call_sv> except it
+expects its first parameter to be a C char* which identifies the Perl
+subroutine you want to call, e.g., C<call_pv("fred", 0)>.  If the
+subroutine you want to call is in another package, just include the
+package name in the string, e.g., C<"pkg::fred">.
+
+=end original
+
+関数 I<call_pv> は I<call_sv> と似ていますが、
+C<call_pv("fred", 0)> のように呼び出したい Perl サブルーチンを
+指定する第一引数に C の char * が来ることを期待しているという点が
+異なります。
+呼び出したいサブルーチンが別のパッケージに置かれている場合、
+文字列にパッケージ名を含め C<"pkg::fred"> のようにします。
+
+=item call_method
+
+=begin original
+
+The function I<call_method> is used to call a method from a Perl
+class.  The parameter C<methname> corresponds to the name of the method
+to be called.  Note that the class that the method belongs to is passed
+on the Perl stack rather than in the parameter list. This class can be
+either the name of the class (for a static method) or a reference to an
+object (for a virtual method).  See L<perlobj> for more information on
+static and virtual methods and L<Using call_method> for an example
+of using I<call_method>.
+
+=end original
+
+関数 I<call_method> は Perl のクラスからメソッドを呼び出すのに使われます。
+C<methname> というパラメータは呼び出すメソッドの名前に対応します。
+メソッドの所属するクラスは、パラメータリストではなく
+Perlのスタックで渡されるということに注意してください。
+このクラスは、クラスの名前(静的メソッドに対する場合)であっても
+オブジェクトに対するリファレンスであってもかまいません。
+静的メソッドと仮想メソッドに関する詳細は L<perlobj> を、I<call_method> を
+使った例は L<Using call_method> を参照してください。
+
+=item call_argv
+
+=begin original
+
+I<call_argv> calls the Perl subroutine specified by the C string
+stored in the C<subname> parameter. It also takes the usual C<flags>
+parameter.  The final parameter, C<argv>, consists of a NULL-terminated
+list of C strings to be passed as parameters to the Perl subroutine.
+See I<Using call_argv>.
+
+=end original
+
+I<call_argv> はパラメータ C<subname> に格納された C 文字列で
+指定された Perl サブルーチンを呼び出します。
+これはまた、C<flags> パラメータを取ります。
+最後のパラメータ C<argv> は、Perl サブルーチンに渡されるパラメータである
+C 文字列の、NULL で終端されたリストから構成されます。
+L<Using call_argv> を参照してください。
+
+=back
+
+=begin original
+
+All the functions return an integer. This is a count of the number of
+items returned by the Perl subroutine. The actual items returned by the
+subroutine are stored on the Perl stack.
+
+=end original
+
+上記の関数はすべて整数値を返します。
+これは、Perl サブルーチンが返したアイテムの数です。
+サブルーチンから返された実際のアイテムは Perl スタックに
+格納されています。
+
+=begin original
+
+As a general rule you should I<always> check the return value from
+these functions.  Even if you are expecting only a particular number of
+values to be returned from the Perl subroutine, there is nothing to
+stop someone from doing something unexpected--don't say you haven't
+been warned.
+
+=end original
+
+一般的な規則として、あなたは B<いつでも> これらの関数の戻り値を
+チェックすべきです。
+あなたが Perl サブルーチンから返される値として、
+ある特定の数だけを期待していたとしても、誰かが予期しないなにかを
+行うことを止める手だてはないので -- 自分は警告されていない、とは
+云わないでください。
+
+=head1 FLAG VALUES
+
+(フラグの値)
+
+=begin original
+
+The C<flags> parameter in all the I<call_*> functions is one of G_VOID,
+G_SCALAR, or G_ARRAY, which indicate the call context, OR'ed together
+with a bit mask of any combination of the other G_* symbols defined below.
+
+=end original
+
+すべての C<call_*> 関数のパラメータ C<flags> は、呼び出しコンテキストを示す
+G_VOID, G_SCALAR, G_ARRAY の一つに、以下に定義するその他の G_* シンボルの
+組み合わせのビットマスクを「論理和」で組み合わせて用います。
+
+=head2  G_VOID
+
+=begin original
+
+Calls the Perl subroutine in a void context.
+
+=end original
+
+Perl のサブルーチンを無効コンテキストで呼び出します。
+
+=begin original
+
+This flag has 2 effects:
+
+=end original
+
+このフラグには二つの効果があります。
+
+=over 5
+
+=item 1.
+
+=begin original
+
+It indicates to the subroutine being called that it is executing in
+a void context (if it executes I<wantarray> the result will be the
+undefined value).
+
+=end original
+
+サブルーチンの呼び出しが無効コンテキスト(もし I<wantarray> を実行すると
+その結果は未定義値となります)において実行されることを示します。
+
+=item 2.
+
+=begin original
+
+It ensures that nothing is actually returned from the subroutine.
+
+=end original
+
+サブルーチンから実際に返されるものがなにもないことを保証します。
+
+=back
+
+=begin original
+
+The value returned by the I<call_*> function indicates how many
+items have been returned by the Perl subroutine--in this case it will
+be 0.
+
+=end original
+
+関数 I<call_*> の戻り値は Perl のサブルーチンがアイテムを幾つ
+返したのかを示します--この例の場合は、0 となります。
+
+=head2  G_SCALAR
+
+=begin original
+
+Calls the Perl subroutine in a scalar context.  This is the default
+context flag setting for all the I<call_*> functions.
+
+=end original
+
+Perl のサブルーチンをスカラコンテキストで呼び出します。
+これはすべての I<call_*> 関数に対するデフォルトのコンテキストの設定です。
+
+=begin original
+
+This flag has 2 effects:
+
+=end original
+
+このフラグには二つの効果があります。
+
+=over 5
+
+=item 1.
+
+=begin original
+
+It indicates to the subroutine being called that it is executing in a
+scalar context (if it executes I<wantarray> the result will be false).
+
+=end original
+
+サブルーチンに対して、スカラコンテキストで実行されるということを
+示します(I<wantarray> を実行した場合、結果は偽となります)。
+
+=item 2.
+
+=begin original
+
+It ensures that only a scalar is actually returned from the subroutine.
+The subroutine can, of course,  ignore the I<wantarray> and return a
+list anyway. If so, then only the last element of the list will be
+returned.
+
+=end original
+
+サブルーチンから実際に返されるものはスカラだけであるということを
+保証します。
+もちろん、サブルーチンは I<wantarray> を無視し、リストを
+返すこともできます。
+そうした場合、そうしたリストの最後の要素だけが返されることになります。
+
+=back
+
+=begin original
+
+The value returned by the I<call_*> function indicates how many
+items have been returned by the Perl subroutine - in this case it will
+be either 0 or 1.
+
+=end original
+
+関数 I<call_*> により返された値は、Perl サブルーチンが幾つの
+アイテムを返したかということを示します。
+この場合、0 か 1 かのいずれかになります。
+
+=begin original
+
+If 0, then you have specified the G_DISCARD flag.
+
+=end original
+
+0 の場合、G_DISCARD フラグが指定されたということです。
+
+=begin original
+
+If 1, then the item actually returned by the Perl subroutine will be
+stored on the Perl stack - the section I<Returning a Scalar> shows how
+to access this value on the stack.  Remember that regardless of how
+many items the Perl subroutine returns, only the last one will be
+accessible from the stack - think of the case where only one value is
+returned as being a list with only one element.  Any other items that
+were returned will not exist by the time control returns from the
+I<call_*> function.  The section I<Returning a list in a scalar
+context> shows an example of this behavior.
+
+=end original
+
+1 の場合、Perl サブルーチンが実際に返したアイテムは Perl スタックに
+積まれます。
+スタックにあるこの値にどのようにアクセスするかはセクション
+L<Returning a Scalar> にあります。
+Perlサブルーチンが幾つのアイテムを返したかに関係なく、最後の一つだけが
+スタック上でアクセス可能であるということを忘れないでください。
+つまり、ただ一つの要素からなるリストのように、値が一つだけ
+置かれるのです。
+他のすべてのアイテムは、I<call_*> 関数から制御が戻ったときには
+存在しません。
+この振る舞いについての例はセクション 
+L<Returning a list in a scalar context> にあります。
+
+=head2 G_ARRAY
+
+=begin original
+
+Calls the Perl subroutine in a list context.
+
+=end original
+
+Perl サブルーチンをリストコンテキストで呼び出します。
+
+=begin original
+
+As with G_SCALAR, this flag has 2 effects:
+
+=end original
+
+G_SCALAR を指定したときと同様、このフラグにも二つの効果があります。
+
+=over 5
+
+=item 1.
+
+=begin original
+
+It indicates to the subroutine being called that it is executing in a
+list context (if it executes I<wantarray> the result will be true).
+
+=end original
+
+サブルーチンが、リストコンテキストで実行されることを示します
+(I<wantarray> を実行すると、その結果は真となります)。
+
+=item 2.
+
+=begin original
+
+It ensures that all items returned from the subroutine will be
+accessible when control returns from the I<call_*> function.
+
+=end original
+
+関数 I<call_*> から制御が戻ったときに、サブルーチンから返された
+すべてのアイテムがアクセス可能であることを保証します。
+
+=back
+
+=begin original
+
+The value returned by the I<call_*> function indicates how many
+items have been returned by the Perl subroutine.
+
+=end original
+
+関数 I<call_*> から返される値は、Perl サブルーチンがアイテムを
+幾つ返したかを示すものです。
+
+=begin original
+
+If 0, then you have specified the G_DISCARD flag.
+
+=end original
+
+0 の場合、G_DISCARD フラグが指定されたということです。
+
+=begin original
+
+If not 0, then it will be a count of the number of items returned by
+the subroutine. These items will be stored on the Perl stack.  The
+section I<Returning a list of values> gives an example of using the
+G_ARRAY flag and the mechanics of accessing the returned items from the
+Perl stack.
+
+=end original
+
+0 以外の場合、サブルーチンが返したアイテムの個数となります。
+これらのアイテムは Perl スタックに置かれます。
+セクション L<Returning a list of values> には G_ARRAY フラグを使った例と、
+Perl スタックに置かれたアイテムをアクセスする仕組みの例があります。
+
+=head2 G_DISCARD
+
+=begin original
+
+By default, the I<call_*> functions place the items returned from
+by the Perl subroutine on the stack.  If you are not interested in
+these items, then setting this flag will make Perl get rid of them
+automatically for you.  Note that it is still possible to indicate a
+context to the Perl subroutine by using either G_SCALAR or G_ARRAY.
+
+=end original
+
+デフォルトでは、関数 I<call_*> は Perl サブルーチンの返したアイテムを
+スタックに置きます。
+こういったアイテムに用がない場合、このフラグを設定することによって
+Perl が自動的にこれらのアイテムを取り除くようにすることを指定できます。
+このフラグを使った場合でも、
+Perl サブルーチンに対して G_SCALAR か G_ARRAY のいずれかをさらに
+指定することで、(Perl サブルーチンが実行される)コンテキストを
+指示できるということに注意してください。
+
+=begin original
+
+If you do not set this flag then it is I<very> important that you make
+sure that any temporaries (i.e., parameters passed to the Perl
+subroutine and values returned from the subroutine) are disposed of
+yourself.  The section I<Returning a Scalar> gives details of how to
+dispose of these temporaries explicitly and the section I<Using Perl to
+dispose of temporaries> discusses the specific circumstances where you
+can ignore the problem and let Perl deal with it for you.
+
+=end original
+
+このフラグを設定しなかった場合、なんらかの一時変数(たとえば、Perl
+サブルーチンに渡されたパラメータであるとかサブルーチンからの戻り値)を
+自分自身で破棄することを確実に行うことがB<非常に>重要です。
+L<Returning a Scalar> というセクションでは、これら一時変数をどのようにして
+陽に破棄するかを説明しており、
+L<Using Perl to dispose of temporaries> というセクションではこの
+問題を無視できる特定の場所や、Perlに後始末をさせることについて
+述べています。
+
+=head2 G_NOARGS
+
+=begin original
+
+Whenever a Perl subroutine is called using one of the I<call_*>
+functions, it is assumed by default that parameters are to be passed to
+the subroutine.  If you are not passing any parameters to the Perl
+subroutine, you can save a bit of time by setting this flag.  It has
+the effect of not creating the C<@_> array for the Perl subroutine.
+
+=end original
+
+I<call_*> の一つを使って Perl サブルーチンを呼び出したときはいつでも、
+サブルーチンに対してパラメータが渡されたということが
+デフォルトで仮定されます。
+Perl サブルーチンに対してなんのパラメータも渡さないという場合、この
+フラグをセットすることで時間を少々節約することができます。
+これは Perl サブルーチンに対して、C<@_> を生成しないという
+効果を持っています。
+
+=begin original
+
+Although the functionality provided by this flag may seem
+straightforward, it should be used only if there is a good reason to do
+so.  The reason for being cautious is that, even if you have specified
+the G_NOARGS flag, it is still possible for the Perl subroutine that
+has been called to think that you have passed it parameters.
+
+=end original
+
+このフラグにより提供される機能が直接的なもののように見えるにも関らず、
+これを使うのはそうすべき適当な理由があるときのみにすべきでしょう。
+このように用心する理由は、G_NOARGS フラグを指定した場合であっても、
+呼び出された Perl サブルーチンがパラメータを渡されたと
+思い込んでいる可能性があるからです。
+
+=begin original
+
+In fact, what can happen is that the Perl subroutine you have called
+can access the C<@_> array from a previous Perl subroutine.  This will
+occur when the code that is executing the I<call_*> function has
+itself been called from another Perl subroutine. The code below
+illustrates this
+
+=end original
+
+事実、起こりうる可能性として、呼び出した Perl サブルーチンが以前の
+Perl サブルーチンの配列 C<@_> にアクセスできてしまうというものがあります。
+これは、I<call_*> 関数を実行するコード自身が、他の Perl サブルーチンから
+呼ばれたときに起こり得ます。
+以下のコードはこれを説明するものです。
+
+    sub fred
+      { print "@_\n"  }
+
+    sub joe
+      { &fred }
+
+    &joe(1,2,3);
+
+=begin original
+
+This will print
+
+=end original
+
+この結果は次のようになります。
+
+    1 2 3
+
+=begin original
+
+What has happened is that C<fred> accesses the C<@_> array which
+belongs to C<joe>.
+
+=end original
+
+ここで起こったことは、C<fred> が C<joe> に属する配列 C<@_> に
+アクセスしているということです。
+
+=head2 G_EVAL
+
+=begin original
+
+It is possible for the Perl subroutine you are calling to terminate
+abnormally, e.g., by calling I<die> explicitly or by not actually
+existing.  By default, when either of these events occurs, the
+process will terminate immediately.  If you want to trap this
+type of event, specify the G_EVAL flag.  It will put an I<eval { }>
+around the subroutine call.
+
+=end original
+
+呼び出す Perl サブルーチンを、I<die> を陽に呼び出したり、何かが
+存在しなかったことにより即座に終了させることを可能にします。
+デフォルトでは、そういったイベントが起こった場合にはプロセスは即座に
+終了します。
+しかしこの種のイベントをトラップしたいのなら、G_EVAL フラグを指定します。
+それによって、サブルーチンの呼び出しを I<eval { }> で囲むようになります。
+
+=begin original
+
+Whenever control returns from the I<call_*> function you need to
+check the C<$@> variable as you would in a normal Perl script.
+
+=end original
+
+I<call_*> 関数から戻ってきたときは、いつでも通常の Perl スクリプトで
+そうするように変数 C<$@> をチェックする必要があります。
+
+=begin original
+
+The value returned from the I<call_*> function is dependent on
+what other flags have been specified and whether an error has
+occurred.  Here are all the different cases that can occur:
+
+=end original
+
+I<call_*> から返された値は、他に指定したフラグとエラーが
+起きたかどうかに依存します。
+以下に起こりうるすべてのケースを挙げます。
+
+=over 5
+
+=item *
+
+=begin original
+
+If the I<call_*> function returns normally, then the value
+returned is as specified in the previous sections.
+
+=end original
+
+関数 I<call_*> から正常に戻ってきた場合、戻り値は前のセクションで
+説明したようなものです。
+
+=item *
+
+=begin original
+
+If G_DISCARD is specified, the return value will always be 0.
+
+=end original
+
+G_DISCARD が指定されていた場合、戻り値は常に 0 になります。
+
+=item *
+
+=begin original
+
+If G_ARRAY is specified I<and> an error has occurred, the return value
+will always be 0.
+
+=end original
+
+G_ARRAY が指定されていて、B<かつ>、エラーが発生した場合には戻り値は
+常に 0 となります。
+
+=item *
+
+=begin original
+
+If G_SCALAR is specified I<and> an error has occurred, the return value
+will be 1 and the value on the top of the stack will be I<undef>. This
+means that if you have already detected the error by checking C<$@> and
+you want the program to continue, you must remember to pop the I<undef>
+from the stack.
+
+=end original
+
+G_SCALAR が指定されていて、B<かつ>、エラーが発生した場合には戻り値は
+1となり、そしてスタックトップにある値は I<undef> となります。
+これは C<$@> を検査することで既にエラーを検出していていてプログラムの
+継続を望んでいる場合には、スタックから I<undef> を忘れずに
+ポップしなければならないということです。
+
+=back
+
+=begin original
+
+See I<Using G_EVAL> for details on using G_EVAL.
+
+=end original
+
+G_EVAL の使用についての詳細は L<Using G_EVAL> を参照してください。
+
+=head2 G_KEEPERR
+
+=begin original
+
+Using the G_EVAL flag described above will always set C<$@>: clearing
+it if there was no error, and setting it to describe the error if there
+was an error in the called code.  This is what you want if your intention
+is to handle possible errors, but sometimes you just want to trap errors
+and stop them interfering with the rest of the program.
+
+=end original
+
+Using the G_EVAL flag described above will always set C<$@>: clearing
+it if there was no error, and setting it to describe the error if there
+was an error in the called code.  This is what you want if your intention
+is to handle possible errors, but sometimes you just want to trap errors
+and stop them interfering with the rest of the program.
+(TBT)
+
+=begin original
+
+This scenario will mostly be applicable to code that is meant to be called
+from within destructors, asynchronous callbacks, and signal handlers.
+In such situations, where the code being called has little relation to the
+surrounding dynamic context, the main program needs to be insulated from
+errors in the called code, even if they can't be handled intelligently.
+It may also be useful to do this with code for C<__DIE__> or C<__WARN__>
+hooks, and C<tie> functions.
+
+=end original
+
+このシナリオは、デストラクターの中から呼ばれるようなコード、非同期な
+コールバック、シグナルハンドラといったもので最も有用です。
+In such situations, where the code being called has little relation to the
+surrounding dynamic context, the main program needs to be insulated from
+errors in the called code, even if they can't be handled intelligently.
+It may also be useful to do this with code for C<__DIE__> or C<__WARN__>
+hooks, and C<tie> functions.
+(TBT)
+
+=begin original
+
+The G_KEEPERR flag is meant to be used in conjunction with G_EVAL in
+I<call_*> functions that are used to implement such code, or with
+C<eval_sv>.  This flag has no effect on the C<call_*> functions when
+G_EVAL is not used.
+
+=end original
+
+G_KEEPERR フラグは、実装したコードを使用する I<call_*> において
+G_EVAL と、または C<eval_sv> と組み合わせて使われます。
+このフラグは G_EVAL が使われていないときにはなんの効果も持ちません。
+
+=begin original
+
+When G_KEEPERR is used, any error in the called code will terminate the
+call as usual, and the error will not propagate beyond the call (as usual
+for G_EVAL), but it will not go into C<$@>.  Instead the error will be
+converted into a warning, prefixed with the string "\t(in cleanup)".
+This can be disabled using C<no warnings 'misc'>.  If there is no error,
+C<$@> will not be cleared.
+
+=end original
+
+When G_KEEPERR is used, any error in the called code will terminate the
+call as usual, and the error will not propagate beyond the call (as usual
+for G_EVAL), but it will not go into C<$@>.  Instead the error will be
+converted into a warning, prefixed with the string "\t(in cleanup)".
+This can be disabled using C<no warnings 'misc'>.  If there is no error,
+C<$@> will not be cleared.
+(TBT)
+
+=begin original
+
+Note that the G_KEEPERR flag does not propagate into inner evals; these
+may still set C<$@>.
+
+=end original
+
+Note that the G_KEEPERR flag does not propagate into inner evals; these
+may still set C<$@>.
+(TBT)
+
+=begin original
+
+The G_KEEPERR flag was introduced in Perl version 5.002.
+
+=end original
+
+G_KEEPERR フラグは Perl のバージョン 5.002 で導入されました。
+
+=begin original
+
+See I<Using G_KEEPERR> for an example of a situation that warrants the
+use of this flag.
+
+=end original
+
+このフラグを使うことが正当である状況の例が L<Using G_KEEPERR> にあります。
+
+=head2 Determining the Context
+
+(コンテキストを決定する)
+
+=begin original
+
+As mentioned above, you can determine the context of the currently
+executing subroutine in Perl with I<wantarray>.  The equivalent test
+can be made in C by using the C<GIMME_V> macro, which returns
+C<G_ARRAY> if you have been called in a list context, C<G_SCALAR> if
+in a scalar context, or C<G_VOID> if in a void context (i.e., the
+return value will not be used).  An older version of this macro is
+called C<GIMME>; in a void context it returns C<G_SCALAR> instead of
+C<G_VOID>.  An example of using the C<GIMME_V> macro is shown in
+section I<Using GIMME_V>.
+
+=end original
+
+先に説明したように、I<wantarray> を使ってサブルーチンが実行されている
+コンテキストを判定することができます。
+これと同じことが、C<GIMME_V> マクロを使うことでも可能です。
+このマクロはリストコンテキストで
+呼ばれた場合には C<G_ARRAY> を、スカラコンテキストで呼ばれた場合には
+C<G_SCALAR> を、無効コンテキストの場合(たとえば戻り値が
+使われないとき)には C<G_VOID> を返します。
+このマクロの古いバージョンは C<GIMME> という名前で、
+無効コンテキストのときに C<G_VOID> の代わりに
+C<G_SCALAR> を返していました。
+C<GIMME_V> マクロの使用例は
+セクション L<Using GIIME_V> にあります。
+
+=head1 EXAMPLES
+
+(例)
+
+=begin original
+
+Enough of the definition talk! Let's have a few examples.
+
+=end original
+
+定義の話は十分でしょう!
+いくつか例を示します。
+
+=begin original
+
+Perl provides many macros to assist in accessing the Perl stack.
+Wherever possible, these macros should always be used when interfacing
+to Perl internals.  We hope this should make the code less vulnerable
+to any changes made to Perl in the future.
+
+=end original
+
+Perl では、Perl スタックをアクセスする手助けのためのマクロをたくさん
+用意しています。
+Perl の内部ルーチンとのインターフェースには、
+常にこれらのマクロを使うようにすべきでしょう。
+将来 Perl に施される変更に対しても、これを使うことで、コードの方への
+影響が少なくなるはずです。
+
+=begin original
+
+Another point worth noting is that in the first series of examples I
+have made use of only the I<call_pv> function.  This has been done
+to keep the code simpler and ease you into the topic.  Wherever
+possible, if the choice is between using I<call_pv> and
+I<call_sv>, you should always try to use I<call_sv>.  See
+I<Using call_sv> for details.
+
+=end original
+
+もう一つ余計なことを言っておくと、最初のいくつかの例では、
+I<call_pv> 関数だけを使っています。
+これは、単にみなさんがこの話題に入り込みやすいようにと
+考えただけのことです。
+I<call_pv> と I<call_sv> のどちらも使える場合、常に I<call_sv> を
+使うことを試してください。
+詳しくは L<Using call_sv> を参照してください。
+
+=head2 No Parameters, Nothing Returned
+
+(引数なし、戻り値なしの場合)
+
+=begin original
+
+This first trivial example will call a Perl subroutine, I<PrintUID>, to
+print out the UID of the process.
+
+=end original
+
+最初の明快な例は、プロセスの UID を出力するために Perl サブルーチン
+I<PrintUID> を呼びだします。
+
+    sub PrintUID
+    {
+        print "UID is $<\n";
+    }
+
+=begin original
+
+and here is a C function to call it
+
+=end original
+
+と、これを呼ぶ C 側です
+
+    static void
+    call_PrintUID()
+    {
+        dSP;
+
+        PUSHMARK(SP);
+        call_pv("PrintUID", G_DISCARD|G_NOARGS);
+    }
+
+=begin original
+
+Simple, eh?
+
+=end original
+
+ね、単純でしょう?
+
+=begin original
+
+A few points to note about this example:
+
+=end original
+
+この例についていくつか注意点をあげておきましょう:
+
+=over 5
+
+=item 1.
+
+=begin original
+
+Ignore C<dSP> and C<PUSHMARK(SP)> for now. They will be discussed in
+the next example.
+
+=end original
+
+今のところ、C<dSP> と C<PUSHMARK(SP)> は無視してください。
+これについては、次の例でお話します。
+
+=item 2.
+
+=begin original
+
+We aren't passing any parameters to I<PrintUID> so G_NOARGS can be
+specified.
+
+=end original
+
+I<PrintUID> に引数を渡しませんので、G_NOARGS を指定できます。
+
+=item 3.
+
+=begin original
+
+We aren't interested in anything returned from I<PrintUID>, so
+G_DISCARD is specified. Even if I<PrintUID> was changed to
+return some value(s), having specified G_DISCARD will mean that they
+will be wiped by the time control returns from I<call_pv>.
+
+=end original
+
+I<PrintUID> から返されるものは、特に必要ありませんので G_DISCARD を
+指定しています。
+I<PrintUID> が何か値を返すように変更されても、
+G_DISCARD を指定しておくと I<call_pv> から制御が戻るときにその値が
+捨てられることになります。
+
+=item 4.
+
+=begin original
+
+As I<call_pv> is being used, the Perl subroutine is specified as a
+C string. In this case the subroutine name has been 'hard-wired' into the
+code.
+
+=end original
+
+I<call_pv> が使われていますから、Perl サブルーチンは C の文字列として
+表現されています。
+
+=item 5.
+
+=begin original
+
+Because we specified G_DISCARD, it is not necessary to check the value
+returned from I<call_pv>. It will always be 0.
+
+=end original
+
+G_DISCARD を指定しましたので、I<call_sv> からの戻り値をチェックする
+必要はありません。
+常に 0 となります。
+
+=back
+
+=head2 Passing Parameters
+
+(引数を渡す)
+
+=begin original
+
+Now let's make a slightly more complex example. This time we want to
+call a Perl subroutine, C<LeftString>, which will take 2 parameters--a
+string ($s) and an integer ($n).  The subroutine will simply
+print the first $n characters of the string.
+
+=end original
+
+さて、今度はもう少し込み入った例です。
+今回は、二つの引数として、
+文字列 ($s) と整数 ($n) をとる Perl サブルーチン C<LeftString> を
+呼び出してみましょう -- このサブルーチンでは、単純に文字列の最初の
+$n 文字を出力します。
+
+=begin original
+
+So the Perl subroutine would look like this:
+
+=end original
+
+Perl サブルーチンは以下のようなものです:
+
+    sub LeftString
+    {
+        my($s, $n) = @_;
+        print substr($s, 0, $n), "\n";
+    }
+
+=begin original
+
+The C function required to call I<LeftString> would look like this:
+
+=end original
+
+I<LeftString> を呼ぶための C の関数は、以下のようになります:
+
+    static void
+    call_LeftString(a, b)
+    char * a;
+    int b;
+    {
+        dSP;
+
+	ENTER;
+        SAVETMPS;
+
+        PUSHMARK(SP);
+        XPUSHs(sv_2mortal(newSVpv(a, 0)));
+        XPUSHs(sv_2mortal(newSViv(b)));
+        PUTBACK;
+
+        call_pv("LeftString", G_DISCARD);
+
+        FREETMPS;
+        LEAVE;
+    }
+
+=begin original
+
+Here are a few notes on the C function I<call_LeftString>.
+
+=end original
+
+C の関数 I<call_LeftString> の注意点を示します。
+
+=over 5
+
+=item 1.
+
+=begin original
+
+Parameters are passed to the Perl subroutine using the Perl stack.
+This is the purpose of the code beginning with the line C<dSP> and
+ending with the line C<PUTBACK>.  The C<dSP> declares a local copy
+of the stack pointer.  This local copy should B<always> be accessed
+as C<SP>.
+
+=end original
+
+パラメータは、Perl スタックを使って Perl サブルーチンに渡されます。
+これが、C<dSP> で始まり C<PUTBACK> 行で終わるコードの目的です。
+C<dSP> はスタックポインタのローカルなコピーを宣言します。
+このローカルなコピーは B<常に> C<SP> として
+アクセスするようにすべきです。
+
+=item 2.
+
+=begin original
+
+If you are going to put something onto the Perl stack, you need to know
+where to put it. This is the purpose of the macro C<dSP>--it declares
+and initializes a I<local> copy of the Perl stack pointer.
+
+=end original
+
+Perl スタックに何かを置こうとする場合には、どこにおけばよいかを
+知る必要があります。
+これが、マクロ C<dSP> の目的です -- Perl スタックポインタの
+I<ローカルな> コピーを宣言し、初期化します。
+
+=begin original
+
+All the other macros which will be used in this example require you to
+have used this macro.
+
+=end original
+
+この例で使う他のすべてのマクロは、このマクロの使用を前提にしています。
+
+=begin original
+
+The exception to this rule is if you are calling a Perl subroutine
+directly from an XSUB function. In this case it is not necessary to
+use the C<dSP> macro explicitly--it will be declared for you
+automatically.
+
+=end original
+
+Perl サブルーチンを直接 XSUB 関数から呼ぶ場合はこの規則の例外で、
+C<dSP> マクロを陽に使う必要はありません -- 自動的に宣言されます。
+
+=item 3.
+
+=begin original
+
+Any parameters to be pushed onto the stack should be bracketed by the
+C<PUSHMARK> and C<PUTBACK> macros.  The purpose of these two macros, in
+this context, is to count the number of parameters you are
+pushing automatically.  Then whenever Perl is creating the C<@_> array for the
+subroutine, it knows how big to make it.
+
+=end original
+
+スタック上に積まれるパラメータはすべて、C<PUSHMARK> マクロと 
+C<PUTBACK> マクロで囲まなければなりません。
+この 二つのマクロは、
+この文脈では、自動的にプッシュした引数の数を数えるために使われます。
+これによりPerl がサブルーチンに対して C<@_> 配列を作るときに、
+その大きさがわかるという仕組みになっているのです。
+
+=begin original
+
+The C<PUSHMARK> macro tells Perl to make a mental note of the current
+stack pointer. Even if you aren't passing any parameters (like the
+example shown in the section I<No Parameters, Nothing Returned>) you
+must still call the C<PUSHMARK> macro before you can call any of the
+I<call_*> functions--Perl still needs to know that there are no
+parameters.
+
+=end original
+
+C<PUSHMARK>マクロは、Perl に対して、内的にその時点のスタックポインタに
+注目するように伝えます。
+(例 1 の場合のように) 引数を渡さない場合であっても、I<call_*> 関数を
+呼ぶ場合には、その前に 
+C<PUSHMARK> マクロを呼ばなくてはなりません -- Perl からすると、引数が
+ないことを知る必要があるのです。
+
+=begin original
+
+The C<PUTBACK> macro sets the global copy of the stack pointer to be
+the same as our local copy. If we didn't do this, I<call_pv>
+wouldn't know where the two parameters we pushed were--remember that
+up to now all the stack pointer manipulation we have done is with our
+local copy, I<not> the global copy.
+
+=end original
+
+少し先へ飛んで、C<PUTBACK> マクロは、グローバルなスタックポインタを、
+先に作ったローカルなものに合わせます。
+これを行わないと、どこに引数を置いたかを I<call_pv> が
+判断することができません -- ここまで、すべてのスタックポインタの
+操作は、ローカルなものに対して行なってきたのであって、
+グローバルなものは触っていなかったのです。
+
+=item 4.
+
+=begin original
+
+Next, we come to XPUSHs. This is where the parameters actually get
+pushed onto the stack. In this case we are pushing a string and an
+integer.
+
+=end original
+
+元に戻って、次に XPUSH を引数分呼んでいます。
+ここで、実際に引数がスタックに積まれます。
+今回の場合、文字列と整数を積んでいます。
+
+=begin original
+
+See L<perlguts/"XSUBs and the Argument Stack"> for details
+on how the XPUSH macros work.
+
+=end original
+
+XPUSH マクロがどのように動作するのかについて詳しくは、
+L<perlguts/"XSUBs and the Argument Stack"> を参照してください。
+
+=item 5.
+
+=begin original
+
+Because we created temporary values (by means of sv_2mortal() calls)
+we will have to tidy up the Perl stack and dispose of mortal SVs.
+
+=end original
+
+私たちはここで一時的な値を(sv_2motral() の呼び出しによって)作り出したので、
+Perl のスタックを調整することと mortal な SV を消去する必要が生じます。
+
+=begin original
+
+This is the purpose of
+
+=end original
+
+これが関数の先頭に
+
+    ENTER;
+    SAVETMPS;
+
+=begin original
+
+at the start of the function, and
+
+=end original
+
+を置き、
+
+    FREETMPS;
+    LEAVE;
+
+=begin original
+
+at the end. The C<ENTER>/C<SAVETMPS> pair creates a boundary for any
+temporaries we create.  This means that the temporaries we get rid of
+will be limited to those which were created after these calls.
+
+=end original
+
+を関数の末尾に置く理由です。
+C<ENTER>/C<SAVETMPS> のペアは作成した一時変数に対する境界を
+生成します。
+つまり、私たちが取り扱う一時変数がこれらの呼び出しの後で
+生成されたものに限定されるだろうということです。
+
+=begin original
+
+The C<FREETMPS>/C<LEAVE> pair will get rid of any values returned by
+the Perl subroutine (see next example), plus it will also dump the
+mortal SVs we have created.  Having C<ENTER>/C<SAVETMPS> at the
+beginning of the code makes sure that no other mortals are destroyed.
+
+=end original
+
+C<FREETMPS>/C<LEAVE> のペアは Perl のサブルーチンが返す任意の値を扱い
+(次の例を参照してください)、それに加えて私たちが作成した mortal な SV を
+ダンプします。
+コードの先頭で C<ENTER>/C<SAVETMPS> を使うことによって、mortals 以外の
+ものが削除されないようにします。
+
+=begin original
+
+Think of these macros as working a bit like C<{> and C<}> in Perl
+to limit the scope of local variables.
+
+=end original
+
+これらのマクロは、Perl を使っているときに C<{> と C<}> による
+ローカル変数のスコープの制限に似たような働きをすると考えてください。
+
+=begin original
+
+See the section I<Using Perl to Dispose of Temporaries> for details of
+an alternative to using these macros.
+
+=end original
+
+これらのマクロを使った別の例については
+セクション L<Using Perl to Dispose of Temporaries> を
+参照してください。
+
+=item 6.
+
+=begin original
+
+Finally, I<LeftString> can now be called via the I<call_pv> function.
+The only flag specified this time is G_DISCARD. Because we are passing
+2 parameters to the Perl subroutine this time, we have not specified
+G_NOARGS.
+
+=end original
+
+ここまでで、I<LeftString> を I<call_pv> 関数を介して呼ぶことが
+できます。
+今回指定しているフラグは G_DISCARD のみです。
+今回 Perl サブルーチン に 二つのパラメータを渡しますので、G_NOARGS は
+指定していません。
+
+=back
+
+=head2 Returning a Scalar
+
+(スカラを返す)
+
+=begin original
+
+Now for an example of dealing with the items returned from a Perl
+subroutine.
+
+=end original
+
+さて、Perl サブルーチンからの戻り値を扱う例を見てみましょう。
+
+=begin original
+
+Here is a Perl subroutine, I<Adder>, that takes 2 integer parameters
+and simply returns their sum.
+
+=end original
+
+ここに挙げる Perl サブルーチンは、二つの整数引数をとって単にその和を
+返す I<Adder> というものです。
+
+    sub Adder
+    {
+        my($a, $b) = @_;
+        $a + $b;
+    }
+
+=begin original
+
+Because we are now concerned with the return value from I<Adder>, the C
+function required to call it is now a bit more complex.
+
+=end original
+
+I<Adder> からの戻り値を扱う必要がありますので、C 関数側は今回、
+多少複雑になります。
+
+    static void
+    call_Adder(a, b)
+    int a;
+    int b;
+    {
+        dSP;
+        int count;
+
+        ENTER;
+        SAVETMPS;
+
+        PUSHMARK(SP);
+        XPUSHs(sv_2mortal(newSViv(a)));
+        XPUSHs(sv_2mortal(newSViv(b)));
+        PUTBACK;
+
+        count = call_pv("Adder", G_SCALAR);
+
+        SPAGAIN;
+
+        if (count != 1)
+            croak("Big trouble\n");
+
+        printf ("The sum of %d and %d is %d\n", a, b, POPi);
+
+        PUTBACK;
+        FREETMPS;
+        LEAVE;
+    }
+
+=begin original
+
+Points to note this time are
+
+=end original
+
+ここでの注意点は、
+
+=over 5
+
+=item 1.
+
+=begin original
+
+The only flag specified this time was G_SCALAR. That means that the C<@_>
+array will be created and that the value returned by I<Adder> will
+still exist after the call to I<call_pv>.
+
+=end original
+
+今回は、フラグとして G_SCALAR だけを使用しています。
+これは、C<@_> 配列が作られ、I<Adder> から返された値は、I<call_pv> の
+呼び出し後も存在することを表わします。
+
+=item 2.
+
+=begin original
+
+The purpose of the macro C<SPAGAIN> is to refresh the local copy of the
+stack pointer. This is necessary because it is possible that the memory
+allocated to the Perl stack has been reallocated during the
+I<call_pv> call.
+
+=end original
+
+C<SPAGAIN> マクロの目的は、ローカルなスタックポインタを
+リフレッシュすることです。
+I<call_pv> の呼び出しの間に再配置された Perl スタックへメモリ配置を
+行なうことができますから、これが必要になります。
+
+=begin original
+
+If you are making use of the Perl stack pointer in your code you must
+always refresh the local copy using SPAGAIN whenever you make use
+of the I<call_*> functions or any other Perl internal function.
+
+=end original
+
+コードの中で Perl スタックポインタを利用する場合には、I<call_*> 関数や
+他の Perl の内部関数を利用するときには必ず、SPAGAIN を使って
+ローカルなポインタをリフレッシュしなくてはなりません。
+
+=item 3.
+
+=begin original
+
+Although only a single value was expected to be returned from I<Adder>,
+it is still good practice to check the return code from I<call_pv>
+anyway.
+
+=end original
+
+I<Adder> から返されるのは、単一の値のみのはずですが、いずれにしても
+I<call_pv> からの返却値をチェックするのが良いでしょう。
+
+=begin original
+
+Expecting a single value is not quite the same as knowing that there
+will be one. If someone modified I<Adder> to return a list and we
+didn't check for that possibility and take appropriate action the Perl
+stack would end up in an inconsistent state. That is something you
+I<really> don't want to happen ever.
+
+=end original
+
+単一の値を期待するのは、一つであることを知っていることとは違います。
+誰かが I<Adder> を改造してリストを返すようにし、その可能性を
+チェックしていなかったときにこの操作を行なってしまうと、Perl スタックの
+状態は矛盾したものになってしまいます。
+こんなことは誰も望みはしないでしょう。
+
+=item 4.
+
+=begin original
+
+The C<POPi> macro is used here to pop the return value from the stack.
+In this case we wanted an integer, so C<POPi> was used.
+
+=end original
+
+スタックから、返却値をポップするのに、ここでは C<POPi> マクロを
+使用しています。
+ここでは整数が必要であったため、C<POPi> を使用したのです。
+
+=begin original
+
+Here is the complete list of POP macros available, along with the types
+they return.
+
+=end original
+
+返された値の型に応じて、以下の POP マクロを使用することができます。
+
+    POPs	SV
+    POPp	pointer
+    POPn	double
+    POPi	integer
+    POPl	long
+
+=item 5.
+
+=begin original
+
+The final C<PUTBACK> is used to leave the Perl stack in a consistent
+state before exiting the function.  This is necessary because when we
+popped the return value from the stack with C<POPi> it updated only our
+local copy of the stack pointer.  Remember, C<PUTBACK> sets the global
+stack pointer to be the same as our local copy.
+
+=end original
+
+最後の C<PUTBACK> は、関数を抜ける前に、Perl スタックを矛盾の無い
+状態にしておくために使用しています。
+これは、C<POPi> でスタックから返却値を取り出したときに、ローカルな
+スタックポインタのみを更新するため、必要となります。
+先の例で説明したように C<PUTBACK> は、グローバルなスタックポインタを
+ローカルなスタックポインタの値にあわせるように設定します。
+
+=back
+
+=head2 Returning a List of Values
+
+(値のリストを返す)
+
+=begin original
+
+Now, let's extend the previous example to return both the sum of the
+parameters and the difference.
+
+=end original
+
+さて、今度は、先の例を改造して、二つの引数の和と差の両方を返すように
+してみましょう。
+
+=begin original
+
+Here is the Perl subroutine
+
+=end original
+
+Perl サブルーチンは
+
+    sub AddSubtract
+    {
+       my($a, $b) = @_;
+       ($a+$b, $a-$b);
+    }
+
+=begin original
+
+and this is the C function
+
+=end original
+
+のようになり、C 関数は
+
+    static void
+    call_AddSubtract(a, b)
+    int a;
+    int b;
+    {
+        dSP;
+        int count;
+
+        ENTER;
+        SAVETMPS;
+
+        PUSHMARK(SP);
+        XPUSHs(sv_2mortal(newSViv(a)));
+        XPUSHs(sv_2mortal(newSViv(b)));
+        PUTBACK;
+
+        count = call_pv("AddSubtract", G_ARRAY);
+
+        SPAGAIN;
+
+        if (count != 2)
+            croak("Big trouble\n");
+
+        printf ("%d - %d = %d\n", a, b, POPi);
+        printf ("%d + %d = %d\n", a, b, POPi);
+
+        PUTBACK;
+        FREETMPS;
+        LEAVE;
+    }
+
+=begin original
+
+If I<call_AddSubtract> is called like this
+
+=end original
+
+I<call_AddSubtract> が以下のように呼ばれた場合、
+
+    call_AddSubtract(7, 4);
+
+=begin original
+
+then here is the output
+
+=end original
+
+出力はこうなります。
+
+    7 - 4 = 3
+    7 + 4 = 11
+
+=begin original
+
+Notes
+
+=end original
+
+注意点
+
+=over 5
+
+=item 1.
+
+=begin original
+
+We wanted list context, so G_ARRAY was used.
+
+=end original
+
+リストコンテキストが必要なので、G_ARRAY を使用します。
+
+=item 2.
+
+=begin original
+
+Not surprisingly C<POPi> is used twice this time because we were
+retrieving 2 values from the stack. The important thing to note is that
+when using the C<POP*> macros they come off the stack in I<reverse>
+order.
+
+=end original
+
+スタックから 二つの値を取り出すために今回 二つの C<POPi> を
+使っていることは驚くに値しないでしょう。
+それよりも注目すべきは、C<POP*> マクロを使ってスタックから
+取り出したときに B<逆順> となることです。
+
+=back
+
+=head2 Returning a List in a Scalar Context
+
+(スカラコンテキストでリストを返す)
+
+=begin original
+
+Say the Perl subroutine in the previous section was called in a scalar
+context, like this
+
+=end original
+
+前のセクションにあった Perl サブルーチンは、この例のように
+スカラコンテキストで呼ばれていました。
+
+    static void
+    call_AddSubScalar(a, b)
+    int a;
+    int b;
+    {
+        dSP;
+        int count;
+        int i;
+
+        ENTER;
+        SAVETMPS;
+
+        PUSHMARK(SP);
+        XPUSHs(sv_2mortal(newSViv(a)));
+        XPUSHs(sv_2mortal(newSViv(b)));
+        PUTBACK;
+
+        count = call_pv("AddSubtract", G_SCALAR);
+
+        SPAGAIN;
+
+        printf ("Items Returned = %d\n", count);
+
+        for (i = 1; i <= count; ++i)
+            printf ("Value %d = %d\n", i, POPi);
+
+        PUTBACK;
+        FREETMPS;
+        LEAVE;
+    }
+
+=begin original
+
+The other modification made is that I<call_AddSubScalar> will print the
+number of items returned from the Perl subroutine and their value (for
+simplicity it assumes that they are integer).  So if
+I<call_AddSubScalar> is called
+
+=end original
+
+別の変更点は、I<call_AddSubScalar> が Perl サブルーチンから返された
+アイテムの数を出力するようになり、サブルーチンの戻り値
+(単純化のために、ここではこれは整数と仮定します)を
+出力するようになったと言うことです。
+ですから、I<call_AddSubScalar> は
+
+    call_AddSubScalar(7, 4);
+
+=begin original
+
+then the output will be
+
+=end original
+
+のように呼び出され、以下のような出力を行います。
+
+    Items Returned = 1
+    Value 1 = 3
+
+=begin original
+
+In this case the main point to note is that only the last item in the
+list is returned from the subroutine. I<AddSubtract> actually made it back to
+I<call_AddSubScalar>.
+
+=end original
+
+この場合に注意すべき点は、サブルーチンからはリストの最後にある
+アイテムだけが返されるということです。
+I<AddSubtract> は実際には I<call_AddSubScalar> に返しているのと同じです。
+
+=head2 Returning Data from Perl via the Parameter List
+
+(引数リストを使って Perl からデータを返す)
+
+=begin original
+
+It is also possible to return values directly via the parameter
+list--whether it is actually desirable to do it is another matter entirely.
+
+=end original
+
+引数リストを使って直接値を返すことも可能です。
+ただし、これが実際に望ましい方法であるか否かについては、まったく別の
+問題です。
+
+=begin original
+
+The Perl subroutine, I<Inc>, below takes 2 parameters and increments
+each directly.
+
+=end original
+
+以下の Perl サブルーチン I<Inc> は二つの引数をとり、それぞれを
+インクリメントします。
+
+    sub Inc
+    {
+        ++ $_[0];
+        ++ $_[1];
+    }
+
+=begin original
+
+and here is a C function to call it.
+
+=end original
+
+そして、これを呼び出す C 関数です。
+
+    static void
+    call_Inc(a, b)
+    int a;
+    int b;
+    {
+        dSP;
+        int count;
+        SV * sva;
+        SV * svb;
+
+        ENTER;
+        SAVETMPS;
+
+        sva = sv_2mortal(newSViv(a));
+        svb = sv_2mortal(newSViv(b));
+
+        PUSHMARK(SP);
+        XPUSHs(sva);
+        XPUSHs(svb);
+        PUTBACK;
+
+        count = call_pv("Inc", G_DISCARD);
+
+        if (count != 0)
+            croak ("call_Inc: expected 0 values from 'Inc', got %d\n",
+                   count);
+
+        printf ("%d + 1 = %d\n", a, SvIV(sva));
+        printf ("%d + 1 = %d\n", b, SvIV(svb));
+
+	FREETMPS;
+	LEAVE;
+    }
+
+=begin original
+
+To be able to access the two parameters that were pushed onto the stack
+after they return from I<call_pv> it is necessary to make a note
+of their addresses--thus the two variables C<sva> and C<svb>.
+
+=end original
+
+I<call_pv> からリターンした後で、スタック上にプッシュされた
+二つのパラメータにアクセスするために、これらのアドレスを記録しておく
+必要があります -- このため 二つの変数 I<sva> と I<svb> を使っています。
+
+=begin original
+
+The reason this is necessary is that the area of the Perl stack which
+held them will very likely have been overwritten by something else by
+the time control returns from I<call_pv>.
+
+=end original
+
+これらの値を保持する Perl スタックのエリアは、I<call_pv> から
+制御が戻るときまでに何ものかによって破壊されていることが十分に
+有り得るので、こういった操作が必要になるのです。
+
+=head2 Using G_EVAL
+
+(G_EVAL を使う)
+
+=begin original
+
+Now an example using G_EVAL. Below is a Perl subroutine which computes
+the difference of its 2 parameters. If this would result in a negative
+result, the subroutine calls I<die>.
+
+=end original
+
+今度は G_EVAL を使う例です。
+以下は、二つの引数の差を計算する Perl サブルーチンです。
+結果が負になった場合、このサブルーチンは I<die> を呼びます。
+
+    sub Subtract
+    {
+        my ($a, $b) = @_;
+
+        die "death can be fatal\n" if $a < $b;
+
+        $a - $b;
+    }
+
+=begin original
+
+and some C to call it
+
+=end original
+
+これを呼ぶ C の方は、
+
+    static void
+    call_Subtract(a, b)
+    int a;
+    int b;
+    {
+        dSP;
+        int count;
+
+        ENTER;
+        SAVETMPS;
+
+        PUSHMARK(SP);
+        XPUSHs(sv_2mortal(newSViv(a)));
+        XPUSHs(sv_2mortal(newSViv(b)));
+        PUTBACK;
+
+        count = call_pv("Subtract", G_EVAL|G_SCALAR);
+
+        SPAGAIN;
+
+        /* Check the eval first */
+        if (SvTRUE(ERRSV))
+        {
+            printf ("Uh oh - %s\n", SvPV_nolen(ERRSV));
+            POPs;
+        }
+        else
+        {
+            if (count != 1)
+               croak("call_Subtract: wanted 1 value from 'Subtract', got %d\n",
+                        count);
+
+            printf ("%d - %d = %d\n", a, b, POPi);
+        }
+
+        PUTBACK;
+        FREETMPS;
+        LEAVE;
+    }
+
+=begin original
+
+If I<call_Subtract> is called thus
+
+=end original
+
+となります。
+I<call_Subtract> が
+
+    call_Subtract(4, 5)
+
+=begin original
+
+the following will be printed
+
+=end original
+
+のように呼ばれると、以下のように表示されます。
+
+    Uh oh - death can be fatal
+
+=begin original
+
+Notes
+
+=end original
+
+注意点
+
+=over 5
+
+=item 1.
+
+=begin original
+
+We want to be able to catch the I<die> so we have used the G_EVAL
+flag.  Not specifying this flag would mean that the program would
+terminate immediately at the I<die> statement in the subroutine
+I<Subtract>.
+
+=end original
+
+I<die> を捕捉するために、G_EVAL フラグを使用しました。
+このフラグを使用しないと、サブルーチン I<Sbutract> 中にある
+I<die> 文の場所でプログラムは途中終了してしまいます。
+
+=item 2.
+
+=begin original
+
+The code
+
+=end original
+
+このようなコードは
+
+    if (SvTRUE(ERRSV))
+    {
+        printf ("Uh oh - %s\n", SvPV_nolen(ERRSV));
+        POPs;
+    }
+
+=begin original
+
+is the direct equivalent of this bit of Perl
+
+=end original
+
+Perl の書くところの以下と直接に等価です
+
+    print "Uh oh - $@\n" if $@;
+
+=begin original
+
+C<PL_errgv> is a perl global of type C<GV *> that points to the
+symbol table entry containing the error.  C<ERRSV> therefore
+refers to the C equivalent of C<$@>.
+
+=end original
+
+C<PL_errgv> は、エラーを保持するシンボルテーブルのエントリーを指し示す、
+型 C<GV *> の perl のグローバル変数です。
+ですから C<ERRGV> は、Cプログラムににおいて C<$@> と等価なものを
+参照します。
+
+=item 3.
+
+=begin original
+
+Note that the stack is popped using C<POPs> in the block where
+C<SvTRUE(ERRSV)> is true.  This is necessary because whenever a
+I<call_*> function invoked with G_EVAL|G_SCALAR returns an error,
+the top of the stack holds the value I<undef>. Because we want the
+program to continue after detecting this error, it is essential that
+the stack be tidied up by removing the I<undef>.
+
+=end original
+
+スタックは C<SvTRUE(ERRGV)> が真であるブロックの中で C<POPs> を
+使ってポップされていることに注意してください。
+これは、関数 I<call_*> が G_EVAL|G_SCALAR をつけて起動された場合に
+エラーを返していて、スタックトップに I<undef> 値があるときには常に
+必要となります。
+エラーを検出した後でプログラムを継続させたいので、I<undef> を
+取り除いてスタックを片付けることが重要なのです。
+
+=back
+
+=head2 Using G_KEEPERR
+
+(G_KEEPERR を使う)
+
+=begin original
+
+Consider this rather facetious example, where we have used an XS
+version of the call_Subtract example above inside a destructor:
+
+=end original
+
+以下の滑稽な例について考えてみましょう。
+ここでは、先の例での XS バージョンの call_Subtract を
+デストラクターの中で使っています。
+
+    package Foo;
+    sub new { bless {}, $_[0] }
+    sub Subtract {
+        my($a,$b) = @_;
+        die "death can be fatal" if $a < $b;
+        $a - $b;
+    }
+    sub DESTROY { call_Subtract(5, 4); }
+    sub foo { die "foo dies"; }
+
+    package main;
+    {
+	my $foo = Foo->new;
+	eval { $foo->foo };
+    }
+    print "Saw: $@" if $@;             # should be, but isn't
+
+=begin original
+
+This example will fail to recognize that an error occurred inside the
+C<eval {}>.  Here's why: the call_Subtract code got executed while perl
+was cleaning up temporaries when exiting the outer braced block, and because
+call_Subtract is implemented with I<call_pv> using the G_EVAL
+flag, it promptly reset C<$@>.  This results in the failure of the
+outermost test for C<$@>, and thereby the failure of the error trap.
+
+=end original
+
+この例では、C<eval {}> の内側で起きたエラーを認識するのに失敗します。
+その理由はこうです: call_Subtract のコードは外側の中かっこブロックを抜ける
+際にPerlが一時変数を片付ける最中に実行されます。
+そして call_Subtract が G_EVAL フラグを使った I<call_pv> を
+使って実装されているので C<$@> をリセットするからなのです。
+この結果は C<$@> を最も外側の検査での失敗で、エラートラップに
+失敗するということです。
+
+=begin original
+
+Appending the G_KEEPERR flag, so that the I<call_pv> call in
+call_Subtract reads:
+
+=end original
+
+G_KEEPERR フラグを追加して call_Subtract の中にある
+I<call_pv> 呼び出しを
+
+        count = call_pv("Subtract", G_EVAL|G_SCALAR|G_KEEPERR);
+
+=begin original
+
+will preserve the error and restore reliable error handling.
+
+=end original
+
+のようにすると、エラーを保存し、信頼性のあるエラーハンドリングを
+取り戻します
+
+=head2 Using call_sv
+
+(call_sv を使う)
+
+=begin original
+
+In all the previous examples I have 'hard-wired' the name of the Perl
+subroutine to be called from C.  Most of the time though, it is more
+convenient to be able to specify the name of the Perl subroutine from
+within the Perl script.
+
+=end original
+
+これまでの例では、Perl サブルーチンの名前を C から呼ばれるように
+扱ってきました。
+ですが、ときには Perl スクリプトの中から Perl サブルーチンの名前を
+指定することができないと困ることがあります。
+
+=begin original
+
+Consider the Perl code below
+
+=end original
+
+のような Perl コードを考えてみましょう。
+
+    sub fred
+    {
+        print "Hello there\n";
+    }
+
+    CallSubPV("fred");
+
+=begin original
+
+Here is a snippet of XSUB which defines I<CallSubPV>.
+
+=end original
+
+これは I<CallSubPV> を定義する XSUB の一部です。
+
+    void
+    CallSubPV(name)
+    	char *	name
+    	CODE:
+	PUSHMARK(SP);
+	call_pv(name, G_DISCARD|G_NOARGS);
+
+=begin original
+
+That is fine as far as it goes. The thing is, the Perl subroutine
+can be specified as only a string.  For Perl 4 this was adequate,
+but Perl 5 allows references to subroutines and anonymous subroutines.
+This is where I<call_sv> is useful.
+
+=end original
+
+今のところは、これで良いのかもしれません。
+問題は、Perl サブルーチンが文字列でしか表現できないということです。
+Perl 4 ではこれで十分なのですが、Perl 5 ではサブルーチンへの
+リファレンスや名前を持たないサブルーチンが許されています。
+そういった場合に、I<call_sv> が役に立つのです。
+
+=begin original
+
+The code below for I<CallSubSV> is identical to I<CallSubPV> except
+that the C<name> parameter is now defined as an SV* and we use
+I<call_sv> instead of I<call_pv>.
+
+=end original
+
+次の I<CallSubSv> のコードは、I<CallSubPV> と同一ですが、引数 C<name> を
+SV* で定義し、I<call_pv> の代わりに I<call_sv> を使っています。
+
+    void
+    CallSubSV(name)
+    	SV *	name
+    	CODE:
+	PUSHMARK(SP);
+	call_sv(name, G_DISCARD|G_NOARGS);
+
+=begin original
+
+Because we are using an SV to call I<fred> the following can all be used:
+
+=end original
+
+I<fred> を呼ぶのに SV を使っていますから、Perl 側では:
+
+    CallSubSV("fred");
+    CallSubSV(\&fred);
+    $ref = \&fred;
+    CallSubSV($ref);
+    CallSubSV( sub { print "Hello there\n" } );
+
+=begin original
+
+As you can see, I<call_sv> gives you much greater flexibility in
+how you can specify the Perl subroutine.
+
+=end original
+
+といった記法がすべて可能になります。
+ご覧のように I<call_sv> を使えば、Perl サブルーチンをかなり柔軟に
+指定することができるようになります。
+
+=begin original
+
+You should note that, if it is necessary to store the SV (C<name> in the
+example above) which corresponds to the Perl subroutine so that it can
+be used later in the program, it not enough just to store a copy of the
+pointer to the SV. Say the code above had been like this:
+
+=end original
+
+プログラムの後の部分で使えるように Perl サブルーチンに対応する
+SV (先の例では C<name>)に格納する必要があるのなら、SV へのポインタの
+コピーを格納するだけでは十分ではないということに注意すべきです。
+先のプログラムが以下のようなものだったとしましょう:
+
+    static SV * rememberSub;
+
+    void
+    SaveSub1(name)
+    	SV *	name
+    	CODE:
+	rememberSub = name;
+
+    void
+    CallSavedSub1()
+    	CODE:
+	PUSHMARK(SP);
+	call_sv(rememberSub, G_DISCARD|G_NOARGS);
+
+=begin original
+
+The reason this is wrong is that, by the time you come to use the
+pointer C<rememberSub> in C<CallSavedSub1>, it may or may not still refer
+to the Perl subroutine that was recorded in C<SaveSub1>.  This is
+particularly true for these cases:
+
+=end original
+
+これがまずいという理由は、C<CallSavedSub1> の中で C<rememberSub> を
+使ったときに、C<SaveSub1> に保持されているPerlサブルーチンをまだ
+参照するかもしれない(し、しないかもしれない)ということです。
+これは、特に以下のような場合に真となります:
+
+    SaveSub1(\&fred);
+    CallSavedSub1();
+
+    SaveSub1( sub { print "Hello there\n" } );
+    CallSavedSub1();
+
+=begin original
+
+By the time each of the C<SaveSub1> statements above has been executed,
+the SV*s which corresponded to the parameters will no longer exist.
+Expect an error message from Perl of the form
+
+=end original
+
+上記の C<SaveSub1> が実行される度に、そのパラメータに対応する
+SV* は存在しなくなります。
+このため、
+
+    Can't use an undefined value as a subroutine reference at ...
+
+=begin original
+
+for each of the C<CallSavedSub1> lines.
+
+=end original
+
+Perl が上記のエラーメッセージを出すことが予想されます。
+
+=begin original
+
+Similarly, with this code
+
+=end original
+
+同様に、
+
+    $ref = \&fred;
+    SaveSub1($ref);
+    $ref = 47;
+    CallSavedSub1();
+
+=begin original
+
+you can expect one of these messages (which you actually get is dependent on
+the version of Perl you are using)
+
+=end original
+
+上記のコードを使った場合、これらのメッセージのいずれかが
+出力されるでしょう(これは使っているPerlのバージョンによります)。
+
+    Not a CODE reference at ...
+    Undefined subroutine &main::47 called ...
+
+=begin original
+
+The variable $ref may have referred to the subroutine C<fred>
+whenever the call to C<SaveSub1> was made but by the time
+C<CallSavedSub1> gets called it now holds the number C<47>. Because we
+saved only a pointer to the original SV in C<SaveSub1>, any changes to
+$ref will be tracked by the pointer C<rememberSub>. This means that
+whenever C<CallSavedSub1> gets called, it will attempt to execute the
+code which is referenced by the SV* C<rememberSub>.  In this case
+though, it now refers to the integer C<47>, so expect Perl to complain
+loudly.
+
+=end original
+
+変数 $ref は C<SaveSub1> を呼び出したときにはサブルーチン C<fred> を
+参照するように生成されるかもしれませんが、C<CallSavedSub1> が
+呼び出されている時点では、今や数値 C<47> を保持しているのです。
+C<SaveSub1> にある元々の SV へのポインタしか保存しないので、
+$ref に対するなんらかの変更はポインタ C<rememberSub> によって
+反映され、SV* C<rememberSub> によって参照されるコードが実行されることが
+試みられるでしょう。
+しかし上記の例では、C<rememberSub> は整数値 C<47> を参照していますので、
+Perl は不満を漏らすというわけです。
+
+=begin original
+
+A similar but more subtle problem is illustrated with this code:
+
+=end original
+
+同様の、しかし微妙な問題を以下のプログラム片で説明します:
+
+    $ref = \&fred;
+    SaveSub1($ref);
+    $ref = \&joe;
+    CallSavedSub1();
+
+=begin original
+
+This time whenever C<CallSavedSub1> gets called it will execute the Perl
+subroutine C<joe> (assuming it exists) rather than C<fred> as was
+originally requested in the call to C<SaveSub1>.
+
+=end original
+
+C<CallSavedSub1> が呼び出されたときに実行する Perl サブルーチンは
+C<SaveSub1> を呼び出したときに要求した C<fred> ではなく、
+(それがあるとして)C<joe> なのです。
+
+=begin original
+
+To get around these problems it is necessary to take a full copy of the
+SV.  The code below shows C<SaveSub2> modified to do that.
+
+=end original
+
+これらの問題に対処するためには、SV の完全なコピーをとる必要があります。
+以下のコードはそれを行った C<SaveSub2> です。
+
+    static SV * keepSub = (SV*)NULL;
+
+    void
+    SaveSub2(name)
+        SV *	name
+    	CODE:
+     	/* Take a copy of the callback */
+    	if (keepSub == (SV*)NULL)
+    	    /* First time, so create a new SV */
+	    keepSub = newSVsv(name);
+    	else
+    	    /* Been here before, so overwrite */
+	    SvSetSV(keepSub, name);
+
+    void
+    CallSavedSub2()
+    	CODE:
+	PUSHMARK(SP);
+	call_sv(keepSub, G_DISCARD|G_NOARGS);
+
+=begin original
+
+To avoid creating a new SV every time C<SaveSub2> is called,
+the function first checks to see if it has been called before.  If not,
+then space for a new SV is allocated and the reference to the Perl
+subroutine C<name> is copied to the variable C<keepSub> in one
+operation using C<newSVsv>.  Thereafter, whenever C<SaveSub2> is called,
+the existing SV, C<keepSub>, is overwritten with the new value using
+C<SvSetSV>.
+
+=end original
+
+C<SaveSub2> が呼び出される度に新たなSVを生成してしまうのを防ぐために、
+関数はまず最初に自分が以前に呼び出されたことがあるかどうかを
+確認します。
+もしそれまでに呼び出されたことがなければ、新しい SV のための領域が
+割り当てられ、そして Perl サブルーチンへの参照 C<name> が、
+C<newSVsv> を使った操作によって変数 C<keepSub> へコピーされます。
+その後で C<SaveSub2> が呼び出されたときは常に、存在するSV C<keepSub> が
+C<SVSetSV> を使って新しい値で上書きされます。
+
+=head2 Using call_argv
+
+(call_argv を使う)
+
+=begin original
+
+Here is a Perl subroutine which prints whatever parameters are passed
+to it.
+
+=end original
+
+次に挙げるのは渡された引数を表示する Perl サブルーチンです。
+
+    sub PrintList
+    {
+        my(@list) = @_;
+
+        foreach (@list) { print "$_\n" }
+    }
+
+=begin original
+
+And here is an example of I<call_argv> which will call
+I<PrintList>.
+
+=end original
+
+そして、I<PrintList> を呼ぶ I<call_argv> の例です。
+
+    static char * words[] = {"alpha", "beta", "gamma", "delta", NULL};
+
+    static void
+    call_PrintList()
+    {
+        dSP;
+
+        call_argv("PrintList", G_DISCARD, words);
+    }
+
+=begin original
+
+Note that it is not necessary to call C<PUSHMARK> in this instance.
+This is because I<call_argv> will do it for you.
+
+=end original
+
+注目したいのは、この場合には、C<PUSHMARK> を呼ぶ必要がないということです。
+I<call_argv> 側で自動的に行なうからです。
+
+=head2 Using call_method
+
+(call_method を使う)
+
+=begin original
+
+Consider the following Perl code:
+
+=end original
+
+以下のような Perl コードを考えてみましょう:
+
+    {
+        package Mine;
+
+        sub new
+        {
+            my($type) = shift;
+            bless [@_]
+        }
+
+        sub Display
+        {
+            my ($self, $index) = @_;
+            print "$index: $$self[$index]\n";
+        }
+
+        sub PrintID
+        {
+            my($class) = @_;
+            print "This is Class $class version 1.0\n";
+        }
+    }
+
+=begin original
+
+It implements just a very simple class to manage an array.  Apart from
+the constructor, C<new>, it declares methods, one static and one
+virtual. The static method, C<PrintID>, prints out simply the class
+name and a version number. The virtual method, C<Display>, prints out a
+single element of the array.  Here is an all-Perl example of using it.
+
+=end original
+
+これは配列を管理するための非常に単純なクラスを実装しています。
+コンストラクター C<new> を除けば、一つのスタティックメソッドと一つの
+仮想メソッドを宣言しています。
+スタティックメソッド C<PrintID> は、
+単純にクラス名とバージョン番号を出力します。
+仮想メソッド C<Display> は配列の要素一つを出力します。
+以下にこれを使った例を示します。
+
+    $a = Mine->new('red', 'green', 'blue');
+    $a->Display(1);
+    Mine->PrintID;
+
+=begin original
+
+will print
+
+=end original
+
+これは次のような出力をします。
+
+    1: green
+    This is Class Mine version 1.0
+
+=begin original
+
+Calling a Perl method from C is fairly straightforward. The following
+things are required:
+
+=end original
+
+C からの Perl メソッドの呼び出しは実に直接的なものです。
+以下に挙げるようなことが要求されます:
+
+=over 5
+
+=item *
+
+=begin original
+
+A reference to the object for a virtual method or the name of the class
+for a static method
+
+=end original
+
+仮想メソッドのオブジェクトへの参照、もしくはスタティックメソッドの
+クラスの名前
+
+=item *
+
+=begin original
+
+The name of the method
+
+=end original
+
+メソッドの名前
+
+=item *
+
+=begin original
+
+Any other parameters specific to the method
+
+=end original
+
+メソッドに対するパラメータ
+
+=back
+
+=begin original
+
+Here is a simple XSUB which illustrates the mechanics of calling both
+the C<PrintID> and C<Display> methods from C.
+
+=end original
+
+以下の例は、C から C<PrintID>, C<Display> の両方のメソッドを呼び出す
+仕組みを説明するための簡単なXSUBです。
+
+    void
+    call_Method(ref, method, index)
+        SV *	ref
+        char *	method
+        int		index
+        CODE:
+        PUSHMARK(SP);
+        XPUSHs(ref);
+        XPUSHs(sv_2mortal(newSViv(index)));
+        PUTBACK;
+
+        call_method(method, G_DISCARD);
+
+    void
+    call_PrintID(class, method)
+        char *	class
+        char *	method
+        CODE:
+        PUSHMARK(SP);
+        XPUSHs(sv_2mortal(newSVpv(class, 0)));
+        PUTBACK;
+
+        call_method(method, G_DISCARD);
+
+=begin original
+
+So the methods C<PrintID> and C<Display> can be invoked like this:
+
+=end original
+
+これで C<PrintID>, C<Display> は次のようにして呼び出すことができます:
+
+    $a = Mine->new('red', 'green', 'blue');
+    call_Method($a, 'Display', 1);
+    call_PrintID('Mine', 'PrintID');
+
+=begin original
+
+The only thing to note is that, in both the static and virtual methods,
+the method name is not passed via the stack--it is used as the first
+parameter to I<call_method>.
+
+=end original
+
+唯一注意すべきことは、スタティックメソッドと仮想メソッドの両方に
+おいてメソッド名はスタックを通しては渡されない、ということです --
+これは I<call_method> の第一引数として使用されます。
+
+=head2 Using GIMME_V
+
+(GIMME_V を使う)
+
+=begin original
+
+Here is a trivial XSUB which prints the context in which it is
+currently executing.
+
+=end original
+
+以下は、その時点で実行されているコンテキストを出力するちょっとした
+XSUB です。
+
+    void
+    PrintContext()
+        CODE:
+        I32 gimme = GIMME_V;
+        if (gimme == G_VOID)
+            printf ("Context is Void\n");
+        else if (gimme == G_SCALAR)
+            printf ("Context is Scalar\n");
+        else
+            printf ("Context is Array\n");
+
+=begin original
+
+And here is some Perl to test it.
+
+=end original
+
+そしてこれをテストするための Perl プログラムです。
+
+    PrintContext;
+    $a = PrintContext;
+    @a = PrintContext;
+
+=begin original
+
+The output from that will be
+
+=end original
+
+出力はこうなります。
+
+    Context is Void
+    Context is Scalar
+    Context is Array
+
+=head2 Using Perl to Dispose of Temporaries
+
+(一時変数の始末に Perl を使う)
+
+=begin original
+
+In the examples given to date, any temporaries created in the callback
+(i.e., parameters passed on the stack to the I<call_*> function or
+values returned via the stack) have been freed by one of these methods:
+
+=end original
+
+これまでのところに使った例では、すべての一時変数(I<call_*>
+関数に対してスタックを通して渡されるパラメータ、もしくはスタックを
+通して関数から返される値)はコールバックの中で生成され、以下に
+挙げる手法のいずれかを使って解放されていました:
+
+=over 5
+
+=item *
+
+=begin original
+
+Specifying the G_DISCARD flag with I<call_*>
+
+=end original
+
+I<call_*> に対して G_DISCARD フラグを指定する
+
+=item *
+
+=begin original
+
+Explicitly using the C<ENTER>/C<SAVETMPS>--C<FREETMPS>/C<LEAVE> pairing
+
+=end original
+
+C<ENTER>/C<SAVETMPS> - C<FREETMPS>/C<LEAVE> の組を明示的に使う
+
+=back
+
+=begin original
+
+There is another method which can be used, namely letting Perl do it
+for you automatically whenever it regains control after the callback
+has terminated.  This is done by simply not using the
+
+=end original
+
+これとは別の手法があります。
+それは、コールバックが完了して制御を取り戻したときにはいつでも
+Perl に自動的に後始末をさせるというものです。
+これは単に以下のような
+
+    ENTER;
+    SAVETMPS;
+    ...
+    FREETMPS;
+    LEAVE;
+
+=begin original
+
+sequence in the callback (and not, of course, specifying the G_DISCARD
+flag).
+
+=end original
+
+シーケンスをコールバックの中で使うことで行なわれます
+(もちろん、G_DISCARD フラグは指定しません)。
+
+=begin original
+
+If you are going to use this method you have to be aware of a possible
+memory leak which can arise under very specific circumstances.  To
+explain these circumstances you need to know a bit about the flow of
+control between Perl and the callback routine.
+
+=end original
+
+この手法を使おうとするなら、非常に特定された状況においてメモリリークが
+発生する可能性があることを考慮しなければなりません。
+その状況を説明するには、Perl とコールバックとの間での制御の流れについて
+知っておく必要があります。
+
+=begin original
+
+The examples given at the start of the document (an error handler and
+an event driven program) are typical of the two main sorts of flow
+control that you are likely to encounter with callbacks.  There is a
+very important distinction between them, so pay attention.
+
+=end original
+
+本ドキュメントの最初に挙げたサンプル(エラーハンドラとイベント駆動
+プログラム)は、コールバックに遭遇するような典型的な制御の流れです。
+これら二つの間には非常に重要な違いがありますから、注意しましょう。
+
+=begin original
+
+In the first example, an error handler, the flow of control could be as
+follows.  You have created an interface to an external library.
+Control can reach the external library like this
+
+=end original
+
+最初の例、エラーハンドラでは、制御の流れは以下の様になるでしょう。
+外部ライブラリに対するインターフェースは既に作っています。
+制御は以下のようにして外部ライブラリに到達できます。
+
+    perl --> XSUB --> external library
+
+=begin original
+
+Whilst control is in the library, an error condition occurs. You have
+previously set up a Perl callback to handle this situation, so it will
+get executed. Once the callback has finished, control will drop back to
+Perl again.  Here is what the flow of control will be like in that
+situation
+
+=end original
+
+制御がライブラリにある間にエラー状況が発生します。
+これに対処するためのPerlのコールバックは既に設定していますので、
+それがここで実行されます。
+コールバックでの処理が完了すれば、制御はPerlの元へと戻ります。
+以下はそのような状況における制御の流れです。
+
+    perl --> XSUB --> external library
+                      ...
+                      error occurs
+                      ...
+                      external library --> call_* --> perl
+                                                          |
+    perl <-- XSUB <-- external library <-- call_* <----+
+
+=begin original
+
+After processing of the error using I<call_*> is completed,
+control reverts back to Perl more or less immediately.
+
+=end original
+
+I<call_*> を使ったエラー処理が完了した後で、制御はほぼ即座に
+Perl へと戻ります。
+
+=begin original
+
+In the diagram, the further right you go the more deeply nested the
+scope is.  It is only when control is back with perl on the extreme
+left of the diagram that you will have dropped back to the enclosing
+scope and any temporaries you have left hanging around will be freed.
+
+=end original
+
+このダイアグラムにおいて、より正確にはもっと深いスコープになります。
+これは、スコープを囲む部分に戻ったり放っておいた一時変数が
+解放されるようなダイアグラムの残りの部分に制御が戻ってきたのみです。
+
+=begin original
+
+In the second example, an event driven program, the flow of control
+will be more like this
+
+=end original
+
+二番目の例であるイベント駆動のプログラムでは、制御の流れは以下のように
+なります。
+
+    perl --> XSUB --> event handler
+                      ...
+                      event handler --> call_* --> perl
+                                                       |
+                      event handler <-- call_* <----+
+                      ...
+                      event handler --> call_* --> perl
+                                                       |
+                      event handler <-- call_* <----+
+                      ...
+                      event handler --> call_* --> perl
+                                                       |
+                      event handler <-- call_* <----+
+
+=begin original
+
+In this case the flow of control can consist of only the repeated
+sequence
+
+=end original
+
+この場合の制御の以下のような流れは、
+
+    event handler --> call_* --> perl
+
+=begin original
+
+for practically the complete duration of the program.  This means that
+control may I<never> drop back to the surrounding scope in Perl at the
+extreme left.
+
+=end original
+
+現実的なプログラムの生存期間を通じてシーケンスの繰り返しからのみ
+構成されます。
+これはつまり、制御は B<決して> そのスコープを囲む部分には
+戻ってこないということです。
+
+=begin original
+
+So what is the big problem? Well, if you are expecting Perl to tidy up
+those temporaries for you, you might be in for a long wait.  For Perl
+to dispose of your temporaries, control must drop back to the
+enclosing scope at some stage.  In the event driven scenario that may
+never happen.  This means that, as time goes on, your program will
+create more and more temporaries, none of which will ever be freed. As
+each of these temporaries consumes some memory your program will
+eventually consume all the available memory in your system--kapow!
+
+=end original
+
+大きな問題っていったいなんでしょうか?
+そう、Perl があなたのために一時変数を用意するのを期待しているのなら、
+そのために長く待たされるかもしれないということです。
+Perl が一時変数を破棄するために、制御をその場所を囲んでいるスコープに
+戻さなければなりません。
+イベント駆動のシナリオにおいてはこれは決して起こりません。
+これはつまり、
+あなたのプログラムが時がたつにつれて解放されることのない一時変数を
+どんどん生成するということです。
+こういった一時変数は幾らかのメモリを使うので、プログラムもシステムで
+使えるメモリのすべてを使いきってしまうかもしれないので -- kapow!
+
+=begin original
+
+So here is the bottom line--if you are sure that control will revert
+back to the enclosing Perl scope fairly quickly after the end of your
+callback, then it isn't absolutely necessary to dispose explicitly of
+any temporaries you may have created. Mind you, if you are at all
+uncertain about what to do, it doesn't do any harm to tidy up anyway.
+
+=end original
+
+重要な点はこうです -- コールバックの終了後に制御が(コールバックを
+囲んでいる)Perl スコープに即座に戻るということを確信しているので
+あれば、あなたが生成したすべての一時変数を陽に破棄する必要はないのだと
+いうことです。
+気をつけて欲しいのは、すべきことについて良く
+わからないことがあるのなら、整頓されたものを壊すような真似をしては
+いけないということです。
+
+=head2 Strategies for Storing Callback Context Information
+
+(コールバックのコンテキスト情報の格納についての戦略)
+
+=begin original
+
+Potentially one of the trickiest problems to overcome when designing a
+callback interface can be figuring out how to store the mapping between
+the C callback function and the Perl equivalent.
+
+=end original
+
+コールバックインターフェースを割り当てるときに現れる最も分かりづらい
+潜在的な問題は、C のコールバック関数とそれと等価な Perl ルーチンとの間の
+マッピングをどのように格納するかということで説明することができます。
+
+=begin original
+
+To help understand why this can be a real problem first consider how a
+callback is set up in an all C environment.  Typically a C API will
+provide a function to register a callback.  This will expect a pointer
+to a function as one of its parameters.  Below is a call to a
+hypothetical function C<register_fatal> which registers the C function
+to get called when a fatal error occurs.
+
+=end original
+
+これが実際の問題になりうるのを理解するため、まず最初にコールバックが
+すべての C 環境においてどのようにセットアップされるのかを考えてみましょう。
+典型的な C API はコールバックを登録するための関数を提供します。
+この関数はその引数の一つとして関数へのポインタを期待します。
+以下の例では致命的なエラーが発生したときに呼び出される
+C 関数を登録する仮想関数 C<register_fatal> を呼び出します。
+
+    register_fatal(cb1);
+
+=begin original
+
+The single parameter C<cb1> is a pointer to a function, so you must
+have defined C<cb1> in your code, say something like this
+
+=end original
+
+パラメータ C<cb1> は関数へのポインタなので、C<cb1> をプログラム中で
+以下の様に定義しておかなければなりません。
+
+    static void
+    cb1()
+    {
+        printf ("Fatal Error\n");
+        exit(1);
+    }
+
+=begin original
+
+Now change that to call a Perl subroutine instead
+
+=end original
+
+ここで、C<register_fatal> と等価な Perl ルーチンで Perl サブルーチンを
+呼ぶように変更します。
+
+    static SV * callback = (SV*)NULL;
+
+    static void
+    cb1()
+    {
+        dSP;
+
+        PUSHMARK(SP);
+
+        /* Call the Perl sub to process the callback */
+        call_sv(callback, G_DISCARD);
+    }
+
+    void
+    register_fatal(fn)
+        SV *	fn
+        CODE:
+        /* Remember the Perl sub */
+        if (callback == (SV*)NULL)
+            callback = newSVsv(fn);
+        else
+            SvSetSV(callback, fn);
+
+        /* register the callback with the external library */
+        register_fatal(cb1);
+
+=begin original
+
+where the Perl equivalent of C<register_fatal> and the callback it
+registers, C<pcb1>, might look like this
+
+=end original
+
+コールバック C<pcb1> を以下の様に登録します。
+
+    # Register the sub pcb1
+    register_fatal(\&pcb1);
+
+    sub pcb1
+    {
+        die "I'm dying...\n";
+    }
+
+=begin original
+
+The mapping between the C callback and the Perl equivalent is stored in
+the global variable C<callback>.
+
+=end original
+
+C のコールバックと Perl との間のマッピングをするために、グローバル変数
+C<callback> に格納されます。
+
+=begin original
+
+This will be adequate if you ever need to have only one callback
+registered at any time. An example could be an error handler like the
+code sketched out above. Remember though, repeated calls to
+C<register_fatal> will replace the previously registered callback
+function with the new one.
+
+=end original
+
+これは単に一つのコールバックを好きなときに登録できればよい、というのなら
+十分でしょう。
+その一つの例は、上で説明したエラーハンドラのようなものです。
+しかし忘れないで欲しいのは、C<register_fatal> を繰り返し呼び出すことで、
+以前に登録していたコールバック関数を新しいもので
+置き換えてしまうということです。
+
+=begin original
+
+Say for example you want to interface to a library which allows asynchronous
+file i/o.  In this case you may be able to register a callback whenever
+a read operation has completed. To be of any use we want to be able to
+call separate Perl subroutines for each file that is opened.  As it
+stands, the error handler example above would not be adequate as it
+allows only a single callback to be defined at any time. What we
+require is a means of storing the mapping between the opened file and
+the Perl subroutine we want to be called for that file.
+
+=end original
+
+非同期ファイル入出力のライブラリに対するインターフェースが
+欲しいとしましょう。
+この場合、読み込み操作が終了したときに常にコールバックされるものを
+登録することができるでしょう。
+私たちは何かをするために、分割された Perl サブルーチンを
+オープンされているファイル毎に呼び出すことができます。
+現状では、一度に一つのコールバックしか許していないために上の例に
+あるようなエラーハンドラは十分なものではありません。
+私たちが必要としているのは、オープンされたファイルとそのファイルに
+対応して呼び出したい Perl サブルーチンとの間のマッピングを
+格納するということです。
+
+=begin original
+
+Say the i/o library has a function C<asynch_read> which associates a C
+function C<ProcessRead> with a file handle C<fh>--this assumes that it
+has also provided some routine to open the file and so obtain the file
+handle.
+
+=end original
+
+ファイルハンドル C<fh> を伴った C<ProcessRead> という C の関数に
+結び付けられた C<asynch_read> を持った入出力ライブラリを
+考えてみましょう -- これは、その関数がファイルをオープンし、
+ファイルハンドルを取得するいくつかのルーチンを提供していることを
+仮定しています。
+
+    asynch_read(fh, ProcessRead)
+
+=begin original
+
+This may expect the C I<ProcessRead> function of this form
+
+=end original
+
+これは以下のような形式の C の関数 I<ProcessRead> を期待しているでしょう。
+
+    void
+    ProcessRead(fh, buffer)
+    int	fh;
+    char *	buffer;
+    {
+         ...
+    }
+
+=begin original
+
+To provide a Perl interface to this library we need to be able to map
+between the C<fh> parameter and the Perl subroutine we want called.  A
+hash is a convenient mechanism for storing this mapping.  The code
+below shows a possible implementation
+
+=end original
+
+このライブラリに対する Perl インターフェースを提供するためには、
+パラメータ C<fh> と、呼び出しをしたい Perl サブルーチンとの間の
+マップが可能であることが必要です。
+ハッシュはこのマッピングを格納するために便利な機構です。
+以下のコードは可能な実装の一例です。
+
+    static HV * Mapping = (HV*)NULL;
+
+    void
+    asynch_read(fh, callback)
+        int	fh
+        SV *	callback
+        CODE:
+        /* If the hash doesn't already exist, create it */
+        if (Mapping == (HV*)NULL)
+            Mapping = newHV();
+
+        /* Save the fh -> callback mapping */
+        hv_store(Mapping, (char*)&fh, sizeof(fh), newSVsv(callback), 0);
+
+        /* Register with the C Library */
+        asynch_read(fh, asynch_read_if);
+
+=begin original
+
+and C<asynch_read_if> could look like this
+
+=end original
+
+そして、C<asynch_read_if> は以下のようになるでしょう。
+
+    static void
+    asynch_read_if(fh, buffer)
+    int	fh;
+    char *	buffer;
+    {
+        dSP;
+        SV ** sv;
+
+        /* Get the callback associated with fh */
+        sv =  hv_fetch(Mapping, (char*)&fh , sizeof(fh), FALSE);
+        if (sv == (SV**)NULL)
+            croak("Internal error...\n");
+
+        PUSHMARK(SP);
+        XPUSHs(sv_2mortal(newSViv(fh)));
+        XPUSHs(sv_2mortal(newSVpv(buffer, 0)));
+        PUTBACK;
+
+        /* Call the Perl sub */
+        call_sv(*sv, G_DISCARD);
+    }
+
+=begin original
+
+For completeness, here is C<asynch_close>.  This shows how to remove
+the entry from the hash C<Mapping>.
+
+=end original
+
+完全のため、C<asynch_close> も例示します。
+これはハッシュ C<Mapping> からエントリーを取り除く方法を示すものです。
+
+    void
+    asynch_close(fh)
+        int	fh
+        CODE:
+        /* Remove the entry from the hash */
+        (void) hv_delete(Mapping, (char*)&fh, sizeof(fh), G_DISCARD);
+
+        /* Now call the real asynch_close */
+        asynch_close(fh);
+
+=begin original
+
+So the Perl interface would look like this
+
+=end original
+
+このため、Perl のインターフェースは次のようになります。
+
+    sub callback1
+    {
+        my($handle, $buffer) = @_;
+    }
+
+    # Register the Perl callback
+    asynch_read($fh, \&callback1);
+
+    asynch_close($fh);
+
+=begin original
+
+The mapping between the C callback and Perl is stored in the global
+hash C<Mapping> this time. Using a hash has the distinct advantage that
+it allows an unlimited number of callbacks to be registered.
+
+=end original
+
+C のコールバックと Perl との間のマッピングは、このときに C<Mapping> という
+グローバルハッシュに格納されます。
+ハッシュを使うことによって、登録できるコールバックの数に
+制限がなくなります。
+
+=begin original
+
+What if the interface provided by the C callback doesn't contain a
+parameter which allows the file handle to Perl subroutine mapping?  Say
+in the asynchronous i/o package, the callback function gets passed only
+the C<buffer> parameter like this
+
+=end original
+
+ファイルハンドルと Perl サブルーチンとのマッピングを許しているパラメータを
+含んでいないコールバックによって提供されている
+インターフェースだとするとどうでしょう?
+非同期の I/O パッケージを考えてみましょう。
+コールバック関数は以下のように、C<buffer> パラメータのみを取ります。
+
+    void
+    ProcessRead(buffer)
+    char *	buffer;
+    {
+        ...
+    }
+
+=begin original
+
+Without the file handle there is no straightforward way to map from the
+C callback to the Perl subroutine.
+
+=end original
+
+ファイルハンドルなしに、直接 C のコールバック関数を Perl のサブルーチンに
+マップする方法はありません。
+
+=begin original
+
+In this case a possible way around this problem is to predefine a
+series of C functions to act as the interface to Perl, thus
+
+=end original
+
+このような場合に可能な方法は、Perl に対するインターフェースのように
+C 関数の並びをあらかじめ定義してしまうことです。
+したがって、
+
+    #define MAX_CB		3
+    #define NULL_HANDLE	-1
+    typedef void (*FnMap)();
+
+    struct MapStruct {
+        FnMap    Function;
+        SV *     PerlSub;
+        int      Handle;
+      };
+
+    static void  fn1();
+    static void  fn2();
+    static void  fn3();
+
+    static struct MapStruct Map [MAX_CB] =
+        {
+            { fn1, NULL, NULL_HANDLE },
+            { fn2, NULL, NULL_HANDLE },
+            { fn3, NULL, NULL_HANDLE }
+        };
+
+    static void
+    Pcb(index, buffer)
+    int index;
+    char * buffer;
+    {
+        dSP;
+
+        PUSHMARK(SP);
+        XPUSHs(sv_2mortal(newSVpv(buffer, 0)));
+        PUTBACK;
+
+        /* Call the Perl sub */
+        call_sv(Map[index].PerlSub, G_DISCARD);
+    }
+
+    static void
+    fn1(buffer)
+    char * buffer;
+    {
+        Pcb(0, buffer);
+    }
+
+    static void
+    fn2(buffer)
+    char * buffer;
+    {
+        Pcb(1, buffer);
+    }
+
+    static void
+    fn3(buffer)
+    char * buffer;
+    {
+        Pcb(2, buffer);
+    }
+
+    void
+    array_asynch_read(fh, callback)
+        int		fh
+        SV *	callback
+        CODE:
+        int index;
+        int null_index = MAX_CB;
+
+        /* Find the same handle or an empty entry */
+        for (index = 0; index < MAX_CB; ++index)
+        {
+            if (Map[index].Handle == fh)
+                break;
+
+            if (Map[index].Handle == NULL_HANDLE)
+                null_index = index;
+        }
+
+        if (index == MAX_CB && null_index == MAX_CB)
+            croak ("Too many callback functions registered\n");
+
+        if (index == MAX_CB)
+            index = null_index;
+
+        /* Save the file handle */
+        Map[index].Handle = fh;
+
+        /* Remember the Perl sub */
+        if (Map[index].PerlSub == (SV*)NULL)
+            Map[index].PerlSub = newSVsv(callback);
+        else
+            SvSetSV(Map[index].PerlSub, callback);
+
+        asynch_read(fh, Map[index].Function);
+
+    void
+    array_asynch_close(fh)
+        int	fh
+        CODE:
+        int index;
+
+        /* Find the file handle */
+        for (index = 0; index < MAX_CB; ++ index)
+            if (Map[index].Handle == fh)
+                break;
+
+        if (index == MAX_CB)
+            croak ("could not close fh %d\n", fh);
+
+        Map[index].Handle = NULL_HANDLE;
+        SvREFCNT_dec(Map[index].PerlSub);
+        Map[index].PerlSub = (SV*)NULL;
+
+        asynch_close(fh);
+
+=begin original
+
+In this case the functions C<fn1>, C<fn2>, and C<fn3> are used to
+remember the Perl subroutine to be called. Each of the functions holds
+a separate hard-wired index which is used in the function C<Pcb> to
+access the C<Map> array and actually call the Perl subroutine.
+
+=end original
+
+この場合、C<fn1>, C<fn2>, C<fn3> といった関数は呼び出される
+Perlサブルーチンを記憶するために使われます。
+それぞれの関数は関数 C<Pcb> 中で配列 C<Map> にアクセスするためと、
+実際に Perl サブルーチンを呼び出すための独立した hard-wired な添え字を
+保持しています。
+
+=begin original
+
+There are some obvious disadvantages with this technique.
+
+=end original
+
+この技法に関して、幾つかの明らかな短所があります。
+
+=begin original
+
+Firstly, the code is considerably more complex than with the previous
+example.
+
+=end original
+
+第一に、前の例に比べるとプログラムがより複雑になっているということ。
+
+=begin original
+
+Secondly, there is a hard-wired limit (in this case 3) to the number of
+callbacks that can exist simultaneously. The only way to increase the
+limit is by modifying the code to add more functions and then
+recompiling.  None the less, as long as the number of functions is
+chosen with some care, it is still a workable solution and in some
+cases is the only one available.
+
+=end original
+
+第二に、同時に存在できるコールバックの数について作り付け(hard-wired)の
+限界があるということです(先の例では3)。
+この限界を大きくする唯一の方法は、プログラムそのものを変更して
+より多くの関数を使えるようにし、さらに再コンパイルするというものです。
+それでもなお、関数の数を注意深く選択する限りにおいては、この方法は
+実用的な解決策であり、また、一部の状況においては唯一の選択肢なのです。
+
+=begin original
+
+To summarize, here are a number of possible methods for you to consider
+for storing the mapping between C and the Perl callback
+
+=end original
+
+まとめとして、C と Perl コールバックとの間のマッピングを格納するために
+使うことのできる手法を以下に挙げました。
+
+=over 5
+
+=item 1. Ignore the problem - Allow only 1 callback
+
+(問題を無視する - ただ一つのコールバックだけを許す)
+
+=begin original
+
+For a lot of situations, like interfacing to an error handler, this may
+be a perfectly adequate solution.
+
+=end original
+
+多くの状況で、エラーハンドラへのインターフェースと同じく、
+これは十分適切な解決策となるでしょう。
+
+=item 2. Create a sequence of callbacks - hard wired limit
+
+(コールバックの並びを作成する - 作り付けの限界)
+
+=begin original
+
+If it is impossible to tell from the parameters passed back from the C
+callback what the context is, then you may need to create a sequence of C
+callback interface functions, and store pointers to each in an array.
+
+=end original
+
+C のコールバックから渡されたパラメータを区別することができなければ、
+C のコールバックインターフェース関数の並びを生成して、
+配列にポインタを格納する必要があるでしょう。
+
+=item 3. Use a parameter to map to the Perl callback
+
+(Perlのコールバックへマップするためのパラメータを使う)
+
+=begin original
+
+A hash is an ideal mechanism to store the mapping between C and Perl.
+
+=end original
+
+ハッシュは C と Perl との間のマッピングを格納するのに
+最適なメカニズムです。
+
+=back
+
+=head2 Alternate Stack Manipulation
+
+(代替スタックの操作)
+
+=begin original
+
+Although I have made use of only the C<POP*> macros to access values
+returned from Perl subroutines, it is also possible to bypass these
+macros and read the stack using the C<ST> macro (See L<perlxs> for a
+full description of the C<ST> macro).
+
+=end original
+
+C<POP*> マクロを、Perl サブルーチンからの戻り値にアクセスすることのみに
+使用するようにしたにも関らず、これらのマクロをバイパスして
+C<ST> マクロ(C<ST> マクロに関する記述は L<perlxs> を参照してください)を
+使ってスタックを読み取ることが可能です。
+
+=begin original
+
+Most of the time the C<POP*> macros should be adequate; the main
+problem with them is that they force you to process the returned values
+in sequence. This may not be the most suitable way to process the
+values in some cases. What we want is to be able to access the stack in
+a random order. The C<ST> macro as used when coding an XSUB is ideal
+for this purpose.
+
+=end original
+
+C<POP*> マクロが適切であるべき場合のほとんどにおける主な問題は、
+それらのマクロが戻り値をシーケンシャルに処理することを
+強制するということです。
+これは一部のケースにおいては、値を処理する方法として最も適切な
+方法ではありません。
+私たちが欲しているのは、スタックに対してのアクセスをランダムな
+順序で行えるということです。
+C<ST> マクロは、XSUB をコーディングする際にこの目的のために
+適切であるときに使われます。
+
+=begin original
+
+The code below is the example given in the section I<Returning a List
+of Values> recoded to use C<ST> instead of C<POP*>.
+
+=end original
+
+以下に挙げたプログラム片は、セクション L<Returning a List of Values> に
+あった例で、C<POP*> の代わりに C<ST> を記録のために使っています。
+
+    static void
+    call_AddSubtract2(a, b)
+    int a;
+    int b;
+    {
+        dSP;
+        I32 ax;
+        int count;
+
+        ENTER;
+        SAVETMPS;
+
+        PUSHMARK(SP);
+        XPUSHs(sv_2mortal(newSViv(a)));
+        XPUSHs(sv_2mortal(newSViv(b)));
+        PUTBACK;
+
+        count = call_pv("AddSubtract", G_ARRAY);
+
+        SPAGAIN;
+        SP -= count;
+        ax = (SP - PL_stack_base) + 1;
+
+        if (count != 2)
+            croak("Big trouble\n");
+
+        printf ("%d + %d = %d\n", a, b, SvIV(ST(0)));
+        printf ("%d - %d = %d\n", a, b, SvIV(ST(1)));
+
+        PUTBACK;
+        FREETMPS;
+        LEAVE;
+    }
+
+=begin original
+
+Notes
+
+=end original
+
+注意点
+
+=over 5
+
+=item 1.
+
+=begin original
+
+Notice that it was necessary to define the variable C<ax>.  This is
+because the C<ST> macro expects it to exist.  If we were in an XSUB it
+would not be necessary to define C<ax> as it is already defined for
+us.
+
+=end original
+
+C<ax> という変数を定義する必要があったことに注意してください。
+これは、C<ST> マクロがその変数が存在することを期待しているからです。
+XSUB の中でなければ、(すでにあるかのようにみなしてしまって)C<ax> を
+定義する必要はなかったでしょう。
+
+=item 2.
+
+=begin original
+
+The code
+
+=end original
+
+このようなコードは
+
+        SPAGAIN;
+        SP -= count;
+        ax = (SP - PL_stack_base) + 1;
+
+=begin original
+
+sets the stack up so that we can use the C<ST> macro.
+
+=end original
+
+スタックのセットアップを行うので、C<ST> マクロを使うことができます。
+
+=item 3.
+
+=begin original
+
+Unlike the original coding of this example, the returned
+values are not accessed in reverse order.  So C<ST(0)> refers to the
+first value returned by the Perl subroutine and C<ST(count-1)>
+refers to the last.
+
+=end original
+
+この例のオリジナルのコーディングとは異なり、戻り値は逆順で
+アクセスされることはありません。
+このため、C<ST(0)> は Perl サブルーチンの戻り値の最初の
+要素を参照し、C<ST(count-1)> は最後の要素を参照します。
+
+=back
+
+=head2 Creating and Calling an Anonymous Subroutine in C
+
+(C の中で無名サブルーチンの作成と呼び出しを行う)
+
+=begin original
+
+As we've already shown, C<call_sv> can be used to invoke an
+anonymous subroutine.  However, our example showed a Perl script
+invoking an XSUB to perform this operation.  Let's see how it can be
+done inside our C code:
+
+=end original
+
+既に述べてきたように、C<call_sv> は無名サブルーチンを起動するために
+使うことができます。
+しかしながら、一つの例が Perl スクリプトがどのように XSUB を起動して
+この操作を行うかを示しました。
+C プログラムの内側でどのようにするかをお見せしましょう。
+
+ ...
+
+ SV *cvrv = eval_pv("sub { print 'You will not find me cluttering any namespace!' }", TRUE);
+
+ ...
+
+ call_sv(cvrv, G_VOID|G_NOARGS);
+
+=begin original
+
+C<eval_pv> is used to compile the anonymous subroutine, which
+will be the return value as well (read more about C<eval_pv> in
+L<perlapi/eval_pv>).  Once this code reference is in hand, it
+can be mixed in with all the previous examples we've shown.
+
+=end original
+
+C<eval_pv> は無名サブルーチンをコンパイルするために
+使われ、この関数は値を返します
+(C<eval_pv> の詳細は L<perlapi/eval_pv> を参照してください)。
+このコードリファレンスが作用してしまえば、先に挙げた例と
+組み合わせることができます。
+
+=head1 LIGHTWEIGHT CALLBACKS
+
+(軽量コールバック)
+
+=begin original
+
+Sometimes you need to invoke the same subroutine repeatedly.
+This usually happens with a function that acts on a list of
+values, such as Perl's built-in sort(). You can pass a
+comparison function to sort(), which will then be invoked
+for every pair of values that needs to be compared. The first()
+and reduce() functions from L<List::Util> follow a similar
+pattern.
+
+=end original
+
+同じサブルーチンを繰り返し起動する必要がある場合もあります。
+これは普通、Perl 組み込みの sort() のように、値のリストに対して動作する
+関数で起こります。
+sort() に比較関数を渡せますが、これは比較が必要な値の組毎に起動されます。
+L<List::Util> の first() 関数と reduce() 関数は同様なパターンに従います。
+
+=begin original
+
+In this case it is possible to speed up the routine (often
+quite substantially) by using the lightweight callback API.
+The idea is that the calling context only needs to be
+created and destroyed once, and the sub can be called
+arbitrarily many times in between.
+
+=end original
+
+この場合、軽量コールバック API を使ってルーチンを(しばしばかなり大幅に)
+高速化できます。
+考え方としては、呼び出しコンテキストは作成時と破壊時に 1 回ずつしか
+必要ではなく、サブルーチンはその間に任意の関数呼び出すことができます。
+
+=begin original
+
+It is usual to pass parameters using global variables (typically
+$_ for one parameter, or $a and $b for two parameters) rather
+than via @_. (It is possible to use the @_ mechanism if you know
+what you're doing, though there is as yet no supported API for
+it. It's also inherently slower.)
+
+=end original
+
+グローバル変数を使ってパラメータを渡すのはよくあることです (典型的には
+1 パラメータ用には $_ を、あるいは 2 パラメータのためには $a と $b を)
+@_ よりも使われます。
+(もし何をしようとしているのかが分かっているなら @_ 機構を使うことも
+できますが、これのための支援 API はまだありません。
+これはまた、本質的に低速です。)
+
+=begin original
+
+The pattern of macro calls is like this:
+
+=end original
+
+マクロ呼び出しのパターンは以下のようなものです:
+
+    dMULTICALL;			/* Declare local variables */
+    I32 gimme = G_SCALAR;	/* context of the call: G_SCALAR,
+				 * G_LIST, or G_VOID */
+
+    PUSH_MULTICALL(cv);		/* Set up the context for calling cv,
+				   and set local vars appropriately */
+
+    /* loop */ {
+        /* set the value(s) af your parameter variables */
+        MULTICALL;		/* Make the actual call */
+    } /* end of loop */
+
+    POP_MULTICALL;		/* Tear down the calling context */
+
+=begin original
+
+For some concrete examples, see the implementation of the
+first() and reduce() functions of List::Util 1.18. There you
+will also find a header file that emulates the multicall API
+on older versions of perl.
+
+=end original
+
+具体的な例としては、List::Util 1.18 の first() 関数と reduce() 関数の実装を
+参照してください。
+また、より古いバージョンの perl のための多重呼び出し API をエミュレートする
+ヘッダファイルもあります。
+
+=head1 SEE ALSO
+
+L<perlxs>, L<perlguts>, L<perlembed>
+
+=head1 AUTHOR
+
+Paul Marquess 
+
+Special thanks to the following people who assisted in the creation of
+the document.
+
+Jeff Okamoto, Tim Bunce, Nick Gianniotis, Steve Kelem, Gurusamy Sarathy
+and Larry Wall.
+
+=head1 DATE
+
+Version 1.3, 14th Apr 1997
+
+=begin meta
+
+Translate: KIMURA Koichi (5.005)
+Update: SHIRAKATA Kentaro <argrath@ub32.org> (5.10.0-)
+Status: in progress
+
+=end meta
+
