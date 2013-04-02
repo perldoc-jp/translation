@@ -1,0 +1,2401 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+perliol - C API for Perl's implementation of IO in Layers.
+
+=end original
+
+perliol - IO 層の Perl 実装への C API
+
+=head1 SYNOPSIS
+
+    /* Defining a layer ... */
+    #include <perliol.h>
+
+=head1 DESCRIPTION
+
+=begin original
+
+This document describes the behavior and implementation of the PerlIO
+abstraction described in L<perlapio> when C<USE_PERLIO> is defined (and
+C<USE_SFIO> is not).
+
+=end original
+
+This document describes the behavior and implementation of the PerlIO
+abstraction described in L<perlapio> when C<USE_PERLIO> is defined (and
+C<USE_SFIO> is not).
+(TBT)
+
+=head2 History and Background
+
+=begin original
+
+The PerlIO abstraction was introduced in perl5.003_02 but languished as
+just an abstraction until perl5.7.0. However during that time a number
+of perl extensions switched to using it, so the API is mostly fixed to
+maintain (source) compatibility.
+
+=end original
+
+The PerlIO abstraction was introduced in perl5.003_02 but languished as
+just an abstraction until perl5.7.0. However during that time a number
+of perl extensions switched to using it, so the API is mostly fixed to
+maintain (source) compatibility.
+(TBT)
+
+=begin original
+
+The aim of the implementation is to provide the PerlIO API in a flexible
+and platform neutral manner. It is also a trial of an "Object Oriented
+C, with vtables" approach which may be applied to Perl 6.
+
+=end original
+
+The aim of the implementation is to provide the PerlIO API in a flexible
+and platform neutral manner. It is also a trial of an "Object Oriented
+C, with vtables" approach which may be applied to Perl 6.
+(TBT)
+
+=head2 Basic Structure
+
+=begin original
+
+PerlIO is a stack of layers.
+
+=end original
+
+PerlIO は層のスタックです。
+
+=begin original
+
+The low levels of the stack work with the low-level operating system
+calls (file descriptors in C) getting bytes in and out, the higher
+layers of the stack buffer, filter, and otherwise manipulate the I/O,
+and return characters (or bytes) to Perl.  Terms I<above> and I<below>
+are used to refer to the relative positioning of the stack layers.
+
+=end original
+
+The low levels of the stack work with the low-level operating system
+calls (file descriptors in C) getting bytes in and out, the higher
+layers of the stack buffer, filter, and otherwise manipulate the I/O,
+and return characters (or bytes) to Perl.  Terms I<above> and I<below>
+are used to refer to the relative positioning of the stack layers.
+(TBT)
+
+=begin original
+
+A layer contains a "vtable", the table of I/O operations (at C level
+a table of function pointers), and status flags.  The functions in the
+vtable implement operations like "open", "read", and "write".
+
+=end original
+
+A layer contains a "vtable", the table of I/O operations (at C level
+a table of function pointers), and status flags.  The functions in the
+vtable implement operations like "open", "read", and "write".
+(TBT)
+
+=begin original
+
+When I/O, for example "read", is requested, the request goes from Perl
+first down the stack using "read" functions of each layer, then at the
+bottom the input is requested from the operating system services, then
+the result is returned up the stack, finally being interpreted as Perl
+data.
+
+=end original
+
+When I/O, for example "read", is requested, the request goes from Perl
+first down the stack using "read" functions of each layer, then at the
+bottom the input is requested from the operating system services, then
+the result is returned up the stack, finally being interpreted as Perl
+data.
+(TBT)
+
+=begin original
+
+The requests do not necessarily go always all the way down to the
+operating system: that's where PerlIO buffering comes into play.
+
+=end original
+
+The requests do not necessarily go always all the way down to the
+operating system: that's where PerlIO buffering comes into play.
+(TBT)
+
+=begin original
+
+When you do an open() and specify extra PerlIO layers to be deployed,
+the layers you specify are "pushed" on top of the already existing
+default stack.  One way to see it is that "operating system is
+on the left" and "Perl is on the right".
+
+=end original
+
+When you do an open() and specify extra PerlIO layers to be deployed,
+the layers you specify are "pushed" on top of the already existing
+default stack.  One way to see it is that "operating system is
+on the left" and "Perl is on the right".
+(TBT)
+
+=begin original
+
+What exact layers are in this default stack depends on a lot of
+things: your operating system, Perl version, Perl compile time
+configuration, and Perl runtime configuration.  See L<PerlIO>,
+L<perlrun/PERLIO>, and L<open> for more information.
+
+=end original
+
+What exact layers are in this default stack depends on a lot of
+things: your operating system, Perl version, Perl compile time
+configuration, and Perl runtime configuration.  See L<PerlIO>,
+L<perlrun/PERLIO>, and L<open> for more information.
+(TBT)
+
+=begin original
+
+binmode() operates similarly to open(): by default the specified
+layers are pushed on top of the existing stack.
+
+=end original
+
+binmode() operates similarly to open(): by default the specified
+layers are pushed on top of the existing stack.
+(TBT)
+
+=begin original
+
+However, note that even as the specified layers are "pushed on top"
+for open() and binmode(), this doesn't mean that the effects are
+limited to the "top": PerlIO layers can be very 'active' and inspect
+and affect layers also deeper in the stack.  As an example there
+is a layer called "raw" which repeatedly "pops" layers until
+it reaches the first layer that has declared itself capable of
+handling binary data.  The "pushed" layers are processed in left-to-right
+order.
+
+=end original
+
+However, note that even as the specified layers are "pushed on top"
+for open() and binmode(), this doesn't mean that the effects are
+limited to the "top": PerlIO layers can be very 'active' and inspect
+and affect layers also deeper in the stack.  As an example there
+is a layer called "raw" which repeatedly "pops" layers until
+it reaches the first layer that has declared itself capable of
+handling binary data.  The "pushed" layers are processed in left-to-right
+order.
+(TBT)
+
+=begin original
+
+sysopen() operates (unsurprisingly) at a lower level in the stack than
+open().  For example in UNIX or UNIX-like systems sysopen() operates
+directly at the level of file descriptors: in the terms of PerlIO
+layers, it uses only the "unix" layer, which is a rather thin wrapper
+on top of the UNIX file descriptors.
+
+=end original
+
+sysopen() operates (unsurprisingly) at a lower level in the stack than
+open().  For example in UNIX or UNIX-like systems sysopen() operates
+directly at the level of file descriptors: in the terms of PerlIO
+layers, it uses only the "unix" layer, which is a rather thin wrapper
+on top of the UNIX file descriptors.
+(TBT)
+
+=head2 Layers vs Disciplines
+
+=begin original
+
+Initial discussion of the ability to modify IO streams behaviour used
+the term "discipline" for the entities which were added. This came (I
+believe) from the use of the term in "sfio", which in turn borrowed it
+from "line disciplines" on Unix terminals. However, this document (and
+the C code) uses the term "layer".
+
+=end original
+
+Initial discussion of the ability to modify IO streams behaviour used
+the term "discipline" for the entities which were added. This came (I
+believe) from the use of the term in "sfio", which in turn borrowed it
+from "line disciplines" on Unix terminals. However, this document (and
+the C code) uses the term "layer".
+(TBT)
+
+=begin original
+
+This is, I hope, a natural term given the implementation, and should
+avoid connotations that are inherent in earlier uses of "discipline"
+for things which are rather different.
+
+=end original
+
+This is, I hope, a natural term given the implementation, and should
+avoid connotations that are inherent in earlier uses of "discipline"
+for things which are rather different.
+(TBT)
+
+=head2 Data Structures
+
+=begin original
+
+The basic data structure is a PerlIOl:
+
+=end original
+
+基本データ構造体は PerlIOl です:
+
+	typedef struct _PerlIO PerlIOl;
+	typedef struct _PerlIO_funcs PerlIO_funcs;
+	typedef PerlIOl *PerlIO;
+
+	struct _PerlIO
+	{
+	 PerlIOl *	next;       /* Lower layer */
+	 PerlIO_funcs *	tab;        /* Functions for this layer */
+	 IV		flags;      /* Various flags for state */
+	};
+
+=begin original
+
+A C<PerlIOl *> is a pointer to the struct, and the I<application>
+level C<PerlIO *> is a pointer to a C<PerlIOl *> - i.e. a pointer
+to a pointer to the struct. This allows the application level C<PerlIO *>
+to remain constant while the actual C<PerlIOl *> underneath
+changes. (Compare perl's C<SV *> which remains constant while its
+C<sv_any> field changes as the scalar's type changes.) An IO stream is
+then in general represented as a pointer to this linked-list of
+"layers".
+
+=end original
+
+A C<PerlIOl *> is a pointer to the struct, and the I<application>
+level C<PerlIO *> is a pointer to a C<PerlIOl *> - i.e. a pointer
+to a pointer to the struct. This allows the application level C<PerlIO *>
+to remain constant while the actual C<PerlIOl *> underneath
+changes. (Compare perl's C<SV *> which remains constant while its
+C<sv_any> field changes as the scalar's type changes.) An IO stream is
+then in general represented as a pointer to this linked-list of
+"layers".
+(TBT)
+
+=begin original
+
+It should be noted that because of the double indirection in a C<PerlIO *>,
+a C<< &(perlio->next) >> "is" a C<PerlIO *>, and so to some degree
+at least one layer can use the "standard" API on the next layer down.
+
+=end original
+
+It should be noted that because of the double indirection in a C<PerlIO *>,
+a C<< &(perlio->next) >> "is" a C<PerlIO *>, and so to some degree
+at least one layer can use the "standard" API on the next layer down.
+(TBT)
+
+=begin original
+
+A "layer" is composed of two parts:
+
+=end original
+
+一つの「層」は二つの部分から構成されます:
+
+=over 4
+
+=item 1.
+
+=begin original
+
+The functions and attributes of the "layer class".
+
+=end original
+
+「層クラス」の関数と属性。
+
+=item 2.
+
+=begin original
+
+The per-instance data for a particular handle.
+
+=end original
+
+特定のハンドルのためのインスタンス単位のデータ。
+
+=back
+
+=head2 Functions and Attributes
+
+=begin original
+
+The functions and attributes are accessed via the "tab" (for table)
+member of C<PerlIOl>. The functions (methods of the layer "class") are
+fixed, and are defined by the C<PerlIO_funcs> type. They are broadly the
+same as the public C<PerlIO_xxxxx> functions:
+
+=end original
+
+The functions and attributes are accessed via the "tab" (for table)
+member of C<PerlIOl>. The functions (methods of the layer "class") are
+fixed, and are defined by the C<PerlIO_funcs> type. They are broadly the
+same as the public C<PerlIO_xxxxx> functions:
+(TBT)
+
+  struct _PerlIO_funcs
+  {
+   Size_t		fsize;
+   char *		name;
+   Size_t		size;
+   IV		kind;
+   IV		(*Pushed)(pTHX_ PerlIO *f,const char *mode,SV *arg, PerlIO_funcs *tab);
+   IV		(*Popped)(pTHX_ PerlIO *f);
+   PerlIO *	(*Open)(pTHX_ PerlIO_funcs *tab,
+  			PerlIO_list_t *layers, IV n,
+  			const char *mode,
+  			int fd, int imode, int perm,
+  			PerlIO *old,
+  			int narg, SV **args);
+   IV		(*Binmode)(pTHX_ PerlIO *f);
+   SV *		(*Getarg)(pTHX_ PerlIO *f, CLONE_PARAMS *param, int flags)
+   IV		(*Fileno)(pTHX_ PerlIO *f);
+   PerlIO *     (*Dup)(pTHX_ PerlIO *f, PerlIO *o, CLONE_PARAMS *param, int flags)
+   /* Unix-like functions - cf sfio line disciplines */
+   SSize_t	(*Read)(pTHX_ PerlIO *f, void *vbuf, Size_t count);
+   SSize_t	(*Unread)(pTHX_ PerlIO *f, const void *vbuf, Size_t count);
+   SSize_t	(*Write)(pTHX_ PerlIO *f, const void *vbuf, Size_t count);
+   IV		(*Seek)(pTHX_ PerlIO *f, Off_t offset, int whence);
+   Off_t	(*Tell)(pTHX_ PerlIO *f);
+   IV		(*Close)(pTHX_ PerlIO *f);
+   /* Stdio-like buffered IO functions */
+   IV		(*Flush)(pTHX_ PerlIO *f);
+   IV		(*Fill)(pTHX_ PerlIO *f);
+   IV		(*Eof)(pTHX_ PerlIO *f);
+   IV		(*Error)(pTHX_ PerlIO *f);
+   void		(*Clearerr)(pTHX_ PerlIO *f);
+   void		(*Setlinebuf)(pTHX_ PerlIO *f);
+   /* Perl's snooping functions */
+   STDCHAR *	(*Get_base)(pTHX_ PerlIO *f);
+   Size_t	(*Get_bufsiz)(pTHX_ PerlIO *f);
+   STDCHAR *	(*Get_ptr)(pTHX_ PerlIO *f);
+   SSize_t	(*Get_cnt)(pTHX_ PerlIO *f);
+   void		(*Set_ptrcnt)(pTHX_ PerlIO *f,STDCHAR *ptr,SSize_t cnt);
+  };
+
+=begin original
+
+The first few members of the struct give a function table size for
+compatibility check "name" for the layer, the  size to C<malloc> for the per-instance data,
+and some flags which are attributes of the class as whole (such as whether it is a buffering
+layer), then follow the functions which fall into four basic groups:
+
+=end original
+
+The first few members of the struct give a function table size for
+compatibility check "name" for the layer, the  size to C<malloc> for the per-instance data,
+and some flags which are attributes of the class as whole (such as whether it is a buffering
+layer), then follow the functions which fall into four basic groups:
+(TBT)
+
+=over 4
+
+=item 1.
+
+=begin original
+
+Opening and setup functions
+
+=end original
+
+Opening and setup functions
+(TBT)
+
+=item 2.
+
+=begin original
+
+Basic IO operations
+
+=end original
+
+基本 IO 操作
+(TBT)
+
+=item 3.
+
+=begin original
+
+Stdio class buffering options.
+
+=end original
+
+Stdio クラスバッファリングオプション。
+(TBT)
+
+=item 4.
+
+=begin original
+
+Functions to support Perl's traditional "fast" access to the buffer.
+
+=end original
+
+Perl の伝統的なバッファへの「高速」アクセスに体操する関数。
+
+=back
+
+=begin original
+
+A layer does not have to implement all the functions, but the whole
+table has to be present. Unimplemented slots can be NULL (which will
+result in an error when called) or can be filled in with stubs to
+"inherit" behaviour from a "base class". This "inheritance" is fixed
+for all instances of the layer, but as the layer chooses which stubs
+to populate the table, limited "multiple inheritance" is possible.
+
+=end original
+
+A layer does not have to implement all the functions, but the whole
+table has to be present. Unimplemented slots can be NULL (which will
+result in an error when called) or can be filled in with stubs to
+"inherit" behaviour from a "base class". This "inheritance" is fixed
+for all instances of the layer, but as the layer chooses which stubs
+to populate the table, limited "multiple inheritance" is possible.
+(TBT)
+
+=head2 Per-instance Data
+
+=begin original
+
+The per-instance data are held in memory beyond the basic PerlIOl
+struct, by making a PerlIOl the first member of the layer's struct
+thus:
+
+=end original
+
+The per-instance data are held in memory beyond the basic PerlIOl
+struct, by making a PerlIOl the first member of the layer's struct
+thus:
+(TBT)
+
+	typedef struct
+	{
+	 struct _PerlIO base;       /* Base "class" info */
+	 STDCHAR *	buf;        /* Start of buffer */
+	 STDCHAR *	end;        /* End of valid part of buffer */
+	 STDCHAR *	ptr;        /* Current position in buffer */
+	 Off_t		posn;       /* Offset of buf into the file */
+	 Size_t		bufsiz;     /* Real size of buffer */
+	 IV		oneword;    /* Emergency buffer */
+	} PerlIOBuf;
+
+=begin original
+
+In this way (as for perl's scalars) a pointer to a PerlIOBuf can be
+treated as a pointer to a PerlIOl.
+
+=end original
+
+In this way (as for perl's scalars) a pointer to a PerlIOBuf can be
+treated as a pointer to a PerlIOl.
+(TBT)
+
+=head2 Layers in action.
+
+                table           perlio          unix
+            |           |
+            +-----------+    +----------+    +--------+
+   PerlIO ->|           |--->|  next    |--->|  NULL  |
+            +-----------+    +----------+    +--------+
+            |           |    |  buffer  |    |   fd   |
+            +-----------+    |          |    +--------+
+            |           |    +----------+
+
+=begin original
+
+The above attempts to show how the layer scheme works in a simple case.
+The application's C<PerlIO *> points to an entry in the table(s)
+representing open (allocated) handles. For example the first three slots
+in the table correspond to C<stdin>,C<stdout> and C<stderr>. The table
+in turn points to the current "top" layer for the handle - in this case
+an instance of the generic buffering layer "perlio". That layer in turn
+points to the next layer down - in this case the low-level "unix" layer.
+
+=end original
+
+The above attempts to show how the layer scheme works in a simple case.
+The application's C<PerlIO *> points to an entry in the table(s)
+representing open (allocated) handles. For example the first three slots
+in the table correspond to C<stdin>,C<stdout> and C<stderr>. The table
+in turn points to the current "top" layer for the handle - in this case
+an instance of the generic buffering layer "perlio". That layer in turn
+points to the next layer down - in this case the low-level "unix" layer.
+(TBT)
+
+=begin original
+
+The above is roughly equivalent to a "stdio" buffered stream, but with
+much more flexibility:
+
+=end original
+
+The above is roughly equivalent to a "stdio" buffered stream, but with
+much more flexibility:
+(TBT)
+
+=over 4
+
+=item *
+
+=begin original
+
+If Unix level C<read>/C<write>/C<lseek> is not appropriate for (say)
+sockets then the "unix" layer can be replaced (at open time or even
+dynamically) with a "socket" layer.
+
+=end original
+
+If Unix level C<read>/C<write>/C<lseek> is not appropriate for (say)
+sockets then the "unix" layer can be replaced (at open time or even
+dynamically) with a "socket" layer.
+(TBT)
+
+=item *
+
+=begin original
+
+Different handles can have different buffering schemes. The "top"
+layer could be the "mmap" layer if reading disk files was quicker
+using C<mmap> than C<read>. An "unbuffered" stream can be implemented
+simply by not having a buffer layer.
+
+=end original
+
+Different handles can have different buffering schemes. The "top"
+layer could be the "mmap" layer if reading disk files was quicker
+using C<mmap> than C<read>. An "unbuffered" stream can be implemented
+simply by not having a buffer layer.
+(TBT)
+
+=item *
+
+=begin original
+
+Extra layers can be inserted to process the data as it flows through.
+This was the driving need for including the scheme in perl 5.7.0+ - we
+needed a mechanism to allow data to be translated between perl's
+internal encoding (conceptually at least Unicode as UTF-8), and the
+"native" format used by the system. This is provided by the
+":encoding(xxxx)" layer which typically sits above the buffering layer.
+
+=end original
+
+Extra layers can be inserted to process the data as it flows through.
+This was the driving need for including the scheme in perl 5.7.0+ - we
+needed a mechanism to allow data to be translated between perl's
+internal encoding (conceptually at least Unicode as UTF-8), and the
+"native" format used by the system. This is provided by the
+":encoding(xxxx)" layer which typically sits above the buffering layer.
+(TBT)
+
+=item *
+
+=begin original
+
+A layer can be added that does "\n" to CRLF translation. This layer
+can be used on any platform, not just those that normally do such
+things.
+
+=end original
+
+A layer can be added that does "\n" to CRLF translation. This layer
+can be used on any platform, not just those that normally do such
+things.
+(TBT)
+
+=back
+
+=head2 Per-instance flag bits
+
+=begin original
+
+The generic flag bits are a hybrid of C<O_XXXXX> style flags deduced
+from the mode string passed to C<PerlIO_open()>, and state bits for
+typical buffer layers.
+
+=end original
+
+The generic flag bits are a hybrid of C<O_XXXXX> style flags deduced
+from the mode string passed to C<PerlIO_open()>, and state bits for
+typical buffer layers.
+(TBT)
+
+=over 4
+
+=item PERLIO_F_EOF
+
+=begin original
+
+End of file.
+
+=end original
+
+ファイルの末尾。
+
+=item PERLIO_F_CANWRITE
+
+=begin original
+
+Writes are permitted, i.e. opened as "w" or "r+" or "a", etc.
+
+=end original
+
+書き込みが許可されている; つまり "w", "r+", "a" などとして開かれている。
+
+=item  PERLIO_F_CANREAD
+
+=begin original
+
+Reads are permitted i.e. opened "r" or "w+" (or even "a+" - ick).
+
+=end original
+
+読み込みが許可されている; "r", "w+" (または "a+" 的) として開かれている。
+
+=item PERLIO_F_ERROR
+
+=begin original
+
+An error has occurred (for C<PerlIO_error()>).
+
+=end original
+
+(C<PerlIO_error()> のための) エラーが発生した。
+
+=item PERLIO_F_TRUNCATE
+
+=begin original
+
+Truncate file suggested by open mode.
+
+=end original
+
+オープンモードで提案されたファイルを切り詰める。
+
+=item PERLIO_F_APPEND
+
+=begin original
+
+All writes should be appends.
+
+=end original
+
+全ての書き込みは追記される。
+
+=item PERLIO_F_CRLF
+
+=begin original
+
+Layer is performing Win32-like "\n" mapped to CR,LF for output and CR,LF
+mapped to "\n" for input. Normally the provided "crlf" layer is the only
+layer that need bother about this. C<PerlIO_binmode()> will mess with this
+flag rather than add/remove layers if the C<PERLIO_K_CANCRLF> bit is set
+for the layers class.
+
+=end original
+
+Layer is performing Win32-like "\n" mapped to CR,LF for output and CR,LF
+mapped to "\n" for input. Normally the provided "crlf" layer is the only
+layer that need bother about this. C<PerlIO_binmode()> will mess with this
+flag rather than add/remove layers if the C<PERLIO_K_CANCRLF> bit is set
+for the layers class.
+(TBT)
+
+=item PERLIO_F_UTF8
+
+=begin original
+
+Data written to this layer should be UTF-8 encoded; data provided
+by this layer should be considered UTF-8 encoded. Can be set on any layer
+by ":utf8" dummy layer. Also set on ":encoding" layer.
+
+=end original
+
+Data written to this layer should be UTF-8 encoded; data provided
+by this layer should be considered UTF-8 encoded. Can be set on any layer
+by ":utf8" dummy layer. Also set on ":encoding" layer.
+(TBT)
+
+=item PERLIO_F_UNBUF
+
+=begin original
+
+Layer is unbuffered - i.e. write to next layer down should occur for
+each write to this layer.
+
+=end original
+
+Layer is unbuffered - i.e. write to next layer down should occur for
+each write to this layer.
+(TBT)
+
+=item PERLIO_F_WRBUF
+
+=begin original
+
+The buffer for this layer currently holds data written to it but not sent
+to next layer.
+
+=end original
+
+The buffer for this layer currently holds data written to it but not sent
+to next layer.
+(TBT)
+
+=item PERLIO_F_RDBUF
+
+=begin original
+
+The buffer for this layer currently holds unconsumed data read from
+layer below.
+
+=end original
+
+The buffer for this layer currently holds unconsumed data read from
+layer below.
+(TBT)
+
+=item PERLIO_F_LINEBUF
+
+=begin original
+
+Layer is line buffered. Write data should be passed to next layer down
+whenever a "\n" is seen. Any data beyond the "\n" should then be
+processed.
+
+=end original
+
+Layer is line buffered. Write data should be passed to next layer down
+whenever a "\n" is seen. Any data beyond the "\n" should then be
+processed.
+(TBT)
+
+=item PERLIO_F_TEMP
+
+=begin original
+
+File has been C<unlink()>ed, or should be deleted on C<close()>.
+
+=end original
+
+ファイルが C<unlink()> されている、または C<close()> で削除されるべき。
+
+=item PERLIO_F_OPEN
+
+=begin original
+
+Handle is open.
+
+=end original
+
+ハンドルが開いている。
+
+=item PERLIO_F_FASTGETS
+
+=begin original
+
+This instance of this layer supports the "fast C<gets>" interface.
+Normally set based on C<PERLIO_K_FASTGETS> for the class and by the
+existence of the function(s) in the table. However a class that
+normally provides that interface may need to avoid it on a
+particular instance. The "pending" layer needs to do this when
+it is pushed above a layer which does not support the interface.
+(Perl's C<sv_gets()> does not expect the streams fast C<gets> behaviour
+to change during one "get".)
+
+=end original
+
+This instance of this layer supports the "fast C<gets>" interface.
+Normally set based on C<PERLIO_K_FASTGETS> for the class and by the
+existence of the function(s) in the table. However a class that
+normally provides that interface may need to avoid it on a
+particular instance. The "pending" layer needs to do this when
+it is pushed above a layer which does not support the interface.
+(Perl's C<sv_gets()> does not expect the streams fast C<gets> behaviour
+to change during one "get".)
+(TBT)
+
+=back
+
+=head2 Methods in Detail
+
+=over 4
+
+=item fsize
+
+	Size_t fsize;
+
+=begin original
+
+Size of the function table. This is compared against the value PerlIO
+code "knows" as a compatibility check. Future versions I<may> be able
+to tolerate layers compiled against an old version of the headers.
+
+=end original
+
+Size of the function table. This is compared against the value PerlIO
+code "knows" as a compatibility check. Future versions I<may> be able
+to tolerate layers compiled against an old version of the headers.
+(TBT)
+
+=item name
+
+	char * name;
+
+=begin original
+
+The name of the layer whose open() method Perl should invoke on
+open().  For example if the layer is called APR, you will call:
+
+=end original
+
+The name of the layer whose open() method Perl should invoke on
+open().  For example if the layer is called APR, you will call:
+(TBT)
+
+  open $fh, ">:APR", ...
+
+=begin original
+
+and Perl knows that it has to invoke the PerlIOAPR_open() method
+implemented by the APR layer.
+
+=end original
+
+and Perl knows that it has to invoke the PerlIOAPR_open() method
+implemented by the APR layer.
+(TBT)
+
+=item size
+
+	Size_t size;
+
+=begin original
+
+The size of the per-instance data structure, e.g.:
+
+=end original
+
+インスタンス単位のデータ構造体のサイズ; つまり:
+
+  sizeof(PerlIOAPR)
+
+=begin original
+
+If this field is zero then C<PerlIO_pushed> does not malloc anything
+and assumes layer's Pushed function will do any required layer stack
+manipulation - used to avoid malloc/free overhead for dummy layers.
+If the field is non-zero it must be at least the size of C<PerlIOl>,
+C<PerlIO_pushed> will allocate memory for the layer's data structures
+and link new layer onto the stream's stack. (If the layer's Pushed
+method returns an error indication the layer is popped again.)
+
+=end original
+
+If this field is zero then C<PerlIO_pushed> does not malloc anything
+and assumes layer's Pushed function will do any required layer stack
+manipulation - used to avoid malloc/free overhead for dummy layers.
+If the field is non-zero it must be at least the size of C<PerlIOl>,
+C<PerlIO_pushed> will allocate memory for the layer's data structures
+and link new layer onto the stream's stack. (If the layer's Pushed
+method returns an error indication the layer is popped again.)
+(TBT)
+
+=item kind
+
+	IV kind;
+
+=over 4
+
+=item * PERLIO_K_BUFFERED
+
+=begin original
+
+The layer is buffered.
+
+=end original
+
+層がバッファリングされている。
+(TBT)
+
+=item * PERLIO_K_RAW
+
+=begin original
+
+The layer is acceptable to have in a binmode(FH) stack - i.e. it does not
+(or will configure itself not to) transform bytes passing through it.
+
+=end original
+
+The layer is acceptable to have in a binmode(FH) stack - i.e. it does not
+(or will configure itself not to) transform bytes passing through it.
+(TBT)
+
+=item * PERLIO_K_CANCRLF
+
+=begin original
+
+Layer can translate between "\n" and CRLF line ends.
+
+=end original
+
+層は "\n" と CRLF 行末を変換できる。
+
+=item * PERLIO_K_FASTGETS
+
+=begin original
+
+Layer allows buffer snooping.
+
+=end original
+
+層はバッファを覗くことを許可している。
+
+=item * PERLIO_K_MULTIARG
+
+=begin original
+
+Used when the layer's open() accepts more arguments than usual. The
+extra arguments should come not before the C<MODE> argument. When this
+flag is used it's up to the layer to validate the args.
+
+=end original
+
+Used when the layer's open() accepts more arguments than usual. The
+extra arguments should come not before the C<MODE> argument. When this
+flag is used it's up to the layer to validate the args.
+(TBT)
+
+=back
+
+=item Pushed
+
+	IV	(*Pushed)(pTHX_ PerlIO *f,const char *mode, SV *arg);
+
+=begin original
+
+The only absolutely mandatory method. Called when the layer is pushed
+onto the stack.  The C<mode> argument may be NULL if this occurs
+post-open. The C<arg> will be non-C<NULL> if an argument string was
+passed. In most cases this should call C<PerlIOBase_pushed()> to
+convert C<mode> into the appropriate C<PERLIO_F_XXXXX> flags in
+addition to any actions the layer itself takes.  If a layer is not
+expecting an argument it need neither save the one passed to it, nor
+provide C<Getarg()> (it could perhaps C<Perl_warn> that the argument
+was un-expected).
+
+=end original
+
+The only absolutely mandatory method. Called when the layer is pushed
+onto the stack.  The C<mode> argument may be NULL if this occurs
+post-open. The C<arg> will be non-C<NULL> if an argument string was
+passed. In most cases this should call C<PerlIOBase_pushed()> to
+convert C<mode> into the appropriate C<PERLIO_F_XXXXX> flags in
+addition to any actions the layer itself takes.  If a layer is not
+expecting an argument it need neither save the one passed to it, nor
+provide C<Getarg()> (it could perhaps C<Perl_warn> that the argument
+was un-expected).
+(TBT)
+
+=begin original
+
+Returns 0 on success. On failure returns -1 and should set errno.
+
+=end original
+
+成功時は 0 を返します。
+失敗時には -1 を返して errno が設定されます。
+
+
+=item Popped
+
+	IV	(*Popped)(pTHX_ PerlIO *f);
+
+=begin original
+
+Called when the layer is popped from the stack. A layer will normally
+be popped after C<Close()> is called. But a layer can be popped
+without being closed if the program is dynamically managing layers on
+the stream. In such cases C<Popped()> should free any resources
+(buffers, translation tables, ...) not held directly in the layer's
+struct.  It should also C<Unread()> any unconsumed data that has been
+read and buffered from the layer below back to that layer, so that it
+can be re-provided to what ever is now above.
+
+=end original
+
+Called when the layer is popped from the stack. A layer will normally
+be popped after C<Close()> is called. But a layer can be popped
+without being closed if the program is dynamically managing layers on
+the stream. In such cases C<Popped()> should free any resources
+(buffers, translation tables, ...) not held directly in the layer's
+struct.  It should also C<Unread()> any unconsumed data that has been
+read and buffered from the layer below back to that layer, so that it
+can be re-provided to what ever is now above.
+(TBT)
+
+=begin original
+
+Returns 0 on success and failure.  If C<Popped()> returns I<true> then
+I<perlio.c> assumes that either the layer has popped itself, or the
+layer is super special and needs to be retained for other reasons.
+In most cases it should return I<false>.
+
+=end original
+
+Returns 0 on success and failure.  If C<Popped()> returns I<true> then
+I<perlio.c> assumes that either the layer has popped itself, or the
+layer is super special and needs to be retained for other reasons.
+In most cases it should return I<false>.
+(TBT)
+
+=item Open
+
+	PerlIO *	(*Open)(...);
+
+=begin original
+
+The C<Open()> method has lots of arguments because it combines the
+functions of perl's C<open>, C<PerlIO_open>, perl's C<sysopen>,
+C<PerlIO_fdopen> and C<PerlIO_reopen>.  The full prototype is as
+follows:
+
+=end original
+
+The C<Open()> method has lots of arguments because it combines the
+functions of perl's C<open>, C<PerlIO_open>, perl's C<sysopen>,
+C<PerlIO_fdopen> and C<PerlIO_reopen>.  The full prototype is as
+follows:
+(TBT)
+
+ PerlIO *	(*Open)(pTHX_ PerlIO_funcs *tab,
+			PerlIO_list_t *layers, IV n,
+			const char *mode,
+			int fd, int imode, int perm,
+			PerlIO *old,
+			int narg, SV **args);
+
+=begin original
+
+Open should (perhaps indirectly) call C<PerlIO_allocate()> to allocate
+a slot in the table and associate it with the layers information for
+the opened file, by calling C<PerlIO_push>.  The I<layers> is an
+array of all the layers destined for the C<PerlIO *>, and any
+arguments passed to them, I<n> is the index into that array of the
+layer being called. The macro C<PerlIOArg> will return a (possibly
+C<NULL>) SV * for the argument passed to the layer.
+
+=end original
+
+Open should (perhaps indirectly) call C<PerlIO_allocate()> to allocate
+a slot in the table and associate it with the layers information for
+the opened file, by calling C<PerlIO_push>.  The I<layers> is an
+array of all the layers destined for the C<PerlIO *>, and any
+arguments passed to them, I<n> is the index into that array of the
+layer being called. The macro C<PerlIOArg> will return a (possibly
+C<NULL>) SV * for the argument passed to the layer.
+(TBT)
+
+=begin original
+
+The I<mode> string is an "C<fopen()>-like" string which would match
+the regular expression C</^[I#]?[rwa]\+?[bt]?$/>.
+
+=end original
+
+The I<mode> string is an "C<fopen()>-like" string which would match
+the regular expression C</^[I#]?[rwa]\+?[bt]?$/>.
+(TBT)
+
+=begin original
+
+The C<'I'> prefix is used during creation of C<stdin>..C<stderr> via
+special C<PerlIO_fdopen> calls; the C<'#'> prefix means that this is
+C<sysopen> and that I<imode> and I<perm> should be passed to
+C<PerlLIO_open3>; C<'r'> means B<r>ead, C<'w'> means B<w>rite and
+C<'a'> means B<a>ppend. The C<'+'> suffix means that both reading and
+writing/appending are permitted.  The C<'b'> suffix means file should
+be binary, and C<'t'> means it is text. (Almost all layers should do
+the IO in binary mode, and ignore the b/t bits. The C<:crlf> layer
+should be pushed to handle the distinction.)
+
+=end original
+
+The C<'I'> prefix is used during creation of C<stdin>..C<stderr> via
+special C<PerlIO_fdopen> calls; the C<'#'> prefix means that this is
+C<sysopen> and that I<imode> and I<perm> should be passed to
+C<PerlLIO_open3>; C<'r'> means B<r>ead, C<'w'> means B<w>rite and
+C<'a'> means B<a>ppend. The C<'+'> suffix means that both reading and
+writing/appending are permitted.  The C<'b'> suffix means file should
+be binary, and C<'t'> means it is text. (Almost all layers should do
+the IO in binary mode, and ignore the b/t bits. The C<:crlf> layer
+should be pushed to handle the distinction.)
+(TBT)
+
+=begin original
+
+If I<old> is not C<NULL> then this is a C<PerlIO_reopen>. Perl itself
+does not use this (yet?) and semantics are a little vague.
+
+=end original
+
+If I<old> is not C<NULL> then this is a C<PerlIO_reopen>. Perl itself
+does not use this (yet?) and semantics are a little vague.
+(TBT)
+
+=begin original
+
+If I<fd> not negative then it is the numeric file descriptor I<fd>,
+which will be open in a manner compatible with the supplied mode
+string, the call is thus equivalent to C<PerlIO_fdopen>. In this case
+I<nargs> will be zero.
+
+=end original
+
+If I<fd> not negative then it is the numeric file descriptor I<fd>,
+which will be open in a manner compatible with the supplied mode
+string, the call is thus equivalent to C<PerlIO_fdopen>. In this case
+I<nargs> will be zero.
+(TBT)
+
+=begin original
+
+If I<nargs> is greater than zero then it gives the number of arguments
+passed to C<open>, otherwise it will be 1 if for example
+C<PerlIO_open> was called.  In simple cases SvPV_nolen(*args) is the
+pathname to open.
+
+=end original
+
+If I<nargs> is greater than zero then it gives the number of arguments
+passed to C<open>, otherwise it will be 1 if for example
+C<PerlIO_open> was called.  In simple cases SvPV_nolen(*args) is the
+pathname to open.
+(TBT)
+
+=begin original
+
+Having said all that translation-only layers do not need to provide
+C<Open()> at all, but rather leave the opening to a lower level layer
+and wait to be "pushed".  If a layer does provide C<Open()> it should
+normally call the C<Open()> method of next layer down (if any) and
+then push itself on top if that succeeds.
+
+=end original
+
+Having said all that translation-only layers do not need to provide
+C<Open()> at all, but rather leave the opening to a lower level layer
+and wait to be "pushed".  If a layer does provide C<Open()> it should
+normally call the C<Open()> method of next layer down (if any) and
+then push itself on top if that succeeds.
+(TBT)
+
+=begin original
+
+If C<PerlIO_push> was performed and open has failed, it must
+C<PerlIO_pop> itself, since if it's not, the layer won't be removed
+and may cause bad problems.
+
+=end original
+
+If C<PerlIO_push> was performed and open has failed, it must
+C<PerlIO_pop> itself, since if it's not, the layer won't be removed
+and may cause bad problems.
+(TBT)
+
+=begin original
+
+Returns C<NULL> on failure.
+
+=end original
+
+失敗時には C<NULL> を返します。
+
+=item Binmode
+
+	IV        (*Binmode)(pTHX_ PerlIO *f);
+
+=begin original
+
+Optional. Used when C<:raw> layer is pushed (explicitly or as a result
+of binmode(FH)). If not present layer will be popped. If present
+should configure layer as binary (or pop itself) and return 0.
+If it returns -1 for error C<binmode> will fail with layer
+still on the stack.
+
+=end original
+
+Optional. Used when C<:raw> layer is pushed (explicitly or as a result
+of binmode(FH)). If not present layer will be popped. If present
+should configure layer as binary (or pop itself) and return 0.
+If it returns -1 for error C<binmode> will fail with layer
+still on the stack.
+(TBT)
+
+=item Getarg
+
+	SV *      (*Getarg)(pTHX_ PerlIO *f,
+			    CLONE_PARAMS *param, int flags);
+
+=begin original
+
+Optional. If present should return an SV * representing the string
+argument passed to the layer when it was
+pushed. e.g. ":encoding(ascii)" would return an SvPV with value
+"ascii". (I<param> and I<flags> arguments can be ignored in most
+cases)
+
+=end original
+
+Optional. If present should return an SV * representing the string
+argument passed to the layer when it was
+pushed. e.g. ":encoding(ascii)" would return an SvPV with value
+"ascii". (I<param> and I<flags> arguments can be ignored in most
+cases)
+(TBT)
+
+=begin original
+
+C<Dup> uses C<Getarg> to retrieve the argument originally passed to
+C<Pushed>, so you must implement this function if your layer has an
+extra argument to C<Pushed> and will ever be C<Dup>ed.
+
+=end original
+
+C<Dup> uses C<Getarg> to retrieve the argument originally passed to
+C<Pushed>, so you must implement this function if your layer has an
+extra argument to C<Pushed> and will ever be C<Dup>ed.
+(TBT)
+
+=item Fileno
+
+	IV        (*Fileno)(pTHX_ PerlIO *f);
+
+=begin original
+
+Returns the Unix/Posix numeric file descriptor for the handle. Normally
+C<PerlIOBase_fileno()> (which just asks next layer down) will suffice
+for this.
+
+=end original
+
+Returns the Unix/Posix numeric file descriptor for the handle. Normally
+C<PerlIOBase_fileno()> (which just asks next layer down) will suffice
+for this.
+(TBT)
+
+=begin original
+
+Returns -1 on error, which is considered to include the case where the
+layer cannot provide such a file descriptor.
+
+=end original
+
+Returns -1 on error, which is considered to include the case where the
+layer cannot provide such a file descriptor.
+(TBT)
+
+=item Dup
+
+	PerlIO * (*Dup)(pTHX_ PerlIO *f, PerlIO *o,
+			CLONE_PARAMS *param, int flags);
+
+=begin original
+
+XXX: Needs more docs.
+
+=end original
+
+XXX: もっと文書が必要です。
+
+=begin original
+
+Used as part of the "clone" process when a thread is spawned (in which
+case param will be non-NULL) and when a stream is being duplicated via
+'&' in the C<open>.
+
+=end original
+
+Used as part of the "clone" process when a thread is spawned (in which
+case param will be non-NULL) and when a stream is being duplicated via
+'&' in the C<open>.
+(TBT)
+
+=begin original
+
+Similar to C<Open>, returns PerlIO* on success, C<NULL> on failure.
+
+=end original
+
+C<Open> と同様ですが、正常時には PerlIO* を返し、失敗時には C<NULL> を
+返します。
+
+=item Read
+
+	SSize_t	(*Read)(pTHX_ PerlIO *f, void *vbuf, Size_t count);
+
+=begin original
+
+Basic read operation.
+
+=end original
+
+基本読み込み操作です。
+
+=begin original
+
+Typically will call C<Fill> and manipulate pointers (possibly via the
+API).  C<PerlIOBuf_read()> may be suitable for derived classes which
+provide "fast gets" methods.
+
+=end original
+
+Typically will call C<Fill> and manipulate pointers (possibly via the
+API).  C<PerlIOBuf_read()> may be suitable for derived classes which
+provide "fast gets" methods.
+(TBT)
+
+=begin original
+
+Returns actual bytes read, or -1 on an error.
+
+=end original
+
+実際に読み込まれたバイト数か、エラー時には -1 を返します。
+
+=item	Unread
+
+	SSize_t	(*Unread)(pTHX_ PerlIO *f,
+			  const void *vbuf, Size_t count);
+
+=begin original
+
+A superset of stdio's C<ungetc()>. Should arrange for future reads to
+see the bytes in C<vbuf>. If there is no obviously better implementation
+then C<PerlIOBase_unread()> provides the function by pushing a "fake"
+"pending" layer above the calling layer.
+
+=end original
+
+A superset of stdio's C<ungetc()>. Should arrange for future reads to
+see the bytes in C<vbuf>. If there is no obviously better implementation
+then C<PerlIOBase_unread()> provides the function by pushing a "fake"
+"pending" layer above the calling layer.
+(TBT)
+
+=begin original
+
+Returns the number of unread chars.
+
+=end original
+
+まだ読み込んでいない文字の数を返します。
+
+=item Write
+
+	SSize_t	(*Write)(PerlIO *f, const void *vbuf, Size_t count);
+
+=begin original
+
+Basic write operation.
+
+=end original
+
+基本書き込み操作です。
+
+=begin original
+
+Returns bytes written or -1 on an error.
+
+=end original
+
+書き込まれたバイト数か、エラー時には -1 を返します。
+
+=item Seek
+
+	IV	(*Seek)(pTHX_ PerlIO *f, Off_t offset, int whence);
+
+=begin original
+
+Position the file pointer. Should normally call its own C<Flush>
+method and then the C<Seek> method of next layer down.
+
+=end original
+
+Position the file pointer. Should normally call its own C<Flush>
+method and then the C<Seek> method of next layer down.
+(TBT)
+
+=begin original
+
+Returns 0 on success, -1 on failure.
+
+=end original
+
+成功時には 0 を、失敗時には -1 を返します。
+
+=item Tell
+
+	Off_t	(*Tell)(pTHX_ PerlIO *f);
+
+=begin original
+
+Return the file pointer. May be based on layers cached concept of
+position to avoid overhead.
+
+=end original
+
+Return the file pointer. May be based on layers cached concept of
+position to avoid overhead.
+(TBT)
+
+=begin original
+
+Returns -1 on failure to get the file pointer.
+
+=end original
+
+ファイルポインタヲ得るのに失敗した場合は -1 を返します。
+
+=item Close
+
+	IV	(*Close)(pTHX_ PerlIO *f);
+
+=begin original
+
+Close the stream. Should normally call C<PerlIOBase_close()> to flush
+itself and close layers below, and then deallocate any data structures
+(buffers, translation tables, ...) not  held directly in the data
+structure.
+
+=end original
+
+Close the stream. Should normally call C<PerlIOBase_close()> to flush
+itself and close layers below, and then deallocate any data structures
+(buffers, translation tables, ...) not  held directly in the data
+structure.
+(TBT)
+
+=begin original
+
+Returns 0 on success, -1 on failure.
+
+=end original
+
+成功時には 0 を、失敗時には -1 を返します。
+
+=item Flush
+
+	IV	(*Flush)(pTHX_ PerlIO *f);
+
+=begin original
+
+Should make stream's state consistent with layers below. That is, any
+buffered write data should be written, and file position of lower layers
+adjusted for data read from below but not actually consumed.
+(Should perhaps C<Unread()> such data to the lower layer.)
+
+=end original
+
+Should make stream's state consistent with layers below. That is, any
+buffered write data should be written, and file position of lower layers
+adjusted for data read from below but not actually consumed.
+(Should perhaps C<Unread()> such data to the lower layer.)
+(TBT)
+
+=begin original
+
+Returns 0 on success, -1 on failure.
+
+=end original
+
+成功時には 0 を、失敗時には -1 を返します。
+
+=item Fill
+
+	IV	(*Fill)(pTHX_ PerlIO *f);
+
+=begin original
+
+The buffer for this layer should be filled (for read) from layer
+below.  When you "subclass" PerlIOBuf layer, you want to use its
+I<_read> method and to supply your own fill method, which fills the
+PerlIOBuf's buffer.
+
+=end original
+
+The buffer for this layer should be filled (for read) from layer
+below.  When you "subclass" PerlIOBuf layer, you want to use its
+I<_read> method and to supply your own fill method, which fills the
+PerlIOBuf's buffer.
+(TBT)
+
+=begin original
+
+Returns 0 on success, -1 on failure.
+
+=end original
+
+成功時には 0 を、失敗時には -1 を返します。
+
+=item Eof
+
+	IV	(*Eof)(pTHX_ PerlIO *f);
+
+=begin original
+
+Return end-of-file indicator. C<PerlIOBase_eof()> is normally sufficient.
+
+=end original
+
+Return end-of-file indicator. C<PerlIOBase_eof()> is normally sufficient.
+(TBT)
+
+=begin original
+
+Returns 0 on end-of-file, 1 if not end-of-file, -1 on error.
+
+=end original
+
+ファイル末尾では 0 を、ファイル末尾でなければ 1 を、エラー時には -1 を
+返します。
+
+=item Error
+
+	IV	(*Error)(pTHX_ PerlIO *f);
+
+=begin original
+
+Return error indicator. C<PerlIOBase_error()> is normally sufficient.
+
+=end original
+
+Return error indicator. C<PerlIOBase_error()> is normally sufficient.
+(TBT)
+
+=begin original
+
+Returns 1 if there is an error (usually when C<PERLIO_F_ERROR> is set,
+0 otherwise.
+
+=end original
+
+Returns 1 if there is an error (usually when C<PERLIO_F_ERROR> is set,
+0 otherwise.
+(TBT)
+
+=item  Clearerr
+
+	void	(*Clearerr)(pTHX_ PerlIO *f);
+
+=begin original
+
+Clear end-of-file and error indicators. Should call C<PerlIOBase_clearerr()>
+to set the C<PERLIO_F_XXXXX> flags, which may suffice.
+
+=end original
+
+Clear end-of-file and error indicators. Should call C<PerlIOBase_clearerr()>
+to set the C<PERLIO_F_XXXXX> flags, which may suffice.
+(TBT)
+
+=item Setlinebuf
+
+	void	(*Setlinebuf)(pTHX_ PerlIO *f);
+
+=begin original
+
+Mark the stream as line buffered. C<PerlIOBase_setlinebuf()> sets the
+PERLIO_F_LINEBUF flag and is normally sufficient.
+
+=end original
+
+Mark the stream as line buffered. C<PerlIOBase_setlinebuf()> sets the
+PERLIO_F_LINEBUF flag and is normally sufficient.
+(TBT)
+
+=item Get_base
+
+	STDCHAR *	(*Get_base)(pTHX_ PerlIO *f);
+
+=begin original
+
+Allocate (if not already done so) the read buffer for this layer and
+return pointer to it. Return NULL on failure.
+
+=end original
+
+Allocate (if not already done so) the read buffer for this layer and
+return pointer to it. Return NULL on failure.
+(TBT)
+
+=item Get_bufsiz
+
+	Size_t	(*Get_bufsiz)(pTHX_ PerlIO *f);
+
+=begin original
+
+Return the number of bytes that last C<Fill()> put in the buffer.
+
+=end original
+
+Return the number of bytes that last C<Fill()> put in the buffer.
+(TBT)
+
+=item Get_ptr
+
+	STDCHAR *	(*Get_ptr)(pTHX_ PerlIO *f);
+
+=begin original
+
+Return the current read pointer relative to this layer's buffer.
+
+=end original
+
+Return the current read pointer relative to this layer's buffer.
+(TBT)
+
+=item Get_cnt
+
+	SSize_t	(*Get_cnt)(pTHX_ PerlIO *f);
+
+=begin original
+
+Return the number of bytes left to be read in the current buffer.
+
+=end original
+
+Return the number of bytes left to be read in the current buffer.
+(TBT)
+
+=item Set_ptrcnt
+
+	void	(*Set_ptrcnt)(pTHX_ PerlIO *f,
+			      STDCHAR *ptr, SSize_t cnt);
+
+=begin original
+
+Adjust the read pointer and count of bytes to match C<ptr> and/or C<cnt>.
+The application (or layer above) must ensure they are consistent.
+(Checking is allowed by the paranoid.)
+
+=end original
+
+Adjust the read pointer and count of bytes to match C<ptr> and/or C<cnt>.
+The application (or layer above) must ensure they are consistent.
+(Checking is allowed by the paranoid.)
+(TBT)
+
+=back
+
+=head2 Utilities
+
+=begin original
+
+To ask for the next layer down use PerlIONext(PerlIO *f).
+
+=end original
+
+To ask for the next layer down use PerlIONext(PerlIO *f).
+(TBT)
+
+=begin original
+
+To check that a PerlIO* is valid use PerlIOValid(PerlIO *f).  (All
+this does is really just to check that the pointer is non-NULL and
+that the pointer behind that is non-NULL.)
+
+=end original
+
+To check that a PerlIO* is valid use PerlIOValid(PerlIO *f).  (All
+this does is really just to check that the pointer is non-NULL and
+that the pointer behind that is non-NULL.)
+(TBT)
+
+=begin original
+
+PerlIOBase(PerlIO *f) returns the "Base" pointer, or in other words,
+the C<PerlIOl*> pointer.
+
+=end original
+
+PerlIOBase(PerlIO *f) returns the "Base" pointer, or in other words,
+the C<PerlIOl*> pointer.
+(TBT)
+
+=begin original
+
+PerlIOSelf(PerlIO* f, type) return the PerlIOBase cast to a type.
+
+=end original
+
+PerlIOSelf(PerlIO* f, type) return the PerlIOBase cast to a type.
+(TBT)
+
+=begin original
+
+Perl_PerlIO_or_Base(PerlIO* f, callback, base, failure, args) either
+calls the I<callback> from the functions of the layer I<f> (just by
+the name of the IO function, like "Read") with the I<args>, or if
+there is no such callback, calls the I<base> version of the callback
+with the same args, or if the f is invalid, set errno to EBADF and
+return I<failure>.
+
+=end original
+
+Perl_PerlIO_or_Base(PerlIO* f, callback, base, failure, args) either
+calls the I<callback> from the functions of the layer I<f> (just by
+the name of the IO function, like "Read") with the I<args>, or if
+there is no such callback, calls the I<base> version of the callback
+with the same args, or if the f is invalid, set errno to EBADF and
+return I<failure>.
+(TBT)
+
+=begin original
+
+Perl_PerlIO_or_fail(PerlIO* f, callback, failure, args) either calls
+the I<callback> of the functions of the layer I<f> with the I<args>,
+or if there is no such callback, set errno to EINVAL.  Or if the f is
+invalid, set errno to EBADF and return I<failure>.
+
+=end original
+
+Perl_PerlIO_or_fail(PerlIO* f, callback, failure, args) either calls
+the I<callback> of the functions of the layer I<f> with the I<args>,
+or if there is no such callback, set errno to EINVAL.  Or if the f is
+invalid, set errno to EBADF and return I<failure>.
+(TBT)
+
+=begin original
+
+Perl_PerlIO_or_Base_void(PerlIO* f, callback, base, args) either calls
+the I<callback> of the functions of the layer I<f> with the I<args>,
+or if there is no such callback, calls the I<base> version of the
+callback with the same args, or if the f is invalid, set errno to
+EBADF.
+
+=end original
+
+Perl_PerlIO_or_Base_void(PerlIO* f, callback, base, args) either calls
+the I<callback> of the functions of the layer I<f> with the I<args>,
+or if there is no such callback, calls the I<base> version of the
+callback with the same args, or if the f is invalid, set errno to
+EBADF.
+(TBT)
+
+=begin original
+
+Perl_PerlIO_or_fail_void(PerlIO* f, callback, args) either calls the
+I<callback> of the functions of the layer I<f> with the I<args>, or if
+there is no such callback, set errno to EINVAL.  Or if the f is
+invalid, set errno to EBADF.
+
+=end original
+
+Perl_PerlIO_or_fail_void(PerlIO* f, callback, args) either calls the
+I<callback> of the functions of the layer I<f> with the I<args>, or if
+there is no such callback, set errno to EINVAL.  Or if the f is
+invalid, set errno to EBADF.
+(TBT)
+
+=head2 Implementing PerlIO Layers
+
+=begin original
+
+If you find the implementation document unclear or not sufficient,
+look at the existing PerlIO layer implementations, which include:
+
+=end original
+
+If you find the implementation document unclear or not sufficient,
+look at the existing PerlIO layer implementations, which include:
+(TBT)
+
+=over
+
+=item * C implementations
+
+=begin original
+
+The F<perlio.c> and F<perliol.h> in the Perl core implement the
+"unix", "perlio", "stdio", "crlf", "utf8", "byte", "raw", "pending"
+layers, and also the "mmap" and "win32" layers if applicable.
+(The "win32" is currently unfinished and unused, to see what is used
+instead in Win32, see L<PerlIO/"Querying the layers of filehandles"> .)
+
+=end original
+
+The F<perlio.c> and F<perliol.h> in the Perl core implement the
+"unix", "perlio", "stdio", "crlf", "utf8", "byte", "raw", "pending"
+layers, and also the "mmap" and "win32" layers if applicable.
+(The "win32" is currently unfinished and unused, to see what is used
+instead in Win32, see L<PerlIO/"Querying the layers of filehandles"> .)
+(TBT)
+
+=begin original
+
+PerlIO::encoding, PerlIO::scalar, PerlIO::via in the Perl core.
+
+=end original
+
+PerlIO::encoding, PerlIO::scalar, PerlIO::via in the Perl core.
+(TBT)
+
+=begin original
+
+PerlIO::gzip and APR::PerlIO (mod_perl 2.0) on CPAN.
+
+=end original
+
+PerlIO::gzip and APR::PerlIO (mod_perl 2.0) on CPAN.
+(TBT)
+
+=item * Perl implementations
+
+=begin original
+
+PerlIO::via::QuotedPrint in the Perl core and PerlIO::via::* on CPAN.
+
+=end original
+
+PerlIO::via::QuotedPrint in the Perl core and PerlIO::via::* on CPAN.
+(TBT)
+
+=back
+
+=begin original
+
+If you are creating a PerlIO layer, you may want to be lazy, in other
+words, implement only the methods that interest you.  The other methods
+you can either replace with the "blank" methods
+
+=end original
+
+If you are creating a PerlIO layer, you may want to be lazy, in other
+words, implement only the methods that interest you.  The other methods
+you can either replace with the "blank" methods
+(TBT)
+
+    PerlIOBase_noop_ok
+    PerlIOBase_noop_fail
+
+=begin original
+
+(which do nothing, and return zero and -1, respectively) or for
+certain methods you may assume a default behaviour by using a NULL
+method.  The Open method looks for help in the 'parent' layer.
+The following table summarizes the behaviour:
+
+=end original
+
+(which do nothing, and return zero and -1, respectively) or for
+certain methods you may assume a default behaviour by using a NULL
+method.  The Open method looks for help in the 'parent' layer.
+The following table summarizes the behaviour:
+(TBT)
+
+    method      behaviour with NULL
+
+    Clearerr    PerlIOBase_clearerr
+    Close       PerlIOBase_close
+    Dup         PerlIOBase_dup
+    Eof         PerlIOBase_eof
+    Error       PerlIOBase_error
+    Fileno      PerlIOBase_fileno
+    Fill        FAILURE
+    Flush       SUCCESS
+    Getarg      SUCCESS
+    Get_base    FAILURE
+    Get_bufsiz  FAILURE
+    Get_cnt     FAILURE
+    Get_ptr     FAILURE
+    Open        INHERITED
+    Popped      SUCCESS
+    Pushed      SUCCESS
+    Read        PerlIOBase_read
+    Seek        FAILURE
+    Set_cnt     FAILURE
+    Set_ptrcnt  FAILURE
+    Setlinebuf  PerlIOBase_setlinebuf
+    Tell        FAILURE
+    Unread      PerlIOBase_unread
+    Write       FAILURE
+
+ FAILURE        Set errno (to EINVAL in UNIXish, to LIB$_INVARG in VMS) and
+                return -1 (for numeric return values) or NULL (for pointers)
+ INHERITED      Inherited from the layer below
+ SUCCESS        Return 0 (for numeric return values) or a pointer 
+
+=head2 Core Layers
+
+=begin original
+
+The file C<perlio.c> provides the following layers:
+
+=end original
+
+The file C<perlio.c> provides the following layers:
+(TBT)
+
+=over 4
+
+=item "unix"
+
+=begin original
+
+A basic non-buffered layer which calls Unix/POSIX C<read()>, C<write()>,
+C<lseek()>, C<close()>. No buffering. Even on platforms that distinguish
+between O_TEXT and O_BINARY this layer is always O_BINARY.
+
+=end original
+
+A basic non-buffered layer which calls Unix/POSIX C<read()>, C<write()>,
+C<lseek()>, C<close()>. No buffering. Even on platforms that distinguish
+between O_TEXT and O_BINARY this layer is always O_BINARY.
+(TBT)
+
+=item "perlio"
+
+=begin original
+
+A very complete generic buffering layer which provides the whole of
+PerlIO API. It is also intended to be used as a "base class" for other
+layers. (For example its C<Read()> method is implemented in terms of
+the C<Get_cnt()>/C<Get_ptr()>/C<Set_ptrcnt()> methods).
+
+=end original
+
+A very complete generic buffering layer which provides the whole of
+PerlIO API. It is also intended to be used as a "base class" for other
+layers. (For example its C<Read()> method is implemented in terms of
+the C<Get_cnt()>/C<Get_ptr()>/C<Set_ptrcnt()> methods).
+(TBT)
+
+=begin original
+
+"perlio" over "unix" provides a complete replacement for stdio as seen
+via PerlIO API. This is the default for USE_PERLIO when system's stdio
+does not permit perl's "fast gets" access, and which do not
+distinguish between C<O_TEXT> and C<O_BINARY>.
+
+=end original
+
+"perlio" over "unix" provides a complete replacement for stdio as seen
+via PerlIO API. This is the default for USE_PERLIO when system's stdio
+does not permit perl's "fast gets" access, and which do not
+distinguish between C<O_TEXT> and C<O_BINARY>.
+(TBT)
+
+=item "stdio"
+
+=begin original
+
+A layer which provides the PerlIO API via the layer scheme, but
+implements it by calling system's stdio. This is (currently) the default
+if system's stdio provides sufficient access to allow perl's "fast gets"
+access and which do not distinguish between C<O_TEXT> and C<O_BINARY>.
+
+=end original
+
+A layer which provides the PerlIO API via the layer scheme, but
+implements it by calling system's stdio. This is (currently) the default
+if system's stdio provides sufficient access to allow perl's "fast gets"
+access and which do not distinguish between C<O_TEXT> and C<O_BINARY>.
+(TBT)
+
+=item "crlf"
+
+=begin original
+
+A layer derived using "perlio" as a base class. It provides Win32-like
+"\n" to CR,LF translation. Can either be applied above "perlio" or serve
+as the buffer layer itself. "crlf" over "unix" is the default if system
+distinguishes between C<O_TEXT> and C<O_BINARY> opens. (At some point
+"unix" will be replaced by a "native" Win32 IO layer on that platform,
+as Win32's read/write layer has various drawbacks.) The "crlf" layer is
+a reasonable model for a layer which transforms data in some way.
+
+=end original
+
+A layer derived using "perlio" as a base class. It provides Win32-like
+"\n" to CR,LF translation. Can either be applied above "perlio" or serve
+as the buffer layer itself. "crlf" over "unix" is the default if system
+distinguishes between C<O_TEXT> and C<O_BINARY> opens. (At some point
+"unix" will be replaced by a "native" Win32 IO layer on that platform,
+as Win32's read/write layer has various drawbacks.) The "crlf" layer is
+a reasonable model for a layer which transforms data in some way.
+(TBT)
+
+=item "mmap"
+
+=begin original
+
+If Configure detects C<mmap()> functions this layer is provided (with
+"perlio" as a "base") which does "read" operations by mmap()ing the
+file. Performance improvement is marginal on modern systems, so it is
+mainly there as a proof of concept. It is likely to be unbundled from
+the core at some point. The "mmap" layer is a reasonable model for a
+minimalist "derived" layer.
+
+=end original
+
+If Configure detects C<mmap()> functions this layer is provided (with
+"perlio" as a "base") which does "read" operations by mmap()ing the
+file. Performance improvement is marginal on modern systems, so it is
+mainly there as a proof of concept. It is likely to be unbundled from
+the core at some point. The "mmap" layer is a reasonable model for a
+minimalist "derived" layer.
+(TBT)
+
+=item "pending"
+
+=begin original
+
+An "internal" derivative of "perlio" which can be used to provide
+Unread() function for layers which have no buffer or cannot be
+bothered.  (Basically this layer's C<Fill()> pops itself off the stack
+and so resumes reading from layer below.)
+
+=end original
+
+An "internal" derivative of "perlio" which can be used to provide
+Unread() function for layers which have no buffer or cannot be
+bothered.  (Basically this layer's C<Fill()> pops itself off the stack
+and so resumes reading from layer below.)
+(TBT)
+
+=item "raw"
+
+=begin original
+
+A dummy layer which never exists on the layer stack. Instead when
+"pushed" it actually pops the stack removing itself, it then calls
+Binmode function table entry on all the layers in the stack - normally
+this (via PerlIOBase_binmode) removes any layers which do not have
+C<PERLIO_K_RAW> bit set. Layers can modify that behaviour by defining
+their own Binmode entry.
+
+=end original
+
+A dummy layer which never exists on the layer stack. Instead when
+"pushed" it actually pops the stack removing itself, it then calls
+Binmode function table entry on all the layers in the stack - normally
+this (via PerlIOBase_binmode) removes any layers which do not have
+C<PERLIO_K_RAW> bit set. Layers can modify that behaviour by defining
+their own Binmode entry.
+(TBT)
+
+=item "utf8"
+
+=begin original
+
+Another dummy layer. When pushed it pops itself and sets the
+C<PERLIO_F_UTF8> flag on the layer which was (and now is once more)
+the top of the stack.
+
+=end original
+
+Another dummy layer. When pushed it pops itself and sets the
+C<PERLIO_F_UTF8> flag on the layer which was (and now is once more)
+the top of the stack.
+(TBT)
+
+=back
+
+=begin original
+
+In addition F<perlio.c> also provides a number of C<PerlIOBase_xxxx()>
+functions which are intended to be used in the table slots of classes
+which do not need to do anything special for a particular method.
+
+=end original
+
+In addition F<perlio.c> also provides a number of C<PerlIOBase_xxxx()>
+functions which are intended to be used in the table slots of classes
+which do not need to do anything special for a particular method.
+(TBT)
+
+=head2 Extension Layers
+
+=begin original
+
+Layers can made available by extension modules. When an unknown layer
+is encountered the PerlIO code will perform the equivalent of :
+
+=end original
+
+Layers can made available by extension modules. When an unknown layer
+is encountered the PerlIO code will perform the equivalent of :
+(TBT)
+
+   use PerlIO 'layer';
+
+=begin original
+
+Where I<layer> is the unknown layer. F<PerlIO.pm> will then attempt to:
+
+=end original
+
+Where I<layer> is the unknown layer. F<PerlIO.pm> will then attempt to:
+(TBT)
+
+   require PerlIO::layer;
+
+=begin original
+
+If after that process the layer is still not defined then the C<open>
+will fail.
+
+=end original
+
+If after that process the layer is still not defined then the C<open>
+will fail.
+(TBT)
+
+=begin original
+
+The following extension layers are bundled with perl:
+
+=end original
+
+The following extension layers are bundled with perl:
+(TBT)
+
+=over 4
+
+=item ":encoding"
+
+   use Encoding;
+
+=begin original
+
+makes this layer available, although F<PerlIO.pm> "knows" where to
+find it.  It is an example of a layer which takes an argument as it is
+called thus:
+
+=end original
+
+makes this layer available, although F<PerlIO.pm> "knows" where to
+find it.  It is an example of a layer which takes an argument as it is
+called thus:
+(TBT)
+
+   open( $fh, "<:encoding(iso-8859-7)", $pathname );
+
+=item ":scalar"
+
+=begin original
+
+Provides support for reading data from and writing data to a scalar.
+
+=end original
+
+Provides support for reading data from and writing data to a scalar.
+(TBT)
+
+   open( $fh, "+<:scalar", \$scalar );
+
+=begin original
+
+When a handle is so opened, then reads get bytes from the string value
+of I<$scalar>, and writes change the value. In both cases the position
+in I<$scalar> starts as zero but can be altered via C<seek>, and
+determined via C<tell>.
+
+=end original
+
+When a handle is so opened, then reads get bytes from the string value
+of I<$scalar>, and writes change the value. In both cases the position
+in I<$scalar> starts as zero but can be altered via C<seek>, and
+determined via C<tell>.
+(TBT)
+
+=begin original
+
+Please note that this layer is implied when calling open() thus:
+
+=end original
+
+Please note that this layer is implied when calling open() thus:
+(TBT)
+
+   open( $fh, "+<", \$scalar );
+
+=item ":via"
+
+=begin original
+
+Provided to allow layers to be implemented as Perl code.  For instance:
+
+=end original
+
+Provided to allow layers to be implemented as Perl code.  For instance:
+(TBT)
+
+   use PerlIO::via::StripHTML;
+   open( my $fh, "<:via(StripHTML)", "index.html" );
+
+=begin original
+
+See L<PerlIO::via> for details.
+
+=end original
+
+See L<PerlIO::via> for details.
+(TBT)
+
+=back
+
+=head1 TODO
+
+=begin original
+
+Things that need to be done to improve this document.
+
+=end original
+
+Things that need to be done to improve this document.
+(TBT)
+
+=over
+
+=item *
+
+=begin original
+
+Explain how to make a valid fh without going through open()(i.e. apply
+a layer). For example if the file is not opened through perl, but we
+want to get back a fh, like it was opened by Perl.
+
+=end original
+
+Explain how to make a valid fh without going through open()(i.e. apply
+a layer). For example if the file is not opened through perl, but we
+want to get back a fh, like it was opened by Perl.
+(TBT)
+
+=begin original
+
+How PerlIO_apply_layera fits in, where its docs, was it made public?
+
+=end original
+
+How PerlIO_apply_layera fits in, where its docs, was it made public?
+(TBT)
+
+=begin original
+
+Currently the example could be something like this:
+
+=end original
+
+Currently the example could be something like this:
+(TBT)
+
+  PerlIO *foo_to_PerlIO(pTHX_ char *mode, ...)
+  {
+      char *mode; /* "w", "r", etc */
+      const char *layers = ":APR"; /* the layer name */
+      PerlIO *f = PerlIO_allocate(aTHX);
+      if (!f) {
+          return NULL;
+      }
+
+      PerlIO_apply_layers(aTHX_ f, mode, layers);
+
+      if (f) {
+          PerlIOAPR *st = PerlIOSelf(f, PerlIOAPR);
+          /* fill in the st struct, as in _open() */
+          st->file = file;
+          PerlIOBase(f)->flags |= PERLIO_F_OPEN;
+
+          return f;
+      }
+      return NULL;
+  }
+
+=item *
+
+=begin original
+
+fix/add the documentation in places marked as XXX.
+
+=end original
+
+fix/add the documentation in places marked as XXX.
+(TBT)
+
+=item *
+
+=begin original
+
+The handling of errors by the layer is not specified. e.g. when $!
+should be set explicitly, when the error handling should be just
+delegated to the top layer.
+
+=end original
+
+The handling of errors by the layer is not specified. e.g. when $!
+should be set explicitly, when the error handling should be just
+delegated to the top layer.
+(TBT)
+
+=begin original
+
+Probably give some hints on using SETERRNO() or pointers to where they
+can be found.
+
+=end original
+
+Probably give some hints on using SETERRNO() or pointers to where they
+can be found.
+(TBT)
+
+=item *
+
+=begin original
+
+I think it would help to give some concrete examples to make it easier
+to understand the API. Of course I agree that the API has to be
+concise, but since there is no second document that is more of a
+guide, I think that it'd make it easier to start with the doc which is
+an API, but has examples in it in places where things are unclear, to
+a person who is not a PerlIO guru (yet).
+
+=end original
+
+I think it would help to give some concrete examples to make it easier
+to understand the API. Of course I agree that the API has to be
+concise, but since there is no second document that is more of a
+guide, I think that it'd make it easier to start with the doc which is
+an API, but has examples in it in places where things are unclear, to
+a person who is not a PerlIO guru (yet).
+(TBT)
+
+=back
+
+=begin meta
+
+Translate: SHIRAKATA Kentaro <argrath@ub32.org>
+Status: in progress
+
+=end meta
+
+=cut
+
