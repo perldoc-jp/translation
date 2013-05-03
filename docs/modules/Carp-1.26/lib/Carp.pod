@@ -1,0 +1,555 @@
+=encoding utf8
+
+=head1 NAME
+
+=begin original
+
+Carp - alternative warn and die for modules
+
+=end original
+
+Carp - モジュールのための warn と die の代替
+
+
+=head1 SYNOPSIS
+
+    use Carp;
+
+    # warn user (from perspective of caller)
+    carp "string trimmed to 80 chars";
+
+    # die of errors (from perspective of caller)
+    croak "We're outta here!";
+
+    # die of errors with stack backtrace
+    confess "not implemented";
+
+    # cluck not exported by default
+    use Carp qw(cluck);
+    cluck "This is how we got here!";
+
+=head1 DESCRIPTION
+
+=begin original
+
+The Carp routines are useful in your own modules because
+they act like die() or warn(), but with a message which is more
+likely to be useful to a user of your module.  In the case of
+cluck, confess, and longmess that context is a summary of every
+call in the call-stack.  For a shorter message you can use C<carp>
+or C<croak> which report the error as being from where your module
+was called.  There is no guarantee that that is where the error
+was, but it is a good educated guess.
+
+=end original
+
+Carpルーチンはモジュールで使う際に便利です。die()やwarn()と同じように
+動きますが、モジュールのユーザーにより便利になります。cluck、confeess、longmess
+では、コールスタックの全ての呼び出しのサマリになります。
+短いメッセージがよければ、C<carp>かC<croak>を使えます。
+モジュールが呼ばれた場所からエラーをレポートします。エラーがどこで
+起きたかは保証しませんが、良い根拠のある推測になります。
+
+=begin original
+
+You can also alter the way the output and logic of C<Carp> works, by
+changing some global variables in the C<Carp> namespace. See the
+section on C<GLOBAL VARIABLES> below.
+
+=end original
+
+出力とC<Carp>の動作ロジックを変更することも出来ます。
+C<Carp>にあるグローバル変数を変更することで可能です。
+後述の、C<GLOBAL VARIABLES>のセクションを見てください。
+
+=begin original
+
+Here is a more complete description of how C<carp> and C<croak> work.
+What they do is search the call-stack for a function call stack where
+they have not been told that there shouldn't be an error.  If every
+call is marked safe, they give up and give a full stack backtrace
+instead.  In other words they presume that the first likely looking
+potential suspect is guilty.  Their rules for telling whether
+a call shouldn't generate errors work as follows:
+
+=end original
+
+以下は、C<carp>とC<croak>の動作の仕方の完全な説明です。
+C<carp>とC<croak>がしていることは、エラーであるべきでないと教えている場所の
+関数呼び出しのスタックのコールスタックの検索です。
+もし、すべての呼び出しが安全とされていれば、諦めて、全てのスタックのバックトレースを
+代わりに与えます。言い換えると、最初に見つかりそうな潜在的な容疑者を有罪と予想します。
+呼び出しがエラーを生成すべきどうかを教えるルールは以下のように動きます:
+
+=over 4
+
+=item 1.
+
+=begin original
+
+Any call from a package to itself is safe.
+
+=end original
+
+パッケージから、自分自信に対する、のどのような呼び出しも安全です。
+
+=item 2.
+
+=begin original
+
+Packages claim that there won't be errors on calls to or from
+packages explicitly marked as safe by inclusion in C<@CARP_NOT>, or
+(if that array is empty) C<@ISA>.  The ability to override what
+@ISA says is new in 5.8.
+
+=end original
+
+パッケージがC<@CARP_NOT>か、(もし、配列が空の場合)@ISAに含まれていることで、
+安全であると明示的にマークされたパッケージへの、または、パッケージからの呼び出しは
+エラーとみなさないとする。
+
+=item 3.
+
+=begin original
+
+The trust in item 2 is transitive.  If A trusts B, and B
+trusts C, then A trusts C.  So if you do not override C<@ISA>
+with C<@CARP_NOT>, then this trust relationship is identical to,
+"inherits from".
+
+=end original
+
+2により、AがBを信任するならば、BはCを信任し、AもCを信任する。
+C<@ISA>をC<@CARP_NOT>でオーバーライドしなければ、この信任の関係は、
+"継承元"と同一になります。
+
+=item 4.
+
+=begin original
+
+Any call from an internal Perl module is safe.  (Nothing keeps
+user modules from marking themselves as internal to Perl, but
+this practice is discouraged.)
+
+=end original
+
+内部のPerlモジュールからのどのような呼び出しも安全です。
+(Perlの内部のものとしてユーザーのモジュールをマークすると、
+ユーザーのモジュールを保持しませんが、この方法は推奨されません)
+
+=item 5.
+
+=begin original
+
+Any call to Perl's warning system (eg Carp itself) is safe.
+(This rule is what keeps it from reporting the error at the
+point where you call C<carp> or C<croak>.)
+
+=end original
+
+Perlの警告システム(例えば、Carp自身)のどのような呼び出しも安全です。
+(このルールは、C<carp>やC<croak>を呼んだ時に、エラーのレポートから保持するものです)
+
+=item 6.
+
+=begin original
+
+C<$Carp::CarpLevel> can be set to skip a fixed number of additional
+call levels.  Using this is not recommended because it is very
+difficult to get it to behave correctly.
+
+=end original
+
+C<$Carp::CarpLevel> 追加の呼び出しレベルの固定数をスキップするのに
+使います。誠意角に動作させるのがとても難しいので、推奨されません。
+
+=back
+
+=begin original
+
+=head2 Forcing a Stack Trace
+
+=end original
+
+=head2 スタックトレースを強制する
+
+=begin original
+
+As a debugging aid, you can force Carp to treat a croak as a confess
+and a carp as a cluck across I<all> modules. In other words, force a
+detailed stack trace to be given.  This can be very helpful when trying
+to understand why, or from where, a warning or error is being generated.
+
+=end original
+
+デバッグの助けとして、Carpにたいして、croak を confess として、
+carp を cluckとして、I<すべての>モジュールにわたって、扱うことが出来ます。
+言い換えると、詳細なスタックトレースを強制します。警告やエラーが生まれたのが
+どこからなのか、なぜなのかを理解しようとする際には、とても助かります。
+
+=begin original
+
+This feature is enabled by 'importing' the non-existent symbol
+'verbose'. You would typically enable it by saying
+
+=end original
+
+この機能は、存在しないシンボルの'verbose'を'インポート'のすることで、
+有効になります。典型的に、次のようにします
+
+    perl -MCarp=verbose script.pl
+
+=begin original
+
+or by including the string C<-MCarp=verbose> in the PERL5OPT
+environment variable.
+
+=end original
+
+または、文字列 C<-MCarp=verbose>をPERL5OPT環境変数に含めておいても
+同じです。
+
+=begin original
+
+Alternately, you can set the global variable C<$Carp::Verbose> to true.
+See the C<GLOBAL VARIABLES> section below.
+
+=end original
+
+代わりに、グローバル変数 C<$Carp::Verbose>を真にすることもできます。
+後述のC<グローバル変数>セクションを見てください。
+
+=begin original
+
+=head1 GLOBAL VARIABLES
+
+=end original
+
+=head1 グローバル変数
+
+=head2 $Carp::MaxEvalLen
+
+=begin original
+
+This variable determines how many characters of a string-eval are to
+be shown in the output. Use a value of C<0> to show all text.
+
+=end original
+
+この変数は文字列evalを出力する文字数を決めます。
+C<0>の場合、全てのテキストを表示します。
+
+=begin original
+
+Defaults to C<0>.
+
+=end original
+
+デフォルトはC<0>です。
+
+=head2 $Carp::MaxArgLen
+
+=begin original
+
+This variable determines how many characters of each argument to a
+function to print. Use a value of C<0> to show the full length of the
+argument.
+
+=end original
+
+この変数は出力される関数の引数の文字数を決めます。
+C<0>にすると、引数の全てを表示します。
+
+=begin original
+
+Defaults to C<64>.
+
+=end original
+
+デフォルトはC<64>です。
+
+=head2 $Carp::MaxArgNums
+
+=begin original
+
+This variable determines how many arguments to each function to show.
+Use a value of C<0> to show all arguments to a function call.
+
+=end original
+
+この変数は表示する引数の数を決めます。
+C<0>にすると、全ての引数を表示します。
+
+=begin original
+
+Defaults to C<8>.
+
+=end original
+
+デフォルトはC<0>です。
+
+=head2 $Carp::Verbose
+
+=begin original
+
+This variable makes C<carp> and C<croak> generate stack backtraces
+just like C<cluck> and C<confess>.  This is how C<use Carp 'verbose'>
+is implemented internally.
+
+=end original
+
+この変数はC<carp>とC<croack>が、C<cluck>とC<confess>のように、
+スタックバックトレースを出すようにします。 C<use Carp 'verbose'>が
+内部で実装されている方法です。
+
+=begin original
+
+Defaults to C<0>.
+
+=end original
+
+デフォルトはC<0>です。
+
+=head2 @CARP_NOT
+
+=begin original
+
+This variable, I<in your package>, says which packages are I<not> to be
+considered as the location of an error. The C<carp()> and C<cluck()>
+functions will skip over callers when reporting where an error occurred.
+
+=end original
+
+この変数は、I<あなたのパッケージで>、どのパッケージがエラーの場所として
+考えI<ない>かを述べています。C<carp()>とC<cluck()>関数はエラーが起きた場所を
+報告する際に呼び出しをスキップします。
+
+=begin original
+
+NB: This variable must be in the package's symbol table, thus:
+
+=end original
+
+要注意: この変数はパッケージのシンボルテーブルになければいけません。このように:
+
+    # These work
+    our @CARP_NOT; # file scope
+    use vars qw(@CARP_NOT); # package scope
+    @My::Package::CARP_NOT = ... ; # explicit package variable
+
+    # These don't work
+    sub xyz { ... @CARP_NOT = ... } # w/o declarations above
+    my @CARP_NOT; # even at top-level
+
+=begin original
+
+Example of use:
+
+=end original
+
+使い方:
+
+    package My::Carping::Package;
+    use Carp;
+    our @CARP_NOT;
+    sub bar     { .... or _error('Wrong input') }
+    sub _error  {
+        # temporary control of where'ness, __PACKAGE__ is implicit
+        local @CARP_NOT = qw(My::Friendly::Caller);
+        carp(@_)
+    }
+
+=begin original
+
+This would make C<Carp> report the error as coming from a caller not
+in C<My::Carping::Package>, nor from C<My::Friendly::Caller>.
+
+=end original
+
+これにより、C<Carp>はC<My::Carping::Package>でもC<My::Friendly::Caller>でもない
+呼び出し元から来るものとしてエラーを報告します。
+
+=begin original
+
+Also read the L</DESCRIPTION> section above, about how C<Carp> decides
+where the error is reported from.
+
+=end original
+
+
+上述のL<DESCRIPTION>セクションも呼んでください。どのようにC<Carp>が
+エラーがどこから来たのかを決めているかについて書いています。
+
+=begin original
+
+Use C<@CARP_NOT>, instead of C<$Carp::CarpLevel>.
+
+=end original
+
+C<@CARP_NOT>をC<$Carp::CarpLevel>の代わりに使ってください。
+
+=begin original
+
+Overrides C<Carp>'s use of C<@ISA>.
+
+=end original
+
+<Carp>がC<@ISA>を使っているものを上書きします。
+
+=head2 %Carp::Internal
+
+=begin original
+
+This says what packages are internal to Perl.  C<Carp> will never
+report an error as being from a line in a package that is internal to
+Perl.  For example:
+
+=end original
+
+Perlに、パッケージがPerlの内部のものだと伝えます。C<Carp>は
+Perl内部のものであるパッケージの行から来るエラーを決して報告しません。
+例えば:
+
+    $Carp::Internal{ (__PACKAGE__) }++;
+    # time passes...
+    sub foo { ... or confess("whatever") };
+
+=begin original
+
+would give a full stack backtrace starting from the first caller
+outside of __PACKAGE__.  (Unless that package was also internal to
+Perl.)
+
+=end original
+
+__PACAKGE__の外の最初の呼び出しから、完全なスタックbacktraceが
+はじまります。(そのパッケージも同様にPerlの内部でなければ)
+
+=head2 %Carp::CarpInternal
+
+=begin original
+
+This says which packages are internal to Perl's warning system.  For
+generating a full stack backtrace this is the same as being internal
+to Perl, the stack backtrace will not start inside packages that are
+listed in C<%Carp::CarpInternal>.  But it is slightly different for
+the summary message generated by C<carp> or C<croak>.  There errors
+will not be reported on any lines that are calling packages in
+C<%Carp::CarpInternal>.
+
+=end original
+
+この変数はPerlの警告システムにどのパッケージが内部のものであるかを教えます。
+完全なスタックバックトレースを出すために、Perlに内部のものと同じであり、
+C<%Carp::CarpInternal>にリストされているパッケージの内側で、
+スタックバックトレースは開始されません。ですが、C<carp>とC<croak>の
+サマリメッセージに弱化の違いがあります。C<%Carp::CarpInternal>で
+呼んでいるパッケージのどの行もエラーは報告されません。
+
+=begin original
+
+For example C<Carp> itself is listed in C<%Carp::CarpInternal>.
+Therefore the full stack backtrace from C<confess> will not start
+inside of C<Carp>, and the short message from calling C<croak> is
+not placed on the line where C<croak> was called.
+
+=end original
+
+例えば、C<Carp>自身は、C<%Carp::CarpInternal>にリストされています。
+そのため、C<confess>の完全なスタックバックトレースには、C<Carp>の内側で
+始まることはありません。C<croak>の呼び出しによる短いメッセージは
+C<croak>が呼ばれた行にはなりません。
+
+=head2 $Carp::CarpLevel
+
+=begin original
+
+This variable determines how many additional call frames are to be
+skipped that would not otherwise be when reporting where an error
+occurred on a call to one of C<Carp>'s functions.  It is fairly easy
+to count these call frames on calls that generate a full stack
+backtrace.  However it is much harder to do this accounting for calls
+that generate a short message.  Usually people skip too many call
+frames.  If they are lucky they skip enough that C<Carp> goes all of
+the way through the call stack, realizes that something is wrong, and
+then generates a full stack backtrace.  If they are unlucky then the
+error is reported from somewhere misleading very high in the call
+stack.
+
+=end original
+
+この変数は、C<Carp>の関数を呼び出すために、エラーが起きた場所を
+報告する際に、通常スキップされない、フレームの呼び出しを何回
+スキップするかを決めます。完全なバックトレースを生成する呼び出しで
+これらのコールフレームを数えるのは、かなり簡単です。
+ですが、短いメッセージの呼び出しを計算するのは、大変です。
+通常、多すぎるコールフレームはスキップしたいものです。
+If they are lucky they skip enough that C<Carp> goes all of
+the way through the call stack, realizes that something is wrong, and
+then generates a full stack backtrace.  If they are unlucky then the
+error is reported from somewhere misleading very high in the call
+stack.
+
+=begin original
+
+Therefore it is best to avoid C<$Carp::CarpLevel>.  Instead use
+C<@CARP_NOT>, C<%Carp::Internal> and C<%Carp::CarpInternal>.
+
+=end original
+
+C<$Carp::CarpLevel>は避けるのが一番良いです。代わりに
+C<@CARP_NOT>、C<%Carp::Internal>、C<%Carp::CarpInternal>を使ってください。
+
+=begin original
+
+Defaults to C<0>.
+
+=end original
+
+デフォルトはC<0>です。
+
+=head1 BUGS
+
+=begin original
+
+The Carp routines don't handle exception objects currently.
+If called with a first argument that is a reference, they simply
+call die() or warn(), as appropriate.
+
+=end original
+
+Carpルーチンは例外オブジェクトを現在のところ扱いません。
+最初の引数がリファレンスでも、Carpのルーチンはそれに見合った、die() か warn() を
+単純に呼び出します。
+
+=head1 SEE ALSO
+
+L<Carp::Always>,
+L<Carp::Clan>
+
+=head1 AUTHOR
+
+=begin original
+
+The Carp module first appeared in Larry Wall's perl 5.000 distribution.
+Since then it has been modified by several of the perl 5 porters.
+Andrew Main (Zefram) <zefram@fysh.org> divested Carp into an independent
+distribution.
+
+=end original
+
+Carpモジュールは最初に、Larry Wall の perl 5.000 ディストリビューションに登場しました。
+それから、perl 5 ポーターズの数人の手で変更されています。
+Andrew Main (Zefram) <zefram@fysh.org>がCarpを独立したディストリビューションに
+しました。
+
+=head1 COPYRIGHT
+
+Copyright (C) 1994-2012 Larry Wall
+
+Copyright (C) 2011, 2012 Andrew Main (Zefram) <zefram@fysh.org>
+
+=head1 LICENSE
+
+This module is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
