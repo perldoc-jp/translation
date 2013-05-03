@@ -1,6 +1,6 @@
 # この翻訳について
 
-この文書は、["https://github.com/Perl-Toolchain-Gang/toolchain-site/blob/master/lancaster-consensus.md"](https://github.com/Perl-Toolchain-Gang/toolchain-site/blob/master/lancaster-consensus.md)を翻訳したものです。
+この文書は、[https://github.com/Perl-Toolchain-Gang/toolchain-site/blob/master/lancaster-consensus.md](https://github.com/Perl-Toolchain-Gang/toolchain-site/blob/master/lancaster-consensus.md)を翻訳したものです。
 
 # ランカスター・コンセンサス
 
@@ -58,7 +58,7 @@ CPANスモーカーやクライアントは、「設定してはならない」�
 
 ### Build.PLの仕様の修正
 
-David GoldenとLeon Timmermansは["Build.PL"](https://github.com/Perl-Toolchain-Gang/cpan-api-buildpl)の仕様策定に取り込んできました。この仕様は、Build.PLを使ったPerlのビルドツールがどのように振る舞わなければならないかを示すもので、必然的にModule::Buildに準拠したものになりますが、かならずしもModule::Buildの挙動に完全に従わなければならないわけでもありません。
+David GoldenとLeon Timmermansは[Build.PL](https://github.com/Perl-Toolchain-Gang/cpan-api-buildpl)の仕様策定に取り込んできました。この仕様は、Build.PLを使ったPerlのビルドツールがどのように振る舞わなければならないかを示すもので、必然的にModule::Buildに準拠したものになりますが、かならずしもModule::Buildの挙動に完全に従わなければならないわけでもありません。
 
 ランカスターでは、`.modulebuildrc`の用法と意味は仕様から外すべきであるということで合意しました。
 
@@ -86,7 +86,7 @@ Hackathon参加者の中にはモジュールをインストールした後で�
 
 ### 「provides」フィールド
 
-["CPAN::Meta::Spec"](http://p3rl.org/CPAN::Meta::Spec)の「provides」フィールドは「file」キーを必須としていますが、動的に生成されるパッケージの場合、その意味が明確になっていませんでした。ランカスターでは、「file」キーはそのパッケージが由来するディストリビューションのディレクトリ内にある実際のファイルを参照しなければならない(そのファイルが.pmファイルであるか.PLファイルであるか、あるいはほかの動的に生成しているファイルであるかは問わない)、ということで合意しました。
+[CPAN::Meta::Spec](http://p3rl.org/CPAN::Meta::Spec)の「provides」フィールドは「file」キーを必須としていますが、動的に生成されるパッケージの場合、その意味が明確になっていませんでした。ランカスターでは、「file」キーはそのパッケージが由来するディストリビューションのディレクトリ内にある実際のファイルを参照しなければならない(そのファイルが.pmファイルであるか.PLファイルであるか、あるいはほかの動的に生成しているファイルであるかは問わない)、ということで合意しました。
 
 ### 「conflicts」の改善
 

@@ -1,12 +1,12 @@
 # この翻訳について
 
-この文書は、["https://github.com/Perl-Toolchain-Gang/toolchain-site/blob/master/oslo-consensus.md"](https://github.com/Perl-Toolchain-Gang/toolchain-site/blob/master/oslo-consensus.md)を翻訳したものです。
+この文書は、[https://github.com/Perl-Toolchain-Gang/toolchain-site/blob/master/oslo-consensus.md](https://github.com/Perl-Toolchain-Gang/toolchain-site/blob/master/oslo-consensus.md)を翻訳したものです。
 
 # オスロ・コンセンサス
 
 オスロ・コンセンサスというのは2008年のOslo QA hackathonに参加したツールチェーンおよび品質保証のメンテナ間で行われた合意にAdam Kennedyが命名したものです。
 
-原文はuse.perl.orgにて公開されました: ["The Oslo Consensus"](http://use.perl.org/use.perl.org/_Alias/journal/36128.html)
+原文はuse.perl.orgにて公開されました: [The Oslo Consensus](http://use.perl.org/use.perl.org/_Alias/journal/36128.html)
 
 ## コンテキストと環境変数
 
