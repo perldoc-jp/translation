@@ -1,0 +1,515 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+perlnumber - semantics of numbers and numeric operations in Perl
+
+=end original
+
+perlnumber - Perl での数値と数値操作の意味論
+
+=head1 SYNOPSIS
+
+=begin original
+
+    $n = 1234;		    # decimal integer
+    $n = 0b1110011;	    # binary integer
+    $n = 01234;		    # octal integer
+    $n = 0x1234;	    # hexadecimal integer
+    $n = 12.34e-56;	    # exponential notation
+    $n = "-12.34e56";	    # number specified as a string
+    $n = "1234";	    # number specified as a string
+
+=end original
+
+    $n = 1234;		    # 10 進数
+    $n = 0b1110011;	    # 2 進数
+    $n = 01234;		    # 8 進数
+    $n = 0x1234;	    # 16 進数
+    $n = 12.34e-56;	    # 指数表現
+    $n = "-12.34e56";	    # 文字として指定された数値
+    $n = "1234";	    # 文字として指定された数値
+
+=head1 DESCRIPTION
+
+=begin original
+
+This document describes how Perl internally handles numeric values.
+
+=end original
+
+この文書は、Perl が内部で数値をどのように扱うかを記述します。
+
+=begin original
+
+Perl's operator overloading facility is completely ignored here.  Operator
+overloading allows user-defined behaviors for numbers, such as operations
+over arbitrarily large integers, floating points numbers with arbitrary
+precision, operations over "exotic" numbers such as modular arithmetic or
+p-adic arithmetic, and so on.  See L<overload> for details.
+
+=end original
+
+Perl の演算子オーバーロード機能はここでは完全に無視されます。
+演算子オーバーロードは、任意の大きさの整数、任意の精度の浮動小数点数、
+合同算術や p 進数算術などの「特殊な」数値の演算などの数値に関するユーザー定義の
+振る舞いを指定できます。
+詳細については L<overload> を参照してください。
+
+=head1 Storing numbers
+
+(数値の保管)
+
+=begin original
+
+Perl can internally represent numbers in 3 different ways: as native
+integers, as native floating point numbers, and as decimal strings.
+Decimal strings may have an exponential notation part, as in C<"12.34e-56">.
+I<Native> here means "a format supported by the C compiler which was used
+to build perl".
+
+=end original
+
+Perl は内部的に数値を 3 つの異なった方法で表現できます: ネイティブな整数、
+ネイティブな浮動小数点数、10 進文字列です。
+10 進文字列は C<"12.34e-56"> のように指数部がある場合もあります。
+ここでの I<ネイティブな> というのは、「perl をビルドする際に使われた C
+コンパイラが対応している形式」を意味します。
+
+=begin original
+
+The term "native" does not mean quite as much when we talk about native
+integers, as it does when native floating point numbers are involved.
+The only implication of the term "native" on integers is that the limits for
+the maximal and the minimal supported true integral quantities are close to
+powers of 2.  However, "native" floats have a most fundamental
+restriction: they may represent only those numbers which have a relatively
+"short" representation when converted to a binary fraction.  For example,
+0.9 cannot be represented by a native float, since the binary fraction
+for 0.9 is infinite:
+
+=end original
+
+「ネイティブの」という用語はネイティブな整数に関して話すときにはほとんど
+意味はなく、ネイティブな浮動小数点数に関わる際に意味があります。
+整数に対して「ネイティブな」という用語が暗示する唯一のものは、
+対応している真の整数量の最大値と最小値は 2 のべき乗に近いということです。
+しかし、「ネイティブな」浮動小数点数は最も基本的な制限を持ちます:
+2 進数分数に変換したときに相対的に「短い」表現を持つ値のみを表現できます。
+例えば、0.9 はネイティブな浮動小数点では表現できません; なぜなら 0.9 の
+2 進数の分数は無限となるからです:
+
+  binary0.1110011001100...
+
+=begin original
+
+with the sequence C<1100> repeating again and again.  In addition to this
+limitation,  the exponent of the binary number is also restricted when it
+is represented as a floating point number.  On typical hardware, floating
+point values can store numbers with up to 53 binary digits, and with binary
+exponents between -1024 and 1024.  In decimal representation this is close
+to 16 decimal digits and decimal exponents in the range of -304..304.
+The upshot of all this is that Perl cannot store a number like
+12345678901234567 as a floating point number on such architectures without
+loss of information.
+
+=end original
+
+C<1100> が繰り返されます。
+この制限にくわえて、2 進数の指数も、浮動小数点数として表現されると
+制限されます。
+典型的なハードウェアでは、浮動小数点数は 53 桁までの 2 進数と、
+-1024 から 1024 までの 2 進数指数を保管できます。
+10 進表現では、ほぼ 16 桁の 10 進数と -304 から 304 の範囲の指数となります。
+これら全ての結論は、このようなアーキテクチャでは、Perl は
+12345678901234567 といった数を情報の欠落なしに浮動小数点数として
+保管することはできないということです。
+
+=begin original
+
+Similarly, decimal strings can represent only those numbers which have a
+finite decimal expansion.  Being strings, and thus of arbitrary length, there
+is no practical limit for the exponent or number of decimal digits for these
+numbers.  (But realize that what we are discussing the rules for just the
+I<storage> of these numbers.  The fact that you can store such "large" numbers
+does not mean that the I<operations> over these numbers will use all
+of the significant digits.
+See L<"Numeric operators and numeric conversions"> for details.)
+
+=end original
+
+同様に、10 進文字列は有限 10 進記数法を持つ数値のみ表現できます。
+文字列であるため、従って任意の長さを持つため、これらの数値のための
+指数部や実数部には実用上の制限はありません。
+(しかし、議論しているのはこれらの数値の I<保管> に関するものであると
+いうことを理解してください。
+このような「大きい」数値を保管できるということは、これらの数値による
+I<操作> が全ての桁を使うということを意味しません。
+詳細については L<"Numeric operators and numeric conversions"> を
+参照してください。)
+
+=begin original
+
+In fact numbers stored in the native integer format may be stored either
+in the signed native form, or in the unsigned native form.  Thus the limits
+for Perl numbers stored as native integers would typically be -2**31..2**32-1,
+with appropriate modifications in the case of 64-bit integers.  Again, this
+does not mean that Perl can do operations only over integers in this range:
+it is possible to store many more integers in floating point format.
+
+=end original
+
+実際のところ、ネイティブな整数形式で保管された数値は、符号付きのネイティブな
+形式か、符号なしのネイティブな形式のどちらかで保管されます。
+従って、ネイティブな整数として保管される Perl の数値の限界は、典型的には
+-2**31..2**32-1 で、64 ビット整数の場合は適切に修正されたものになります。
+再び、これは Perl がこの幅でのみ整数を扱えるということを意味しません:
+浮動小数点形式によってもっと多くの整数を保管可能です。
+
+=begin original
+
+Summing up, Perl numeric values can store only those numbers which have
+a finite decimal expansion or a "short" binary expansion.
+
+=end original
+
+要約すると、Perl の数値は、有限 10 進数記法か、「短い」2 進数記法を持つ
+数値のみが格納できます。
+
+=head1 Numeric operators and numeric conversions
+
+(数値演算子と数値変換)
+
+=begin original
+
+As mentioned earlier, Perl can store a number in any one of three formats,
+but most operators typically understand only one of those formats.  When
+a numeric value is passed as an argument to such an operator, it will be
+converted to the format understood by the operator.
+
+=end original
+
+前述のように、Perl は 3 つの形式のどれでも数値を格納できますが、
+ほとんどの演算子は典型的にはこれらの形式の一つだけしか理解しません。
+数値がそのような演算子の引数として渡されるとき、演算子が理解できる形式へ
+変換されます。
+
+=begin original
+
+Six such conversions are possible:
+
+=end original
+
+6 種類のこのような変換が可能です:
+
+=begin original
+
+  native integer        --> native floating point	(*)
+  native integer        --> decimal string
+  native floating_point --> native integer		(*)
+  native floating_point --> decimal string		(*)
+  decimal string        --> native integer
+  decimal string        --> native floating point	(*)
+
+=end original
+
+  ネイティブな整数         --> ネイティブな浮動小数点数	(*)
+  ネイティブな整数         --> 10 進数文字列
+  ネイティブな浮動小数点数 --> ネイティブな整数		(*)
+  ネイティブな浮動小数点数 --> 10 進数文字列		(*)
+  10 進数文字列            --> ネイティブな整数
+  10 進数文字列            --> ネイティブな浮動小数点数	(*)
+
+=begin original
+
+These conversions are governed by the following general rules:
+
+=end original
+
+これらの変換は、以下の一般的な規則に従います:
+
+=over 4
+
+=item *
+
+=begin original
+
+If the source number can be represented in the target form, that
+representation is used.
+
+=end original
+
+変換元の数値が変換先の形式で表現できるなら、その表現が使われます。
+
+=item *
+
+=begin original
+
+If the source number is outside of the limits representable in the target form,
+a representation of the closest limit is used.  (I<Loss of information>)
+
+=end original
+
+変換元の数値が変換先の形式で表現できる限界を超えている場合、最も近い
+限界値が用いられます。
+(I<情報の欠落>)
+
+=item *
+
+=begin original
+
+If the source number is between two numbers representable in the target form,
+a representation of one of these numbers is used.  (I<Loss of information>)
+
+=end original
+
+変換元の数値が変換先の形式で表現できる二つの数値の間にある場合、
+二つの数値表現のどちらかが使われます。
+(I<情報の欠落>)
+
+=item *
+
+=begin original
+
+In C<< native floating point --> native integer >> conversions the magnitude
+of the result is less than or equal to the magnitude of the source.
+(I<"Rounding to zero".>)
+
+=end original
+
+C<<ネイティブな浮動小数点数 --> ネイティブな整数>> 変換で、結果の絶対値は
+変換元の絶対値以下となります。
+(I<「0 への丸め」。>)
+
+=item *
+
+=begin original
+
+If the C<< decimal string --> native integer >> conversion cannot be done
+without loss of information, the result is compatible with the conversion
+sequence C<< decimal_string --> native_floating_point --> native_integer >>.
+In particular, rounding is strongly biased to 0, though a number like
+C<"0.99999999999999999999"> has a chance of being rounded to 1.
+
+=end original
+
+もし C<<10 進数文字列 --> ネイティブな整数>> 変換が情報の欠落なしに
+行えない場合、結果は
+C<<10 進数文字列 --> ネイティブな浮動小数点数 --> ネイティブな整数>> という
+変換に準拠します。
+特に、丸めは 0 方向に強く偏っていますが、
+C<"0.99999999999999999999"> のような数が 1 に丸められる可能性はあります。
+
+=back
+
+=begin original
+
+B<RESTRICTION>: The conversions marked with C<(*)> above involve steps
+performed by the C compiler.  In particular, bugs/features of the compiler
+used may lead to breakage of some of the above rules.
+
+=end original
+
+B<制限>: 上記で C<(*)> マークが付いている変換は C コンパイラによって
+行われます。
+特に、使用しているコンパイラのバグ/仕様が上記のルールの一部を破ることに
+なるかもしれません。
+
+=head1 Flavors of Perl numeric operations
+
+(Perl の数値演算子の特色)
+
+=begin original
+
+Perl operations which take a numeric argument treat that argument in one
+of four different ways: they may force it to one of the integer/floating/
+string formats, or they may behave differently depending on the format of
+the operand.  Forcing a numeric value to a particular format does not
+change the number stored in the value.
+
+=end original
+
+数値の引数を取る Perl の操作は、引数を 4 つの異なる方法のどれかによって
+扱われます: 整数/浮動小数点数/文字列数のどれかに強制されるか、
+オペランドの形式に依存して異なる振る舞いをするかです。
+特定の形式への数値の強制は、保管されている値は変更しません。
+
+=begin original
+
+All the operators which need an argument in the integer format treat the
+argument as in modular arithmetic, e.g., C<mod 2**32> on a 32-bit
+architecture.  C<sprintf "%u", -1> therefore provides the same result as
+C<sprintf "%u", ~0>.
+
+=end original
+
+引数として整数形式を必要とする全ての演算子は引数を合同算術として扱います;
+つまり、32 ビットアーキテクチャでは C<mod 2**32> です。
+従って、C<sprintf "%u", -1> は C<sprintf "%u", ~0> と同じ結果となります。
+
+=over 4
+
+=item Arithmetic operators
+
+(算術演算子)
+
+=begin original
+
+The binary operators C<+> C<-> C<*> C</> C<%> C<==> C<!=> C<E<gt>> C<E<lt>>
+C<E<gt>=> C<E<lt>=> and the unary operators C<-> C<abs> and C<--> will
+attempt to convert arguments to integers.  If both conversions are possible
+without loss of precision, and the operation can be performed without
+loss of precision then the integer result is used.  Otherwise arguments are
+converted to floating point format and the floating point result is used.
+The caching of conversions (as described above) means that the integer
+conversion does not throw away fractional parts on floating point numbers.
+
+=end original
+
+2 項演算子 C<+> C<-> C<*> C</> C<%> C<==> C<!=> C<E<gt>> C<E<lt>>
+C<E<gt>=> C<E<lt>=> と、単項演算子 C<-> C<abs> C<--> は引数を整数に
+変換しようとします。
+もし両方の変換は精度を失うことなく可能で、演算が精度を失うことなく
+実行できるなら、整数の結果が使われます。
+さもなければ、引数は浮動小数点数形式に変換され、浮動小数点数の結果が
+使われます。
+(上述したような)変換のキャッシュは、整数変換が浮動小数点数の小数部を
+捨てないことを意味します。
+
+=item ++
+
+=begin original
+
+C<++> behaves as the other operators above, except that if it is a string
+matching the format C</^[a-zA-Z]*[0-9]*\z/> the string increment described
+in L<perlop> is used.
+
+=end original
+
+C<++> は上述のその他の演算子と同様に振る舞いますが、もし文字列が
+C</^[a-zA-Z]*[0-9]*\z/> にマッチングする形式なら、L<perlop> に記述している
+文字列インクリメントが使われます。
+
+=item Arithmetic operators during C<use integer>
+
+(C<use integer> 中の算術演算子)
+
+=begin original
+
+In scopes where C<use integer;> is in force, nearly all the operators listed
+above will force their argument(s) into integer format, and return an integer
+result.  The exceptions, C<abs>, C<++> and C<-->, do not change their
+behavior with C<use integer;>
+
+=end original
+
+C<use integer;> が有効なスコープ中では、上述のほとんど全ての演算子は
+引数を整数形式に強制し、整数の結果を返します。
+例外は C<abs>, C<++>, C<--> で、C<use integer;> でも振る舞いは変わりません。
+
+=item Other mathematical operators
+
+(その他の数学演算子)
+
+=begin original
+
+Operators such as C<**>, C<sin> and C<exp> force arguments to floating point
+format.
+
+=end original
+
+C<**>, C<sin>, C<exp> といった演算子は引数を浮動小数点数に強制します。
+
+=item Bitwise operators
+
+(ビット単位演算子)
+
+=begin original
+
+Arguments are forced into the integer format if not strings.
+
+=end original
+
+引数は、文字列でなければ整数に強制されます。
+
+=item Bitwise operators during C<use integer>
+
+(C<use integer> 中のビット単位演算子)
+
+=begin original
+
+forces arguments to integer format. Also shift operations internally use
+signed integers rather than the default unsigned.
+
+=end original
+
+引数を整数に強制します。
+また、シフト操作は、デフォルトの符号なし整数ではなく、符号付き整数を
+内部的に使います。
+
+=item Operators which expect an integer
+
+(整数を想定している演算子)
+
+=begin original
+
+force the argument into the integer format.  This is applicable
+to the third and fourth arguments of C<sysread>, for example.
+
+=end original
+
+引数を整数に強制します。
+これは例えば、C<sysread> の第 3 引数と第 4 引数に適用されます。
+
+=item Operators which expect a string
+
+(文字列を想定している演算子)
+
+=begin original
+
+force the argument into the string format.  For example, this is
+applicable to C<printf "%s", $value>.
+
+=end original
+
+引数を文字列に強制します。
+例えば、これは C<printf "%s", $value> に適用されます。
+
+=back
+
+=begin original
+
+Though forcing an argument into a particular form does not change the
+stored number, Perl remembers the result of such conversions.  In
+particular, though the first such conversion may be time-consuming,
+repeated operations will not need to redo the conversion.
+
+=end original
+
+引数の特定の形式への強制は保管されている数値は変更しませんが、Perl は変換の
+結果を覚えています。
+特に、最初の変換が時間がかかるものであったとしても、同じ操作を繰り返しても
+変換を再実行する必要はありません。
+
+=head1 AUTHOR
+
+Ilya Zakharevich C<ilya@math.ohio-state.edu>
+
+Editorial adjustments by Gurusamy Sarathy <gsar@ActiveState.com>
+
+Updates for 5.8.0 by Nicholas Clark <nick@ccl4.org>
+
+=head1 SEE ALSO
+
+L<overload>, L<perlop>
+
+=begin meta
+
+Translate: SHIRAKATA Kentaro <argrath@ub32.org> (5.10.0-)
+Status: completed
+
+=end meta
+
