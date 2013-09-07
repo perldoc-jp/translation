@@ -1,0 +1,2231 @@
+=encoding utf8
+
+=pod
+
+=head1 NAME
+
+CPAN::Meta::Spec - CPAN ディストリビューションのメタデータ仕様
+
+=head1 VERSION
+
+version 2.132140
+
+=head1 SYNOPSIS
+
+  my $distmeta = {
+    name => 'Module-Build',
+    abstract => 'Build and install Perl modules',
+    description =>  "Module::Build is a system for "
+      . "building, testing, and installing Perl modules. "
+      . "It is meant to ... blah blah blah ...",
+    version  => '0.36',
+    release_status => 'stable',
+    author   => [
+      'Ken Williams <kwilliams@cpan.org>',
+      'Module-Build List <module-build@perl.org>', # additional contact
+    ],
+    license  => [ 'perl_5' ],
+    prereqs => {
+      runtime => {
+        requires => {
+          'perl'   => '5.006',
+          'ExtUtils::Install' => '0',
+          'File::Basename' => '0',
+          'File::Compare'  => '0',
+          'IO::File'   => '0',
+        },
+        recommends => {
+          'Archive::Tar' => '1.00',
+          'ExtUtils::Install' => '0.3',
+          'ExtUtils::ParseXS' => '2.02',
+        },
+      },
+      build => {
+        requires => {
+          'Test::More' => '0',
+        },
+      }
+    },
+    resources => {
+      license => ['http://dev.perl.org/licenses/'],
+    },
+    optional_features => {
+      domination => {
+        description => 'Take over the world',
+        prereqs     => {
+          develop => { requires => { 'Genius::Evil'     => '1.234' } },
+          runtime => { requires => { 'Machine::Weather' => '2.0'   } },
+        },
+      },
+    },
+    dynamic_config => 1,
+    keywords => [ qw/ toolchain cpan dual-life / ],
+    'meta-spec' => {
+      version => '2',
+      url     => 'http://search.cpan.org/perldoc?CPAN::Meta::Spec',
+    },
+    generated_by => 'Module::Build version 0.36',
+  };
+
+=head1 DESCRIPTION
+
+=begin original
+
+This document describes version 2 of the CPAN distribution metadata
+specification, also known as the "CPAN Meta Spec".
+
+=end original
+
+このドキュメントは、CPANディストリビューションメタデータ仕様のバージョン2について
+書いています。"CPAN Meta Spec"とも知られています。
+
+=begin original
+
+Revisions of this specification for typo corrections and prose
+clarifications may be issued as CPAN::Meta::Spec 2.I<x>.  These
+revisions will never change semantics or add or remove specified
+behavior.
+
+=end original
+
+typoの修正や散文的な説明のための、この仕様のリビジョンは、CPAN::Meta::Spec 2.I<x>
+のようになります。これらのリビジョンは、セマンティクスの変更や追加、特定の振る舞いの削除
+を行いません。
+
+=begin original
+
+Distribution metadata describe important properties of Perl
+distributions. Distribution building tools like Module::Build,
+Module::Install, ExtUtils::MakeMaker or Dist::Zilla should create a
+metadata file in accordance with this specification and include it with
+the distribution for use by automated tools that index, examine, package
+or install Perl distributions.
+
+=end original
+
+ディストリビューションのメタデータはPerlのディストリビューションの重要な
+必要条件を記述しています。Module::Build、Module::Install、ExtUtils::MakeMakerやDist::Zillaのような
+ディストリビューションをビルドするツールは、仕様に則ったメタデータファイルを作るべきであり、
+ディストリビューション内に含めるべきです。インデックスや検査やパッケージ化、
+Perlディストリビューションのインストールといった自動化されたツールをによって使われます。
+
+=head1 用語
+
+=over 4
+
+=item distribution
+
+(ディストリビューション)
+
+=begin original
+
+This is the primary object described by the metadata. In the context of
+this document it usually refers to a collection of modules, scripts,
+and/or documents that are distributed together for other developers to
+use.  Examples of distributions are C<Class-Container>, C<libwww-perl>,
+or C<DBI>.
+
+=end original
+
+メタデータによって記述される主要なのものです。このドキュメントの中では、
+普通、モジュールやスクリプトおよび/または、他の開発者が使うために一緒に配布されるドキュメント
+の集合を言います。ディストリビューションの例としては、C<Class-Container>、 C<libwww-perl>や
+C<DBI>　です。
+
+=item module
+
+(モジュール)
+
+=begin original
+
+This refers to a reusable library of code contained in a single file.
+Modules usually contain one or more packages and are often referred
+to by the name of a primary package that can be mapped to the file
+name. For example, one might refer to C<File::Spec> instead of
+F<File/Spec.pm>
+
+=end original
+
+1つのファイルに含まれた再利用可能なライブラリのコードのことです。
+モジュールは、普通、１つ以上のパッケージを含み、ファイル名とマップできる
+メインのパッケージの名前で参照されます。例えば、C<File/Spec.pm>の
+代わりに、C<File::Spec>で参照する人もいます。
+
+=item package
+
+(パッケージ)
+
+=begin original
+
+This refers to a namespace declared with the Perl C<package> statement.
+In Perl, packages often have a version number property given by the
+C<$VERSION> variable in the namespace.
+
+=end original
+
+PerlのC<package>文で宣言された名前空間のことです。
+Perlでは、パッケージは、たいてい、名前空間内のC<$VERSION>変数で、バージョン番号のプロパティを
+持っています。
+
+=item consumer
+
+(コンシューマ)
+
+=begin original
+
+This refers to code that reads a metadata file, deserializes it into a
+data structure in memory, or interprets a data structure of metadata
+elements.
+
+=end original
+
+メタデータファイルを読むコードのことです。デシリアライズして、メモリ内で
+データ構造にするか、メタデータのデータ構造を解釈します。
+
+=item producer
+
+(プロデューサ)
+
+=begin original
+
+This refers to code that constructs a metadata data structure,
+serializes into a bytestream and/or writes it to disk.
+
+=end original
+
+メタデータ構造を作るコードのことです。バイトストリームに
+シリアライズするか、または、ディスクにそれを書きます。
+
+=item must, should, may, etc.
+
+(必須、要請、可能、など)
+
+=begin original
+
+These terms are interpreted as described in IETF RFC 2119.
+
+=end original
+
+これらの用語は、IETF RFC 2119 に書かれている用に解釈されます。
+
+=back
+
+=head1 データ型
+
+=begin original
+
+Fields in the L</STRUCTURE> section describe data elements, each of
+which has an associated data type as described herein.  There are four
+primitive types: Boolean, String, List and Map.  Other types are
+subtypes of primitives and define compound data structures or define
+constraints on the values of a data element.
+
+=end original
+
+L</STRUCTURES>セクションで書かれているデータ要素のフィールドは、
+そのそれぞれが、ここに書かれていあるようなデータ型に関連します。
+4つのプリミティブな型があります: ブール、文字列、リスト、マップ。他の型は
+プリミティブな型のサブタイプであり、合成したデータ構造を定義するか、
+データ要素の値で制約を定義します。
+
+=head2 Boolean
+
+=begin original
+
+A I<Boolean> is used to provide a true or false value.  It B<must> be
+represented as a defined value.
+
+=end original
+
+I<ブール値> は、真か偽の値を提供するのに使われます。 定義された値として
+表現されB<なければなりません>。
+
+=head2 String
+
+=begin original
+
+A I<String> is data element containing a non-zero length sequence of
+Unicode characters, such as an ordinary Perl scalar that is not a
+reference.
+
+=end original
+
+I<文字列>はゼロ文字幅でない連続するユニコードキャラクタのデータです。
+リファレンスでない、普通のPerlのスカラのようなデータです。
+
+=head2 List
+
+=begin original
+
+A I<List> is an ordered collection of zero or more data elements.
+Elements of a List may be of mixed types.
+
+=end original
+
+I<リスト>は、0以上のデータ要素の順番のある集合です。
+リストのエレメントは複数の型になってもよいです。
+
+=begin original
+
+Producers B<must> represent List elements using a data structure which
+unambiguously indicates that multiple values are possible, such as a
+reference to a Perl array (an "arrayref").
+
+=end original
+
+プロデューサは、Perlの配列へのリファレンス("arrayref")のように、複数の値が可能であることを
+はっきり示すデータ構想を使って、リストの要素を表現しB<なければいけません>。
+
+=begin original
+
+Consumers expecting a List B<must> consider a String as equivalent to a
+List of length 1.
+
+=end original
+
+リストを期待するコンシューマは文字列を長さ1のリストに等しいと考えB<なければいけません>。
+
+=head2 Map
+
+=begin original
+
+A I<Map> is an unordered collection of zero or more data elements
+("values"), indexed by associated String elements ("keys").  The Map's
+value elements may be of mixed types.
+
+=end original
+
+I<マップ>は0以上の順番のないデータ要素("値")の集合です。
+関連する文字列の要素("キー")によってインデックスされます。
+マップの値の要素は複数の型になってもよいです。
+
+=head2 License String
+
+=begin original
+
+A I<License String> is a subtype of String with a restricted set of
+values.  Valid values are described in detail in the description of
+the L</license> field.
+
+=end original
+
+A I<ライセンス文字列>は文字列のサブタイプで、値は制限されています。
+有効な値は、L</ライセンス>のフィールドの説明に詳しく書かれています。
+
+=head2 URL
+
+=begin original
+
+I<URL> is a subtype of String containing a Uniform Resource Locator or
+Identifier.  [ This type is called URL and not URI for historical reasons. ]
+
+=end original
+
+I<URL>は文字列のサブタイプで、ユニフォームリソースロケータかアイデンティファイアです。
+[このタイプはURLと呼ばれており、歴史的な理由でURIとは呼ばれません]
+
+=head2 Version
+
+(バージョン)
+
+=begin original
+
+A I<Version> is a subtype of String containing a value that describes
+the version number of packages or distributions.  Restrictions on format
+are described in detail in the L</Version Formats> section.
+
+=end original
+
+I<バージョン>は、文字列のサブタイプで、パッケージかディストリビューションの
+バージョン番号です。フォーマットに関する制限はL</バージョンフォーマット>の
+セクションにあります。
+
+=head2 Version Range
+
+(バージョンの範囲)
+
+=begin original
+
+The I<Version Range> type is a subtype of String.  It describes a range
+of Versions that may be present or installed to fulfill prerequisites.
+It is specified in detail in the L</Version Ranges> section.
+
+=end original
+
+I<バージョンの範囲>型は文字列のサブタイプです。必要条件を満たすために、
+存在するか、インストールされるバージョンの範囲を表します。
+L</バージョンの範囲>セクションで詳しく明記されています。
+
+=head1 構造
+
+=begin original
+
+The metadata structure is a data element of type Map.  This section
+describes valid keys within the Map.
+
+=end original
+
+メタデータの構造はマップ型のデータ要素です。このセクションでは
+マップの有効なキーについて説明します。
+
+=begin original
+
+Any keys not described in this specification document (whether top-level
+or within compound data structures described herein) are considered
+I<custom keys> and B<must> begin with an "x" or "X" and be followed by an
+underscore; i.e. they must match the pattern: C<< qr{\Ax_}i >>.  If a
+custom key refers to a compound data structure, subkeys within it do not
+need an "x_" or "X_" prefix.
+
+=end original
+
+この仕様書に書かれていないキー(トップレベルかここで説明される合成のデータ構造)は
+I<カスタムキー>と考えられ、"x"か"X"で始まり、アンダースコアで続けられB<なければいけません>;
+すなわち、C<< qr{\Ax_}i >> のパターンにマッチしB<なければいけません>。
+カスタムキーが合成のデータ構造を参照していれば、そのサブキーには"x_"か"X_"のプレフィックス
+は不要です。
+
+=begin original
+
+Consumers of metadata may ignore any or all custom keys.  All other keys
+not described herein are invalid and should be ignored by consumers.
+Producers must not generate or output invalid keys.
+
+=end original
+
+メタデータのコンシューマはいずれかの、または、すべてのカスタムキーを無視してもよいです。
+ここで説明されていないすべての他のキー不正であり、コンシューマによって無視されるべきです。
+プロデューサは不正なキーを生成したり、出力してはいけません。
+
+=begin original
+
+For each key, an example is provided followed by a description.  The
+description begins with the version of spec in which the key was added
+or in which the definition was modified, whether the key is I<required>
+or I<optional> and the data type of the corresponding data element.
+These items are in parentheses, brackets and braces, respectively.
+
+=end original
+
+それぞれのキーごとに、説明の前に例があります。
+説明はキーが加えれたバージョンか定義が変更されるたバージョン、
+キーがI<必須>かI<オプショナル>かどうか、一致するデータ要素のデータ型で始まっています。
+これらのアイテムは、それぞれ括弧、ブラケット、ブレス内にあります。
+
+=begin original
+
+If a data type is a Map or Map subtype, valid subkeys will be described
+as well.
+
+=end original
+
+データ型がマップかマップのサブタイプであれば、有効なサブキーが説明されます。
+
+=begin original
+
+Some fields are marked I<Deprecated>.  These are shown for historical
+context and must not be produced in or consumed from any metadata structure
+of version 2 or higher.
+
+=end original
+
+フィールドには、I<廃止された>ものもあります。これらは歴史的な文脈で示されており、
+バージョン2以上のメタデータ構造から、生成されても、読まれてもいけません。
+
+=head2 必須フィールド
+
+=head3 abstract
+
+=begin original
+
+Example:
+
+=end original
+
+例:
+
+  abstract => 'Build and install Perl modules'
+
+(Spec 1.2) [required] {String}
+
+=begin original
+
+This is a short description of the purpose of the distribution.
+
+=end original
+
+ディストリビューションの目的を簡単に説明するものです。
+
+=head3 author
+
+=begin original
+
+Example:
+
+=end original
+
+例:
+
+  author => [ 'Ken Williams <kwilliams@cpan.org>' ]
+
+(Spec 1.2) [required] {List of one or more Strings}
+
+=begin original
+
+This List indicates the person(s) to contact concerning the
+distribution. The preferred form of the contact string is:
+
+=end original
+
+このリストは、ディストリビューションに関係する人(たち)の連絡先を示します。
+連絡先の望ましい形式の文字列は:
+
+  contact-name <email-address>
+
+=begin original
+
+This field provides a general contact list independent of other
+structured fields provided within the L</resources> field, such as
+C<bugtracker>.  The addressee(s) can be contacted for any purpose
+including but not limited to (security) problems with the distribution,
+questions about the distribution or bugs in the distribution.
+
+=end original
+
+このフィールドは、一般的なコンタクトリストを提供します。
+他の構造のフィールド、L</resouces>フィールドや、C<bugtracker>のようなフィールドとは
+独立しています。ディストリビューションについての(セキュリティの)問題や、
+ディストリビューションについての質問、ディストリビューションのバグに限定されない、
+どのような目的のためにも、連絡可能なナアドレスです。
+
+=begin original
+
+A distribution's original author is usually the contact listed within
+this field.  Co-maintainers, successor maintainers or mailing lists
+devoted to the distribution may also be listed in addition to or instead
+of the original author.
+
+=end original
+
+ディストリビューションのオリジナルの作者が、普通はこのフィールドにのる連絡先です。
+共同メンテナや、後継メンテナ、またはそのディストリビューションの熱心なメーリングリスが、
+オリジナルの作者の代わりに、リストされてもよいです。
+
+=head3 dynamic_config
+
+=begin original
+
+Example:
+
+=end original
+
+例:
+
+  dynamic_config => 1
+
+(Spec 2) [required] {Boolean}
+
+=begin original
+
+A boolean flag indicating whether a F<Build.PL> or F<Makefile.PL> (or
+similar) must be executed to determine prerequisites.
+
+=end original
+
+真偽値のフラグで、F<Build.PL>かF<Makefile.PL>(また、その仲間)が
+必要条件を決定するために、実行されなければならないかどうかを示します。
+
+=begin original
+
+This field should be set to a true value if the distribution performs
+some dynamic configuration (asking questions, sensing the environment,
+etc.) as part of its configuration.  This field should be set to a false
+value to indicate that prerequisites included in metadata may be
+considered final and valid for static analysis.
+
+=end original
+
+このフィールドは、ディストリビューションが、設定の一部として
+何かしら動的な設定(質問を尋ねる、環境を調べるなど)をするのであれば、
+真の値にするべきです。このフィールドはメタデータに含まれる必要条件が
+静的な分析にとって、最終かつ妥当だと考えてもよいのであれば、
+偽にセットされるべきです。
+
+=begin original
+
+This field explicitly B<does not> indicate whether installation may be
+safely performed without using a Makefile or Build file, as there may be
+special files to install or custom installation targets (e.g. for
+dual-life modules that exist on CPAN as well as in the Perl core).  This
+field only defines whether prerequisites are complete as given in the
+metadata.
+
+=end original
+
+このフィールドは、インストールに特別なファイルかカスタムインストレーションターゲット
+があるかもしれないとして(例えば、Perlコアと同様にCPANにも存在する
+デュアル・ライフモジュールのために)、インストールがMakefileやBuldファイルを使わずに
+安全に実行されるかどうかを、明示的に示しB<ません>。
+このフィールドは必要条件がメタデータに与えられているもので完全かどうかのみを決定します。
+
+=head3 generated_by
+
+=begin original
+
+Example:
+
+=end original
+
+例:
+
+  generated_by => 'Module::Build version 0.36'
+
+(Spec 1.0) [required] {String}
+
+=begin original
+
+This field indicates the tool that was used to create this metadata.
+There are no defined semantics for this field, but it is traditional to
+use a string in the form "Generating::Package version 1.23" or the
+author's name, if the file was generated by hand.
+
+=end original
+
+このフィールドはこのメタデータを作るのに使われたツールを示します。
+このフィールド用のセマンティクスは定義されていません。ですが、伝統的に、
+"Generating::Package version 1.2.3" な形式の文字列として使うか、ファイルを
+手で作ったのなら作者の名前を使います。
+
+=head3 license
+
+Example:
+
+  license => [ 'perl_5' ]
+
+  license => [ 'apache_2', 'mozilla_1_0' ]
+
+(Spec 2) [required] {List of one or more License Strings}
+
+=begin original
+
+One or more licenses that apply to some or all of the files in the
+distribution.  If multiple licenses are listed, the distribution
+documentation should be consulted to clarify the interpretation of
+multiple licenses.
+
+=end original
+
+ディストリビューション内のいくつかかすべてのファイルに適用されている
+1つ以上のライセンスです。複数のライセンスがリストされているなら、ディストリビューションの
+ドキュメントは複数のライセンスの説明を明確にすべきです。
+
+=begin original
+
+The following list of license strings are valid:
+
+=end original
+
+下記のリストは有効なライセンス文字列のリストです:
+
+ string          description
+ -------------   -----------------------------------------------
+ agpl_3          GNU Affero General Public License, Version 3
+ apache_1_1      Apache Software License, Version 1.1
+ apache_2_0      Apache License, Version 2.0
+ artistic_1      Artistic License, (Version 1)
+ artistic_2      Artistic License, Version 2.0
+ bsd             BSD License (three-clause)
+ freebsd         FreeBSD License (two-clause)
+ gfdl_1_2        GNU Free Documentation License, Version 1.2
+ gfdl_1_3        GNU Free Documentation License, Version 1.3
+ gpl_1           GNU General Public License, Version 1
+ gpl_2           GNU General Public License, Version 2
+ gpl_3           GNU General Public License, Version 3
+ lgpl_2_1        GNU Lesser General Public License, Version 2.1
+ lgpl_3_0        GNU Lesser General Public License, Version 3.0
+ mit             MIT (aka X11) License
+ mozilla_1_0     Mozilla Public License, Version 1.0
+ mozilla_1_1     Mozilla Public License, Version 1.1
+ openssl         OpenSSL License
+ perl_5          The Perl 5 License (Artistic 1 & GPL 1 or later)
+ qpl_1_0         Q Public License, Version 1.0
+ ssleay          Original SSLeay License
+ sun             Sun Internet Standards Source License (SISSL)
+ zlib            zlib License
+
+=begin original
+
+The following license strings are also valid and indicate other
+licensing not described above:
+
+=end original
+
+以下のライセンス文字列も有効で、上記のリストにない他のライセンスを
+示します:
+
+ string          description
+ -------------   -----------------------------------------------
+ open_source     Other Open Source Initiative (OSI) approved license
+ restricted      Requires special permission from copyright holder
+ unrestricted    Not an OSI approved license, but not restricted
+ unknown         License not provided in metadata
+
+=begin original
+
+All other strings are invalid in the license field.
+
+=end original
+
+これら以外の文字列はライセンスのフィールドとして不正です。
+
+=head3 meta-spec
+
+=begin original
+
+Example:
+
+=end original
+
+例:
+
+  'meta-spec' => {
+    version => '2',
+    url     => 'http://search.cpan.org/perldoc?CPAN::Meta::Spec',
+  }
+
+(Spec 1.2) [required] {Map}
+
+=begin original
+
+This field indicates the version of the CPAN Meta Spec that should be
+used to interpret the metadata.  Consumers must check this key as soon
+as possible and abort further metadata processing if the meta-spec
+version is not supported by the consumer.
+
+=end original
+
+このフィールドはCPANメタデータ仕様のバージョンを示しています。このフィールドは
+メターデータを解釈するのに使われるべきです。コンシューマはこのキーを
+可能な限りはやくチェックしなければいけなませんし、コンシューマがその
+メタデータ仕様のバージョンをサポートしないなら、以降のメタデータの処理を
+中止しなければいけません。
+
+=begin original
+
+The following keys are valid, but only C<version> is required.
+
+=end original
+
+以下のキーは有効ですが、C<version>のみが必須です。
+
+=over
+
+=item version
+
+=begin original
+
+This subkey gives the integer I<Version> of the CPAN Meta Spec against
+which the document was generated.
+
+=end original
+
+このサブキーはドキュメントが生成された、CPANメタデータ仕様の
+整数のI<バージョン>です。
+
+=item url
+
+=begin original
+
+This is a I<URL> of the metadata specification document corresponding to
+the given version.  This is strictly for human-consumption and should
+not impact the interpretation of the document.
+
+=end original
+
+これは、与えられたバージョンに一致するメタデータ仕様のドキュメントのI<URL>です。
+これは完全に人間の消費のためのものであり、ドキュメントの解釈に影響を与えるべきではありません。
+
+=back
+
+=head3 name
+
+=begin original
+
+Example:
+
+=end original
+
+例:
+
+  name => 'Module-Build'
+
+(Spec 1.0) [required] {String}
+
+=begin original
+
+This field is the name of the distribution.  This is often created by
+taking the "main package" in the distribution and changing C<::> to
+C<->, but the name may be completely unrelated to the packages within
+the distribution.  C.f. L<http://search.cpan.org/dist/libwww-perl/>.
+
+=end original
+
+このフィールドはディストリビューションの名前です。これは、
+ディストリビューションの"メインのパッケージ" から取られて、C<::>をC<->に変換して、
+作られることが多いです。ですが、名前はディストリビューション内のパッケージ
+とまったく関係なくてもよいです。  C.f. L<http://search.cpan.org/dist/libwww-perl/>.
+
+=head3 release_status
+
+=begin original
+
+Example:
+
+=end original
+
+例:
+
+  release_status => 'stable'
+
+(Spec 2) [required] {String}
+
+=begin original
+
+This field provides the  release status of this distribution.  If the
+C<version> field contains an underscore character, then
+C<release_status> B<must not> be "stable."
+
+=end original
+
+このフィールドはディストリビューションのリリース状態を提供します。
+C<version>フィールドがアンダースコアを含んでいる場合、
+C<release_status> を"stable"にB<してはいけません>。
+
+=begin original
+
+The C<release_status> field B<must> have one of the following values:
+
+=end original
+
+C<release_status> フィールドは、以下の値のいずれかでB<なければいけません>:
+
+=over
+
+=item stable
+
+=begin original
+
+This indicates an ordinary, "final" release that should be indexed by PAUSE
+or other indexers.
+
+=end original
+
+これは、普通、PAUSEや他のインデックサによってインデックスされるべき
+"final"リリースを示します。
+
+=item testing
+
+=begin original
+
+This indicates a "beta" release that is substantially complete, but has an
+elevated risk of bugs and requires additional testing.  The distribution
+should not be installed over a stable release without an explicit request
+or other confirmation from a user.  This release status may also be used
+for "release candidate" versions of a distribution.
+
+=end original
+
+これは、大半は完成している"ベータ" リリースを示します。ですが、バグがあるリスクが高く、
+追加のテストが必要な状態です。ディストリビューションは明確な要求やユーザーからの
+確認なしに、stable リリースを超えてインストールすべきではありません。
+このリリースステータスはディストリビューションの"リリース候補"のバージョンにも
+使ってもよいです。
+
+=item unstable
+
+=begin original
+
+This indicates an "alpha" release that is under active development, but has
+been released for early feedback or testing and may be missing features or
+may have serious bugs.  The distribution should not be installed over a
+stable release without an explicit request or other confirmation from a
+user.
+
+=end original
+
+これは、活発に開発中の"アルファ"リリースを示します。ですが、
+早期のフィードバックやテストのためにリリースされており、
+足りない機能や深刻なバグがあってもよいです。ディストリビューションは
+明確な要求やユーザーからの確認なしに、stable リリースを超えて
+インストールすべきではありません。
+
+=back
+
+=begin original
+
+Consumers B<may> use this field to determine how to index the
+distribution for CPAN or other repositories in addition to or in
+replacement of heuristics based on version number or file name.
+
+=end original
+
+コンシューマは、CPANや他のリポジトリにどのようにインデックスするかを決定するのに、
+バージョン番号やファイル名に基づいた経験則に加えて、または、その代わりに、
+このフィールドを使ってもB<よいです>。
+
+=head3 version
+
+=begin original
+
+Example:
+
+=end original
+
+例:
+
+  version => '0.36'
+
+(Spec 1.0) [required] {Version}
+
+=begin original
+
+This field gives the version of the distribution to which the metadata
+structure refers.
+
+=end original
+
+このフィールドは、メタデータ構造が参照するディストリビューションのバージョン番号を
+与えます。
+
+=head2 オプションのフィールド
+
+=head3 description
+
+=begin original
+
+Example:
+
+=end original
+
+例:
+
+    description =>  "Module::Build is a system for "
+      . "building, testing, and installing Perl modules. "
+      . "It is meant to ... blah blah blah ...",
+
+(Spec 2) [optional] {String}
+
+=begin original
+
+A longer, more complete description of the purpose or intended use of
+the distribution than the one provided by the C<abstract> key.
+
+=end original
+
+C<abstract>キーで提供されるよりも、より長い、より完全な、ディストリビューションの
+目的や、意図する使い方の説明です。
+
+=head3 keywords
+
+=begin original
+
+Example:
+
+=end original
+
+例:
+
+  keywords => [ qw/ toolchain cpan dual-life / ]
+
+(Spec 1.1) [optional] {List of zero or more Strings}
+
+=begin original
+
+A List of keywords that describe this distribution.  Keywords
+B<must not> include whitespace.
+
+=end original
+
+ディストリビューションを説明するキーワードのリストです。キーワードは
+空白を含んではB<いけません>。
+
+=head3 no_index
+
+=begin original
+
+Example:
+
+=end original
+
+例:
+
+  no_index => {
+    file      => [ 'My/Module.pm' ],
+    directory => [ 'My/Private' ],
+    package   => [ 'My::Module::Secret' ],
+    namespace => [ 'My::Module::Sample' ],
+  }
+
+(Spec 1.2) [optional] {Map}
+
+=begin original
+
+This Map describes any files, directories, packages, and namespaces that
+are private to the packaging or implementation of the distribution and
+should be ignored by indexing or search tools.
+
+=end original
+
+このマップは、ディストリビューションのパッケージングや実装で、プライベートであり、
+検索ツールやインデックスによって無視されるべき、ファイル、ディレクトリ、パッケージ、
+名前空間を記述します。
+
+=begin original
+
+Valid subkeys are as follows:
+
+=end original
+
+正しいサブキーは以下のものです:
+
+=over
+
+=item file
+
+=begin original
+
+A I<List> of relative paths to files.  Paths B<must be> specified with
+unix conventions.
+
+=end original
+
+相対パスのファイルのI<リスト>です。パスは unix の書き方で指定
+B<されなければいけません>。
+
+=item directory
+
+=begin original
+
+A I<List> of relative paths to directories.  Paths B<must be> specified
+with unix conventions.
+
+=end original
+
+相対パスのディレクトリのI<リスト>です。パスは unix の書き方で指定
+B<されなければいけません>。
+
+=begin original
+
+[ Note: previous editions of the spec had C<dir> instead of C<directory> ]
+
+=end original
+
+[ 注意: 以前のバージョンでは、C<directory>の代わりにC<dir>でした ]
+
+
+=item package
+
+=begin original
+
+A I<List> of package names.
+
+=end original
+
+パッケージ名のI<リスト>。
+
+=item namespace
+
+=begin original
+
+A I<List> of package namespaces, where anything below the namespace
+must be ignored, but I<not> the namespace itself.
+
+=end original
+
+名前空間のI<リスト>で、その名前空間以降はどこでも無視されなければいけません。
+ですが、名前空間それ自身は無視されるべきではありません。
+
+=begin original
+
+In the example above for C<no_index>, C<My::Module::Sample::Foo> would
+be ignored, but C<My::Module::Sample> would not.
+
+=end original
+
+上の例にある C<no_index> の場合、C<My::Module::Sample::Foo>は
+無視されますが、C<My::Module::Sample>は無視されません。
+
+=back
+
+=head3 optional_features
+
+=begin original
+
+Example:
+
+=end original
+
+例:
+
+  optional_features => {
+    sqlite => {
+      description => 'Provides SQLite support',
+      prereqs => {
+        runtime => {
+          requires => {
+            'DBD::SQLite' => '1.25'
+          }
+        }
+      }
+    }
+  }
+
+(Spec 2) [optional] {Map}
+
+=begin original
+
+This Map describes optional features with incremental prerequisites.
+Each key of the C<optional_features> Map is a String used to identify
+the feature and each value is a Map with additional information about
+the feature.  Valid subkeys include:
+
+=end original
+
+このマップは、インクリメンタルな必要条件に関するオプションの機能です。
+C<optional_features>マップののそれそれのキーは機能と一致させるのに使われる
+文字列であり、それぞれの値は機能に関する追加の情報のマップです。
+正しいサブキーは:
+
+=over
+
+=item description
+
+=begin original
+
+This is a String describing the feature.  Every optional feature
+should provide a description
+
+=end original
+
+機能を記述する文字列です。すべてのオプションの機能は説明を
+提供すべきです。
+
+=item prereqs
+
+=begin original
+
+This entry is required and has the same structure as that of the
+C<L</prereqs>> key.  It provides a list of package requirements
+that must be satisfied for the feature to be supported or enabled.
+
+=end original
+
+このエントリーは必須で、C<L</prereqs>>キーと同じ構造です。
+サポートする、または、利用可能な機能に対して、満さなければならない
+パッケージの要求のリストです。
+
+=begin original
+
+There is one crucial restriction:  the prereqs of an optional feature
+B<must not> include C<configure> phase prereqs.
+
+=end original
+
+重要な制限が1つあります: オプションの機能の必要条件は
+C<configure>フェーズの必要条件を含んではいけません。
+
+=back
+
+=begin original
+
+Consumers B<must not> include optional features as prerequisites without
+explicit instruction from users (whether via interactive prompting,
+a function parameter or a configuration value, etc. ).
+
+=end original
+
+コンシューマは、ユーザーからの明確な指示なしに
+(インタラクティブなプロンプトか関数パラメータか、設定値など)、
+必要条件としてオプションの機能を含んではB<いけません>。
+
+=begin original
+
+If an optional feature is used by a consumer to add additional
+prerequisites, the consumer should merge the optional feature
+prerequisites into those given by the C<prereqs> key using the same
+semantics.  See L</Merging and Resolving Prerequisites> for details on
+merging prerequisites.
+
+=end original
+
+オプションの機能が、追加の必要条件を追加するためにコンシューマによって使われたら、
+コンシューマはオプションの機能の必要条件を、同じセマンティクスを使っている
+C<prereqa>キーで与えられている必要条件にマージすべきです。
+必要条件のマージについての詳細は、L</必要条件のマージと解決>を見てください。
+
+=begin original
+
+I<Suggestion for disuse:> Because there is currently no way for a
+distribution to specify a dependency on an optional feature of another
+dependency, the use of C<optional_feature> is discouraged.  Instead,
+create a separate, installable distribution that ensures the desired
+feature is available.  For example, if C<Foo::Bar> has a C<Baz> feature,
+release a separate C<Foo-Bar-Baz> distribution that satisfies
+requirements for the feature.
+
+=end original
+
+I<使わないことをおすすめ:>  現在のところ、ディストリビューションが
+他の依存のオプションの機能の依存を指定する方法がないので、
+C<optional_feature>の使用は推奨されません。その代わりに、
+望ましい機能が利用できる、別の、インストールできるディストリビューション
+を作ります。例えば、C<Foo::Bar>にC<Baz>機能があれば、
+その機能のための要求を満たす、別のC<Foo-Bar-Baz>ディストリビューションを
+リリースします。
+
+=head3 prereqs
+
+=begin original
+
+Example:
+
+=end original
+
+例:
+
+  prereqs => {
+    runtime => {
+      requires => {
+        'perl'          => '5.006',
+        'File::Spec'    => '0.86',
+        'JSON'          => '2.16',
+      },
+      recommends => {
+        'JSON::XS'      => '2.26',
+      },
+      suggests => {
+        'Archive::Tar'  => '0',
+      },
+    },
+    build => {
+      requires => {
+        'Alien::SDL'    => '1.00',
+      },
+    },
+    test => {
+      recommends => {
+        'Test::Deep'    => '0.10',
+      },
+    }
+  }
+
+(Spec 2) [optional] {Map}
+
+=begin original
+
+This is a Map that describes all the prerequisites of the distribution.
+The keys are phases of activity, such as C<configure>, C<build>, C<test>
+or C<runtime>.  Values are Maps in which the keys name the type of
+prerequisite relationship such as C<requires>, C<recommends>, or
+C<suggests> and the value provides a set of prerequisite relations.  The
+set of relations B<must> be specified as a Map of package names to
+version ranges.
+
+=end original
+
+このマップはディストリビューションのすべての必要条件を記述しています。
+キーはアクティビティのフェーズであり、C<configure>、C<build>、C<test>、
+C<runtime>のようになります。値は、マップで、キーの名前は必要条件の関係性のタイプです。
+C<requires>、C<recommends>、C<suggests>のようになり、その値は、必要条件の
+関係のセットを提供します。
+関係のセットはパッケージ名にバージョンの範囲のマップとして指定されB<なければいけません>。
+
+=begin original
+
+The full definition for this field is given in the L</Prereq Spec>
+section.
+
+=end original
+
+このフィールドの完全な定義はL</Prereq仕様>のセクションにあります。
+
+=head3 provides
+
+=begin original
+
+Example:
+
+=end original
+
+例:
+
+  provides => {
+    'Foo::Bar' => {
+      file    => 'lib/Foo/Bar.pm',
+      version => '0.27_02',
+    },
+    'Foo::Bar::Blah' => {
+      file    => 'lib/Foo/Bar/Blah.pm',
+    },
+    'Foo::Bar::Baz' => {
+      file    => 'lib/Foo/Bar/Baz.pm',
+      version => '0.3',
+    },
+  }
+
+(Spec 1.2) [optional] {Map}
+
+=begin original
+
+This describes all packages provided by this distribution.  This
+information is used by distribution and automation mechanisms like
+PAUSE, CPAN, and search.cpan.org to build indexes saying in which
+distribution various packages can be found.
+
+=end original
+
+これは、ディストリビューションによって提供されるすべてのパッケージを記述します。
+この情報は、ディストリビューションと、PAUSE、CPAN、search.cpan.org
+のような自動メカニズムによって使われ、パッケージ内で見つけられる様々なパッケージの
+インデックスを作ります。
+
+=begin original
+
+The keys of C<provides> are package names that can be found within
+the distribution.  If a package name key is provided, it must
+have a Map with the following valid subkeys:
+
+=end original
+
+C<provides>のキーは、ディストリビューション内で見つけられる
+パッケージ名です。パッケージ名のキーが提供されたら、
+以下のような正しいサブキーを持ったマップがなければいけません:
+
+=over
+
+=item file
+
+=begin original
+
+This field is required.  It must contain a Unix-style relative file path
+from the root of the distribution directory to a file that contains or
+generates the package.
+
+=end original
+
+このフィールドは必須です。ディストリビューションのディレクトリのルートからの
+パッケージを含むか生成するファイルへのUnixスタイルの相対ファイルパスを含まなければ
+いけません。
+
+=item version
+
+=begin original
+
+If it exists, this field must contains a I<Version> String for the
+package.  If the package does not have a C<$VERSION>, this field must
+be omitted.
+
+=end original
+
+これがあるなら、このフィールドはI<バージョン>文字列をパッケージに
+含まなければいけません。パッケージにC<$VERSION>がないなら、
+このフィールドは省略しなければいけません。
+
+=back
+
+=head3 resources
+
+=begin original
+
+Example:
+
+=end original
+
+例:
+
+  resources => {
+    license     => [ 'http://dev.perl.org/licenses/' ],
+    homepage    => 'http://sourceforge.net/projects/module-build',
+    bugtracker  => {
+      web    => 'http://rt.cpan.org/Public/Dist/Display.html?Name=CPAN-Meta',
+      mailto => 'meta-bugs@example.com',
+    },
+    repository  => {
+      url  => 'git://github.com/dagolden/cpan-meta.git',
+      web  => 'http://github.com/dagolden/cpan-meta',
+      type => 'git',
+    },
+    x_twitter   => 'http://twitter.com/cpan_linked/',
+  }
+
+(Spec 2) [optional] {Map}
+
+=begin original
+
+This field describes resources related to this distribution.
+
+=end original
+
+このフィールドは、ディストリビューションに関係するリソースを記述します。
+
+=begin original
+
+Valid subkeys include:
+
+=end original
+
+正しいサブキーは:
+
+=over
+
+=item homepage
+
+=begin original
+
+The official home of this project on the web.
+
+=end original
+
+web上のプロジェクトの公式のホーム。
+
+=item license
+
+=begin original
+
+A List of I<URL>'s that relate to this distribution's license.  As with the
+top-level C<license> field, distribution documentation should be consulted
+to clarify the interpretation of multiple licenses provided here.
+
+=end original
+
+ディストリビューションのライセンスに関係する、I<URL>のリスト。
+トップレベルのC<license>フィールでと同様、ディストリビューションのドキュメントは
+ここで提供される複数のライセンスの説明を明確にすべきです。
+
+=item bugtracker
+
+=begin original
+
+This entry describes the bug tracking system for this distribution.  It
+is a Map with the following valid keys:
+
+=end original
+
+このエントリーはこのディストリビューションのバグトラッキングシステムを記述します。
+下記の有効なキーを持つマップです。
+
+  web    - a URL pointing to a web front-end for the bug tracker
+  mailto - an email address to which bugs can be sent
+
+=item repository
+
+=begin original
+
+This entry describes the source control repository for this distribution.  It
+is a Map with the following valid keys:
+
+=end original
+
+このエントリーはこのでディストリビューションのソースコントロールリポジトリを記述します。
+以下の有効なキーを持つマップです。
+
+  url  - a URL pointing to the repository itself
+  web  - a URL pointing to a web front-end for the repository
+  type - a lowercase string indicating the VCS used
+
+=begin original
+
+Because a url like C<http://myrepo.example.com/> is ambiguous as to
+type, producers should provide a C<type> whenever a C<url> key is given.
+The C<type> field should be the name of the most common program used
+to work with the repository, e.g. C<git>, C<svn>, C<cvs>, C<darcs>,
+C<bzr> or C<hg>.
+
+=end original
+
+C<http://myrepo.example.com/>のようなURLは型として曖昧なので、
+プロデューサはC<url>キーがあたえられたらいつでも、C<type>を提供するべきです。
+C<type>フィールドは、リポジトリを操作する一般的なプログラムの名前であるべきです。
+e.g. C<git>, C<svn>, C<cvs>, C<darcs>, C<bzr> や C<hg>。
+
+=back
+
+=head2 廃止されたフィールド
+
+=head3 build_requires
+
+I<(Deprecated in Spec 2)> [optional] {String}
+
+=begin original
+
+Replaced by C<prereqs>
+
+=end original
+
+C<prereqs>で置き換えられました。
+
+=head3 configure_requires
+
+I<(Deprecated in Spec 2)> [optional] {String}
+
+=begin original
+
+Replaced by C<prereqs>
+
+=end original
+
+C<prereqs>で置き換えられました。
+
+=head3 conflicts
+
+I<(Deprecated in Spec 2)> [optional] {String}
+
+=begin original
+
+Replaced by C<prereqs>
+
+=end original
+
+C<prereqs>で置き換えられました。
+
+=head3 distribution_type
+
+I<(Deprecated in Spec 2)> [optional] {String}
+
+=begin original
+
+This field indicated 'module' or 'script' but was considered
+meaningless, since many distributions are hybrids of several kinds of
+things.
+
+=end original
+
+このフィールドは、'module' か 'script' を指定しますが、多くのディストリビューションは、
+複数の種類のもののハイブリッドなため、意味がないと考えられました。
+
+=head3 license_uri
+
+I<(Deprecated in Spec 1.2)> [optional] {URL}
+
+=begin original
+
+Replaced by C<license> in C<resources>
+
+=end original
+
+C<resources>内のC<license>で置き換えられました。
+
+=head3 private
+
+I<(Deprecated in Spec 1.2)> [optional] {Map}
+
+=begin original
+
+This field has been renamed to L</"no_index">.
+
+=end original
+
+このフィールドは、L</"no_index">にリネームされました。
+
+=head3 recommends
+
+I<(Deprecated in Spec 2)> [optional] {String}
+
+=begin original
+
+Replaced by C<prereqs>
+
+=end original
+
+C<prereqs>で置き換えられました。
+
+=head3 requires
+
+I<(Deprecated in Spec 2)> [optional] {String}
+
+=begin original
+
+Replaced by C<prereqs>
+
+=end original
+
+C<prereqs>で置き換えられました。
+
+=head1 バージョン番号
+
+=head2 バージョンフォーマット
+
+=begin original
+
+This section defines the Version type, used by several fields in the
+CPAN Meta Spec.
+
+=end original
+
+このセクションではバージョン型を定義します。CPANメタデータ仕様のいくつかのフィールドで
+使われています。
+
+=begin original
+
+Version numbers must be treated as strings, not numbers.  For
+example, C<1.200> B<must not> be serialized as C<1.2>.  Version
+comparison should be delegated to the Perl L<version> module, version
+0.80 or newer.
+
+=end original
+
+バージョン番号は、文字列として扱われなければならず、番号ではありません。
+例として、C<1.200>は、C<1.2>としてシリアライズされB<なければいけません>。
+バージョンの比較は、PerlのL<vesion>モジュールの0.8以上に委譲されるべきです。
+
+=begin original
+
+Unless otherwise specified, version numbers B<must> appear in one of two
+formats:
+
+=end original
+
+特記のない限り、バージョン番号は2つのうちのいずれかのフォーマットで
+B<なければいけません>。
+
+=over
+
+=item 少数のバージョン
+
+=begin original
+
+Decimal versions are regular "decimal numbers", with some limitations.
+They B<must> be non-negative and B<must> begin and end with a digit.  A
+single underscore B<may> be included, but B<must> be between two digits.
+They B<must not> use exponential notation ("1.23e-2").
+
+=end original
+
+少数のバージョンは定まった、いくつかの制限のある"少数"です。
+プラスでB<なければいけません>し、数字で始まり、数字で終わらB<なければいけません>
+1つのアンダースコアは含まれていてもB<よいです>が、2つの数字の間でB<なければいけません>。
+指数表記の("1.23e-2")を使ってはB<いけません>。
+
+
+   version => '1.234'       # OK
+   version => '1.23_04'     # OK
+
+   version => '1.23_04_05'  # Illegal
+   version => '1.'          # Illegal
+   version => '.1'          # Illegal
+
+=item ドットで括られた整数のバージョン
+
+=begin original
+
+Dotted-integer (also known as dotted-decimal) versions consist of
+positive integers separated by full stop characters (i.e. "dots",
+"periods" or "decimal points").  This are equivalent in format to Perl
+"v-strings", with some additional restrictions on form.  They must be
+given in "normal" form, which has a leading "v" character and at least
+three integer components.  To retain a one-to-one mapping with decimal
+versions, all components after the first B<should> be restricted to the
+range 0 to 999.  The final component B<may> be separated by an
+underscore character instead of a period.
+
+=end original
+
+Dotted-integer(または、dotted-decimal)のバージョンは正の整数が、
+句点文字("ドット"、"ピリオド"、"少数点")で区切られた構成です。
+これは、いくつかの追加の制限の付いたPerlの"v-strings"フォーマットと同じです。
+それらは、"v"文字に続いて、少なくとも3つの整数を含んだ、
+"普通"の形で与えられなければなりません。
+少数バージョンとの1対1のマッピングを保つために、最初の後のすべてのものは、
+0から999の間に制限されるB<べきです>。
+最後のものは、ピリオドの代わりにアンダースコア文字で分けられてもB<よいです>。
+
+   version => 'v1.2.3'      # OK
+   version => 'v1.2_3'      # OK
+   version => 'v1.2.3.4'    # OK
+   version => 'v1.2.3_4'    # OK
+   version => 'v2009.10.31' # OK
+
+   version => 'v1.2'          # Illegal
+   version => '1.2.3'         # Illegal
+   version => 'v1.2_3_4'      # Illegal
+   version => 'v1.2009.10.31' # Not recommended
+
+=back
+
+=head2 バージョンの範囲
+
+=begin original
+
+Some fields (prereq, optional_features) indicate the particular
+version(s) of some other module that may be required as a prerequisite.
+This section details the Version Range type used to provide this
+information.
+
+=end original
+
+いくつかのフィールド(prereq, optional_features)には、必要条件として必要とされる
+かもしれない他のモジュールの特定のバージョンを示します。
+このセクションでは、この情報を提供するのに使われるバージョンの範囲の型を詳しく
+述べます。
+
+=begin original
+
+The simplest format for a Version Range is just the version
+number itself, e.g. C<2.4>.  This means that B<at least> version 2.4
+must be present.  To indicate that B<any> version of a prerequisite is
+okay, even if the prerequisite doesn't define a version at all, use
+the version C<0>.
+
+=end original
+
+バージョンの範囲のもっとも単純なフォーマットはバージョン番号自身です。
+例えばC<2.4>のような。これは、B<少なくとも>バージョン2.4が存在しなければならない
+ことを意味します。必要条件のB<どの>バージョンでも良いことを示すためには、
+必要条件がバージョンをまったく定義していなくても、バージョンC<0>を使います。
+
+=begin original
+
+Alternatively, a version range B<may> use the operators E<lt> (less than),
+E<lt>= (less than or equal), E<gt> (greater than), E<gt>= (greater than
+or equal), == (equal), and != (not equal).  For example, the
+specification C<E<lt> 2.0> means that any version of the prerequisite
+less than 2.0 is suitable.
+
+=end original
+
+代わりに、バージョンの範囲は、E<lt>(未満)、E<lt>=(以上)、E<gt>(より上)、E<gt>=(以上)、
+==(等しい)、!=(等しくない)を使ってもC<よいです>。例えば、
+C<E<lt> 2.0>は、2.0未満の必要条件のバージョンが適します。
+
+=begin original
+
+For more complicated situations, version specifications B<may> be AND-ed
+together using commas.  The specification C<E<gt>= 1.2, != 1.5, E<lt>
+2.0> indicates a version that must be B<at least> 1.2, B<less than> 2.0,
+and B<not equal to> 1.5.
+
+=end original
+
+より複雑な状況のために、バージョンはカンマを使って、AND条件で指定できます。
+C<E<gt>= 1.2, != 1.5, E<lt> 2.0>の指定は、バージョンがB<少なくとも>1.2、2.0B<未満>
+で、1.5B<ではない>バージョンでなければB<いけないこと>を示します。
+
+=head1 必要条件
+
+=head2 Prereq使用
+
+=begin original
+
+The C<prereqs> key in the top-level metadata and within
+C<optional_features> define the relationship between a distribution and
+other packages.  The prereq spec structure is a hierarchical data
+structure which divides prerequisites into I<Phases> of activity in the
+installation process and I<Relationships> that indicate how
+prerequisites should be resolved.
+
+=end original
+
+メタデータのトップレベルのと C<optional_features>内のC<prereqs>キーは、
+ディストリビューションと他のパッケージの間の関係を定義します。
+prereqの仕様の構造はインストールプロセスのアクティビティのI<フェーズ>と
+どのように必要条件が解決されるべきかを示すI<関係性>に
+必要条件を分けている階層データ構造です。
+
+=begin original
+
+For example, to specify that C<Data::Dumper> is C<required> during the
+C<test> phase, this entry would appear in the distribution metadata:
+
+=end original
+
+例えば、C<Data::Dumper>はC<test>フェーズでC<必須>であると指定するなら、
+このエントリーはディストリビューションのメタデータで次のようになります:
+
+  prereqs => {
+    test => {
+      requires => {
+        'Data::Dumper' => '2.00'
+      }
+    }
+  }
+
+=head3 フェーズ
+
+=begin original
+
+Requirements for regular use must be listed in the C<runtime> phase.
+Other requirements should be listed in the earliest stage in which they
+are required and consumers must accumulate and satisfy requirements
+across phases before executing the activity. For example, C<build>
+requirements must also be available during the C<test> phase.
+
+=end original
+
+正規の使い方の要求はC<runtime>フェーズでリストされC<なければいけません>。
+他の要求は、必要とされるもっとも早い段階でリストされるべきです。
+コンシューマはアクティビティが実行される前にフェーズをまたがって
+要求を集めなければならないし、満たさなければいけません。例えば、
+C<build>の要求はC<test>フェーズの間にも有効でなければいけません。
+
+  before action       requirements that must be met
+  ----------------    --------------------------------
+  perl Build.PL       configure
+  perl Makefile.PL
+
+  make                configure, runtime, build
+  Build
+
+  make test           configure, runtime, build, test
+  Build test
+
+=begin original
+
+Consumers that install the distribution must ensure that
+I<runtime> requirements are also installed and may install
+dependencies from other phases.
+
+=end original
+
+ディストリビューションをインストールするコンシューマは
+I<runtime>要求もまたインストールされることを保証しなければ
+なりません。そして、他のフェーズから依存をインストールしてもよいです。
+
+  after action        requirements that must be met
+  ----------------    --------------------------------
+  make install        runtime
+  Build install
+
+=over
+
+=item configure
+
+=begin original
+
+The configure phase occurs before any dynamic configuration has been
+attempted.  Libraries required by the configure phase B<must> be
+available for use before the distribution building tool has been
+executed.
+
+=end original
+
+configure フェーズはどのような動的なコンフィギュレーションも試みられる前に
+起こります。configureフェーズで必要とされるライブラリは、ディストリビューションの
+ビルドツールが実行される前に、使えB<なければいけません>。
+
+=item build
+
+=begin original
+
+The build phase is when the distribution's source code is compiled (if
+necessary) and otherwise made ready for installation.
+
+=end original
+
+build フェーズは、ディストリビューションのソースコードがコンパイルされ(必要なら)、
+インストールの準備ができた時です。
+
+=item test
+
+=begin original
+
+The test phase is when the distribution's automated test suite is run.
+Any library that is needed only for testing and not for subsequent use
+should be listed here.
+
+=end original
+
+test フェーズはディストリビューションの自動テストケースが走る時です。
+テストにのみ必要で、その後の使用に必要でないライブラリはここでリストされる
+べきです。
+
+=item runtime
+
+=begin original
+
+The runtime phase refers not only to when the distribution's contents
+are installed, but also to its continued use.  Any library that is a
+prerequisite for regular use of this distribution should be indicated
+here.
+
+=end original
+
+runtime フェーズは、ディストリビューションの内容がインストールされる時にのみ参照
+されるだけでなく、継続的な使用時にも参照されます。ディストリビューションの正規の
+使い方で必要条件となっているどのようなライブラリも、ここで示されるべきです。
+
+=item develop
+
+=begin original
+
+The develop phase's prereqs are libraries needed to work on the
+distribution's source code as its author does.  These tools might be
+needed to build a release tarball, to run author-only tests, or to
+perform other tasks related to developing new versions of the
+distribution.
+
+=end original
+
+develop フェーズの prereqs はディストリビューションのソースコードを、
+その作者が行うように利用するために必要なライブラリです。それらのツールは
+リリースするtarボールをビルドするのに必要かもしれないし、作者のみのテストを
+実行するのに必要かもしれませんし、そのディストリビューションの新しいバージョン
+を開発するのに関連した他のタスクをするのに必要かもしれません。
+
+=back
+
+=head3 関連
+
+=over
+
+=item requires
+
+=begin original
+
+These dependencies B<must> be installed for proper completion of the
+phase.
+
+=end original
+
+この依存はフェーズを適切に完遂するためにインストールされB<なければいけません>。
+
+=item recommends
+
+=begin original
+
+Recommended dependencies are I<strongly> encouraged and should be
+satisfied except in resource constrained environments.
+
+=end original
+
+推奨される依存は、リソースが限られた環境でなけれは、I<強く>推められ、
+満たされるべきです。
+
+=item suggests
+
+=begin original
+
+These dependencies are optional, but are suggested for enhanced operation
+of the described distribution.
+
+=end original
+
+これらの依存はオプションですが、ディストリビューションの、いっそう良い操作のために
+提案されます。
+
+=item conflicts
+
+=begin original
+
+These libraries cannot be installed when the phase is in operation.
+This is a very rare situation, and the C<conflicts> relationship should
+be used with great caution, or not at all.
+
+=end original
+
+これらのライブラリはフェーズが実行中にインストールされえません。
+とても稀なシチュエーションであり、C<confilicts>の関係はかなり注意して使われるか、
+まったく使わないべきです。
+
+=back
+
+=head2 必要条件のマージと解決
+
+=begin original
+
+Whenever metadata consumers merge prerequisites, either from different
+phases or from C<optional_features>, they should merged in a way which
+preserves the intended semantics of the prerequisite structure.  Generally,
+this means concatenating the version specifications using commas, as
+described in the L<Version Ranges> section.
+
+=end original
+
+メタデータのコンシューマが違うフェーズからか、C<optional_features>からのどちらかの
+必要条件をマージするときはいつでも、必要条件の構造の意図されたセマンティクスを保存
+するやり方でマージするべきです。一般的に、
+これは、L<バージョンの範囲>のセクションで書いたように、コンマを使ったバージョン指定で
+結びつけることを意味します。
+
+=begin original
+
+Another subtle error that can occur in resolving prerequisites comes from
+the way that modules in prerequisites are indexed to distribution files on
+CPAN.  When a module is deleted from a distribution, prerequisites calling
+for that module could indicate an older distribution should be installed,
+potentially overwriting files from a newer distribution.
+
+=end original
+
+
+必要条件を解決する際に起きうる、他の微妙なエラーは、必要条件にあるモジュールが
+CPANでディストリビューションファイルにインデックスされる方法によります。
+モジュールがディストリビューションから削除される時、そのモジュールのために呼ばれる
+必要条件は、より古いバージョンがインストールされるべきであると指示し、
+潜在的に、より新しいディストリビューションからファイルを上書きします。
+
+=begin original
+
+For example, as of Oct 31, 2009, the CPAN index file contained these
+module-distribution mappings:
+
+=end original
+
+例えば、2009/10/31 として、CPANのインデックスファイルが、これらのモジュール-
+ディストリビューションのマッピングを含んでいたとして:
+
+  Class::MOP                   0.94  D/DR/DROLSKY/Class-MOP-0.94.tar.gz
+  Class::MOP::Class            0.94  D/DR/DROLSKY/Class-MOP-0.94.tar.gz
+  Class::MOP::Class::Immutable 0.04  S/ST/STEVAN/Class-MOP-0.36.tar.gz
+
+=begin original
+
+Consider the case where "Class::MOP" 0.94 is installed.  If a
+distribution specified "Class::MOP::Class::Immutable" as a prerequisite,
+it could result in Class-MOP-0.36.tar.gz being installed, overwriting
+any files from Class-MOP-0.94.tar.gz.
+
+=end original
+
+"Class::MOP" 0.94がインストールされているとして考えると、ディストリビューションが
+"Class::MOP::Class::Imutable"を必要条件として指定していた場合、
+Class-MOP-0.36.tar.gz がインストールされ、Class-MOP-0.93.tar.gz の 
+すべてのファイルがオーバーライトされる結果になりえます。
+
+=begin original
+
+Consumers of metadata B<should> test whether prerequisites would result
+in installed module files being "downgraded" to an older version and
+B<may> warn users or ignore the prerequisite that would cause such a
+result.
+
+=end original
+
+メタデータのコンシューマは、必要条件によって、インストールされているモジュールのファイルが
+より古いバージョンに"ダウングレード"される結果になるかどうかテストB<すべき>です。
+そして、ユーザーに警告B<してもよい>し、そのような結果を引き起こす必要条件は無視
+B<してもよい>です。
+
+=head1 シリアライゼーション
+
+=begin original
+
+Distribution metadata should be serialized (as a hashref) as
+JSON-encoded data and packaged with distributions as the file
+F<META.json>.
+
+=end original
+
+ディストリビューションのメタデータは(ハッシュリファレンスとして)JSONにエンコードされたデータに
+シリアライズされ、そのファイルはC<META.json>として、ディストリビューションに
+パッケージされるべきです。
+
+=begin original
+
+In the past, the distribution metadata structure had been packed with
+distributions as F<META.yml>, a file in the YAML Tiny format (for which,
+see L<YAML::Tiny>).  Tools that consume distribution metadata from disk
+should be capable of loading F<META.yml>, but should prefer F<META.json>
+if both are found.
+
+=end original
+
+過去に、ディストリビューションのメタデータの構造はF<META.yml>としてディストリビューションに
+同梱されていました。YAMLの小さいフォーマット(L<YAML::Tiny>参照)のファイルです。
+ディスクからディストリビューションのメタデータを使うツールは、
+F<META.yml>をロードできるようにすべきですが、2つが見つかった場合は、F<META.json>を
+優先すべきです。
+
+=head1 実装者向けの注意
+
+=head2 Perlモジュールからバージョン番号を取り出す
+
+=begin original
+
+To get the version number from a Perl module, consumers should use the
+C<< MM->parse_version($file) >> method provided by
+L<ExtUtils::MakeMaker> or L<Module::Metadata>.  For example, for the
+module given by C<$mod>, the version may be retrieved in one of the
+following ways:
+
+=end original
+
+Perlモジュールからバージョン番号を取り出すには、コンシューマは
+L<ExtUtils::MakeMaker> か L<Module::Metadata>の
+C<< MM->parse_version($file) >> メソッドを使うべきです。例えば、
+C<$mod>で与えられるモジュールの場合、、バージョンは以下の方法の
+いずれかで取り出せます:
+
+  # via ExtUtils::MakeMaker
+  my $file = MM->_installed_file_for_module($mod);
+  my $version = MM->parse_version($file)
+
+=begin original
+
+The private C<_installed_file_for_module> method may be replaced with
+other methods for locating a module in C<@INC>.
+
+=end original
+
+プライベートのC<_installed_file_for_module>メソッドを
+C<@INC>に位置するモジュールのために、他のメソッドで置き換えてもよいです。
+
+  # via Module::Metadata
+  my $info = Module::Metadata->new_from_module($mod);
+  my $version = $info->version;
+
+=begin original
+
+If only a filename is available, the following approach may be used:
+
+=end original
+
+ファイル名のみが利用可能であれば、以下のアプローチを使ってもよいです:
+
+  # via Module::Build
+  my $info = Module::Metadata->new_from_file($file);
+  my $version = $info->version;
+
+=head2 バージョン番号の比較
+
+=begin original
+
+The L<version> module provides the most reliable way to compare version
+numbers in all the various ways they might be provided or might exist
+within modules.  Given two strings containing version numbers, C<$v1> and
+C<$v2>, they should be converted to C<version> objects before using
+ordinary comparison operators.  For example:
+
+=end original
+
+L<version>モジュールは、すべての様々な方法で提供されるか、モジュール内に存在するかもしれない、
+バージョン番号を比較する、もっとも信頼できる方法を提供します。
+バージョン番号を含む2つの文字列C<$v1>とC<$v2>があるとして、比較の操作の前に、
+これらはC<version>オブジェクトに変換されるべきです。例えば:
+
+  use version;
+  if ( version->new($v1) <=> version->new($v2) ) {
+    print "Versions are not equal\n";
+  }
+
+=begin original
+
+If the only comparison needed is whether an installed module is of a
+sufficiently high version, a direct test may be done using the string
+form of C<eval> and the C<use> function.  For example, for module C<$mod>
+and version prerequisite C<$prereq>:
+
+=end original
+
+必要な比較が、インストールされているモジュールが十分に高いバージョンかどうかだけであれば、
+直接のテストを文字列を使って、C<eval>とC<use>関数の方法で出来ます。
+例えば、モジュールC<$mod>と必要条件のバージョンのC<$prereq>のテストは:
+
+  if ( eval "use $mod $prereq (); 1" ) {
+    print "Module $mod version is OK.\n";
+  }
+
+=begin original
+
+If the values of C<$mod> and C<$prereq> have not been scrubbed, however,
+this presents security implications.
+
+=end original
+
+ですが、C<$mod>とC<$prereq>の値が汚染されていれば、この方法はセキュリティに影響
+があります。
+
+=head1 SEE ALSO
+
+CPAN, L<http://www.cpan.org/>
+
+CPAN.pm, L<http://search.cpan.org/dist/CPAN/>
+
+CPANPLUS, L<http://search.cpan.org/dist/CPANPLUS/>
+
+ExtUtils::MakeMaker, L<http://search.cpan.org/dist/ExtUtils-MakeMaker/>
+
+Module::Build, L<http://search.cpan.org/dist/Module-Build/>
+
+Module::Install, L<http://search.cpan.org/dist/Module-Install/>
+
+JSON, L<http://json.org/>
+
+YAML, L<http://www.yaml.org/>
+
+=head1 CONTRIBUTORS
+
+=begin original
+
+Ken Williams wrote the original CPAN Meta Spec (also known as the
+"META.yml spec") in 2003 and maintained it through several revisions
+with input from various members of the community.  In 2005, Randy
+Sims redrafted it from HTML to POD for the version 1.2 release.  Ken
+continued to maintain the spec through version 1.4.
+
+=end original
+
+Ken Williams がオリジナルのCPANメタデータ仕様("META.yml spec"としても知られる)を
+2003年に書き、コミュニティの様々なメンバーからのインプットで、いくつかのリビジョンを
+メンテナンスしました。2005年に、Randy Sims がバージョン1.2のリリースのために
+HTMLからPODに書き直しました。Ken はバージョン1.4までメンテナンスを続けました。
+
+=begin original
+
+In late 2009, David Golden organized the version 2 proposal review
+process.  David and Ricardo Signes drafted the final version 2 spec
+in April 2010 based on the version 1.4 spec and patches contributed
+during the proposal process.
+
+=end original
+
+2009年の後半に、David Golden がバージョン2のプロポーザルレビュープロセスを
+組織しました。David と Richardo Signes は、最終のバージョン2の仕様を
+20010年の4月に、バージョン1.4の仕様をもとに下書きしました。
+複数のパッチがプロポーザルプロセスの間、貢献しました。
+
+=begin original
+
+Several others have contributed patches over the years.  The full list
+of contributors in the repository history currently includes:
+
+=end original
+
+複数の人が数年に渡りパッチを貢献し続けました。現在、リポジトリの歴史にある、
+貢献者のすべてのリストは以下の人々を含んでいます:
+
+  2shortplanks
+  Avar Arnfjord Bjarmason
+  Christopher J. Madsen
+  Damyan Ivanov
+  David Golden
+  Eric Wilhelm
+  Ken Williams
+  Lars DIECKOW
+  Michael G. Schwern
+  Randy Sims
+  Ricardo Signes
+
+=head1 AUTHORS
+
+=over 4
+
+=item *
+
+David Golden <dagolden@cpan.org>
+
+=item *
+
+Ricardo Signes <rjbs@cpan.org>
+
+=back
+
+=head1 COPYRIGHT AND LICENSE
+
+This software is copyright (c) 2010 by David Golden and Ricardo Signes.
+
+This is free software; you can redistribute it and/or modify it under
+the same terms as the Perl 5 programming language system itself.
+
+
+=cut
+
