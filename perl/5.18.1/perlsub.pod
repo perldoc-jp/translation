@@ -1,0 +1,3639 @@
+
+=encoding euc-jp
+
+=head1 NAME
+X<subroutine> X<function>
+
+=begin original
+
+perlsub - Perl subroutines
+
+=end original
+
+perlsub - Perl のサブルーチン
+
+=head1 SYNOPSIS
+
+=begin original
+
+To declare subroutines:
+X<subroutine, declaration> X<sub>
+
+=end original
+
+サブルーチンを宣言するには:
+X<subroutine, declaration> X<sub>
+
+=begin original
+
+    sub NAME;			  # A "forward" declaration.
+    sub NAME(PROTO);		  #  ditto, but with prototypes
+    sub NAME : ATTRS;		  #  with attributes
+    sub NAME(PROTO) : ATTRS;	  #  with attributes and prototypes
+
+=end original
+
+    sub NAME;			  # "先行" 宣言
+    sub NAME(PROTO);		  #  同上。ただしプロトタイプ付き
+    sub NAME : ATTRS;		  #  属性付き
+    sub NAME(PROTO) : ATTRS;	  #  属性とプロトタイプ付き
+
+=begin original
+
+    sub NAME BLOCK		  # A declaration and a definition.
+    sub NAME(PROTO) BLOCK	  #  ditto, but with prototypes
+    sub NAME : ATTRS BLOCK	  #  with attributes
+    sub NAME(PROTO) : ATTRS BLOCK #  with prototypes and attributes
+
+=end original
+
+    sub NAME BLOCK		  # 宣言と定義
+    sub NAME(PROTO) BLOCK	  #  同上。ただしプロトタイプ付き
+    sub NAME : ATTRS BLOCK	  #  属性付き
+    sub NAME(PROTO) : ATTRS BLOCK #  プロトタイプと属性付き
+
+=begin original
+
+To define an anonymous subroutine at runtime:
+X<subroutine, anonymous>
+
+=end original
+
+実行時に無名サブルーチンを定義するには:
+X<subroutine, anonymous>
+
+=begin original
+
+    $subref = sub BLOCK;		 # no proto
+    $subref = sub (PROTO) BLOCK;	 # with proto
+    $subref = sub : ATTRS BLOCK;	 # with attributes
+    $subref = sub (PROTO) : ATTRS BLOCK; # with proto and attributes
+
+=end original
+
+    $subref = sub BLOCK;		 # プロトタイプなし
+    $subref = sub (PROTO) BLOCK;	 # プロトタイプ付き
+    $subref = sub : ATTRS BLOCK;	 # 属性付き
+    $subref = sub (PROTO) : ATTRS BLOCK; # プロトタイプと属性付き
+
+=begin original
+
+To import subroutines:
+X<import>
+
+=end original
+
+サブルーチンをインポートするには:
+X<import>
+
+    use MODULE qw(NAME1 NAME2 NAME3);
+
+=begin original
+
+To call subroutines:
+X<subroutine, call> X<call>
+
+=end original
+
+サブルーチンを呼び出すには:
+X<subroutine, call> X<call>
+
+=begin original
+
+    NAME(LIST);	   # & is optional with parentheses.
+    NAME LIST;	   # Parentheses optional if predeclared/imported.
+    &NAME(LIST);   # Circumvent prototypes.
+    &NAME;	   # Makes current @_ visible to called subroutine.
+
+=end original
+
+    NAME(LIST);	   # かっこが付いているときは & は省略可能。
+    NAME LIST;	   # 予め宣言/インポートされているならかっこは省略可能。
+    &NAME(LIST);   # プロトタイプを回避する。
+    &NAME;	   # 呼び出されたサブルーチンから現在の @_ を可視化する。
+
+=head1 DESCRIPTION
+
+=begin original
+
+Like many languages, Perl provides for user-defined subroutines.
+These may be located anywhere in the main program, loaded in from
+other files via the C<do>, C<require>, or C<use> keywords, or
+generated on the fly using C<eval> or anonymous subroutines.
+You can even call a function indirectly using a variable containing
+its name or a CODE reference.
+
+=end original
+
+多くの言語と同様、Perl はユーザー定義のサブルーチンを提供しています。
+これらのサブルーチンは、メインプログラムのどこにでも置くことができ、
+C<do>, C<require>, C<use> といったキーワードを使って他のファイルから
+ロードすることができ、C<eval> や無名サブルーチンを使って
+生成することもできます。
+サブルーチンの名前や、コードリファレンスを保持する変数を使って
+間接的に関数を呼び出すことも可能です。
+
+=begin original
+
+The Perl model for function call and return values is simple: all
+functions are passed as parameters one single flat list of scalars, and
+all functions likewise return to their caller one single flat list of
+scalars.  Any arrays or hashes in these call and return lists will
+collapse, losing their identities--but you may always use
+pass-by-reference instead to avoid this.  Both call and return lists may
+contain as many or as few scalar elements as you'd like.  (Often a
+function without an explicit return statement is called a subroutine, but
+there's really no difference from Perl's perspective.)
+X<subroutine, parameter> X<parameter>
+
+=end original
+
+Perl での関数呼び出しと戻り値のモデルは単純です。全ての関数は引数を、
+平坦で一つのスカラのリストで受け取り、同様に全ての関数は呼び出し元に
+対して平坦で一つのスカラのりストで返すというものです。
+これらの呼び出しリストと戻り値リストにある全ての配列とハッシュは、
+潰されてそのアイデンティティを失います。
+しかし、これを避けるために常にリファレンスで渡すことができます。
+呼び出しリストと戻り値リストの両方とも好きなだけの数のスカラを
+保持することができます(明確な return 文のない関数はしばしばサブルーチンと
+呼ばれますが、Perl の定義上はこれらの間に何の違いもありません)。
+
+=begin original
+
+Any arguments passed in show up in the array C<@_>.  Therefore, if
+you called a function with two arguments, those would be stored in
+C<$_[0]> and C<$_[1]>.  The array C<@_> is a local array, but its
+elements are aliases for the actual scalar parameters.  In particular,
+if an element C<$_[0]> is updated, the corresponding argument is
+updated (or an error occurs if it is not updatable).  If an argument
+is an array or hash element which did not exist when the function
+was called, that element is created only when (and if) it is modified
+or a reference to it is taken.  (Some earlier versions of Perl
+created the element whether or not the element was assigned to.)
+Assigning to the whole array C<@_> removes that aliasing, and does
+not update any arguments.
+X<subroutine, argument> X<argument> X<@_>
+
+=end original
+
+ルーチンに渡されるすべての引数は配列 C<@_> に置かれます。
+したがって、ある関数を二つの引数を付けて呼び出したならば、
+その引数は C<$_[0]> と C<$_[1]> に格納されます。
+配列 C<@_> は local 配列ですが、その要素は実際の
+スカラパラメータの別名です。
+たとえば C<$_[0]> が更新された場合、対応する引数が更新されます
+(更新できない場合にはエラーとなります)。
+引数が、配列やハッシュの(関数が呼び出された時点では存在してない)
+要素であった場合、その要素は(対応する別名が)修正されたり
+リファレンスが取られたときにのみ作成されます。
+(以前の一部のバージョンの Perl では、この要素は代入が行われようが行われまいが
+作成されていました。)
+配列 C<@_> 全体に対する代入は別名を破棄し、何の引数も更新しません。
+X<subroutine, argument> X<argument> X<@_>
+
+=begin original
+
+A C<return> statement may be used to exit a subroutine, optionally
+specifying the returned value, which will be evaluated in the
+appropriate context (list, scalar, or void) depending on the context of
+the subroutine call.  If you specify no return value, the subroutine
+returns an empty list in list context, the undefined value in scalar
+context, or nothing in void context.  If you return one or more
+aggregates (arrays and hashes), these will be flattened together into
+one large indistinguishable list.
+
+=end original
+
+サブルーチンから脱出するために使われた C<return> 文が
+使われることもありますし、サブルーチン呼び出しのコンテキストによって
+適切なコンテキスト(リスト、スカラ、無効)で評価される戻り値の指定を
+省略する事が可能です。
+もし何の戻り値も指定しなければ、サブルーチンはリストコンテキストにおいては
+空リストを返し、スカラコンテキストにおいては未定義値を返し、
+無効コンテキストではなにも返しません。
+一つまたは複数の集合体 (配列やハッシュ) を返す場合、一つの大きな区別できない
+リストに平板化されます。
+
+=begin original
+
+If no C<return> is found and if the last statement is an expression, its
+value is returned. If the last statement is a loop control structure
+like a C<foreach> or a C<while>, the returned value is unspecified. The
+empty sub returns the empty list.
+X<subroutine, return value> X<return value> X<return>
+
+=end original
+
+C<return> がなく、最後の文が式だった場合、その値が返されます。
+最後の文が C<foreach> や C<while> のようなループ制御構造だった場合、
+返される値は不定です。
+空のサブルーチンは空リストを返します。
+X<subroutine, return value> X<return value> X<return>
+
+=begin original
+
+Perl does not have named formal parameters.  In practice all you
+do is assign to a C<my()> list of these.  Variables that aren't
+declared to be private are global variables.  For gory details
+on creating private variables, see L<"Private Variables via my()">
+and L<"Temporary Values via local()">.  To create protected
+environments for a set of functions in a separate package (and
+probably a separate file), see L<perlmod/"Packages">.
+X<formal parameter> X<parameter, formal>
+
+=end original
+
+Perlは名前付き仮引数を持っていません。
+C<my()> にこれらのリストを代入することで行えます。
+プライベートであると宣言されずに使われている変数は全てグローバル変数です。
+プライベート変数に関する詳細はL<"Private Variables via my()"> と
+L<"Temporary Values via local()"> を参照してください。
+パッケージで(おそらくはファイルでも)分けられている関数のセットのための
+保護された環境を作るには L<perlmod/"Packages"> を参照してください。
+X<formal parameter> X<parameter, formal>
+
+=begin original
+
+Example:
+
+=end original
+
+例:
+
+    sub max {
+	my $max = shift(@_);
+	foreach $foo (@_) {
+	    $max = $foo if $max < $foo;
+	}
+	return $max;
+    }
+    $bestday = max($mon,$tue,$wed,$thu,$fri);
+
+=begin original
+
+Example:
+
+=end original
+
+例:
+
+=begin original
+
+    # get a line, combining continuation lines
+    #  that start with whitespace
+
+=end original
+
+    # 行を取り、空白で始まる継続行を連結します
+
+    sub get_line {
+	$thisline = $lookahead;  # global variables!
+	LINE: while (defined($lookahead = <STDIN>)) {
+	    if ($lookahead =~ /^[ \t]/) {
+		$thisline .= $lookahead;
+	    }
+	    else {
+		last LINE;
+	    }
+	}
+	return $thisline;
+    }
+
+    $lookahead = <STDIN>;	# get first line
+    while (defined($line = get_line())) {
+	...
+    }
+
+=begin original
+
+Assigning to a list of private variables to name your arguments:
+
+=end original
+
+引数に名前を付けるためにプライベート変数のリストに代入する:
+
+    sub maybeset {
+	my($key, $value) = @_;
+	$Foo{$key} = $value unless $Foo{$key};
+    }
+
+=begin original
+
+Because the assignment copies the values, this also has the effect
+of turning call-by-reference into call-by-value.  Otherwise a
+function is free to do in-place modifications of C<@_> and change
+its caller's values.
+X<call-by-reference> X<call-by-value>
+
+=end original
+
+これは、参照渡しを値渡しにする効果もあります; なぜなら、値のコピーを
+代入しているからです。
+このようにしないのであれば、関数は自由に C<@_> の値をその場で
+書き換えることができ、それはそのまま呼び出し側の値を変更します。
+X<call-by-reference> X<call-by-value>
+
+    upcase_in($v1, $v2);  # this changes $v1 and $v2
+    sub upcase_in {
+	for (@_) { tr/a-z/A-Z/ }
+    }
+
+=begin original
+
+You aren't allowed to modify constants in this way, of course.  If an
+argument were actually literal and you tried to change it, you'd take a
+(presumably fatal) exception.   For example, this won't work:
+X<call-by-reference> X<call-by-value>
+
+=end original
+
+もちろん、このやり方で定数を変更することは許されません。
+ある引数が実際にはリテラルであった場合にその引数を変更しようとすると、
+(おそらくは致命的な)例外が引き起こされることになるでしょう。
+例えば次の例はうまく働きません:
+X<call-by-reference> X<call-by-value>
+
+    upcase_in("frederick");
+
+=begin original
+
+It would be much safer if the C<upcase_in()> function
+were written to return a copy of its parameters instead
+of changing them in place:
+
+=end original
+
+C<upcase_in()> 関数を安全なものにするには、パラメータそのものを
+書き換えるのではなくそのコピーを返すように記述するようにします:
+
+    ($v3, $v4) = upcase($v1, $v2);  # this doesn't change $v1 and $v2
+    sub upcase {
+	return unless defined wantarray;  # void context, do nothing
+	my @parms = @_;
+	for (@parms) { tr/a-z/A-Z/ }
+  	return wantarray ? @parms : $parms[0];
+    }
+
+=begin original
+
+Notice how this (unprototyped) function doesn't care whether it was
+passed real scalars or arrays.  Perl sees all arguments as one big,
+long, flat parameter list in C<@_>.  This is one area where
+Perl's simple argument-passing style shines.  The C<upcase()>
+function would work perfectly well without changing the C<upcase()>
+definition even if we fed it things like this:
+
+=end original
+
+この(プロトタイプがついていない)関数が自分に対して本当のスカラが
+渡されたのか配列が渡されたのかを気にしていないということに注意してください。
+Perl は一つの巨大な平坦な(リストの中にリストが含まれることはない、
+ということ) C<@_> パラメータリストとして全ての引数を見るのです。
+これは Perl の単純な引数渡しの形式のやり方の一つです。
+この C<upcase()> 関数は、以下のような呼び出しをした場合でも C<upcase()> の
+定義を変更することなく完璧に動作します:
+
+    @newlist   = upcase(@list1, @list2);
+    @newlist   = upcase( split /:/, $var );
+
+=begin original
+
+Do not, however, be tempted to do this:
+
+=end original
+
+ただし、以下のような呼び出しをやろうとしてはいけません:
+
+    (@a, @b)   = upcase(@list1, @list2);
+
+=begin original
+
+Like the flattened incoming parameter list, the return list is also
+flattened on return.  So all you have managed to do here is stored
+everything in C<@a> and made C<@b> empty.  See 
+L<Pass by Reference> for alternatives.
+
+=end original
+
+関数に渡される引数リストは平坦なリストであるのと同様、戻り値のリストも
+また平坦なリストです。
+ですから、関数が返した全ての要素は C<@a> に格納され、C<@b> は
+空になります。
+別のやり方については L</"Pass by Reference"> を参照してください。
+
+=begin original
+
+A subroutine may be called using an explicit C<&> prefix.  The
+C<&> is optional in modern Perl, as are parentheses if the
+subroutine has been predeclared.  The C<&> is I<not> optional
+when just naming the subroutine, such as when it's used as
+an argument to defined() or undef().  Nor is it optional when you
+want to do an indirect subroutine call with a subroutine name or
+reference using the C<&$subref()> or C<&{$subref}()> constructs,
+although the C<< $subref->() >> notation solves that problem.
+See L<perlref> for more about all that.
+X<&>
+
+=end original
+
+サブルーチンは、明示的な C<&> というプリフィックスを付けて呼び出すことが
+できます。
+最近の Perl では C<&> は省略可能であり、サブルーチンがあらかじめ
+宣言されている場合には括弧も省略できます。
+defined() や undef() の引数として使ったような、単なる名前付き
+サブルーチンであるときの C<&> は B<省略可能ではありません>。
+C<&$subref()> や C<&{$subref}()> のような、サブルーチンの名前や
+リファレンスを使った間接的なサブルーン呼び出しを行いたいたいときにも
+C<&> は省略することはできません; 但し C<< $subref->() >> の記法が問題を
+解決します。
+詳しくは L<perlref> を参照してください。
+X<&>
+
+=begin original
+
+Subroutines may be called recursively.  If a subroutine is called
+using the C<&> form, the argument list is optional, and if omitted,
+no C<@_> array is set up for the subroutine: the C<@_> array at the
+time of the call is visible to subroutine instead.  This is an
+efficiency mechanism that new users may wish to avoid.
+X<recursion>
+
+=end original
+
+サブルーチンは再帰的に呼び出すこともできます。
+あるサブルーチンが C<&> 付きで呼び出されたなら、引数リストは省略可能で、
+もし省略されたなら、そのサブルーチンに対して C<@_> 配列は設定されません:
+代わりに呼び出し時の C<@_> 配列がサブルーチンに対して可視となります。
+これは新しいユーザーが避けたいと思う効果的なメカニズムです。
+X<recursion>
+
+=begin original
+
+    &foo(1,2,3);	# pass three arguments
+    foo(1,2,3);		# the same
+
+=end original
+
+    &foo(1,2,3);	# 三つの引数を渡す
+    foo(1,2,3);		# 上と同じ
+
+=begin original
+
+    foo();		# pass a null list
+    &foo();		# the same
+
+=end original
+
+    foo();		# 空リストを渡す
+    &foo();		# 上と同じ
+
+=begin original
+
+    &foo;		# foo() get current args, like foo(@_) !!
+    foo;		# like foo() IFF sub foo predeclared, else "foo"
+
+=end original
+
+    &foo;		# foo() は foo(@_) と同様現在の引数を取る!!
+    foo;		# サブルーチン foo が予め定義されている場合に限り
+        		# foo() と同様、それ以外では "foo"
+
+=begin original
+
+Not only does the C<&> form make the argument list optional, it also
+disables any prototype checking on arguments you do provide.  This
+is partly for historical reasons, and partly for having a convenient way
+to cheat if you know what you're doing.  See L</Prototypes> below.
+X<&>
+
+=end original
+
+C<&> 形式は引数リストを省略可能にするばかりでなく、与えられた引数に
+対するすべてのプロトタイプチェックも無効にします。
+これは一部には歴史的な理由であり、一部にはあなたが自分の行っている動作を
+わかっているときにうまくごまかしを行う便利な方法を残しておくためです。
+後に出てくる L</Prototypes> を参照してください。
+X<&>
+
+=begin original
+
+Since Perl 5.16.0, the C<__SUB__> token is available under C<use feature
+'current_sub'> and C<use 5.16.0>.  It will evaluate to a reference to the
+currently-running sub, which allows for recursive calls without knowing
+your subroutine's name.
+
+=end original
+
+Perl 5.16.0 から、C<use feature 'current_sub'> または C<use 5.16.0> が有効の
+場合は C<__SUB__> トークンが利用可能です。
+これは現在実行しているサブルーチンへのリファレンスを評価するので、
+現在のサブルーチン名を知ることなく再帰呼び出しができるようになります。
+
+    use 5.16.0;
+    my $factorial = sub {
+      my ($x) = @_;
+      return 1 if $x == 1;
+      return($x * __SUB__->( $x - 1 ) );
+    };
+
+=begin original
+
+The behaviour of C<__SUB__> within a regex code block (such as C</(?{...})/>)
+is subject to change.
+
+=end original
+
+The behaviour of C<__SUB__> within a regex code block (such as C</(?{...})/>)
+is subject to change.
+(TBT)
+
+=begin original
+
+Subroutines whose names are in all upper case are reserved to the Perl
+core, as are modules whose names are in all lower case.  A subroutine in
+all capitals is a loosely-held convention meaning it will be called
+indirectly by the run-time system itself, usually due to a triggered event.
+Subroutines that do special, pre-defined things include C<AUTOLOAD>, C<CLONE>,
+C<DESTROY> plus all functions mentioned in L<perltie> and L<PerlIO::via>.
+
+=end original
+
+名前が全て大文字であるサブルーチンは、
+名前が全て小文字のモジュール名が (訳注: pragma 用として) 予約されているのと同じように
+Perl のコアで予約されています。実行時にシステム自身によって
+(通常はイベントをトリガーとして) 間接的に呼び出されるサブルーチンは、
+名前を全て大文字で書くのがしきたりです。
+特殊で、あらかじめ決められていることをするサブルーチンは、
+C<AUTOLOAD>, C<CLONE>, C<DESTROY> に、L<perltie> と L<PerlIO::via> で
+説明されている関数全てを加えたものです。
+
+=begin original
+
+The C<BEGIN>, C<UNITCHECK>, C<CHECK>, C<INIT> and C<END> subroutines
+are not so much subroutines as named special code blocks, of which you
+can have more than one in a package, and which you can B<not> call
+explicitly.  See L<perlmod/"BEGIN, UNITCHECK, CHECK, INIT and END">
+
+=end original
+
+The C<BEGIN>, C<UNITCHECK>, C<CHECK>, C<INIT>, C<END> サブルーチンは
+サブルーチンというよりは特殊コードブロックで、その中でも一つのパッケージに
+複数作ることができ、明示的には B<呼び出せません> 。
+L<perlmod/"BEGIN, UNITCHECK, CHECK, INIT and END"> を参照してください。
+
+=head2 Private Variables via my()
+X<my> X<variable, lexical> X<lexical> X<lexical variable> X<scope, lexical>
+X<lexical scope> X<attributes, my>
+
+(my() によるプライベート変数)
+
+=begin original
+
+Synopsis:
+
+=end original
+
+概要:
+
+    my $foo;	    	# declare $foo lexically local
+    my (@wid, %get); 	# declare list of variables local
+    my $foo = "flurp";	# declare $foo lexical, and init it
+    my @oof = @bar;	# declare @oof lexical, and init it
+    my $x : Foo = $y;	# similar, with an attribute applied
+
+=begin original
+
+B<WARNING>: The use of attribute lists on C<my> declarations is still
+evolving.  The current semantics and interface are subject to change.
+See L<attributes> and L<Attribute::Handlers>.
+
+=end original
+
+B<警告>: C<my> 定義での属性リストの使用はいまだ改良の途中です。
+現在の文法とインターフェースは変更される可能性があります。
+L<attributes> と L<Attribute::Handlers> を参照してください。
+
+=begin original
+
+The C<my> operator declares the listed variables to be lexically
+confined to the enclosing block, conditional (C<if/unless/elsif/else>),
+loop (C<for/foreach/while/until/continue>), subroutine, C<eval>,
+or C<do/require/use>'d file.  If more than one value is listed, the
+list must be placed in parentheses.  All listed elements must be
+legal lvalues.  Only alphanumeric identifiers may be lexically
+scoped--magical built-ins like C<$/> must currently be C<local>ized
+with C<local> instead.
+
+=end original
+
+C<my> 演算子は、それを囲んでいるブロック、条件文 (C<if/unless/elsif/else>)、
+ループ(C<for/foreach/while/until/continue>)、サブルーチン、C<eval>、
+あるいは C<do/require/use> されたファイルにレキシカルに閉じ込められる
+変数を定義します。二つ以上リストアップされている場合には、そのリストは
+括弧でくくられていなければなりません。
+すべてのリスト要素は正しい左辺値でなければなりません。
+C<$/> のような組み込み変数が現時点では C<local> で
+B<局所化> されなければならないのに対し、
+アルファベットと数字による識別子はレキシカルでマジカルなスコープになります。
+
+=begin original
+
+Unlike dynamic variables created by the C<local> operator, lexical
+variables declared with C<my> are totally hidden from the outside
+world, including any called subroutines.  This is true if it's the
+same subroutine called from itself or elsewhere--every call gets
+its own copy.
+X<local>
+
+=end original
+
+C<local> 文によって生成される動的変数とは異なり、C<my> を使って
+宣言されたレキシカル変数はそれを呼び出したサブルーチンも含め、外側の
+世界からは秘匿されます。
+自分自身が同じサブルーチンを呼んだ場合でさえそうです--個々の呼び出しは
+それぞれのコピーを所有します。
+X<local>
+
+=begin original
+
+This doesn't mean that a C<my> variable declared in a statically
+enclosing lexical scope would be invisible.  Only dynamic scopes
+are cut off.   For example, the C<bumpx()> function below has access
+to the lexical $x variable because both the C<my> and the C<sub>
+occurred at the same scope, presumably file scope.
+
+=end original
+
+このことは静的に閉じているレキシカルスコープで宣言されている
+C<my> 変数が見えなくなるということは意味しません。
+動的変数だけが切り取られます。
+例を挙げると、以下の C<bumpx()> はレキシカル変数 $x にアクセスします;
+なぜなら、C<my> と C<sub> の両方が同じスコープに現れているからです。
+
+    my $x = 10;
+    sub bumpx { $x++ } 
+
+=begin original
+
+An C<eval()>, however, can see lexical variables of the scope it is
+being evaluated in, so long as the names aren't hidden by declarations within
+the C<eval()> itself.  See L<perlref>.
+X<eval, scope of>
+
+=end original
+
+しかしながら C<eval()> は、C<eval()> 自身の内側にある宣言によって隠されない
+名前の寿命と同じ長さを持つスコープのレキシカル変数を見ることができます。
+L<perlref> を参照してください。
+X<eval, scope of>
+
+=begin original
+
+The parameter list to my() may be assigned to if desired, which allows you
+to initialize your variables.  (If no initializer is given for a
+particular variable, it is created with the undefined value.)  Commonly
+this is used to name input parameters to a subroutine.  Examples:
+
+=end original
+
+my() に対するパラーメータリストには、お望みとあらば変数を初期化するための
+代入を行うことができます。
+(変数に対して初期値が与えられなければ、その変数は未定義値を使って
+生成されます。)
+一般的にこの機能はサブルーチンに対する入力パラメータに名前を付けるために
+使われています。
+例:
+
+    $arg = "fred";	  # "global" variable
+    $n = cube_root(27);
+    print "$arg thinks the root is $n\n";
+ fred thinks the root is 3
+
+    sub cube_root {
+	my $arg = shift;  # name doesn't matter
+	$arg **= 1/3;
+	return $arg;
+    }
+
+=begin original
+
+The C<my> is simply a modifier on something you might assign to.  So when
+you do assign to variables in its argument list, C<my> doesn't
+change whether those variables are viewed as a scalar or an array.  So
+
+=end original
+
+C<my> は、あなたが代入を行いたいと考えている何かに対する修飾子です。
+ですから、引数リストの中にある変数に対して代入を行うときには C<my> は
+それらの変数がスカラとして見えているのか配列として見えているかという
+状態を変えることはありません。ですから、
+
+    my ($foo) = <STDIN>;		# WRONG?
+    my @FOO = <STDIN>;
+
+=begin original
+
+both supply a list context to the right-hand side, while
+
+=end original
+
+これらの両方ともが右辺をリストコンテキストにするのに対して、
+
+    my $foo = <STDIN>;
+
+=begin original
+
+supplies a scalar context.  But the following declares only one variable:
+
+=end original
+
+これはスカラコンテキストを与えます。しかし、以下のような宣言を
+行った場合、一つの変数だけが有効です:
+
+    my $foo, $bar = 1;			# WRONG
+
+=begin original
+
+That has the same effect as
+
+=end original
+
+これは以下のように書いたのと同じことになります
+
+    my $foo;
+    $bar = 1;
+
+=begin original
+
+The declared variable is not introduced (is not visible) until after
+the current statement.  Thus,
+
+=end original
+
+宣言された変数は、その文が終了するまでは導入されません(不可視の
+状態です)。
+したがって、
+
+    my $x = $x;
+
+=begin original
+
+can be used to initialize a new $x with the value of the old $x, and
+the expression
+
+=end original
+
+これは古い $x の値を使って新しい $x を初期化するのに使うことができます;
+そして
+
+    my $x = 123 and $x == 123
+
+=begin original
+
+is false unless the old $x happened to have the value C<123>.
+
+=end original
+
+これは古い $x の値がたまたま C<123> でない限り、新しい $x には偽が
+設定されます。
+
+=begin original
+
+Lexical scopes of control structures are not bounded precisely by the
+braces that delimit their controlled blocks; control expressions are
+part of that scope, too.  Thus in the loop
+
+=end original
+
+制御構文のレキシカルスコープは、その制御ブロックを区切る中かっこによって
+厳格に束縛されることはありません;
+制御式もまた、スコープの一部です。
+ですから以下のループでは
+
+    while (my $line = <>) {
+        $line = lc $line;
+    } continue {
+        print $line;
+    }
+
+=begin original
+
+the scope of $line extends from its declaration throughout the rest of
+the loop construct (including the C<continue> clause), but not beyond
+it.  Similarly, in the conditional
+
+=end original
+
+$line のスコープはその宣言から(C<continue>ブロックを含む)ループ構造の残りの
+部分まで拡張されますが、それを越えることはありません。
+同様に、以下の条件文では
+
+    if ((my $answer = <STDIN>) =~ /^yes$/i) {
+        user_agrees();
+    } elsif ($answer =~ /^no$/i) {
+        user_disagrees();
+    } else {
+	chomp $answer;
+        die "'$answer' is neither 'yes' nor 'no'";
+    }
+
+=begin original
+
+the scope of $answer extends from its declaration through the rest
+of that conditional, including any C<elsif> and C<else> clauses, 
+but not beyond it.  See L<perlsyn/"Simple Statements"> for information
+on the scope of variables in statements with modifiers.
+
+=end original
+
+$answer のスコープはその宣言から条件文の
+C<elsif> と C<else> ブロックを含む残りの部分まで拡張されますが、
+それを越えることはありません。
+修飾子付きの文での変数のスコープに関する情報については
+L<perlsyn/"Simple Statements"> を参照してください。
+
+=begin original
+
+The C<foreach> loop defaults to scoping its index variable dynamically
+in the manner of C<local>.  However, if the index variable is
+prefixed with the keyword C<my>, or if there is already a lexical
+by that name in scope, then a new lexical is created instead.  Thus
+in the loop
+X<foreach> X<for>
+
+=end original
+
+C<foreach> はその添え字変数に対するスコープをデフォルトでは
+C<local> のやり方で動的なものにしています。
+しかしながら、添え字変数に C<my> というキーワードが前置されていた場合、
+または現在のスコープでその名前がすでにレキシカルである場合には、
+新しいレキシカル変数が代わりに作られます。
+ですから以下のループでは:
+X<foreach> X<for>
+
+    for my $i (1, 2, 3) {
+        some_function();
+    }
+
+=begin original
+
+the scope of $i extends to the end of the loop, but not beyond it,
+rendering the value of $i inaccessible within C<some_function()>.
+X<foreach> X<for>
+
+=end original
+
+$i のスコープはループの終端まで拡張されますが、それを越えることはないので、
+$i の値は C<some_function()> の中では参照することができなくなります。
+X<foreach> X<for>
+
+=begin original
+
+Some users may wish to encourage the use of lexically scoped variables.
+As an aid to catching implicit uses to package variables,
+which are always global, if you say
+
+=end original
+
+ユーザーの一部には、レキシカルなスコープの変数の使用を奨励することを
+望んでいる人もいるでしょう。
+常にグローバルであるパッケージ変数に対する暗黙の使用を捕捉することを
+助けるものとして、
+
+    use strict 'vars';
+
+=begin original
+
+then any variable mentioned from there to the end of the enclosing
+block must either refer to a lexical variable, be predeclared via
+C<our> or C<use vars>, or else must be fully qualified with the package name.
+A compilation error results otherwise.  An inner block may countermand
+this with C<no strict 'vars'>.
+
+=end original
+
+のようにすると、この文からそれを囲むブロックの終端までの間の変数の参照は、
+レキシカル変数に対する参照か、C<our> または C<use vars> による
+事前宣言か、さもなければ完全なパッケージ名で修飾した
+名前でなければなりません。
+それ以外のものがあるとコンパイルエラーが発生します。
+これの対象となっているブロックの内側にあるブロックで
+C<no strict 'vars'> とすると(内側のブロック中では)この制限を
+取り消すことができます。
+
+=begin original
+
+A C<my> has both a compile-time and a run-time effect.  At compile
+time, the compiler takes notice of it.  The principal usefulness
+of this is to quiet C<use strict 'vars'>, but it is also essential
+for generation of closures as detailed in L<perlref>.  Actual
+initialization is delayed until run time, though, so it gets executed
+at the appropriate time, such as each time through a loop, for
+example.
+
+=end original
+
+C<my> はコンパイル時の効果と実行時の効果の両方を持っています。
+コンパイル時においては、コンパイラはその変数を認識します。
+これの基本的な実用性は C<use strict 'vars'> を黙らせるということですが、
+L<perlref> で詳細を記述しているクロージャの作成にも有用です。
+実際の初期化は実行時まで遅らされ、そのためたとえばループを通る度に
+適切に実行されるのです。
+
+=begin original
+
+Variables declared with C<my> are not part of any package and are therefore
+never fully qualified with the package name.  In particular, you're not
+allowed to try to make a package variable (or other global) lexical:
+
+=end original
+
+C<my> によって宣言された変数はどのパッケージの一部でもなく、
+そのためパッケージ名を使って修飾されることは決してありません。
+特に、パッケージ変数(もしくはその他のグローバルな変数)を
+レキシカルにしようとすることは許されていません。
+
+    my $pack::var;	# ERROR!  Illegal syntax
+
+=begin original
+
+In fact, a dynamic variable (also known as package or global variables)
+are still accessible using the fully qualified C<::> notation even while a
+lexical of the same name is also visible:
+
+=end original
+
+実際のところ、動的変数(パッケージ変数やグローバル変数として
+知られているもの)は、同じ名前を持ったレキシカルが可視な状態であったとしても、
+C<::> 記法を使った(名前の)完全な修飾を行うことによって
+まだアクセス可能なのです:
+
+    package main;
+    local $x = 10;
+    my    $x = 20;
+    print "$x and $::x\n";
+
+=begin original
+
+That will print out C<20> and C<10>.
+
+=end original
+
+この例は C<20> と C<10> を出力します。
+
+=begin original
+
+You may declare C<my> variables at the outermost scope of a file
+to hide any such identifiers from the world outside that file.  This
+is similar in spirit to C's static variables when they are used at
+the file level.  To do this with a subroutine requires the use of
+a closure (an anonymous function that accesses enclosing lexicals).
+If you want to create a private subroutine that cannot be called
+from outside that block, it can declare a lexical variable containing
+an anonymous sub reference:
+
+=end original
+
+このファイルの外側の世界からこのような識別子を隠すために、C<my> 変数を
+ファイルの最も外側のスコープで宣言することができます。
+これは、概念としては C でのファイルレベルの static 変数と似ています。
+これをサブルーチンの内側で行うには、
+クロージャ(レキシカルアクセスを伴った無名関数)を使います。
+ブロックで外側のブロックから呼び出すことのできないようなプライベートな
+サブルーチンを作りたいなら、無名サブルーチンのリファレンスを
+保持するレキシカル変数を宣言することができます:
+
+    my $secret_version = '1.001-beta';
+    my $secret_sub = sub { print $secret_version };
+    &$secret_sub();
+
+=begin original
+
+As long as the reference is never returned by any function within the
+module, no outside module can see the subroutine, because its name is not in
+any package's symbol table.  Remember that it's not I<REALLY> called
+C<$some_pack::secret_version> or anything; it's just $secret_version,
+unqualified and unqualifiable.
+
+=end original
+
+このリファレンスが決して、モジュールの内側にあるどんな関数からも
+返されることがないのと同様に、外側のモジュールはサブルーチンを
+見ることができません; なぜなら、その名前はどのパッケージのシンボル
+テーブルにも存在していないからです。
+C<$some_pack::secret_version> などの手段を使って呼び出すことは
+B<できない> のだということを思い出してください; これは単なる
+$secret_version であって、修飾されることはなく修飾することはできません。
+
+=begin original
+
+This does not work with object methods, however; all object methods
+have to be in the symbol table of some package to be found.  See
+L<perlref/"Function Templates"> for something of a work-around to
+this.
+
+=end original
+
+しかしこれはオブジェクトメソッドと共に動作させることはできません; 全ての
+オブジェクトメソッドは、発見可能な何らかのパッケージのシンボルテーブルに
+存在している必要があります。
+これを回避する方法については L<perlref/"Function Templates"> を
+参照してください。
+
+=head2 Persistent Private Variables
+X<state> X<state variable> X<static> X<variable, persistent> X<variable, static> X<closure>
+
+(永続的なプライベート変数)
+
+=begin original
+
+There are two ways to build persistent private variables in Perl 5.10.
+First, you can simply use the C<state> feature. Or, you can use closures,
+if you want to stay compatible with releases older than 5.10.
+
+=end original
+
+Perl 5.10 で永続的プライベート変数を構築するには二つの方法があります。
+一つ目は単に C<state> 機能を使うことです。
+あるいは、5.10 よりも古いリリースとの互換性を維持したいなら、クロージャを
+使うことです。
+
+=head3 Persistent variables via state()
+
+(state() による永続変数)
+
+=begin original
+
+Beginning with Perl 5.10.0, you can declare variables with the C<state>
+keyword in place of C<my>.  For that to work, though, you must have
+enabled that feature beforehand, either by using the C<feature> pragma, or
+by using C<-E> on one-liners (see L<feature>).  Beginning with Perl 5.16,
+the C<CORE::state> form does not require the
+C<feature> pragma.
+
+=end original
+
+perl 5.10.0 から、C<my> の代わりに C<state> キーワードを使って変数を
+宣言できます。
+しかし、これを働かせるには、C<feature> プラグマを使うか、一行野郎では
+C<-E> を使うことで予めこの機能を有効にしなければなりません
+(L<feature> を参照してください)。
+Perl 5.16 から、C<CORE::state> 形式は C<feature> プラグマが
+不要になりました。
+
+=begin original
+
+The C<state> keyword creates a lexical variable (following the same scoping
+rules as C<my>) that persists from one subroutine call to the next.  If a
+state variable resides inside an anonymous subroutine, then each copy of
+the subroutine has its own copy of the state variable.  However, the value
+of the state variable will still persist between calls to the same copy of
+the anonymous subroutine.  (Don't forget that C<sub { ... }> creates a new
+subroutine each time it is executed.)
+
+=end original
+
+The C<state> keyword creates a lexical variable (following the same scoping
+rules as C<my>) that persists from one subroutine call to the next.  If a
+state variable resides inside an anonymous subroutine, then each copy of
+the subroutine has its own copy of the state variable.  However, the value
+of the state variable will still persist between calls to the same copy of
+the anonymous subroutine.  (Don't forget that C<sub { ... }> creates a new
+subroutine each time it is executed.)
+(TBT)
+
+=begin original
+
+For example, the following code maintains a private counter, incremented
+each time the gimme_another() function is called:
+
+=end original
+
+例えば、以下のコードはプライベートなカウンタを管理し、gimme_another() 関数が
+呼び出されるたびにカウンタを増加させます:
+
+    use feature 'state';
+    sub gimme_another { state $x; return ++$x }
+
+=begin original
+
+And this example uses anonymous subroutines to create separate counters:
+
+=end original
+
+And this example uses anonymous subroutines to create separate counters:
+(TBT)
+
+    use feature 'state';
+    sub create_counter {
+	return sub { state $x; return ++$x }
+    }
+
+=begin original
+
+Also, since C<$x> is lexical, it can't be reached or modified by any Perl
+code outside.
+
+=end original
+
+また、C<$x> はレキシカルなので、その外側の Perl コードからアクセスすることは
+できません。
+
+=begin original
+
+When combined with variable declaration, simple scalar assignment to C<state>
+variables (as in C<state $x = 42>) is executed only the first time.  When such
+statements are evaluated subsequent times, the assignment is ignored.  The
+behavior of this sort of assignment to non-scalar variables is undefined.
+
+=end original
+
+変数宣言と結び付けられたとき、(C<state $x = 42> のような)C<state> 変数への
+単純なスカラ代入は一度目だけ実行されます。
+その後再びこの文が評価されても、代入は無視されます。
+非スカラ変数へのこの種の代入の振る舞いは未定義です。
+
+=head3 Persistent variables with closures
+
+(クロージャによる永続変数)
+
+=begin original
+
+Just because a lexical variable is lexically (also called statically)
+scoped to its enclosing block, C<eval>, or C<do> FILE, this doesn't mean that
+within a function it works like a C static.  It normally works more
+like a C auto, but with implicit garbage collection.  
+
+=end original
+
+レキシカル変数はそれを囲むブロック、C<eval>、C<do> FILE に属する
+レキシカル(もしくは静的)スコープに属します; このことは C の static と同様に
+動作するということを意味しません。
+通常は C の auto と同じように動作しますが、暗黙のガベージコレクションを
+伴っています。
+
+=begin original
+
+Unlike local variables in C or C++, Perl's lexical variables don't
+necessarily get recycled just because their scope has exited.
+If something more permanent is still aware of the lexical, it will
+stick around.  So long as something else references a lexical, that
+lexical won't be freed--which is as it should be.  You wouldn't want
+memory being free until you were done using it, or kept around once you
+were done.  Automatic garbage collection takes care of this for you.
+
+=end original
+
+C や C++ におけるローカル変数とは異なり、Perl のレキシカル変数は
+単にそのスコープから抜けたからという理由で、必ずしもリサイクルされません。
+何かもっと永続的なものがそのレキシカル変数に関してまだ気付いていれば、
+それは留まるでしょう。
+何か他のものがレキシカル変数を参照していれば、そのレキシカル変数は
+解放されません -- そしてそうあるべきです。
+あなたはそれを使いおわるまではメモリを解放したいとは思わないでしょうし、
+使い終わったものを保持し続けたいとも思わないでしょう。
+あなたのために自動ガベージコレクションがこれを行います。
+
+=begin original
+
+This means that you can pass back or save away references to lexical
+variables, whereas to return a pointer to a C auto is a grave error.
+It also gives us a way to simulate C's function statics.  Here's a
+mechanism for giving a function private variables with both lexical
+scoping and a static lifetime.  If you do want to create something like
+C's static variables, just enclose the whole function in an extra block,
+and put the static variable outside the function but in the block.
+
+=end original
+
+これはつまり、レキシカル変数に対するリファレンスを返したり保存したり
+することができるということです; 一方 C の auto 変数に対するポインタを
+返すことはエラーとなります。
+レキシカル変数はまた、C の関数に static な変数のシミュレートも行います。
+以下の例はレキシカルスコープを持つと同時に static な寿命を持つ関数に
+プライベートな変数です。
+C の static 変数のようなものを作りたいというのであれば、
+関数全体をさらにブロックで囲んでやり、static 変数をブロックの内側で、
+かつ関数の外側の場所においてやります。
+
+    {
+	my $secret_val = 0;
+	sub gimme_another {
+	    return ++$secret_val;
+	}
+    }
+    # $secret_val now becomes unreachable by the outside
+    # world, but retains its value between calls to gimme_another
+
+=begin original
+
+If this function is being sourced in from a separate file
+via C<require> or C<use>, then this is probably just fine.  If it's
+all in the main program, you'll need to arrange for the C<my>
+to be executed early, either by putting the whole block above
+your main program, or more likely, placing merely a C<BEGIN>
+code block around it to make sure it gets executed before your program
+starts to run:
+
+=end original
+
+この関数が C<require> や C<use> を通じて別の独立したファイルから
+取り込まれた場合、これはとても役に立つことでしょう。
+もしこれがすべてメインプログラムの中にあるのであれば、
+ブロック全体をメインプログラムの前に置くか、(こちらか好ましいやり方ですが)
+プログラムが実行されるよりも前に実行されることが保証されている
+BEGIN コードブロックの中に置くようにして、C<my> を早めに実行するように
+変更する必要があるでしょう:
+
+    BEGIN {
+	my $secret_val = 0;
+	sub gimme_another {
+	    return ++$secret_val;
+	}
+    }
+
+=begin original
+
+See L<perlmod/"BEGIN, UNITCHECK, CHECK, INIT and END"> about the
+special triggered code blocks, C<BEGIN>, C<UNITCHECK>, C<CHECK>,
+C<INIT> and C<END>.
+
+=end original
+
+特別なトリガーコードブロックである C<BEGIN>, C<CHECK>, C<INIT>, C<END> に
+ついては
+L<perlmod/"BEGIN, UNITCHECK, CHECK, INIT and END"> を参照してください。
+
+=begin original
+
+If declared at the outermost scope (the file scope), then lexicals
+work somewhat like C's file statics.  They are available to all
+functions in that same file declared below them, but are inaccessible
+from outside that file.  This strategy is sometimes used in modules
+to create private variables that the whole module can see.
+
+=end original
+
+最も外側のスコープ(ファイルスコープ)で宣言されたのであれば、
+レキシカル変数は C のファイルに static なものと同じように振る舞います。
+同じファイルの、宣言の後にある全ての関数から参照可能でありますが、
+そのファイルの外側から参照することはできません。
+この戦略はモジュールの中でモジュール全体から見える
+プライベートな変数を作るために使われます。
+
+=head2 Temporary Values via local()
+X<local> X<scope, dynamic> X<dynamic scope> X<variable, local>
+X<variable, temporary>
+
+(local() を使った一時的な値)
+
+=begin original
+
+B<WARNING>: In general, you should be using C<my> instead of C<local>, because
+it's faster and safer.  Exceptions to this include the global punctuation
+variables, global filehandles and formats, and direct manipulation of the
+Perl symbol table itself.  C<local> is mostly used when the current value
+of a variable must be visible to called subroutines.
+
+=end original
+
+B<警告>: 一般的には、C<local> ではなくC<my> を使うべきです; なぜなら、そちらの
+ほうが早く、安全だからです。
+この例外には、グローバルな句読点変数(punctuation variable)、グローバル
+ファイルハンドル、フォーマット、そして Perl のシンボルテーブル自身に対する
+直接の操作が含まれます。
+C<local> はほとんどの場合、変数の現在の値が呼び出されたサブルーチンに
+対して可視にしなければならない場合に使われます。
+
+=begin original
+
+Synopsis:
+
+=end original
+
+概要:
+
+=begin original
+
+    # localization of values
+
+=end original
+
+    # 値のローカル化
+
+=begin original
+
+    local $foo;			# make $foo dynamically local
+    local (@wid, %get);		# make list of variables local
+    local $foo = "flurp";	# make $foo dynamic, and init it
+    local @oof = @bar;		# make @oof dynamic, and init it
+
+=end original
+
+    local $foo;			# $foo を動的にローカルにする
+    local (@wid, %get);		# 変数のリストをローカルにする
+    local $foo = "flurp";	# $foo を動的にして、初期化する
+    local @oof = @bar;		# @oof を動的にして、初期化する
+
+=begin original
+
+    local $hash{key} = "val";	# sets a local value for this hash entry
+    delete local $hash{key};    # delete this entry for the current block
+    local ($cond ? $v1 : $v2);	# several types of lvalues support
+				# localization
+
+=end original
+
+    local $hash{key} = "val";	# このハッシュエントリにローカルな値を入れる
+    delete local $hash{key};    # 現在のブロックでこのエントリを削除
+    local ($cond ? $v1 : $v2);	# いくつかの種類の左辺値はローカル化に
+				# 対応している
+
+=begin original
+
+    # localization of symbols
+
+=end original
+
+    # シンボルのローカル化
+
+=begin original
+
+    local *FH;			# localize $FH, @FH, %FH, &FH  ...
+    local *merlyn = *randal;	# now $merlyn is really $randal, plus
+                                #     @merlyn is really @randal, etc
+    local *merlyn = 'randal';	# SAME THING: promote 'randal' to *randal
+    local *merlyn = \$randal;   # just alias $merlyn, not @merlyn etc
+
+=end original
+
+    local *FH;			# $FH, @FH, %FH, &FH ... をローカル化
+    local *merlyn = *randal;	# ここで $merlyn は実際には $randal、さらに
+                                #        @merlyn は実際には @randal、など
+    local *merlyn = 'randal';	# 「同様」: 'randal' を *randal にする
+    local *merlyn = \$randal;   # 単に $merlyn の別名で @merlyn などではない
+
+=begin original
+
+A C<local> modifies its listed variables to be "local" to the
+enclosing block, C<eval>, or C<do FILE>--and to I<any subroutine
+called from within that block>.  A C<local> just gives temporary
+values to global (meaning package) variables.  It does I<not> create
+a local variable.  This is known as dynamic scoping.  Lexical scoping
+is done with C<my>, which works more like C's auto declarations.
+
+=end original
+
+C<local> は、引数に取ったそのリスト中の変数を(local() を囲む)ブロック
+(あるいは、サブルーチン, C<eval>、C<do FILE>)と、B<そのブロック中で
+呼び出された全てのもの> にローカルなものにします。
+C<local> は単にグローバル変数(やパッケージ変数)に一時的な値を与えるだけです。
+これはローカル変数を I<作りません>。
+これは動的スコープとして知られています。
+レキシカルスコープは C<my> を使って行われ、これは C の 自動変数宣言のように
+働きます。
+
+=begin original
+
+Some types of lvalues can be localized as well: hash and array elements
+and slices, conditionals (provided that their result is always
+localizable), and symbolic references.  As for simple variables, this
+creates new, dynamically scoped values.
+
+=end original
+
+いくつかの種類の左辺値もローカル化できます: ハッシュと配列の要素とスライス、
+条件文(その結果が常にローカル化可能なもの)、シンボリックリファレンス。
+単純変数に関しては、これは新しく、動的スコープを持つ値を作ります。
+
+=begin original
+
+If more than one variable or expression is given to C<local>, they must be
+placed in parentheses.  This operator works
+by saving the current values of those variables in its argument list on a
+hidden stack and restoring them upon exiting the block, subroutine, or
+eval.  This means that called subroutines can also reference the local
+variable, but not the global one.  The argument list may be assigned to if
+desired, which allows you to initialize your local variables.  (If no
+initializer is given for a particular variable, it is created with an
+undefined value.)
+
+=end original
+
+C<local> に対して二つ以上の変数や表現を与えるのならば、それらの変数は括弧で
+くくっておかなければなりません。
+この演算子は引数リストにある変数のカレントの値を隠れたスタックに保存し、
+ブロックやサブルーチン、eval から抜けるときにその値を復帰することによって
+動作しています。
+これはつまり、呼び出されたサブルーチンからもローカル変数を
+参照することができるけれども、グローバルなものを見ることは
+できないということです。
+引数リストには、好みに応じてリスト中のローカル変数を初期化するための
+代入を行うことができます。
+(ある特定の変数に対して初期値が与えられなかった場合には、その変数は未定義値を
+伴って生成されます。)
+
+=begin original
+
+Because C<local> is a run-time operator, it gets executed each time
+through a loop.  Consequently, it's more efficient to localize your
+variables outside the loop.
+
+=end original
+
+C<local> は実行時演算子なので、ループで通る度に実行されます。
+現在の Perl はメモリの使用に関して改善されていますが、
+結果として、ループの外側で変数を宣言したほうがより効率が良いのです。
+
+=head3 Grammatical note on local()
+X<local, context>
+
+(local() の文法的注意)
+
+=begin original
+
+A C<local> is simply a modifier on an lvalue expression.  When you assign to
+a C<local>ized variable, the C<local> doesn't change whether its list is viewed
+as a scalar or an array.  So
+
+=end original
+
+C<local> は左辺値に対する単なる修飾子です。
+局所化された変数に代入を行ったとき、C<local> はそのリストがスカラとして
+見えているのか配列として見えているかということを変えることはありません。
+ですから、
+
+    local($foo) = <STDIN>;
+    local @FOO = <STDIN>;
+
+=begin original
+
+both supply a list context to the right-hand side, while
+
+=end original
+
+これらの両方ともが右辺をリストコンテキストにするのに対して、
+
+    local $foo = <STDIN>;
+
+=begin original
+
+supplies a scalar context.
+
+=end original
+
+これはスカラコンテキストを与えます.
+
+=head3 Localization of special variables
+X<local, special variable>
+
+(特殊変数のローカル化)
+
+=begin original
+
+If you localize a special variable, you'll be giving a new value to it,
+but its magic won't go away.  That means that all side-effects related
+to this magic still work with the localized value.
+
+=end original
+
+特殊変数をローカル化すると、それに新しい値を入れられますが、特殊機能は
+なくなりません。
+これは、その特殊機能に関係する全ての副作用はローカル化された値に対しても
+働くということを意味します。
+
+=begin original
+
+This feature allows code like this to work :
+
+=end original
+
+この機能は以下のようなコードが動作するようにします:
+
+    # Read the whole contents of FILE in $slurp
+    { local $/ = undef; $slurp = <FILE>; }
+
+=begin original
+
+Note, however, that this restricts localization of some values ; for
+example, the following statement dies, as of perl 5.10.0, with an error
+I<Modification of a read-only value attempted>, because the $1 variable is
+magical and read-only :
+
+=end original
+
+しかし、これはいくつかの値のローカル化を制限することに注意してください;
+例えば、以下の文は、perl 5.10.0 からは、
+I<Modification of a read-only value attempted> というエラーで die します;
+なぜなら $1 変数はマジカルで読み込み専用だからです:
+
+    local $1 = 2;
+
+=begin original
+
+One exception is the default scalar variable: starting with perl 5.14
+C<local($_)> will always strip all magic from $_, to make it possible
+to safely reuse $_ in a subroutine.
+
+=end original
+
+一つの例外は、デフォルトスカラ変数です: perl 5.14 から、サブルーチン内で
+安全に $_ を再利用できるように、C<local($_)> は常に
+全てのマジックを取り除きます。
+
+=begin original
+
+B<WARNING>: Localization of tied arrays and hashes does not currently
+work as described.
+This will be fixed in a future release of Perl; in the meantime, avoid
+code that relies on any particular behaviour of localising tied arrays
+or hashes (localising individual elements is still okay).
+See L<perl58delta/"Localising Tied Arrays and Hashes Is Broken"> for more
+details.
+X<local, tie>
+
+=end original
+
+B<警告>: tie された配列とハッシュのローカル化は現在のところ
+記述されたとおりに動作しません。
+これは Perl の将来のリリースで修正されます;
+当面の間は、tie された配列やハッシュのローカル化によるどのような
+振る舞いにも依存しないようなコードにしてください
+(個々の要素のローカル化は問題ありません)。
+さらなる詳細については
+L<perl58delta/"Localising Tied Arrays and Hashes Is Broken"> を
+参照してください。
+X<local, tie>
+
+=head3 Localization of globs
+X<local, glob> X<glob>
+
+(グロブのローカル化)
+
+=begin original
+
+The construct
+
+=end original
+
+以下のような構造は
+
+    local *name;
+
+=begin original
+
+creates a whole new symbol table entry for the glob C<name> in the
+current package.  That means that all variables in its glob slot ($name,
+@name, %name, &name, and the C<name> filehandle) are dynamically reset.
+
+=end original
+
+現在のパッケージでグロブ C<name> のための完全に新しいシンボルテーブル
+エントリを作成します。
+これは、このグロブスロットに入る全ての変数 ($name, @name, %name, &name,
+C<name> ファイルハンドル) は動的にリセットされることを意味します。
+
+=begin original
+
+This implies, among other things, that any magic eventually carried by
+those variables is locally lost.  In other words, saying C<local */>
+will not have any effect on the internal value of the input record
+separator.
+
+=end original
+
+これは特に、
+最終的にこれらの変数によってもたらされるマジックは局所的には
+失われることを意味します。
+言い換えると、C<local */> としても、入力レコードセパレータの内部の
+値には何の影響も与えないということです。
+
+=head3 Localization of elements of composite types
+X<local, composite type element> X<local, array element> X<local, hash element>
+
+(複合型の要素のローカル化)
+
+=begin original
+
+It's also worth taking a moment to explain what happens when you
+C<local>ize a member of a composite type (i.e. an array or hash element).
+In this case, the element is C<local>ized I<by name>. This means that
+when the scope of the C<local()> ends, the saved value will be
+restored to the hash element whose key was named in the C<local()>, or
+the array element whose index was named in the C<local()>.  If that
+element was deleted while the C<local()> was in effect (e.g. by a
+C<delete()> from a hash or a C<shift()> of an array), it will spring
+back into existence, possibly extending an array and filling in the
+skipped elements with C<undef>.  For instance, if you say
+
+=end original
+
+合成型のメンバー(たとえば配列やハッシュの要素)の局所化したときに
+どうなるかを説明しましょう。
+この場合、その要素は B<名前によって> 局所化が行われます。
+これはつまり、C<local> のスコープが終わったときに、C<local> で名前が
+使われていたキーを持つハッシュの要素と C<local> で名前が使われていた
+配列要素に関して保存されていた値を復帰するということです。
+C<local()> が効果を持っているところでそういった要素が削除された場合
+(例えばハッシュに対して delete() を使うとか配列に対して
+C<shift()>を使う)に、C<local()> の有効範囲を抜けたところで
+削除された要素が復活し、配列の拡張と拡張した分の要素の値を
+C<undef> にするということを行います。例えば以下のような場合、
+
+    %hash = ( 'This' => 'is', 'a' => 'test' );
+    @ary  = ( 0..5 );
+    {
+         local($ary[5]) = 6;
+         local($hash{'a'}) = 'drill';
+         while (my $e = pop(@ary)) {
+             print "$e . . .\n";
+             last unless $e > 3;
+         }
+         if (@ary) {
+             $hash{'only a'} = 'test';
+             delete $hash{'a'};
+         }
+    }
+    print join(' ', map { "$_ $hash{$_}" } sort keys %hash),".\n";
+    print "The array has ",scalar(@ary)," elements: ",
+          join(', ', map { defined $_ ? $_ : 'undef' } @ary),"\n";
+
+=begin original
+
+Perl will print
+
+=end original
+
+Perl は以下のような出力をします。
+
+    6 . . .
+    4 . . .
+    3 . . .
+    This is a test only a test.
+    The array has 6 elements: 0, 1, 2, undef, undef, 5
+
+=begin original
+
+The behavior of local() on non-existent members of composite
+types is subject to change in future.
+
+=end original
+
+複合型の存在していないメンバーに対する local() の振る舞いは
+将来変更される予定です。
+
+=head3 Localized deletion of elements of composite types
+X<delete> X<local, composite type element> X<local, array element> X<local, hash element>
+
+=begin original
+
+You can use the C<delete local $array[$idx]> and C<delete local $hash{key}>
+constructs to delete a composite type entry for the current block and restore
+it when it ends. They return the array/hash value before the localization,
+which means that they are respectively equivalent to
+
+=end original
+
+現在のブロックからある複合型エントリを削除してブロックの終了時に
+復元するために、C<delete local $array[$idx]> および
+C<delete local $hash{key}> 構文を使えます。
+これらはローカル化される前に配列/ハッシュの値を返すので、以下はそれぞれ
+等価です:
+
+    do {
+        my $val = $array[$idx];
+        local  $array[$idx];
+        delete $array[$idx];
+        $val
+    }
+
+=begin original
+
+and
+
+=end original
+
+および
+
+    do {
+        my $val = $hash{key};
+        local  $hash{key};
+        delete $hash{key};
+        $val
+    }
+
+=begin original
+
+except that for those the C<local> is scoped to the C<do> block. Slices are
+also accepted.
+
+=end original
+
+但し C<local> は C<do> ブロックのスコープです。
+スライスも受け付けられます。
+
+    my %hash = (
+     a => [ 7, 8, 9 ],
+     b => 1,
+    )
+
+    {
+     my $a = delete local $hash{a};
+     # $a is [ 7, 8, 9 ]
+     # %hash is (b => 1)
+
+     {
+      my @nums = delete local @$a[0, 2]
+      # @nums is (7, 9)
+      # $a is [ undef, 8 ]
+
+      $a[0] = 999; # will be erased when the scope ends
+     }
+     # $a is back to [ 7, 8, 9 ]
+
+    }
+    # %hash is back to its original state
+
+=head2 Lvalue subroutines
+X<lvalue> X<subroutine, lvalue>
+
+(左辺値サブルーチン)
+
+=begin original
+
+B<WARNING>: Lvalue subroutines are still experimental and the
+implementation may change in future versions of Perl.
+
+=end original
+
+B<警告>: 左辺値サブルーチンは未だ実験的機能であり、
+将来のバージョンの Perl では実装が変更されるかもしれません。
+
+=begin original
+
+It is possible to return a modifiable value from a subroutine.
+To do this, you have to declare the subroutine to return an lvalue.
+
+=end original
+
+サブルーチンから、変更可能な値を返すことが可能です。
+そうするためには、サブルーチンが左辺値を返すように宣言しなければなりません。
+
+    my $val;
+    sub canmod : lvalue {
+	$val;  # or:  return $val;
+    }
+    sub nomod {
+	$val;
+    }
+
+    canmod() = 5;   # assigns to $val
+    nomod()  = 5;   # ERROR
+
+=begin original
+
+The scalar/list context for the subroutine and for the right-hand
+side of assignment is determined as if the subroutine call is replaced
+by a scalar. For example, consider:
+
+=end original
+
+サブルーチンと、代入の右側のスカラ/リストコンテキストは
+サブルーチン呼び出しがスカラに置き換えられたかのようにして
+決定されます。
+例として、以下を考えると:
+
+    data(2,3) = get_data(3,4);
+
+=begin original
+
+Both subroutines here are called in a scalar context, while in:
+
+=end original
+
+両方のサブルーチンはスカラコンテキストで呼び出され、一方:
+
+    (data(2,3)) = get_data(3,4);
+
+=begin original
+
+and in:
+
+=end original
+
+及び:
+
+    (data(2),data(3)) = get_data(3,4);
+
+=begin original
+
+all the subroutines are called in a list context.
+
+=end original
+
+については全てのサブルーチンはリストコンテキストで呼び出されます。
+
+=over 4
+
+=item Lvalue subroutines are EXPERIMENTAL
+
+=begin original
+
+They appear to be convenient, but there is at least one reason to be
+circumspect.
+
+=end original
+
+これは便利なようですが、慎重になるべき少なくとも一つの理由があります。
+
+=begin original
+
+They violate encapsulation.  A normal mutator can check the supplied
+argument before setting the attribute it is protecting, an lvalue
+subroutine never gets that chance.  Consider;
+
+=end original
+
+これはカプセル化に違反しています。
+通常の mutator は、自身が保護している属性にセットする前に
+引数をチェックできますが、
+左辺値サブルーチンにはその機会はありません。
+以下を考えてみてください;
+
+    my $some_array_ref = [];	# protected by mutators ??
+
+    sub set_arr { 		# normal mutator
+	my $val = shift;
+	die("expected array, you supplied ", ref $val)
+	   unless ref $val eq 'ARRAY';
+	$some_array_ref = $val;
+    }
+    sub set_arr_lv : lvalue {	# lvalue mutator
+	$some_array_ref;
+    }
+
+    # set_arr_lv cannot stop this !
+    set_arr_lv() = { a => 1 };
+
+=back
+
+=head2 Lexical Subroutines
+X<my sub> X<state sub> X<our sub> X<subroutine, lexical>
+
+=begin original
+
+B<WARNING>: Lexical subroutines are still experimental.  The feature may be
+modified or removed in future versions of Perl.
+
+=end original
+
+B<WARNING>: Lexical subroutines are still experimental.  The feature may be
+modified or removed in future versions of Perl.
+(TBT)
+
+=begin original
+
+Lexical subroutines are only available under the C<use feature
+'lexical_subs'> pragma, which produces a warning unless the
+"experimental::lexical_subs" warnings category is disabled.
+
+=end original
+
+Lexical subroutines are only available under the C<use feature
+'lexical_subs'> pragma, which produces a warning unless the
+"experimental::lexical_subs" warnings category is disabled.
+(TBT)
+
+=begin original
+
+Beginning with Perl 5.18, you can declare a private subroutine with C<my>
+or C<state>.  As with state variables, the C<state> keyword is only
+available under C<use feature 'state'> or C<use 5.010> or higher.
+
+=end original
+
+Beginning with Perl 5.18, you can declare a private subroutine with C<my>
+or C<state>.  As with state variables, the C<state> keyword is only
+available under C<use feature 'state'> or C<use 5.010> or higher.
+(TBT)
+
+=begin original
+
+These subroutines are only visible within the block in which they are
+declared, and only after that declaration:
+
+=end original
+
+These subroutines are only visible within the block in which they are
+declared, and only after that declaration:
+(TBT)
+
+    no warnings "experimental::lexical_subs";
+    use feature 'lexical_subs';
+
+    foo();		# calls the package/global subroutine
+    state sub foo {
+	foo();		# also calls the package subroutine
+    }
+    foo();		# calls "state" sub
+    my $ref = \&foo;	# take a reference to "state" sub
+
+    my sub bar { ... }
+    bar();		# calls "my" sub
+
+=begin original
+
+To use a lexical subroutine from inside the subroutine itself, you must
+predeclare it.  The C<sub foo {...}> subroutine definition syntax respects
+any previous C<my sub;> or C<state sub;> declaration.
+
+=end original
+
+To use a lexical subroutine from inside the subroutine itself, you must
+predeclare it.  The C<sub foo {...}> subroutine definition syntax respects
+any previous C<my sub;> or C<state sub;> declaration.
+(TBT)
+
+    my sub baz;		# predeclaration
+    sub baz {		# define the "my" sub
+	baz();		# recursive call
+    }
+
+=head3 C<state sub> vs C<my sub>
+
+=begin original
+
+What is the difference between "state" subs and "my" subs?  Each time that
+execution enters a block when "my" subs are declared, a new copy of each
+sub is created.  "State" subroutines persist from one execution of the
+containing block to the next.
+
+=end original
+
+What is the difference between "state" subs and "my" subs?  Each time that
+execution enters a block when "my" subs are declared, a new copy of each
+sub is created.  "State" subroutines persist from one execution of the
+containing block to the next.
+(TBT)
+
+=begin original
+
+So, in general, "state" subroutines are faster.  But "my" subs are
+necessary if you want to create closures:
+
+=end original
+
+So, in general, "state" subroutines are faster.  But "my" subs are
+necessary if you want to create closures:
+(TBT)
+
+    no warnings "experimental::lexical_subs";
+    use feature 'lexical_subs';
+
+    sub whatever {
+	my $x = shift;
+	my sub inner {
+	    ... do something with $x ...
+	}
+	inner();
+    }
+
+=begin original
+
+In this example, a new C<$x> is created when C<whatever> is called, and
+also a new C<inner>, which can see the new C<$x>.  A "state" sub will only
+see the C<$x> from the first call to C<whatever>.
+
+=end original
+
+In this example, a new C<$x> is created when C<whatever> is called, and
+also a new C<inner>, which can see the new C<$x>.  A "state" sub will only
+see the C<$x> from the first call to C<whatever>.
+(TBT)
+
+=head3 C<our> subroutines
+
+=begin original
+
+Like C<our $variable>, C<our sub> creates a lexical alias to the package
+subroutine of the same name.
+
+=end original
+
+Like C<our $variable>, C<our sub> creates a lexical alias to the package
+subroutine of the same name.
+(TBT)
+
+=begin original
+
+The two main uses for this are to switch back to using the package sub
+inside an inner scope:
+
+=end original
+
+The two main uses for this are to switch back to using the package sub
+inside an inner scope:
+(TBT)
+
+    no warnings "experimental::lexical_subs";
+    use feature 'lexical_subs';
+
+    sub foo { ... }
+
+    sub bar {
+	my sub foo { ... }
+	{
+	    # need to use the outer foo here
+	    our sub foo;
+	    foo();
+	}
+    }
+
+=begin original
+
+and to make a subroutine visible to other packages in the same scope:
+
+=end original
+
+and to make a subroutine visible to other packages in the same scope:
+(TBT)
+
+    package MySneakyModule;
+
+    no warnings "experimental::lexical_subs";
+    use feature 'lexical_subs';
+
+    our sub do_something { ... }
+
+    sub do_something_with_caller {
+	package DB;
+	() = caller 1;		# sets @DB::args
+	do_something(@args);	# uses MySneakyModule::do_something
+    }
+
+=head2 Passing Symbol Table Entries (typeglobs)
+X<typeglob> X<*>
+
+(シンボルテーブルのエントリを渡す(型グロブ))
+
+=begin original
+
+B<WARNING>: The mechanism described in this section was originally
+the only way to simulate pass-by-reference in older versions of
+Perl.  While it still works fine in modern versions, the new reference
+mechanism is generally easier to work with.  See below.
+
+=end original
+
+B<警告>: このセクションで説明されている仕組みは、古いバージョンの Perl に
+おいて参照渡しをシミュレートするための唯一の方法でした。
+これは現在でも使うことができるのですが、新しいリファレンスの仕組みは
+これをより簡単に行います。後の説明を参照してください。
+
+=begin original
+
+Sometimes you don't want to pass the value of an array to a subroutine
+but rather the name of it, so that the subroutine can modify the global
+copy of it rather than working with a local copy.  In perl you can
+refer to all objects of a particular name by prefixing the name
+with a star: C<*foo>.  This is often known as a "typeglob", because the
+star on the front can be thought of as a wildcard match for all the
+funny prefix characters on variables and subroutines and such.
+
+=end original
+
+サブルーチンが渡された配列のローカルなコピーではなくてグローバルな
+ものの変更ができるように、サブルーチンに対して配列の値ではなく
+配列の名前を渡したくなることもあるでしょう。
+perl においては、これを C<*foo> のようにアスタリスクを使って
+行うことができます。
+これは前に置かれたアスタリスクが変数やサブルーチンなどに対して使われる
+前置キャラクター全てにマッチするワイルドカードとしてみなすことが
+できるので、“型グロブ”としてよく知られています。
+
+=begin original
+
+When evaluated, the typeglob produces a scalar value that represents
+all the objects of that name, including any filehandle, format, or
+subroutine.  When assigned to, it causes the name mentioned to refer to
+whatever C<*> value was assigned to it.  Example:
+
+=end original
+
+型グロブは評価されたときにその名前を持つ全てのオブジェクト(ファイルハンドル、
+フォーマット、サブルーチンも含まれます)を表すスカラ値を生成します。
+代入が行われたとき、C<*> は代入したものを反映するようになります。
+例:
+
+    sub doubleary {
+	local(*someary) = @_;
+	foreach $elem (@someary) {
+	    $elem *= 2;
+	}
+    }
+    doubleary(*foo);
+    doubleary(*bar);
+
+=begin original
+
+Scalars are already passed by reference, so you can modify
+scalar arguments without using this mechanism by referring explicitly
+to C<$_[0]> etc.  You can modify all the elements of an array by passing
+all the elements as scalars, but you have to use the C<*> mechanism (or
+the equivalent reference mechanism) to C<push>, C<pop>, or change the size of
+an array.  It will certainly be faster to pass the typeglob (or reference).
+
+=end original
+
+スカラは既に参照渡しされているので、陽に C<$_[0]> などで参照して
+この機構を使わなくてもスカラ引数を変更することができます。
+全ての要素がスカラとして渡された配列の要素はすべて
+変更することができますが、C<push>、C<pop>、もしくは配列のサイズを
+変更するためには C<*> 機構(もしくは同等のリファレンス機構)を
+使う必要があります。
+これは型グロブ(もしくはリファレンス)を渡すのを確実に高速にするでしょう。
+
+=begin original
+
+Even if you don't want to modify an array, this mechanism is useful for
+passing multiple arrays in a single LIST, because normally the LIST
+mechanism will merge all the array values so that you can't extract out
+the individual arrays.  For more on typeglobs, see
+L<perldata/"Typeglobs and Filehandles">.
+
+=end original
+
+配列の変更を望まないとしても、この機構は単一のリストの中にある複数の
+リストを渡すのに便利です; なぜなら、通常はリスト機構はすべての配列の値を
+結合してしまうので独立した配列を取り出すことができないからです。
+型グロブについては、
+L<perldata/"Typeglobs and Filehandles"> も参照してください。
+
+=head2 When to Still Use local()
+X<local> X<variable, local>
+
+(今でも local() を使うとき)
+
+=begin original
+
+Despite the existence of C<my>, there are still three places where the
+C<local> operator still shines.  In fact, in these three places, you
+I<must> use C<local> instead of C<my>.
+
+=end original
+
+C<my> があるにも関らず、今でも C<local> 演算子を使うべき場所が三ヶ所あります。
+実際にはその三ヶ所においては、C<my> ではなく、B<必ず> C<local> を
+使わなければなりません。
+
+=over 4
+
+=item 1.
+
+=begin original
+
+You need to give a global variable a temporary value, especially $_.
+
+=end original
+
+グローバル変数(特に C<$_>) に関して、一時的な値を与えたいとき。
+
+=begin original
+
+The global variables, like C<@ARGV> or the punctuation variables, must be 
+C<local>ized with C<local()>.  This block reads in F</etc/motd>, and splits
+it up into chunks separated by lines of equal signs, which are placed
+in C<@Fields>.
+
+=end original
+
+C<@ARGV> や句読点変数(punctuation variables)のようなグローバル変数では、
+局所化のために C<local()> を使わなければなりません。
+以下のブロックは F</etc/motd> を読み込み、等価記号を使って行の塊を分割し、
+その結果を C<@Fields> に格納します。
+
+    {
+	local @ARGV = ("/etc/motd");
+        local $/ = undef;
+        local $_ = <>;	
+	@Fields = split /^\s*=+\s*$/;
+    } 
+
+=begin original
+
+It particular, it's important to C<local>ize $_ in any routine that assigns
+to it.  Look out for implicit assignments in C<while> conditionals.
+
+=end original
+
+特に重要なのは、任意のルーチンの中で $_ を局所化し、それに対して
+代入することです。
+C<while> 文での暗黙的な代入に注意してください。
+
+=item 2.
+
+=begin original
+
+You need to create a local file or directory handle or a local function.
+
+=end original
+
+ローカルなファイルハンドルやディレクトリハンドル、
+もしくはローカル関数を作成する必要がある場合。
+
+=begin original
+
+A function that needs a filehandle of its own must use
+C<local()> on a complete typeglob.   This can be used to create new symbol
+table entries:
+
+=end original
+
+関数に固有のファイルハンドルが必要な関数は、完全な型グロブを使った
+C<local()> を使わなければなりません。
+これによって、新しいシンボルテーブルのエントリが作成されます:
+
+    sub ioqueue {
+        local  (*READER, *WRITER);    # not my!
+        pipe    (READER,  WRITER)     or die "pipe: $!";
+        return (*READER, *WRITER);
+    }
+    ($head, $tail) = ioqueue();
+
+=begin original
+
+See the Symbol module for a way to create anonymous symbol table
+entries.
+
+=end original
+
+無名シンボルテーブルを生成する方法については、Symbol モジュールを
+参照してください。
+
+=begin original
+
+Because assignment of a reference to a typeglob creates an alias, this
+can be used to create what is effectively a local function, or at least,
+a local alias.
+
+=end original
+
+型グロブに対するリファレンスの代入はエイリアスを生成するので、
+以下の例では効果的にローカル関数(あるいは少なくともローカルエイリアス)を
+生成するのに使うことができます。
+
+    {
+        local *grow = \&shrink; # only until this block exits
+        grow();                 # really calls shrink()
+	move();			# if move() grow()s, it shrink()s too
+    }
+    grow();			# get the real grow() again
+
+=begin original
+
+See L<perlref/"Function Templates"> for more about manipulating
+functions by name in this way.
+
+=end original
+
+こういったやり方で、名前によって関数を操作する方法に関しての詳細は
+L<perlref/"Function Templates"> を参照してください。
+
+=item 3.
+
+=begin original
+
+You want to temporarily change just one element of an array or hash.
+
+=end original
+
+配列やハッシュのある要素だけを一時的に変更したい場合。
+
+=begin original
+
+You can C<local>ize just one element of an aggregate.  Usually this
+is done on dynamics:
+
+=end original
+
+一つの要素だけを局所化することが可能です。
+通常はこれは動的に行われます。
+
+    {
+	local $SIG{INT} = 'IGNORE';
+	funct();			    # uninterruptible
+    } 
+    # interruptibility automatically restored here
+
+=begin original
+
+But it also works on lexically declared aggregates.
+
+=end original
+
+しかし、これはレキシカル変数であっても動作します。
+
+=back
+
+=head2 Pass by Reference
+X<pass by reference> X<pass-by-reference> X<reference>
+
+(参照渡し)
+
+=begin original
+
+If you want to pass more than one array or hash into a function--or
+return them from it--and have them maintain their integrity, then
+you're going to have to use an explicit pass-by-reference.  Before you
+do that, you need to understand references as detailed in L<perlref>.
+This section may not make much sense to you otherwise.
+
+=end original
+
+もし、配列やハッシュを二つ以上関数に渡したいとか関数から返したいと
+考えていて、同時にそれらを完全な状態で扱いたいというのであれば、
+明示的に参照渡しを使う必要があるでしょう。
+これを行う前に、L<perlref> で説明されているリファレンスを理解する
+必要があります。
+このセクションでは改めて説明するようなことはしません。
+
+=begin original
+
+Here are a few simple examples.  First, let's pass in several arrays
+to a function and have it C<pop> all of then, returning a new list
+of all their former last elements:
+
+=end original
+
+幾つか単純な例を挙げましょう。
+まず最初に、ある関数に幾つかの配列を渡し、
+全ての配列に対して C<pop> を行って引数として受け取った配列の
+それぞれの最後の要素からなる新しいリストを返すということを
+考えてみましょう。
+
+    @tailings = popmany ( \@a, \@b, \@c, \@d );
+
+    sub popmany {
+	my $aref;
+	my @retlist = ();
+	foreach $aref ( @_ ) {
+	    push @retlist, pop @$aref;
+	}
+	return @retlist;
+    }
+
+=begin original
+
+Here's how you might write a function that returns a
+list of keys occurring in all the hashes passed to it:
+
+=end original
+
+以下の例は、引数として渡された全てのハッシュにあるキーのリストを
+返す関数です:
+
+    @common = inter( \%foo, \%bar, \%joe );
+    sub inter {
+	my ($k, $href, %seen); # locals
+	foreach $href (@_) {
+	    while ( $k = each %$href ) {
+		$seen{$k}++;
+	    }
+	}
+	return grep { $seen{$_} == @_ } keys %seen;
+    }
+
+=begin original
+
+So far, we're using just the normal list return mechanism.
+What happens if you want to pass or return a hash?  Well,
+if you're using only one of them, or you don't mind them
+concatenating, then the normal calling convention is ok, although
+a little expensive.
+
+=end original
+
+とはいうものの、これは通常のリストを返す機構を使っています。
+ハッシュを渡そうとしたり、ハッシュを返そうとすると何が起きるのでしょうか?
+そうです、引数の一つだけを使い引数の連結が行われることを気にしなければ
+通常の呼び出し規約と同じことです; ただし、少々高くつきます。
+
+=begin original
+
+Where people get into trouble is here:
+
+=end original
+
+のように書くのはトラブルのもとです。
+
+    (@a, @b) = func(@c, @d);
+or
+    (%a, %b) = func(%c, %d);
+
+=begin original
+
+That syntax simply won't work.  It sets just C<@a> or C<%a> and
+clears the C<@b> or C<%b>.  Plus the function didn't get passed
+into two separate arrays or hashes: it got one long list in C<@_>,
+as always.
+
+=end original
+
+これらの構文は単純にうまくいきません。
+戻り値は C<@a>や C<%a>だけにセットされて、C<@b> や C<%b> はクリアされます。
+それに加え、この関数は引数として二つの配列、二つのハッシュを受け取りません:
+受け取るのは常に C<@_> に格納されている(二つの引数の内容が連結された)一つの
+長いリストなのです。
+
+=begin original
+
+If you can arrange for everyone to deal with this through references, it's
+cleaner code, although not so nice to look at.  Here's a function that
+takes two array references as arguments, returning the two array elements
+in order of how many elements they have in them:
+
+=end original
+
+これをリファレンス経由で扱うように変更できるのであれば、見た目はそれ程
+良くありませんがプログラムを明確にできます。
+以下の例は引数として配列のリファレンスを二つ取り、その配列の要素の数によって
+順序づけられた二つの配列を返す関数です:
+
+    ($aref, $bref) = func(\@c, \@d);
+    print "@$aref has more than @$bref\n";
+    sub func {
+	my ($cref, $dref) = @_;
+	if (@$cref > @$dref) {
+	    return ($cref, $dref);
+	} else {
+	    return ($dref, $cref);
+	}
+    }
+
+=begin original
+
+It turns out that you can actually do this also:
+
+=end original
+
+これは以下のように書くこともできます:
+
+    (*a, *b) = func(\@c, \@d);
+    print "@a has more than @b\n";
+    sub func {
+	local (*c, *d) = @_;
+	if (@c > @d) {
+	    return (\@c, \@d);
+	} else {
+	    return (\@d, \@c);
+	}
+    }
+
+=begin original
+
+Here we're using the typeglobs to do symbol table aliasing.  It's
+a tad subtle, though, and also won't work if you're using C<my>
+variables, because only globals (even in disguise as C<local>s)
+are in the symbol table.
+
+=end original
+
+この例では、シンボルテーブルの別名づけをするために型グロブを使っています。
+しかし、これは微妙なものであり、C<my> 変数を使った場合にはうまくいきません;
+なぜなら、グローバルなもの(C<local()> で偽装したものを含む)だけが
+シンボルテーブルにあるからです。
+
+=begin original
+
+If you're passing around filehandles, you could usually just use the bare
+typeglob, like C<*STDOUT>, but typeglobs references work, too.
+For example:
+
+=end original
+
+ファイルハンドルを扱おうというのであれば、通常は C<*STDOUT> のような
+裸の型グロブ(bare typeglob)を使うことができますが、型グロブの
+リファレンスも動作します。
+例えば:
+
+    splutter(\*STDOUT);
+    sub splutter {
+	my $fh = shift;
+	print $fh "her um well a hmmm\n";
+    }
+
+    $rec = get_rec(\*STDIN);
+    sub get_rec {
+	my $fh = shift;
+	return scalar <$fh>;
+    }
+
+=begin original
+
+If you're planning on generating new filehandles, you could do this.
+Notice to pass back just the bare *FH, not its reference.
+
+=end original
+
+新しいファイルハンドルを生成することを考えているのであれば、
+以下のようにできます。
+リファレンスではなく、生の *FH を渡すことに注意してください。
+
+    sub openit {
+	my $path = shift;
+	local *FH;
+	return open (FH, $path) ? *FH : undef;
+    }
+
+=head2 Prototypes
+X<prototype> X<subroutine, prototype>
+
+(プロトタイプ)
+
+=begin original
+
+Perl supports a very limited kind of compile-time argument checking
+using function prototyping.  If you declare
+
+=end original
+
+Perl はとても限られた形のコンパイル時引数チェックに対応しています。
+以下のように宣言すると:
+
+    sub mypush (+@)
+
+=begin original
+
+then C<mypush()> takes arguments exactly like C<push()> does.  The
+function declaration must be visible at compile time.  The prototype
+affects only interpretation of new-style calls to the function,
+where new-style is defined as not using the C<&> character.  In
+other words, if you call it like a built-in function, then it behaves
+like a built-in function.  If you call it like an old-fashioned
+subroutine, then it behaves like an old-fashioned subroutine.  It
+naturally falls out from this rule that prototypes have no influence
+on subroutine references like C<\&foo> or on indirect subroutine
+calls like C<&{$subref}> or C<< $subref->() >>.
+
+=end original
+
+C<mypush()> は C<push()> が取るのとまったく同じ引数を取ります。
+関数宣言はコンパイル時に可視でなければなりません。
+プロトタイプの効果は、関数を C<&> を使わない新しい形式の呼び出しで
+解釈したときのみです。
+言い換えれば、組み込み関数と同じように関数を呼び出せば、
+それは組み込み関数と同じように振る舞う、ということです。
+古い形式のサブルーチンと同じように呼び出せば、それは古い形式の
+サブルーチンと同じように振る舞います。
+C<\&foo> のようなサブルーチンのリファレンスや C<&{$subref}> のような
+間接的なサブルーチン呼び出し、C<< $subref->() >> に関してはプロトタイプは
+なんの影響も及ぼさないので、この規則から外れます。
+
+=begin original
+
+Method calls are not influenced by prototypes either, because the
+function to be called is indeterminate at compile time, since
+the exact code called depends on inheritance.
+
+=end original
+
+メソッド呼び出しはプロトタイプを行う/行わないによる影響を受けません; なぜなら
+正確な呼び出しコードは、継承に依存しているためにコンパイル時には
+不確定だからです。
+
+=begin original
+
+Because the intent of this feature is primarily to let you define
+subroutines that work like built-in functions, here are prototypes
+for some other functions that parse almost exactly like the
+corresponding built-in.
+
+=end original
+
+組み込み関数のように動作するサブルーチンをあなたに定義させるのが
+この機能の基本的な目的なので、ここで対応した組み込み関数のように
+解釈される幾つかの関数プロトタイプを挙げておきましょう。
+
+=begin original
+
+    Declared as			Called as
+
+=end original
+
+    宣言			呼び出し
+
+    sub mylink ($$)	     mylink $old, $new
+    sub myvec ($$$)	     myvec $var, $offset, 1
+    sub myindex ($$;$)	     myindex &getstring, "substr"
+    sub mysyswrite ($$$;$)   mysyswrite $buf, 0, length($buf) - $off, $off
+    sub myreverse (@)	     myreverse $a, $b, $c
+    sub myjoin ($@)	     myjoin ":", $a, $b, $c
+    sub mypop (+)	     mypop @array
+    sub mysplice (+$$@)	     mysplice @array, 0, 2, @pushme
+    sub mykeys (+)	     mykeys %{$hashref}
+    sub myopen (*;$)	     myopen HANDLE, $name
+    sub mypipe (**)	     mypipe READHANDLE, WRITEHANDLE
+    sub mygrep (&@)	     mygrep { /foo/ } $a, $b, $c
+    sub myrand (;$)	     myrand 42
+    sub mytime ()	     mytime
+
+=begin original
+
+Any backslashed prototype character represents an actual argument
+that must start with that character (optionally preceded by C<my>,
+C<our> or C<local>), with the exception of C<$>, which will
+accept any scalar lvalue expression, such as C<$foo = 7> or
+C<< my_function()->[0] >>. The value passed as part of C<@_> will be a
+reference to the actual argument given in the subroutine call,
+obtained by applying C<\> to that argument.
+
+=end original
+
+バックスラッシュが付けられたプロトタイプ文字は、実引数が
+その文字で始まるものでなければならないことを表します
+(オプションとして C<my>, C<our>, C<local> が前置されます);
+C<$foo = 7> や C<< my_function()->[0] >> のようにマークなしでも任意の
+左辺値表現を受け付ける C<$> は例外です。
+C<@_> の一部として渡された引数は、そのサブルーチン呼び出しにおいて
+与えられた実引数に C<\> を適用したリファレンスとなります。
+
+=begin original
+
+You can use the C<\[]> backslash group notation to specify more than one
+allowed argument type. For example:
+
+=end original
+
+C<\[]> バックスラッシュ記法を、一つまたは複数の引数型を指定するために
+使えます。
+例えば:
+
+    sub myref (\[$@%&*])
+
+=begin original
+
+will allow calling myref() as
+
+=end original
+
+というのは以下のように myref() を呼び出すのを許し:
+
+    myref $var
+    myref @array
+    myref %hash
+    myref &sub
+    myref *glob
+
+=begin original
+
+and the first argument of myref() will be a reference to
+a scalar, an array, a hash, a code, or a glob.
+
+=end original
+
+myref() の最初の引数は スカラ、配列、ハッシュ、コード、グロブのいずれかへの
+リファレンスです。
+
+=begin original
+
+Unbackslashed prototype characters have special meanings.  Any
+unbackslashed C<@> or C<%> eats all remaining arguments, and forces
+list context.  An argument represented by C<$> forces scalar context.  An
+C<&> requires an anonymous subroutine, which, if passed as the first
+argument, does not require the C<sub> keyword or a subsequent comma.
+
+=end original
+
+バックスラッシュが付けられていない文字は特別な意味を持っています。
+バックスラッシュを付けられていない すべての C<@> とC<%> は残りの引数全てを
+取ってしまい、さらにリストコンテキストを強制します。
+C<$> で表される引数はスカラコンテキストを強制されます。
+第一引数として渡された場合、C<&> は C<sub> キーワードや連続したカンマを
+要求しないような無名サブルーチンを要求します。
+
+=begin original
+
+A C<*> allows the subroutine to accept a bareword, constant, scalar expression,
+typeglob, or a reference to a typeglob in that slot.  The value will be
+available to the subroutine either as a simple scalar, or (in the latter
+two cases) as a reference to the typeglob.  If you wish to always convert
+such arguments to a typeglob reference, use Symbol::qualify_to_ref() as
+follows:
+
+=end original
+
+C<*> は、スロットにある裸の単語、定数、スカラ式、型グロブ、
+型グロブに対するリファレンスを許しています。
+その値はサブルーチンにとって単純なスカラとすることも
+型グロブに対するリファレンスにもなります。
+そのような引数を常に型グロブリファレンスに変換したい場合は、
+Symbol::qualify_to_ref() を以下のように使います:
+
+    use Symbol 'qualify_to_ref';
+
+    sub foo (*) {
+	my $fh = qualify_to_ref(shift, caller);
+	...
+    }
+
+=begin original
+
+The C<+> prototype is a special alternative to C<$> that will act like
+C<\[@%]> when given a literal array or hash variable, but will otherwise
+force scalar context on the argument.  This is useful for functions which
+should accept either a literal array or an array reference as the argument:
+
+=end original
+
+C<+> プロトタイプは C<$> の特殊な代替物で、リテラルな配列やハッシュ変数が
+与えられると C<\[@%]> のように動作しますが、さもなければ引数に
+スカラコンテキストを強制します。
+これは引数としてリテラルの配列または配列リファレンスのどちらかを
+受け付けるような関数に有用です:
+
+    sub mypush (+@) {
+        my $aref = shift;
+        die "Not an array or arrayref" unless ref $aref eq 'ARRAY';
+        push @$aref, @_;
+    }
+
+=begin original
+
+When using the C<+> prototype, your function must check that the argument
+is of an acceptable type.
+
+=end original
+
+関数で C<+> プロトタイプを使ったとき、引数が受け付けられる型かを
+チェックしなければなりません。
+
+=begin original
+
+A semicolon (C<;>) separates mandatory arguments from optional arguments.
+It is redundant before C<@> or C<%>, which gobble up everything else.
+
+=end original
+
+セミコロン (C<;>) は、必須の引数と省略可能な引数とを分割します。
+C<@> や C<%> の前ではこれは冗長です; その他のものを吸収します。
+
+=begin original
+
+As the last character of a prototype, or just before a semicolon, a C<@>
+or a C<%>, you can use C<_> in place of C<$>: if this argument is not
+provided, C<$_> will be used instead.
+
+=end original
+
+プロトタイプの最後の文字、あるいはセミコロン、C<@>、C<%> の直前に、C<$> の
+代わりに C<_> を使えます: 引数が与えられない場合、C<$_> が代わりに
+使われます。
+
+=begin original
+
+Note how the last three examples in the table above are treated
+specially by the parser.  C<mygrep()> is parsed as a true list
+operator, C<myrand()> is parsed as a true unary operator with unary
+precedence the same as C<rand()>, and C<mytime()> is truly without
+arguments, just like C<time()>.  That is, if you say
+
+=end original
+
+上の例の最後の三つのものは、構文解析器が特別扱いするということに
+注意してください。
+C<mygrep()> は本当のリスト演算子として解析され、C<myrand()> は C<rand()> と
+同じく単項演算子の優先順位を持った真の単項演算子として、
+そして C<mytime()> は C<time()> と同じ様な引数を取らないものとして
+解析されます。つまり、
+
+    mytime +2;
+
+=begin original
+
+you'll get C<mytime() + 2>, not C<mytime(2)>, which is how it would be parsed
+without a prototype.  If you want to force a unary function to have the
+same precedence as a list operator, add C<;> to the end of the prototype:
+
+=end original
+
+とすると、プロトタイプなしの場合にパースされる C<mytime(2)> ではなく、
+C<mytime() + 2> となります。
+単項関数がリスト演算子と同じ優先順位を持つようにさせたいなら、プロトタイプの
+末尾に C<;> を追加してください:
+
+    sub mygetprotobynumber($;);
+    mygetprotobynumber $a > $b; # parsed as mygetprotobynumber($a > $b)
+
+=begin original
+
+The interesting thing about C<&> is that you can generate new syntax with it,
+provided it's in the initial position:
+X<&>
+
+=end original
+
+C<&> に関して興味深いことは、初期位置を使って新しい構文を
+生成できるということです:
+X<&>
+
+    sub try (&@) {
+	my($try,$catch) = @_;
+	eval { &$try };
+	if ($@) {
+	    local $_ = $@;
+	    &$catch;
+	}
+    }
+    sub catch (&) { $_[0] }
+
+    try {
+	die "phooey";
+    } catch {
+	/phooey/ and print "unphooey\n";
+    };
+
+=begin original
+
+That prints C<"unphooey">.  (Yes, there are still unresolved
+issues having to do with visibility of C<@_>.  I'm ignoring that
+question for the moment.  (But note that if we make C<@_> lexically
+scoped, those anonymous subroutines can act like closures... (Gee,
+is this sounding a little Lispish?  (Never mind.))))
+
+=end original
+
+これは C<“unphooey”> を出力します。
+(そう、C<@_> の可視性に関して解決していないことがあります。
+現時点ではこれを無視します。
+(ただし、C<@_> をレキシカルスコープにすれば上記のサブルーチンはクロージャーの
+ように振る舞うことができます...
+(んー、これってちょーっと Lisp っぽいかな? (気にしないでね。))))
+
+=begin original
+
+And here's a reimplementation of the Perl C<grep> operator:
+X<grep>
+
+=end original
+
+以下の例は Perl の C<grep> 演算子のの再実装です:
+X<grep>
+
+    sub mygrep (&@) {
+	my $code = shift;
+	my @result;
+	foreach $_ (@_) {
+	    push(@result, $_) if &$code;
+	}
+	@result;
+    }
+
+=begin original
+
+Some folks would prefer full alphanumeric prototypes.  Alphanumerics have
+been intentionally left out of prototypes for the express purpose of
+someday in the future adding named, formal parameters.  The current
+mechanism's main goal is to let module writers provide better diagnostics
+for module users.  Larry feels the notation quite understandable to Perl
+programmers, and that it will not intrude greatly upon the meat of the
+module, nor make it harder to read.  The line noise is visually
+encapsulated into a small pill that's easy to swallow.
+
+=end original
+
+一部の人は、完全に英数字を使ったプロトタイプを好むかもしれません。
+英数字は、将来名前付き仮引数を追加するときのために意図的に使わずに
+残してあるのです。
+現時点でのプロトタイプの機構の主な目的はモジュール作者がそのユーザーに
+対してより良い診断メッセージを提供させるようにするためのものなのです。
+この記法は Perl プログラマが非常に理解しやすく、モジュールの中身に
+進入するようなことも読みづらくしたりすることもないと Larry は考えています。
+回線の雑音は飲み込みやすい小さな丸薬に視覚的に押し込められるのです。
+
+=begin original
+
+If you try to use an alphanumeric sequence in a prototype you will
+generate an optional warning - "Illegal character in prototype...".
+Unfortunately earlier versions of Perl allowed the prototype to be
+used as long as its prefix was a valid prototype.  The warning may be
+upgraded to a fatal error in a future version of Perl once the
+majority of offending code is fixed.
+
+=end original
+
+もしプロトタイプに英数字を使おうとすると、オプションの警告
+"Illegal character in prototype..." が生成されます。
+残念ながら、過去のバージョンの Perl では、有効なプロトタイプが前置されてさえ
+いれば、英数字を含むプロトタイプも認められていました。
+この警告は、目障りなコードの大部分が修正されたなら、将来のバージョンの
+Perl で致命的エラーに格上げされるかもしれません。
+
+=begin original
+
+It's probably best to prototype new functions, not retrofit prototyping
+into older ones.  That's because you must be especially careful about
+silent impositions of differing list versus scalar contexts.  For example,
+if you decide that a function should take just one parameter, like this:
+
+=end original
+
+新しい関数にプロトタイプを付けるのがおそらく最善であり、古い関数に対して
+プロトタイプを付けることはよくありません。
+なぜなら、(プロトタイプを付けたことによって)リストコンテキストと
+スカラコンテキストを黙って変えてしまうようなことに関して
+特に注意しなければならないからです。
+たとえば以下の例のようなただ一つの引数を取ると決めた関数を考えてみましょう:
+
+    sub func ($) {
+	my $n = shift;
+	print "you gave me $n\n";
+    }
+
+=begin original
+
+and someone has been calling it with an array or expression
+returning a list:
+
+=end original
+
+そして、誰かがこの関数をリストを返すような配列や式を引数として
+渡したとすると:
+
+    func(@foo);
+    func( split /:/ );
+
+=begin original
+
+Then you've just supplied an automatic C<scalar> in front of their
+argument, which can be more than a bit surprising.  The old C<@foo>
+which used to hold one thing doesn't get passed in.  Instead,
+C<func()> now gets passed in a C<1>; that is, the number of elements
+in C<@foo>.  And the C<split> gets called in scalar context so it
+starts scribbling on your C<@_> parameter list.  Ouch!
+
+=end original
+
+自動的に C<scalar> が引数の前に(こっそりと)付けられます; これには
+いささかびっくりすることになるかもしれません。
+これまでそうであったような、要素を持った C<@foo> が渡されることはありません。
+その代わり、C<func()> は C<1>、つまり C<@foo> の要素の数を得るようになります。
+そして C<split> はスカラコンテキストで呼び出され、パラメータリスト
+C<@_> に落書きを始めてしまいます。
+あいたた。
+
+=begin original
+
+This is all very powerful, of course, and should be used only in moderation
+to make the world a better place.
+
+=end original
+
+もちろんこれは十分強力なものであり、世界をより良い場所にするという目的に
+限って使用すべきものでしょう。
+
+=head2 Constant Functions
+X<constant>
+
+(定数関数)
+
+=begin original
+
+Functions with a prototype of C<()> are potential candidates for
+inlining.  If the result after optimization and constant folding
+is either a constant or a lexically-scoped scalar which has no other
+references, then it will be used in place of function calls made
+without C<&>.  Calls made using C<&> are never inlined.  (See
+F<constant.pm> for an easy way to declare most constants.)
+
+=end original
+
+C<()> というプロトタイプを持った関数はインライン展開される可能性を
+持っています。
+最適化と定数畳み込み後の結果が一つの定数か、何のリファレンスも持たない
+レキシカルスコープのスカラであったならば、その関数が C<&> を使わずに
+呼びされたときに呼び出しのその場に置かれます。
+C<&> を使って呼び出された関数は決してインライン展開されることは
+ありません。
+(ほとんどの定数を宣言するための簡単な方法は　F<constant.pm> を
+参照してください。)
+
+=begin original
+
+The following functions would all be inlined:
+
+=end original
+
+以下に挙げた関数は全てインライン展開されるでしょう:
+
+=begin original
+
+    sub pi ()		{ 3.14159 }		# Not exact, but close.
+    sub PI ()		{ 4 * atan2 1, 1 }	# As good as it gets,
+						# and it's inlined, too!
+    sub ST_DEV ()	{ 0 }
+    sub ST_INO ()	{ 1 }
+
+=end original
+
+    sub pi ()		{ 3.14159 }		# 正確ではないが近い。
+    sub PI ()		{ 4 * atan2 1, 1 }	# 可能な限り良いもの
+						# そしてこれも展開されます!
+    sub ST_DEV ()	{ 0 }
+    sub ST_INO ()	{ 1 }
+
+    sub FLAG_FOO ()	{ 1 << 8 }
+    sub FLAG_BAR ()	{ 1 << 9 }
+    sub FLAG_MASK ()	{ FLAG_FOO | FLAG_BAR }
+
+    sub OPT_BAZ ()	{ not (0x1B58 & FLAG_MASK) }
+
+    sub N () { int(OPT_BAZ) / 3 }
+
+    sub FOO_SET () { 1 if FLAG_MASK & FLAG_FOO }
+
+=begin original
+
+Be aware that these will not be inlined; as they contain inner scopes,
+the constant folding doesn't reduce them to a single constant:
+
+=end original
+
+以下のものはインライン展開されないことに注意してください;
+より内側にスコープがあるので、畳み込まれた定数が一つの定数に削減できません:
+
+    sub foo_set () { if (FLAG_MASK & FLAG_FOO) { 1 } }
+
+    sub baz_val () {
+	if (OPT_BAZ) {
+	    return 23;
+	}
+	else {
+	    return 42;
+	}
+    }
+
+=begin original
+
+If you redefine a subroutine that was eligible for inlining, you'll get
+a warning by default.  (You can use this warning to tell whether or not a
+particular subroutine is considered constant.)  The warning is
+considered severe enough not to be affected by the B<-w>
+switch (or its absence) because previously compiled
+invocations of the function will still be using the old value of the
+function.  If you need to be able to redefine the subroutine, you need to
+ensure that it isn't inlined, either by dropping the C<()> prototype
+(which changes calling semantics, so beware) or by thwarting the
+inlining mechanism in some other way, such as
+
+=end original
+
+インライン展開するのに適切であったサブルーチンを再定義するとデフォルトでは
+警告を受けることになります。
+(この警告を、あるサブルーチンが定数サブルーチンとして認識されるかどうかを
+区別するために使うことができます。)
+以前にコンパイルした関数の起動によってこの関数の古い値を使い続けるので、
+この警告は B<-w> オプション(またはそれがないこと)に影響を受けるものに
+するには重大すぎると考えられました。
+そのサブルーチンを再定義できる必要があるのならば、C<()> プロトタイプを
+やめる(これは呼び出しのセマンティクスを変えてしまうので注意してください)か、
+以下の例のようにしてインライン展開機構を
+働かせないようにしてサブルーチンがインライン展開されていないことを
+保証する必要があります。
+
+    sub not_inlined () {
+    	23 if $];
+    }
+
+=head2 Overriding Built-in Functions
+X<built-in> X<override> X<CORE> X<CORE::GLOBAL>
+
+(組み込み関数のオーバーライド)
+
+=begin original
+
+Many built-in functions may be overridden, though this should be tried
+only occasionally and for good reason.  Typically this might be
+done by a package attempting to emulate missing built-in functionality
+on a non-Unix system.
+
+=end original
+
+多くの組み込み関数はオーバーライドすることができます; ただし、これを行うのは、
+そうする理由と状況とがあるときのみに限るべきでしょう。
+これが行われる典型的な例は、非 UNIX システムにおいて欠けている組み込み機能を
+エミュレートするためにパッケージを使おうとする場合でしょう。
+
+=begin original
+
+Overriding may be done only by importing the name from a module at
+compile time--ordinary predeclaration isn't good enough.  However, the
+C<use subs> pragma lets you, in effect, predeclare subs
+via the import syntax, and these names may then override built-in ones:
+
+=end original
+
+オーバーライドはコンパイル時にモジュールからのみ名前を import できます--
+通常の先行宣言では十分ではありません。
+しかしながら、C<use subs> プラグマは import 構文を通して先行宣言を行い、
+さらにそれらの名前が組み込みのものをオーバーライドできるようにします:
+
+    use subs 'chdir', 'chroot', 'chmod', 'chown';
+    chdir $somewhere;
+    sub chdir { ... }
+
+=begin original
+
+To unambiguously refer to the built-in form, precede the
+built-in name with the special package qualifier C<CORE::>.  For example,
+saying C<CORE::open()> always refers to the built-in C<open()>, even
+if the current package has imported some other subroutine called
+C<&open()> from elsewhere.  Even though it looks like a regular
+function call, it isn't: the CORE:: prefix in that case is part of Perl's
+syntax, and works for any keyword, regardless of what is in the CORE
+package.  Taking a reference to it, that is, C<\&CORE::open>, only works
+for some keywords.  See L<CORE>.
+
+=end original
+
+曖昧さなく組み込みのものを参照するために、特別なパッケージ修飾子
+C<CORE::> を組み込みの名前に前置することができます。
+たとえば C<CORE::open()> とすると、たとえカレントパッケージが
+C<&open()> といった別のサブルーチンを import していたとしても
+これは常に組み込み関数の C<open()> を参照します。
+これは通常の関数呼び出しのように見えますが、そうではありません:
+この場合の CORE:: 接頭辞は Perl の文法の一部で、CORE パッケージに何があるかに
+関わらず、どのようなキーワードでも動作します。
+C<\&CORE::open> のように、これに対するリファレンスの取得は、一部の
+キーワードでのみ動作します。
+L<CORE> を参照してください。
+
+=begin original
+
+Library modules should not in general export built-in names like C<open>
+or C<chdir> as part of their default C<@EXPORT> list, because these may
+sneak into someone else's namespace and change the semantics unexpectedly.
+Instead, if the module adds that name to C<@EXPORT_OK>, then it's
+possible for a user to import the name explicitly, but not implicitly.
+That is, they could say
+
+=end original
+
+ライブラリモジュールは、C<open> だとか C<chdir> のような組み込みの名前を
+デフォルトの C<@EXPORT> リストの一部としてexport すべきではありません;
+なぜなら、ライブラリを使った人の名前空間を汚し、予期しない動作を
+呼び起こす可能性があるからです。
+C<@EXPORT_OK> に名前を追加すれば、ユーザーがその名前を陽に指定すれば
+import することができ、暗黙の内に import されてしまうことはありません。
+つまり、以下のようにすると
+
+    use Module 'open';
+
+=begin original
+
+and it would import the C<open> override.  But if they said
+
+=end original
+
+C<open()> のオーバーライドをインポートします。
+しかし、以下のようにすると
+
+    use Module;
+
+=begin original
+
+they would get the default imports without overrides.
+
+=end original
+
+デフォルトのインポートを行い、オーバーライドはしません。
+
+=begin original
+
+The foregoing mechanism for overriding built-in is restricted, quite
+deliberately, to the package that requests the import.  There is a second
+method that is sometimes applicable when you wish to override a built-in
+everywhere, without regard to namespace boundaries.  This is achieved by
+importing a sub into the special namespace C<CORE::GLOBAL::>.  Here is an
+example that quite brazenly replaces the C<glob> operator with something
+that understands regular expressions.
+
+=end original
+
+組み込みのものに対するオーバーライディングのための機構は
+インポートを要求したパッケージに制限されています。
+名前空間に関係なく組み込みの任意のものをオーバーライドしたいと
+考えたときに使えることもある二番目の方法があります。
+それは特殊な名前空間 C<CORE::GLOBAL> に対して sub を
+インポートすることによるものです。
+以下にちょっとした正規表現を使って C<glob> 演算子を置き換える例を挙げます。
+
+    package REGlob;
+    require Exporter;
+    @ISA = 'Exporter';
+    @EXPORT_OK = 'glob';
+
+    sub import {
+	my $pkg = shift;
+	return unless @_;
+	my $sym = shift;
+	my $where = ($sym =~ s/^GLOBAL_// ? 'CORE::GLOBAL' : caller(0));
+	$pkg->export($where, $sym, @_);
+    }
+
+    sub glob {
+	my $pat = shift;
+	my @got;
+	if (opendir my $d, '.') { 
+	    @got = grep /$pat/, readdir $d; 
+	    closedir $d;   
+	}
+	return @got;
+    }
+    1;
+
+=begin original
+
+And here's how it could be (ab)used:
+
+=end original
+
+そして以下は悪い使い方(かもしれない)例です:
+
+    #use REGlob 'GLOBAL_glob';	    # override glob() in ALL namespaces
+    package Foo;
+    use REGlob 'glob';		    # override glob() in Foo:: only
+    print for <^[a-z_]+\.pm\$>;	    # show all pragmatic modules
+
+=begin original
+
+The initial comment shows a contrived, even dangerous example.
+By overriding C<glob> globally, you would be forcing the new (and
+subversive) behavior for the C<glob> operator for I<every> namespace,
+without the complete cognizance or cooperation of the modules that own
+those namespaces.  Naturally, this should be done with extreme caution--if
+it must be done at all.
+
+=end original
+
+最初のコメント部分は不自然で、危険ですらある例です。
+グローバルに C<glob> をオーバーライドすることによって、
+完全に認識されていなかったりモジュール固有の名前空間との協調を
+考慮せずに、C<glob> の動作が I<全ての>
+名前空間で強制的に新しい(そして破壊的な)ものになります。
+こういったことは(それが本当にやらなければいけないこととした上で)
+大いに注意したうえで行うべきものです。
+
+=begin original
+
+The C<REGlob> example above does not implement all the support needed to
+cleanly override perl's C<glob> operator.  The built-in C<glob> has
+different behaviors depending on whether it appears in a scalar or list
+context, but our C<REGlob> doesn't.  Indeed, many perl built-in have such
+context sensitive behaviors, and these must be adequately supported by
+a properly written override.  For a fully functional example of overriding
+C<glob>, study the implementation of C<File::DosGlob> in the standard
+library.
+
+=end original
+
+前述の C<REGlob> の例は、perl の C<glob> 演算子をオーバーライドするのに
+必要な全てのことを実装してはいません。
+組み込みの C<glob> はそれがスカラコンテキストで使われたのか
+リストコンテキストで使われたのかによって異なる動作をしますが、
+先程の例の C<REGlob> ではそうなっていません。
+perl の組み込みのものの多くがこのようにコンテキストによって違う動作をし、
+オーバーライドするものを記述する場合にはきちんとそれを
+サポートしていなければなりません。
+C<glob> のオーバーライディングの完全版は、
+標準ライブラリにある C<File::DosGlob> の実装で勉強してください。
+
+=begin original
+
+When you override a built-in, your replacement should be consistent (if
+possible) with the built-in native syntax.  You can achieve this by using
+a suitable prototype.  To get the prototype of an overridable built-in,
+use the C<prototype> function with an argument of C<"CORE::builtin_name">
+(see L<perlfunc/prototype>).
+
+=end original
+
+組み込み関数をオーバーライドするとき、オーバーライドした関数は
+組み込み関数の元の文法(もしあれば)と一貫しているべきです。
+これは適切なプロトタイプを使うことで達成できます。
+オーバーライドできる組み込み関数のプロトタイプを得るためには、
+C<"CORE::builtin_name"> を引き数として C<prototype> 関数を使ってください
+(L<perlfunc/prototype> を参照してください)。
+
+=begin original
+
+Note however that some built-ins can't have their syntax expressed by a
+prototype (such as C<system> or C<chomp>).  If you override them you won't
+be able to fully mimic their original syntax.
+
+=end original
+
+(C<system> や C<chomp> のように)文法をプロトタイプで表現できない
+組み込み関数に注意してください。
+もしこれらをオーバーライドすると、もとの文法を完全に真似ることは
+できません。
+
+=begin original
+
+The built-ins C<do>, C<require> and C<glob> can also be overridden, but due
+to special magic, their original syntax is preserved, and you don't have
+to define a prototype for their replacements.  (You can't override the
+C<do BLOCK> syntax, though).
+
+=end original
+
+組み込みの C<do>, C<require>, C<glob> もオーバーライドできますが、特別な
+魔法によって、これらの元の文法は保存され、オーバーライドしたもののために
+プロトタイプを定義する必要はありません。
+(しかし、C<do BLOCK> 文法はオーバーライドできません)。
+
+=begin original
+
+C<require> has special additional dark magic: if you invoke your
+C<require> replacement as C<require Foo::Bar>, it will actually receive
+the argument C<"Foo/Bar.pm"> in @_.  See L<perlfunc/require>.
+
+=end original
+
+C<require> は特別な追加の黒魔法を持ちます: C<require> をオーバーライドした
+ものを C<require Foo::Bar> として起動すると、実際には @_ に引き数として
+C<"Foo/Bar.pm"> を受け取ります。
+L<perlfunc/require> を参照してください。
+
+=begin original
+
+And, as you'll have noticed from the previous example, if you override
+C<glob>, the C<< <*> >> glob operator is overridden as well.
+
+=end original
+
+そして、以前の例から気付いたかもしれませんが、もし C<glob> を
+オーバーライドすると、グロブ演算子 C<< <*> >> もオーバーライドされます。
+
+=begin original
+
+In a similar fashion, overriding the C<readline> function also overrides
+the equivalent I/O operator C<< <FILEHANDLE> >>. Also, overriding
+C<readpipe> also overrides the operators C<``> and C<qx//>.
+
+=end original
+
+同様に、C<readline> 関数をオーバーライドすると 等価な
+I/O 演算子である C<< <FILEHANDLE> >> もオーバーライドします。
+また、C<readpipe> をオーバーライドすると、演算子 C<``> と C<qx//> も
+オーバーライドします。
+
+=begin original
+
+Finally, some built-ins (e.g. C<exists> or C<grep>) can't be overridden.
+
+=end original
+
+最後に、いくつかの組み込み関数(C<exists> や C<grep>) は
+オーバーライドできません。
+
+=head2 Autoloading
+X<autoloading> X<AUTOLOAD>
+
+(オートロード)
+
+=begin original
+
+If you call a subroutine that is undefined, you would ordinarily
+get an immediate, fatal error complaining that the subroutine doesn't
+exist.  (Likewise for subroutines being used as methods, when the
+method doesn't exist in any base class of the class's package.)
+However, if an C<AUTOLOAD> subroutine is defined in the package or
+packages used to locate the original subroutine, then that
+C<AUTOLOAD> subroutine is called with the arguments that would have
+been passed to the original subroutine.  The fully qualified name
+of the original subroutine magically appears in the global $AUTOLOAD
+variable of the same package as the C<AUTOLOAD> routine.  The name
+is not passed as an ordinary argument because, er, well, just
+because, that's why.  (As an exception, a method call to a nonexistent
+C<import> or C<unimport> method is just skipped instead.  Also, if
+the AUTOLOAD subroutine is an XSUB, there are other ways to retrieve the
+subroutine name.  See L<perlguts/Autoloading with XSUBs> for details.)
+
+=end original
+
+定義されていないサブルーチンを呼び出した場合、通常はそんなサブルーチンは
+ないといった内容のエラーが即座に発生するでしょう(メソッドとして
+使われているサブルーチンも同様に、メソッドがそのクラスのパッケージの
+すべての基底クラス中に存在していなかったとき)。
+しかし、C<AUTOLOAD> サブルーチンがそのパッケージの中で定義されているか
+元のサブルーチンで使われるパッケージの中で定義されていれば、
+元のサブルーチンに対して渡されたであろう引数を伴ってその
+C<AUTOLOAD> サブルーチンが呼び出されます。
+元のサブルーチンの完全修飾された名前は C<AUTOLOAD> ルーチンと同じ
+パッケージのグローバルな変数 $AUTOLOAD の中に現れます。
+この名前は通常の引数として渡されることはありません。
+なぜなら、その、あー、なんというかこれが理由です。
+(例外として、存在しない C<import> か C<unimport> メソッドへの呼び出しは
+単に無視されます。
+また、AUTOLOAD サブルーチンが XSUB なら、サブルーチン名を取得するための
+その他の方法があります。
+詳しくは L<perlguts/Autoloading with XSUBs> を参照してください。)
+
+=begin original
+
+Many C<AUTOLOAD> routines load in a definition for the requested
+subroutine using eval(), then execute that subroutine using a special
+form of goto() that erases the stack frame of the C<AUTOLOAD> routine
+without a trace.  (See the source to the standard module documented
+in L<AutoLoader>, for example.)  But an C<AUTOLOAD> routine can
+also just emulate the routine and never define it.   For example,
+let's pretend that a function that wasn't defined should just invoke
+C<system> with those arguments.  All you'd do is:
+
+=end original
+
+多くの C<AUTOLOAD> ルーチンは eval() を使った要求サブルーチンに
+対する定義でロードされ、C<AUTOLOAD> ルーチンのスタックフレームを
+トレースなしに消してしまうような特別な形式の goto() を使うサブルーチンを
+実行します。
+(実例は標準の C<AutoLoader> モジュールのソースを参照してください。)
+しかし、C<AUTOLOAD> ルーチンはそのようなルーチンの模倣をすることもできて、
+かつそれを定義しません。
+たとえば、定義されてない関数があったときに、それを引数として
+C<system()> を起動するようにさせます。
+あなたがやろうとしていることはこういうことです:
+
+    sub AUTOLOAD {
+	my $program = $AUTOLOAD;
+	$program =~ s/.*:://;
+	system($program, @_);
+    }
+    date();
+    who('am', 'i');
+    ls('-l');
+
+=begin original
+
+In fact, if you predeclare functions you want to call that way, you don't
+even need parentheses:
+
+=end original
+
+このやり方で呼び出したい関数を先行宣言しておけば、括弧すら
+必要ではなくなります。
+
+    use subs qw(date who ls);
+    date;
+    who "am", "i";
+    ls '-l';
+
+=begin original
+
+A more complete example of this is the Shell module on CPAN, which
+can treat undefined subroutine calls as calls to external programs.
+
+=end original
+
+この例のもっと完全なものが、CPAN にある Shell モジュールです; これは
+未定義のサブルーチンの呼び出しを外部プログラムの呼び出しとして扱います。
+
+=begin original
+
+Mechanisms are available to help modules writers split their modules
+into autoloadable files.  See the standard AutoLoader module
+described in L<AutoLoader> and in L<AutoSplit>, the standard
+SelfLoader modules in L<SelfLoader>, and the document on adding C
+functions to Perl code in L<perlxs>.
+
+=end original
+
+この仕掛けは、モジュール作者がモジュールを自動ロード可能なファイルに
+分割するのを助けるために使用可能です。
+L<AutoLoader> と L<AutoSplit> で説明されている
+標準の AutoLoader モジュールと、L<SelfLoader> で説明されている
+標準の SelfLoader モジュール、そして L<perlxs> にある Perl プログラムに
+C の関数を追加することに関するドキュメントを参照してください。
+
+=head2 Subroutine Attributes
+X<attribute> X<subroutine, attribute> X<attrs>
+
+(サブルーチン属性)
+
+=begin original
+
+A subroutine declaration or definition may have a list of attributes
+associated with it.  If such an attribute list is present, it is
+broken up at space or colon boundaries and treated as though a
+C<use attributes> had been seen.  See L<attributes> for details
+about what attributes are currently supported.
+Unlike the limitation with the obsolescent C<use attrs>, the
+C<sub : ATTRLIST> syntax works to associate the attributes with
+a pre-declaration, and not just with a subroutine definition.
+
+=end original
+
+サブルーチン宣言や定義には、それと結び付けられた属性のリストを
+持たせることが出来ます。
+このような属性が合った場合、スペースかコロンを区切りとして分割され、
+C<use attributes> があったかのように扱われます。
+属性が現在対応している詳細については L<attributes> を参照してください。
+古い C<use attrs> の制限と違って、C<sub : ATTRLIST> の文法は
+前方宣言でも動作し、サブルーチン定義だけではありません。
+
+=begin original
+
+The attributes must be valid as simple identifier names (without any
+punctuation other than the '_' character).  They may have a parameter
+list appended, which is only checked for whether its parentheses ('(',')')
+nest properly.
+
+=end original
+
+属性は単純な識別子名('_' 以外の句読点なし)でなければなりません。
+パラメータリストを追加するときに、括弧('(',')')のネストが
+正しいかどうかだけをチェックします。
+
+=begin original
+
+Examples of valid syntax (even though the attributes are unknown):
+
+=end original
+
+(属性が不明だとしても)正常な文法の例です:
+
+    sub fnord (&\%) : switch(10,foo(7,3))  :  expensive;
+    sub plugh () : Ugly('\(") :Bad;
+    sub xyzzy : _5x5 { ... }
+
+=begin original
+
+Examples of invalid syntax:
+
+=end original
+
+不正な文法の例です:
+
+    sub fnord : switch(10,foo(); # ()-string not balanced
+    sub snoid : Ugly('(');	  # ()-string not balanced
+    sub xyzzy : 5x5;		  # "5x5" not a valid identifier
+    sub plugh : Y2::north;	  # "Y2::north" not a simple identifier
+    sub snurt : foo + bar;	  # "+" not a colon or space
+
+=begin original
+
+The attribute list is passed as a list of constant strings to the code
+which associates them with the subroutine.  In particular, the second example
+of valid syntax above currently looks like this in terms of how it's
+parsed and invoked:
+
+=end original
+
+属性リストはサブルーチンと結び付けられたコードに定数文字列の
+リストとして渡されます。
+特に、上記の有効な文法の第二の例では、どのようにパースと起動が
+行われるかという点においては以下のようになります:
+
+    use attributes __PACKAGE__, \&plugh, q[Ugly('\(")], 'Bad';
+
+=begin original
+
+For further details on attribute lists and their manipulation,
+see L<attributes> and L<Attribute::Handlers>.
+
+=end original
+
+属性リストとその操作に関するさらなる詳細については、
+L<attributes> を参照してください。
+
+=head1 SEE ALSO
+
+=begin original
+
+See L<perlref/"Function Templates"> for more about references and closures.
+See L<perlxs> if you'd like to learn about calling C subroutines from Perl.  
+See L<perlembed> if you'd like to learn about calling Perl subroutines from C.  
+See L<perlmod> to learn about bundling up your functions in separate files.
+See L<perlmodlib> to learn what library modules come standard on your system.
+See L<perlootut> to learn how to make object method calls.
+
+=end original
+
+リファレンスとクロージャーについては L<perlref/"Function Templates"> を
+参照してください。
+Perl から C のサブルーチンを呼び出すことに関して知りたければ、
+L<perlxs>を参照してください。
+Perl のサブルーチンを C から呼び出したい場合は L<perlembed> を参照してください。
+自分の関数を別のファイルで構築することに関しては L<perlmod> を参照してください。
+どのライブラリモジュールがあなたのシステムで標準となっているかを
+学ぶためには L<perlmodlib> を参照してください。
+オブジェクトメソッド呼び出しの作り方を学ぶには L<perlootut> を
+参照してください。
+
+=begin meta
+
+Translate: KIMURA Koichi (5.005_03)
+Update: SHIRAKATA Kentaro <argrath@ub32.org> (5.6.1-)
+Status: in progress
+
+=end meta
+
