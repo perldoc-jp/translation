@@ -1,0 +1,3124 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+perlxstut - Tutorial for writing XSUBs
+
+=end original
+
+perlxstut - XSUB を書くためのチュートリアル
+
+=head1 DESCRIPTION
+
+=begin original
+
+This tutorial will educate the reader on the steps involved in creating
+a Perl extension.  The reader is assumed to have access to L<perlguts>,
+L<perlapi> and L<perlxs>.
+
+=end original
+
+このチュートリアルは読者にPerlのエクステンションを作るのに必要な
+ステップを教えるものです。
+読者が L<perlguts>, L<perlapi>, L<perlxs> にアクセスできるということを
+仮定しています。
+
+=begin original
+
+This tutorial starts with very simple examples and becomes more complex,
+with each new example adding new features.  Certain concepts may not be
+completely explained until later in the tutorial in order to slowly ease
+the reader into building extensions.
+
+=end original
+
+このチュートリアルは非常に単純な例から始めて、新しい例に進むごとに
+新たな機能を付加えたより複雑なものへとなります。
+幾つかのコンセプトは、読者がエクステンションを作成するのが徐々に
+簡単になるように、チュートリアルの後のほうまで完全には説明されません。
+
+=begin original
+
+This tutorial was written from a Unix point of view.  Where I know them
+to be otherwise different for other platforms (e.g. Win32), I will list
+them.  If you find something that was missed, please let me know.
+
+=end original
+
+このチュートリアルは Unix の観点から書かれています。
+(Win32 のように)ほかのプラットフォームでは異なることになると知っている
+場所では、それを記しています。
+何か見落としを発見したら、ぜひ教えてください。
+
+=head1 SPECIAL NOTES
+
+(特別な注意)
+
+=head2 make
+
+=begin original
+
+This tutorial assumes that the make program that Perl is configured to
+use is called C<make>.  Instead of running "make" in the examples that
+follow, you may have to substitute whatever make program Perl has been
+configured to use.  Running B<perl -V:make> should tell you what it is.
+
+=end original
+
+このチュートリアルでは、Perl が使用するように設定されている
+make プログラムが C<make> という名前であると想定しています。
+以下の例で "make" を実行する代わりに、Perl が使うように設定された他の
+make プログラムを代用する必要があるかもしれません。
+B<perl -V:make> とすると、それが何かがわかります。
+
+=head2 Version caveat
+
+(バージョンに関する警告)
+
+=begin original
+
+When writing a Perl extension for general consumption, one should expect that
+the extension will be used with versions of Perl different from the
+version available on your machine.  Since you are reading this document,
+the version of Perl on your machine is probably 5.005 or later, but the users
+of your extension may have more ancient versions.
+
+=end original
+
+一般向けに Perl エクステンションを書くとき、あなたのマシンで
+利用可能なバージョンと異なるバージョンの Perl でエクステンションが
+使われることを想定するべきです。
+この文書を読んでいるということは、あなたのマシンの Perl のバージョンは
+おそらく 5.005 以降でしょうが、エクステンションのユーザーはもっと古い
+バージョンかもしれません。
+
+=begin original
+
+To understand what kinds of incompatibilities one may expect, and in the rare
+case that the version of Perl on your machine is older than this document,
+see the section on "Troubleshooting these Examples" for more information.
+
+=end original
+
+どのような非互換性が想定されるかを理解するために、また珍しい場合として、
+マシンに入っている Perl のバージョンがこのドキュメントより古い場合、
+さらなる情報は "Troubleshooting these Examples" の章を参照してください。
+
+=begin original
+
+If your extension uses some features of Perl which are not available on older
+releases of Perl, your users would appreciate an early meaningful warning.
+You would probably put this information into the F<README> file, but nowadays
+installation of extensions may be performed automatically, guided by F<CPAN.pm>
+module or other tools.
+
+=end original
+
+もしエクステンションが、Perl の古いリリースでは利用できないような Perl の
+機能を使っているなら、ユーザーは早期の意味のある警告で理解します。
+おそらくこの情報を F<README> ファイルに追加するべきでしょうが、最近の
+エクステンションのインストールは、F<CPAN.pm> モジュールやその他の
+ツールによって自動的に行われるかもしれません。
+
+=begin original
+
+In MakeMaker-based installations, F<Makefile.PL> provides the earliest
+opportunity to perform version checks.  One can put something like this
+in F<Makefile.PL> for this purpose:
+
+=end original
+
+MakeMaker ベースのインストールでは、F<Makefile.PL> が、プラットフォームの
+バージョンチェックの最も早い機会を提供します。
+この目的のために、以下のようなものを F<Makefile.PL> に書けます:
+
+    eval { require 5.007 }
+        or die <<EOD;
+    ############
+    ### This module uses frobnication framework which is not available
+    ### before version 5.007 of Perl.  Upgrade your Perl before
+    ### installing Kara::Mba.
+    ############
+    EOD
+
+=head2 Dynamic Loading versus Static Loading
+
+(動的読み込み対静的読み込み)
+
+=begin original
+
+It is commonly thought that if a system does not have the capability to
+dynamically load a library, you cannot build XSUBs.  This is incorrect.
+You I<can> build them, but you must link the XSUBs subroutines with the
+rest of Perl, creating a new executable.  This situation is similar to
+Perl 4.
+
+=end original
+
+一般的には、システムがライブラリを動的にロードする機能を持っていなければ
+XSUB を作成することはできないと考えられています。
+これは正しくありません。
+あなたは XSUB を作ることが I<できます>。
+ただし、あなたはその XSUB のサブルーチンと、Perl とをリンクして新たな
+実行ファイルを作らなければなりません。
+この状況は perl4 と同じです。
+
+=begin original
+
+This tutorial can still be used on such a system.  The XSUB build mechanism
+will check the system and build a dynamically-loadable library if possible,
+or else a static library and then, optionally, a new statically-linked
+executable with that static library linked in.
+
+=end original
+
+このチュートリアルはまだそういったシステムを使っていても大丈夫です。
+XSUB の作成機能は、システムをチェックして可能であれば動的ロード可能
+ライブラリを作成し、できなければスタティックライブラリを作成してから
+そのスタティックライブラリをリンクしてスタティックリンクされた
+実行ファイルを作成します(最後の部分はオプション)。
+
+=begin original
+
+Should you wish to build a statically-linked executable on a system which
+can dynamically load libraries, you may, in all the following examples,
+where the command "C<make>" with no arguments is executed, run the command
+"C<make perl>" instead.
+
+=end original
+
+これからの例を使って、動的ロード可能ライブラリが使えるシステムで
+あってもスタティックリンクされた実行ファイルを作成したいという場合、
+"C<make>"という引数なしのコマンドを実行する代わりに、
+"C<make perl>" というコマンドを実行してください。
+
+=begin original
+
+If you have generated such a statically-linked executable by choice, then
+instead of saying "C<make test>", you should say "C<make test_static>".
+On systems that cannot build dynamically-loadable libraries at all, simply
+saying "C<make test>" is sufficient.
+
+=end original
+
+もしスタティックリンクされた実行ファイルを作成することを選んだのなら、
+"C<make test>" の代わりに "C<make test_static>" を使ってください。
+動的ロード可能ライブラリが作成できないシステムの場合には単に
+"C<make test>" とするだけで OK です。
+
+=head2 Threads and PERL_NO_GET_CONTEXT
+
+(スレッドと PERL_NO_GET_CONTEXT)
+
+=begin original
+
+For threaded builds, perl requires the context pointer for the current
+thread, without C<PERL_NO_GET_CONTEXT>, perl will call a function to
+retrieve the context.
+
+=end original
+
+For threaded builds, perl requires the context pointer for the current
+thread, without C<PERL_NO_GET_CONTEXT>, perl will call a function to
+retrieve the context.
+(TBT)
+
+=begin original
+
+For improved performance, include:
+
+=end original
+
+For improved performance, include:
+(TBT)
+
+  #define PERL_NO_GET_CONTEXT
+
+=begin original
+
+as shown below.
+
+=end original
+
+as shown below.
+(TBT)
+
+=begin original
+
+For more details, see L<perlguts|perlguts/How multiple interpreters
+and concurrency are supported>.
+
+=end original
+
+For more details, see L<perlguts|perlguts/How multiple interpreters
+and concurrency are supported>.
+(TBT)
+
+=head1 TUTORIAL
+
+(チュートリアル)
+
+=begin original
+
+Now let's go on with the show!
+
+=end original
+
+では、見ていきましょう!
+
+=head2 EXAMPLE 1
+
+(例 1)
+
+=begin original
+
+Our first extension will be very simple.  When we call the routine in the
+extension, it will print out a well-known message and return.
+
+=end original
+
+最初のエクステンションは非常に単純です。
+エクステンションの中でルーチンを呼び出すときに、良く知られたメッセージを
+出力してリターンします。
+
+=begin original
+
+Run "C<h2xs -A -n Mytest>".  This creates a directory named Mytest,
+possibly under ext/ if that directory exists in the current working
+directory.  Several files will be created under the Mytest dir, including
+MANIFEST, Makefile.PL, lib/Mytest.pm, Mytest.xs, t/Mytest.t, and Changes.
+
+=end original
+
+"C<h2xs -A -n Mytest>" を実行します。
+これは Mytest という名前のディレクトリを作成しますが、カレントの
+作業ディレクトリに ext/ というディレクトリがあればその下に作成します。
+MANIFEST, Makefile.PL, lib/Mytest.pm, Mytest.xs, t/Mytest.t, Changes を
+含めた幾つかのファイルがディレクトリ Mytest の下に作成されます。
+
+=begin original
+
+The MANIFEST file contains the names of all the files just created in the
+Mytest directory.
+
+=end original
+
+MANIFEST というファイルには Mytest ディレクトリに生成されたファイル
+すべてのファイル名があります。
+
+=begin original
+
+The file Makefile.PL should look something like this:
+
+=end original
+
+Makefile.PL というファイルは以下のような形式であるべきです。
+
+    use ExtUtils::MakeMaker;
+    # See lib/ExtUtils/MakeMaker.pm for details of how to influence
+    # the contents of the Makefile that is written.
+    WriteMakefile(
+	NAME         => 'Mytest',
+	VERSION_FROM => 'Mytest.pm', # finds $VERSION
+	LIBS         => [''],   # e.g., '-lm'
+	DEFINE       => '',     # e.g., '-DHAVE_SOMETHING'
+	INC          => '',     # e.g., '-I/usr/include/other'
+    );
+
+=begin original
+
+The file Mytest.pm should start with something like this:
+
+=end original
+
+Mytest.pm は以下のような内容で始まります。
+
+    package Mytest;
+
+    use 5.008008;
+    use strict;
+    use warnings;
+
+    require Exporter;
+
+    our @ISA = qw(Exporter);
+    our %EXPORT_TAGS = ( 'all' => [ qw(
+
+    ) ] );
+
+    our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } );
+
+    our @EXPORT = qw(
+
+    );
+
+    our $VERSION = '0.01';
+
+    require XSLoader;
+    XSLoader::load('Mytest', $VERSION);
+
+    # Preloaded methods go here.
+
+    1;
+    __END__
+    # Below is the stub of documentation for your module. You better
+    # edit it!
+
+=begin original
+
+The rest of the .pm file contains sample code for providing documentation for
+the extension.
+
+=end original
+
+.pm ファイルの残りはエクステンションのためのドキュメントをを提供するための
+サンプルコードからなります。
+
+=begin original
+
+Finally, the Mytest.xs file should look something like this:
+
+=end original
+
+最後に、Mytest.xs の内容は以下のようになります。
+
+    #define PERL_NO_GET_CONTEXT
+    #include "EXTERN.h"
+    #include "perl.h"
+    #include "XSUB.h"
+
+    #include "ppport.h"
+
+    MODULE = Mytest		PACKAGE = Mytest
+
+=begin original
+
+Let's edit the .xs file by adding this to the end of the file:
+
+=end original
+
+.xs ファイルの終わりに以下の行を追加します。
+
+    void
+    hello()
+	CODE:
+	    printf("Hello, world!\n");
+
+=begin original
+
+It is okay for the lines starting at the "CODE:" line to not be indented.
+However, for readability purposes, it is suggested that you indent CODE:
+one level and the lines following one more level.
+
+=end original
+
+"CODE:" で始まる行がインデントされていないのは問題ありません。
+しかし、読みやすさの観点から、CODE: を 1 レベルインデントして、
+引き続く行をさらに 1 レベルインデントすることを勧めます。
+
+=begin original
+
+Now we'll run "C<perl Makefile.PL>".  This will create a real Makefile,
+which make needs.  Its output looks something like:
+
+=end original
+
+ここで、"C<perl Makefile.PL>" を実行します。
+これで make が必要とする本当の Makefile が生成されます。
+この出力は以下のようになります:
+
+    % perl Makefile.PL
+    Checking if your kit is complete...
+    Looks good
+    Writing Makefile for Mytest
+    %
+
+=begin original
+
+Now, running make will produce output that looks something like this (some
+long lines have been shortened for clarity and some extraneous lines have
+been deleted):
+
+=end original
+
+ここでmakeを実行すれば、以下のような出力が生成されます
+(一部の長い行は明快さを保つために短くし、一部の余分な行は削除しています):
+
+ % make
+ cp lib/Mytest.pm blib/lib/Mytest.pm
+ perl xsubpp  -typemap typemap  Mytest.xs > Mytest.xsc && \
+ mv Mytest.xsc Mytest.c
+ Please specify prototyping behavior for Mytest.xs (see perlxs manual)
+ cc -c     Mytest.c
+ Running Mkbootstrap for Mytest ()
+ chmod 644 Mytest.bs
+ rm -f blib/arch/auto/Mytest/Mytest.so
+ cc -shared -L/usr/local/lib Mytest.o -o blib/arch/auto/Mytest/Mytest.so
+
+ chmod 755 blib/arch/auto/Mytest/Mytest.so
+ cp Mytest.bs blib/arch/auto/Mytest/Mytest.bs
+ chmod 644 blib/arch/auto/Mytest/Mytest.bs
+ Manifying blib/man3/Mytest.3pm
+ %
+
+=begin original
+
+You can safely ignore the line about "prototyping behavior" - it is
+explained in L<perlxs/"The PROTOTYPES: Keyword">.
+
+=end original
+
+"prototyping behavior" に関する行は安全に無視できます - これは
+L<perlxs/"The PROTOTYPES: Keyword"> で説明されています。
+
+=begin original
+
+Perl has its own special way of easily writing test scripts, but for this
+example only, we'll create our own test script.  Create a file called hello
+that looks like this:
+
+=end original
+
+Perl にはテストスクリプトを簡単に書くための独自の特別な方法がありますが、
+この例のためだけに、自分でテストスクリプトを作ります。
+hello という名前の、以下のような内容のファイルを作ります。
+
+    #! /opt/perl5/bin/perl
+
+    use ExtUtils::testlib;
+
+    use Mytest;
+
+    Mytest::hello();
+
+=begin original
+
+Now we make the script executable (C<chmod +x hello>), run the script
+and we should see the following output:
+
+=end original
+
+ここでスクリプトを実行可能にして(C<chmod +x hello>)から実行すれば、
+以下のような出力になるはずです。
+
+    % ./hello
+    Hello, world!
+    %
+
+=head2 EXAMPLE 2
+
+(例 2)
+
+=begin original
+
+Now let's add to our extension a subroutine that will take a single numeric
+argument as input and return 1 if the number is even or 0 if the number
+is odd.
+
+=end original
+
+今度は、数値引数を入力として一つ取り、その数値が偶数なら 1 を、奇数なら
+0 を返すようなサブルーチンを追加しましょう。
+
+=begin original
+
+Add the following to the end of Mytest.xs:
+
+=end original
+
+以下の行を Mytest.xs の末尾に追加します:
+
+    int
+    is_even(input)
+	    int input
+	CODE:
+	    RETVAL = (input % 2 == 0);
+	OUTPUT:
+	    RETVAL
+
+=begin original
+
+There does not need to be whitespace at the start of the "C<int input>"
+line, but it is useful for improving readability.  Placing a semi-colon at
+the end of that line is also optional.  Any amount and kind of whitespace
+may be placed between the "C<int>" and "C<input>".
+
+=end original
+
+"C<int input>" の行の始めにある空白は必須ではありませんが、これがあると
+読みやすさが増します。
+同様に、行末のセミコロンも省略可能です。
+任意の空白を "C<int>"  と "C<input>" の間に置くことができます。
+
+=begin original
+
+Now re-run make to rebuild our new shared library.
+
+=end original
+
+make を再度実行して、新たな共有ライブラリを作ります。
+
+=begin original
+
+Now perform the same steps as before, generating a Makefile from the
+Makefile.PL file, and running make.
+
+=end original
+
+前のステップと同じように、Makefile.PL から Makefile を作って
+make を実行します。
+
+=begin original
+
+In order to test that our extension works, we now need to look at the
+file Mytest.t.  This file is set up to imitate the same kind of testing
+structure that Perl itself has.  Within the test script, you perform a
+number of tests to confirm the behavior of the extension, printing "ok"
+when the test is correct, "not ok" when it is not.
+
+=end original
+
+作成したエクステンションが動作するかを確認するために、Mytest.t の
+ようなファイルが必要となります。
+このファイルは Perl 自身が持っている構造をチェックするのと同様のものを
+模倣して作ります。
+テストスクリプトの中では、エクステンションの動作を確認するたくさんの
+テストを置き、正しい動作をしたら "ok" を正しくなければ "not ok" を
+出力するようにします。
+BEGIN ブロックにある文を print "1..4" に変え、ファイルの末尾に以下の行を
+追加します。
+
+    use Test::More tests => 4;
+    BEGIN { use_ok('Mytest') };
+
+    #########################
+
+    # Insert your test code below, the Test::More module is use()ed here
+    # so read its man page ( perldoc Test::More ) for help writing this
+    # test script.
+
+    is(&Mytest::is_even(0), 1);
+    is(&Mytest::is_even(1), 0);
+    is(&Mytest::is_even(2), 1);
+
+=begin original
+
+We will be calling the test script through the command "C<make test>".  You
+should see output that looks something like this:
+
+=end original
+
+"C<make test>" というコマンドでテストスクリプトを呼び出します。
+以下のような出力が出るはずです。
+
+ %make test
+ PERL_DL_NONLAZY=1 /usr/bin/perl "-MExtUtils::Command::MM" "-e"
+ "test_harness(0, 'blib/lib', 'blib/arch')" t/*.t
+ t/Mytest....ok
+ All tests successful.
+ Files=1, Tests=4, 0 wallclock secs ( 0.03 cusr + 0.00 csys = 0.03 CPU)
+ %
+
+=head2 What has gone on?
+
+(何をしたの?)
+
+=begin original
+
+The program h2xs is the starting point for creating extensions.  In later
+examples we'll see how we can use h2xs to read header files and generate
+templates to connect to C routines.
+
+=end original
+
+プログラム h2xs はエクステンションを作成する出発点となります。
+後の例では、ヘッダファイルを読み込んで C のルーチンに対する
+接点のテンプレートを生成するのに h2xs をどのように使うかを示します。
+
+=begin original
+
+h2xs creates a number of files in the extension directory.  The file
+Makefile.PL is a perl script which will generate a true Makefile to build
+the extension.  We'll take a closer look at it later.
+
+=end original
+
+h2xs はエクステンションのディレクトリに数多くのファイルを作成します。
+Makefile.PL というファイルはエクステンションを作成するための
+本当の Makefile を生成する perl スクリプトです。
+詳細は後述します。
+
+=begin original
+
+The .pm and .xs files contain the meat of the extension.  The .xs file holds
+the C routines that make up the extension.  The .pm file contains routines
+that tell Perl how to load your extension.
+
+=end original
+
+.pm と .xs といったファイルはエクステンションの本体を含みます。
+.xs ファイルにはエクステンションを作るための C のルーチンがあります。
+.pm ファイルには Perl がどのようにあなたの作ったエクステンションを
+ロードするかを指示するルーチンがあります。
+
+=begin original
+
+Generating the Makefile and running C<make> created a directory called blib
+(which stands for "build library") in the current working directory.  This
+directory will contain the shared library that we will build.  Once we have
+tested it, we can install it into its final location.
+
+=end original
+
+Makefile を生成し、C<make> を実行することでカレントの作業ディレクトリの
+下に blib ( "build library" を意味します)と呼ばれるディレクトリが
+作られます。
+このディレクトリには、私たちが作成する共有ライブラリが置かれます。
+一度それをテストすれば、最終的な場所にインストールすることができます。
+
+=begin original
+
+Invoking the test script via "C<make test>" did something very important.
+It invoked perl with all those C<-I> arguments so that it could find the
+various files that are part of the extension.  It is I<very> important that
+while you are still testing extensions that you use "C<make test>".  If you
+try to run the test script all by itself, you will get a fatal error.
+Another reason it is important to use "C<make test>" to run your test
+script is that if you are testing an upgrade to an already-existing version,
+using "C<make test>" ensures that you will test your new extension, not the
+already-existing version.
+
+=end original
+
+"C<make test>" 経由でテストスクリプトを実行することによって、非常に重要な
+幾つかのことを行います。
+これは perl に C<-I> 引数を付けて起動し、これによりエクステンションの
+一部である様々なファイルを見つけることができるようにします。
+エクステンションをテストするのに "make test" を使うのは I<非常に>
+重要です。
+もし、テストスクリプトをそのまま実行してしまったら、致命的なエラーが
+発生するでしょう。
+テストスクリプトを実行するのに "C<make test>" を使うもう一つの重大な
+理由は、既にあるエクステンションをアップグレードしたものを
+テストしようとしたときに、"C<make test>" を使っていれば、既に
+あるものではなく、新しいものをテストすることが保証されるためです。
+
+=begin original
+
+When Perl sees a C<use extension;>, it searches for a file with the same name
+as the C<use>'d extension that has a .pm suffix.  If that file cannot be found,
+Perl dies with a fatal error.  The default search path is contained in the
+C<@INC> array.
+
+=end original
+
+Perl が C<use extension;> という行を見つけたとき、C<use> する
+エクステンションと同じ名前で .pm という拡張を持つファイルを検索します。
+もしそういったファイルが見つからなければ、Perl は致命的エラーにより
+終了します。
+デフォルトの検索パスは C<@INC> という配列に置かれます。
+
+=begin original
+
+In our case, Mytest.pm tells perl that it will need the Exporter and Dynamic
+Loader extensions.  It then sets the C<@ISA> and C<@EXPORT> arrays and the
+C<$VERSION> scalar; finally it tells perl to bootstrap the module.  Perl
+will call its dynamic loader routine (if there is one) and load the shared
+library.
+
+=end original
+
+Mytest.pm は perl に Exporter エクステンション と Dynamic Loader
+エクステンションが必要であるいうことを教えます。
+この後配列 C<@ISA>, C<@EXPORT> とスカラー C<$VERSION> に値を設定し、最後に
+モジュールをブートストラップするように perl に指示します。
+perl はそのダイナミックローダールーチンを(あれば)呼び出し、共有ライブラリを
+ロードします。
+
+=begin original
+
+The two arrays C<@ISA> and C<@EXPORT> are very important.  The C<@ISA>
+array contains a list of other packages in which to search for methods (or
+subroutines) that do not exist in the current package.  This is usually
+only important for object-oriented extensions (which we will talk about
+much later), and so usually doesn't need to be modified.
+
+=end original
+
+C<@ISA> と C<@EXPORT> の二つの配列は非常に重要です。
+配列 C<@ISA> には、メソッド(もしくはサブルーチン)がカレントパッケージに
+なかったときに探しに行く他のパッケージのリストがあります。
+これは普通オブジェクト指向エクステンション(これについてはずっと後の方で
+議論します)でのみ重要なので、普通は修正する必要はありません。
+
+=begin original
+
+The C<@EXPORT> array tells Perl which of the extension's variables and
+subroutines should be placed into the calling package's namespace.  Because
+you don't know if the user has already used your variable and subroutine
+names, it's vitally important to carefully select what to export.  Do I<not>
+export method or variable names I<by default> without a good reason.
+
+=end original
+
+配列 C<@EXPORT> は Perl に対して、呼び出されたときにパッケージの名前空間に
+置くべきエクステンションの変数とサブルーチンを指示します。
+ユーザーが既にあなたの変数名やサブルーチン名を使っているかどうかは
+わからないので、何をエクスポートするかを慎重に選択することは極めて
+重要です。
+何かそうするべき理由がない限りは、メソッド名や変数名を
+I<デフォルトでは> エクスポート I<しない> ようにしてください。
+
+=begin original
+
+As a general rule, if the module is trying to be object-oriented then don't
+export anything.  If it's just a collection of functions and variables, then
+you can export them via another array, called C<@EXPORT_OK>.  This array
+does not automatically place its subroutine and variable names into the
+namespace unless the user specifically requests that this be done.
+
+=end original
+
+一般的な規則として、モジュールがオブジェクト指向しようとした場合には
+何もエクスポートしません。
+モジュールが単なる関数と変数の集まりであれば、別の配列 @EXPORT_OK を
+通じてそれらをエクスポートできます。
+この配列は、ユーザーがそうしてほしと明示的に指定しない限り、
+自動的にはサブルーチン名と変数名を名前空間に置きません。
+
+=begin original
+
+See L<perlmod> for more information.
+
+=end original
+
+詳細は L<perlmod> を参照してください。
+
+=begin original
+
+The C<$VERSION> variable is used to ensure that the .pm file and the shared
+library are "in sync" with each other.  Any time you make changes to
+the .pm or .xs files, you should increment the value of this variable.
+
+=end original
+
+変数 C<$VERSION> は .pm ファイルと共有ライブラリがそれぞれ
+「同期している」ことを保証します。
+.pm ファイルや .xs ファイルを変更したとき、この変数の値を
+増加させるべきです。
+
+=head2 Writing good test scripts
+
+(良いテストスクリプトを書く)
+
+=begin original
+
+The importance of writing good test scripts cannot be over-emphasized.  You
+should closely follow the "ok/not ok" style that Perl itself uses, so that
+it is very easy and unambiguous to determine the outcome of each test case.
+When you find and fix a bug, make sure you add a test case for it.
+
+=end original
+
+良いテストスクリプトを書くことの重要性は、いくら強調しても足りません。
+Perl 自身が使っている "ok/not ok" の形式を忠実に守り、テストケースで
+どうなったかを簡単に、曖昧なことなくわかるようにします。
+バグを発見して修正したら、テストケースにそれを追加しましょう。
+
+=begin original
+
+By running "C<make test>", you ensure that your Mytest.t script runs and uses
+the correct version of your extension.  If you have many test cases,
+save your test files in the "t" directory and use the suffix ".t".
+When you run "C<make test>", all of these test files will be executed.
+
+=end original
+
+"C<make test>" を実行することにより、正しいスクリプト Mytest.t を実行して
+適切なバージョンのエクステンションを使うことが保証されます。
+たくさんのテストケースがあるのなら、
+"t" という名前のディレクトリに、".t" の拡張子でテストファイルを保存します。
+"C<make test>" を実行すると、これらのテストファイル全てが実行されます。
+
+=head2 EXAMPLE 3
+
+(例 3)
+
+=begin original
+
+Our third extension will take one argument as its input, round off that
+value, and set the I<argument> to the rounded value.
+
+=end original
+
+三番目の例は、入力として引数を一つとってその値を丸めてからその結果を
+引数にセットするというものです。
+
+=begin original
+
+Add the following to the end of Mytest.xs:
+
+=end original
+
+以下の行を Mytest.xs の末尾に追加します:
+
+	void
+	round(arg)
+		double  arg
+	    CODE:
+		if (arg > 0.0) {
+			arg = floor(arg + 0.5);
+		} else if (arg < 0.0) {
+			arg = ceil(arg - 0.5);
+		} else {
+			arg = 0.0;
+		}
+	    OUTPUT:
+		arg
+
+=begin original
+
+Edit the Makefile.PL file so that the corresponding line looks like this:
+
+=end original
+
+Makefile.pl というファイルを編集し、対応する行を以下に示すように
+してください。
+
+	'LIBS'      => ['-lm'],   # e.g., '-lm'
+
+=begin original
+
+Generate the Makefile and run make.  Change the test number in Mytest.t to
+"9" and add the following tests:
+
+=end original
+
+Makefile を生成してから make を実行します。
+Mytest.t のテスト番号を "9" に変更し、さらに以下のテストを追加します。
+
+	$i = -1.5; &Mytest::round($i); is( $i, -2.0 );
+	$i = -1.1; &Mytest::round($i); is( $i, -1.0 );
+	$i = 0.0; &Mytest::round($i);  is( $i,  0.0 );
+	$i = 0.5; &Mytest::round($i);  is( $i,  1.0 );
+	$i = 1.2; &Mytest::round($i);  is( $i,  1.0 );
+
+=begin original
+
+Running "C<make test>" should now print out that all nine tests are okay.
+
+=end original
+
+"C<make test>" を実行します。
+ここで、九つのテストすべてで ok と出力されるはずです。
+
+=begin original
+
+Notice that in these new test cases, the argument passed to round was a
+scalar variable.  You might be wondering if you can round a constant or
+literal.  To see what happens, temporarily add the following line to Mytest.t:
+
+=end original
+
+これらの新しいテストケースでは、丸めるために渡される引数が
+スカラ変数であることに注目してください。
+定数やリテラルを丸めたらどうなるだろうか、という疑問を持ったかもしれません。
+何が起きるかを確かめるために、以下の行を Mytest.t に一時的に
+追加してください。
+
+	&Mytest::round(3);
+
+=begin original
+
+Run "C<make test>" and notice that Perl dies with a fatal error.  Perl won't
+let you change the value of constants!
+
+=end original
+
+"C<make test>" を実行すると、Perl は致命的エラーを起こして
+終了してしまいます。
+Perl は、定数値を変更させないのです!
+
+=head2 What's new here?
+
+(何が新しいの?)
+
+=over 4
+
+=item *
+
+=begin original
+
+We've made some changes to Makefile.PL.  In this case, we've specified an
+extra library to be linked into the extension's shared library, the math
+library libm in this case.  We'll talk later about how to write XSUBs that
+can call every routine in a library.
+
+=end original
+
+Makefile.pl に対する変更をしました。
+この場合、エクステンションの共有ライブラリとリンクすべき追加のライブラリ
+(今回の場合は数学ライブラリ libm)を指定します。
+後で、ライブラリにあるすべてのルーチンを呼び出すことのできる XSUB の
+書き方について説明します。
+
+=item *
+
+=begin original
+
+The value of the function is not being passed back as the function's return
+value, but by changing the value of the variable that was passed into the
+function.  You might have guessed that when you saw that the return value
+of round is of type "void".
+
+=end original
+
+関数の値が関数の戻り値として返されるのではなく、関数に渡された
+変数の値を変更することで返されます。
+round の返り値の型は "void" であると推測したかもしれません。
+
+=back
+
+=head2 Input and Output Parameters
+
+(入力パラメータと出力パラメータ)
+
+=begin original
+
+You specify the parameters that will be passed into the XSUB on the line(s)
+after you declare the function's return value and name.  Each input parameter
+line starts with optional whitespace, and may have an optional terminating
+semicolon.
+
+=end original
+
+関数の戻り値と名前を宣言した後の行に XSUB に渡すパラメータを指定できます。
+各パラメータ行は(省略可能な)空白で始まり、(省略可能な)終端する
+セミコロンがあります。
+
+=begin original
+
+The list of output parameters occurs at the very end of the function, just
+after the OUTPUT: directive.  The use of RETVAL tells Perl that you
+wish to send this value back as the return value of the XSUB function.  In
+Example 3, we wanted the "return value" placed in the original variable
+which we passed in, so we listed it (and not RETVAL) in the OUTPUT: section.
+
+=end original
+
+出力パラメータは関数の最後、OUTPUT: 指示子の直後に置きます。
+RETVAL を使うことで、Perl に XSUB 関数の戻り値を返したいという意志を
+伝えます。
+例 3 では、「返り値」を私たちが渡した元の変数に入れてほしいので、
+(RETVAL でなく) その変数を OUTPUT: セクションに並べたのです。
+
+=head2 The XSUBPP Program
+
+(XSUBPP プログラム)
+
+=begin original
+
+The B<xsubpp> program takes the XS code in the .xs file and translates it into
+C code, placing it in a file whose suffix is .c.  The C code created makes
+heavy use of the C functions within Perl.
+
+=end original
+
+B<xsubpp> プログラムは .xs ファイルにある XS コードを取り、それを C に
+翻訳しその結果を .c という拡張子のファイルに出力します。
+変換された C コードは Perl の中にある C の関数を使うように作られます。
+
+=head2 The TYPEMAP file
+
+(TYPEMAP ファイル)
+
+=begin original
+
+The B<xsubpp> program uses rules to convert from Perl's data types (scalar,
+array, etc.) to C's data types (int, char, etc.).  These rules are stored
+in the typemap file ($PERLLIB/ExtUtils/typemap).  There's a brief discussion
+below, but all the nitty-gritty details can be found in L<perlxstypemap>.
+If you have a new-enough version of perl (5.16 and up) or an upgraded
+XS compiler (C<ExtUtils::ParseXS> 3.13_01 or better), then you can inline
+typemaps in your XS instead of writing separate files.
+Either way, this typemap thing is split into three parts:
+
+=end original
+
+B<xsubpp> プログラムは Perl のデータ型(スカラー、配列、など)から
+C のデータ型(int, char, など)に変換する規則を使います。
+これらのルールは typemap ファイル ($PERLLIB/ExtUtils/typemap)に
+格納されます。
+要点に関する議論は後述しますが、本質的な詳細は L<perlxstypemap> にあります。
+十分に新しい perl (5.16 以降) または更新された XS コンパイラ
+(C<ExtUtils::ParseXS> 3.13_01 以降) があるなら、typemap を独立した
+ファイルではなく XS コードのインラインで書くことが出来ます。
+どちらの場合でも、この typemap は三つの部分に分けられます。
+
+=begin original
+
+The first section maps various C data types to a name, which corresponds
+somewhat with the various Perl types.  The second section contains C code
+which B<xsubpp> uses to handle input parameters.  The third section contains
+C code which B<xsubpp> uses to handle output parameters.
+
+=end original
+
+最初のセクションは様々な C のデータ型を、様々な Perl の型にいくらか対応する
+名前にマッピングするものです。
+二番目のセクションは入力パラメータを扱うために B<xsubpp> が使用する
+C コードからなります。
+三番目のセクションは出力パラメータに対して B<xsubpp> が使用する
+C コードからなります。
+
+=begin original
+
+Let's take a look at a portion of the .c file created for our extension.
+The file name is Mytest.c:
+
+=end original
+
+さあ、私たちのエクステンションのために作られた .c ファイルの一部を
+見てみましょう。
+ファイル名は Mytest.c です:
+
+	XS(XS_Mytest_round)
+	{
+	    dXSARGS;
+	    if (items != 1)
+		Perl_croak(aTHX_ "Usage: Mytest::round(arg)");
+	    PERL_UNUSED_VAR(cv); /* -W */
+	    {
+		double  arg = (double)SvNV(ST(0));	/* XXXXX */
+		if (arg > 0.0) {
+			arg = floor(arg + 0.5);
+		} else if (arg < 0.0) {
+			arg = ceil(arg - 0.5);
+		} else {
+			arg = 0.0;
+		}
+		sv_setnv(ST(0), (double)arg);	/* XXXXX */
+		SvSETMAGIC(ST(0));
+	    }
+	    XSRETURN_EMPTY;
+	}
+
+=begin original
+
+Notice the two lines commented with "XXXXX".  If you check the first part
+of the typemap file (or section), you'll see that doubles are of type
+T_DOUBLE.  In the INPUT part of the typemap, an argument that is T_DOUBLE
+is assigned to the variable arg by calling the routine SvNV on something,
+then casting it to double, then assigned to the variable arg.  Similarly,
+in the OUTPUT section, once arg has its final value, it is passed to the
+sv_setnv function to be passed back to the calling subroutine.  These two
+functions are explained in L<perlguts>; we'll talk more later about what
+that "ST(0)" means in the section on the argument stack.
+
+=end original
+
+"XXXXX" というコメントが付けられた二つの行に注意してください。
+typemap ファイルの最初の部分(またはセクション)を確かめれば、doubles は
+T_DOUBLE という型であることがわかるでしょう。
+typemap の INPUT の部分では、T_DOUBLE である引数は、SvNv というルーチンを
+呼び出すことによって変数が割り当てられ、その後で double に
+キャストされてから引数である変数に代入されます。
+同様に、OUTPUT セクションでは一度引数が最終的な値を持てば、それは
+呼び出された関数に返すために関数 sv_setnv に渡されます。
+これら二つの関数は L<perlguts> で説明されています。
+引数スタックにあるセクションの "ST(0)" の意味は後で説明します。
+
+=head2 Warning about Output Arguments
+
+(出力引数に関する警告)
+
+=begin original
+
+In general, it's not a good idea to write extensions that modify their input
+parameters, as in Example 3.  Instead, you should probably return multiple
+values in an array and let the caller handle them (we'll do this in a later
+example).  However, in order to better accommodate calling pre-existing C
+routines, which often do modify their input parameters, this behavior is
+tolerated.
+
+=end original
+
+一般的にいって、例 3 にあるように入力引数を書き換えるような
+エクステンションを作ることはよくありません。
+代わりに、おそらくは複数の値を配列で返して、呼び出し元にそれを扱わせるように
+するべきです(これは後の例で行います)。
+しかしながら、すでにある入力パラメータを書き換えるような C のルーチンの
+呼び出しにより良く適応するために、この振る舞いが許されているのです。
+次の例では、これをどう行うかを説明します。
+
+=head2 EXAMPLE 4
+
+(例 4)
+
+=begin original
+
+In this example, we'll now begin to write XSUBs that will interact with
+pre-defined C libraries.  To begin with, we will build a small library of
+our own, then let h2xs write our .pm and .xs files for us.
+
+=end original
+
+この例で、すでにある C ライブラリとやりとりするような XSUB の記述を
+始めます。
+これを始めるために、独自の小さなライブラリを作ります。
+それから .pm と .xs のための h2xs を記述します。
+
+=begin original
+
+Create a new directory called Mytest2 at the same level as the directory
+Mytest.  In the Mytest2 directory, create another directory called mylib,
+and cd into that directory.
+
+=end original
+
+ディレクトリ Mytest と同じレベルに、Mytest2 ディレクトリを新たに
+作ります。
+Mytest2 ディレクトリで、mylib という別のディレクトリを作成し、そこに
+cd します。
+
+=begin original
+
+Here we'll create some files that will generate a test library.  These will
+include a C source file and a header file.  We'll also create a Makefile.PL
+in this directory.  Then we'll make sure that running make at the Mytest2
+level will automatically run this Makefile.PL file and the resulting Makefile.
+
+=end original
+
+ここで、テスト用のライブラリを生成するための幾つかのファイルを作ります。
+こういったファイルには、C ソースファイルとヘッダーファイルが含まれます。
+また、このディレクトリで Makefile.PL も作ります。
+その後で、Mytest2 のレベルで make を実行することにより自動的に
+Makefile.PL が実行され、その結果 Makefile が作成されます。
+
+=begin original
+
+In the mylib directory, create a file mylib.h that looks like this:
+
+=end original
+
+ディレクトリ mylib で、以下のような内容の mylib.h というファイルを
+作成します。
+
+	#define TESTVAL	4
+
+	extern double	foo(int, long, const char*);
+
+=begin original
+
+Also create a file mylib.c that looks like this:
+
+=end original
+
+	#include <stdlib.h>
+	#include "./mylib.h"
+
+	#include <stdlib.h>
+	#include "./mylib.h"
+
+	double
+	foo(int a, long b, const char *c)
+	{
+		return (a + b + atof(c) + TESTVAL);
+	}
+
+=begin original
+
+And finally create a file Makefile.PL that looks like this:
+
+=end original
+
+	use ExtUtils::MakeMaker;
+	$Verbose = 1;
+	WriteMakefile(
+	    NAME   => 'Mytest2::mylib',
+	    SKIP   => [qw(all static static_lib dynamic dynamic_lib)],
+	    clean  => {'FILES' => 'libmylib$(LIB_EXT)'},
+	);
+
+	use ExtUtils::MakeMaker;
+	$Verbose = 1;
+	WriteMakefile(
+	    NAME   => 'Mytest2::mylib',
+	    SKIP   => [qw(all static static_lib dynamic dynamic_lib)],
+	    clean  => {'FILES' => 'libmylib$(LIB_EXT)'},
+	);
+
+	sub MY::top_targets {
+		'
+	all :: static
+
+	pure_all :: static
+
+	static ::       libmylib$(LIB_EXT)
+
+	libmylib$(LIB_EXT): $(O_FILES)
+		$(AR) cr libmylib$(LIB_EXT) $(O_FILES)
+		$(RANLIB) libmylib$(LIB_EXT)
+
+	';
+	}
+
+=begin original
+
+Make sure you use a tab and not spaces on the lines beginning with "$(AR)"
+and "$(RANLIB)".  Make will not function properly if you use spaces.
+It has also been reported that the "cr" argument to $(AR) is unnecessary
+on Win32 systems.
+
+=end original
+
+"$(AR)" と "$(RANLIB)" で始まる行では空白ではなくタブを使っていることを
+確認してください。
+また、Win32 システムでは、$(AR) の "cr" 引数は不要であることが
+報告されています。
+
+=begin original
+
+We will now create the main top-level Mytest2 files.  Change to the directory
+above Mytest2 and run the following command:
+
+=end original
+
+ここでトップレベルの Mytest2 というファイルを作成します。
+Mytest2 ディレクトリ に変更して、以下のコマンドを実行します。
+
+	% h2xs -O -n Mytest2 ./Mytest2/mylib/mylib.h
+
+=begin original
+
+This will print out a warning about overwriting Mytest2, but that's okay.
+Our files are stored in Mytest2/mylib, and will be untouched.
+
+=end original
+
+これにより、Mytest2 を上書きするという警告が出ますが、気にすることは
+ありません。
+私たちのファイルは Mytest2/mylib にありますが、さわりません。
+
+=begin original
+
+The normal Makefile.PL that h2xs generates doesn't know about the mylib
+directory.  We need to tell it that there is a subdirectory and that we
+will be generating a library in it.  Let's add the argument MYEXTLIB to
+the WriteMakefile call so that it looks like this:
+
+=end original
+
+h2xs が生成した通常の Makefile.PL は mylib ディレクトリに関してなにも
+知りません。
+私たちはそういったサブディレクトリがあり、そこにライブラリを作成すると
+いうことを教えなければなりません。
+引数 MYEXTLIB を WriteMakefile 呼び出しに追加して、次のような感じに
+しましょう:
+
+	WriteMakefile(
+	    'NAME'      => 'Mytest2',
+	    'VERSION_FROM' => 'Mytest2.pm', # finds $VERSION
+	    'LIBS'      => [''],   # e.g., '-lm'
+	    'DEFINE'    => '',     # e.g., '-DHAVE_SOMETHING'
+	    'INC'       => '',     # e.g., '-I/usr/include/other'
+	    'MYEXTLIB' => 'mylib/libmylib$(LIB_EXT)',
+	);
+
+=begin original
+
+and then at the end add a subroutine (which will override the pre-existing
+subroutine).  Remember to use a tab character to indent the line beginning
+with "cd"!
+
+=end original
+
+それから、末尾にサブルーチンを付け加えます(これは既に存在するサブルーチンを
+上書きします)。
+"cd" で始まる行のインデントにタブ文字を使うことを忘れないでください!
+
+	sub MY::postamble {
+	'
+	$(MYEXTLIB): mylib/Makefile
+		cd mylib && $(MAKE) $(PASSTHRU)
+	';
+	}
+
+=begin original
+
+Let's also fix the MANIFEST file so that it accurately reflects the contents
+of our extension.  The single line that says "mylib" should be replaced by
+the following three lines:
+
+=end original
+
+また、ファイル MANIFEST を私たちのエクステンションの内容を反映するように
+修正しましょう。
+"mylib" という単一の行を以下の三行で置き換えます。
+
+	mylib/Makefile.PL
+	mylib/mylib.c
+	mylib/mylib.h
+
+=begin original
+
+To keep our namespace nice and unpolluted, edit the .pm file and change
+the variable C<@EXPORT> to C<@EXPORT_OK>.  Finally, in the
+.xs file, edit the #include line to read:
+
+=end original
+
+私たちの名前空間を奇麗で、汚染されていない状態に保つために .pm ファイルを
+編集して、C<@EXPORT> を設定している行を C<@EXPORT_OK> に変更します。
+最後に .xs ファイルで、#include の行を編集します。
+
+	#include "mylib/mylib.h"
+
+=begin original
+
+And also add the following function definition to the end of the .xs file:
+
+=end original
+
+さらに、以下の関数定義を .xs ファイルの末尾に追加します。
+
+	double
+	foo(a,b,c)
+		int             a
+		long            b
+		const char *    c
+	    OUTPUT:
+		RETVAL
+
+=begin original
+
+Now we also need to create a typemap because the default Perl doesn't
+currently support the C<const char *> type.  Include a new TYPEMAP
+section in your XS code before the above function:
+
+=end original
+
+ここで、デフォルトの Perl は今のところ C<const char *> という型をサポートして
+いないので、typemap を作成する必要があります。
+XS コードの前述の関数の前に新しい TYPEMAP セクションを追加します:
+
+        TYPEMAP: <<END
+	const char *	T_PV
+        END
+
+=begin original
+
+Now run perl on the top-level Makefile.PL.  Notice that it also created a
+Makefile in the mylib directory.  Run make and watch that it does cd into
+the mylib directory and run make in there as well.
+
+=end original
+
+次にトップレベルの Makefile.PL で perl を実行します。
+mylib ディレクトリにある Makefile も作られるということに注意してください。
+make を実行し、それにより mylib ディレクトリに cd し、そこで make が
+実行されるのを確認します。
+
+=begin original
+
+Now edit the Mytest2.t script and change the number of tests to "4",
+and add the following lines to the end of the script:
+
+=end original
+
+Mytest2.t スクリプトを編集して、テストの数を "4" に変更して、
+スクリプトの末尾に以下の行を追加します。
+
+	is( &Mytest2::foo(1, 2, "Hello, world!"), 7 );
+	is( &Mytest2::foo(1, 2, "0.0"), 7 );
+	ok( abs(&Mytest2::foo(0, 0, "-3.4") - 0.6) <= 0.01 );
+
+=begin original
+
+(When dealing with floating-point comparisons, it is best to not check for
+equality, but rather that the difference between the expected and actual
+result is below a certain amount (called epsilon) which is 0.01 in this case)
+
+=end original
+
+(浮動小数点数の比較を行うとき、等しいということをチェックしないことが
+最良なのですが、代わりに予想される値と実際の結果の差がある値
+(εと呼ばれます)、この場合では 0.01 以内かを調べています)
+
+=begin original
+
+Run "C<make test>" and all should be well. There are some warnings on missing
+tests for the Mytest2::mylib extension, but you can ignore them.
+
+=end original
+
+"C<make test>" を実行すれば、すべてがうまくいくはずです。
+Mytest2::mylib エクステンションにテストがないという警告が出ますが、
+無視して構いません。
+
+=head2 What has happened here?
+
+(ここで何が起きているの?)
+
+=begin original
+
+Unlike previous examples, we've now run h2xs on a real include file.  This
+has caused some extra goodies to appear in both the .pm and .xs files.
+
+=end original
+
+先の例とは違って、今回は実際のインクルードファイルに対して h2xs を
+実行しました。
+これは .pm ファイルと .xs ファイルの両方に対して幾つかの追加されるものを
+もたらします。
+
+=over 4
+
+=item *
+
+=begin original
+
+In the .xs file, there's now a #include directive with the absolute path to
+the mylib.h header file.  We changed this to a relative path so that we
+could move the extension directory if we wanted to.
+
+=end original
+
+.xs ファイルには、現在のところ絶対パスで mylib.h ヘッダーファイルを
+指定する #include 指示子があります。
+これを相対パスに変更することで、もし望むならエクステンションの
+ディレクトリを移動できるようにします。
+
+=item *
+
+=begin original
+
+There's now some new C code that's been added to the .xs file.  The purpose
+of the C<constant> routine is to make the values that are #define'd in the
+header file accessible by the Perl script (by calling either C<TESTVAL> or
+C<&Mytest2::TESTVAL>).  There's also some XS code to allow calls to the
+C<constant> routine.
+
+=end original
+
+.xs ファイルに追加された C のコードがあります。
+C<constant> ルーチンの目的は、ヘッダーファイルで #define されている値を
+Perl スクリプト(この場合は、C<&Mytest2::TESTVAL> の呼び出しによります)に
+よってアクセスできるようにすることです。
+同様に C<constant> ルーチンを呼び出すための XS コードがあります。
+
+=item *
+
+=begin original
+
+The .pm file originally exported the name C<TESTVAL> in the C<@EXPORT> array.
+This could lead to name clashes.  A good rule of thumb is that if the #define
+is only going to be used by the C routines themselves, and not by the user,
+they should be removed from the C<@EXPORT> array.  Alternately, if you don't
+mind using the "fully qualified name" of a variable, you could move most
+or all of the items from the C<@EXPORT> array into the C<@EXPORT_OK> array.
+
+=end original
+
+.pm ファイルは元々は配列 C<@EXPORT> にある C<TESTVAL> の名前を
+エクスポートします。
+これは名前を壊す可能性があります。
+よい経験則は #define が C のルーチンでのみ使われてユーザーからは
+使われないのであれば、それを配列 C<@EXPORT> から取り除いたほうが
+良いというものです。
+もう一つは、変数の完全修飾名を使うことを使うのが気にならないのであれば、
+配列 C<@EXPORT> にある要素のほとんどすべてを配列 C<@EXPORT_OK> に
+移すことができます。
+
+=item *
+
+=begin original
+
+If our include file had contained #include directives, these would not have
+been processed by h2xs.  There is no good solution to this right now.
+
+=end original
+
+インクルードファイルに #include 指示子あるのであれば、それらは
+h2xs によって処理されません。
+現時点ではこれを正しく処理するのに良い解決策はありません。
+
+=item *
+
+=begin original
+
+We've also told Perl about the library that we built in the mylib
+subdirectory.  That required only the addition of the C<MYEXTLIB> variable
+to the WriteMakefile call and the replacement of the postamble subroutine
+to cd into the subdirectory and run make.  The Makefile.PL for the
+library is a bit more complicated, but not excessively so.  Again we
+replaced the postamble subroutine to insert our own code.  This code
+simply specified that the library to be created here was a static archive
+library (as opposed to a dynamically loadable library) and provided the
+commands to build it.
+
+=end original
+
+私たちはすでにサブディレクトリ mylib で作成したライブラリについての
+指示を Perl にしています。
+ここで要求されているのは、変数 C<MYEXTLIB> を WriteMakefile の呼び出しに
+追加し、postamble サブルーチンを目的のディレクトリへ cd して make を
+実行するようにすることだけです。
+ライブラリのための Makefile.PL は多少複雑にはなりますが、
+それほどでもありません。
+このコードは単純に作成すべきライブラリが静的ライブラリ(動的ロード可能
+ライブラリと反対のもの)であることを指定し、ライブラリを作成するための
+コマンドを提供します。
+
+=back
+
+=head2 Anatomy of .xs file
+
+(.xs ファイルの解剖)
+
+=begin original
+
+The .xs file of L<"EXAMPLE 4"> contained some new elements.  To understand
+the meaning of these elements, pay attention to the line which reads
+
+=end original
+
+L<"EXAMPLE 4"> の .xs ファイルにはいくつか新しい要素を含んでいます。
+これらの要素の意味を理解するために、以下の行に注目してください
+
+	MODULE = Mytest2		PACKAGE = Mytest2
+
+=begin original
+
+Anything before this line is plain C code which describes which headers
+to include, and defines some convenience functions.  No translations are
+performed on this part, apart from having embedded POD documentation
+skipped over (see L<perlpod>) it goes into the generated output C file as is.
+
+=end original
+
+この行以前の全てはインクルードするヘッダおよび便利な関数を定義した
+プレーンな C コードです。
+この部分では、組み込みの POD 文書が読み飛ばされる(L<perlpod> を
+参照してください)ことを除いては何の変換は行われず、そのまま出力 C ファイルが
+出力されます。
+
+=begin original
+
+Anything after this line is the description of XSUB functions.
+These descriptions are translated by B<xsubpp> into C code which
+implements these functions using Perl calling conventions, and which
+makes these functions visible from Perl interpreter.
+
+=end original
+
+この行以降の全ては XSUB 関数の記述です。
+これらの記述は、関数を Perl 呼び出し規則を使って実装し、関数が Perl
+インタプリタから見えるように、B<xsubpp> が C コードに変換します。
+
+=begin original
+
+Pay a special attention to the function C<constant>.  This name appears
+twice in the generated .xs file: once in the first part, as a static C
+function, then another time in the second part, when an XSUB interface to
+this static C function is defined.
+
+=end original
+
+C<constant> 関数には特別な注意を払ってください。
+この名前は生成された .xs ファイルに 2 回現れます:
+1 回目は最初の部分に static C 関数として、2 回目は 2 番目の部分に、
+この static C 関数への XSUB インターフェースが定義されたときです。
+
+=begin original
+
+This is quite typical for .xs files: usually the .xs file provides
+an interface to an existing C function.  Then this C function is defined
+somewhere (either in an external library, or in the first part of .xs file),
+and a Perl interface to this function (i.e. "Perl glue") is described in the
+second part of .xs file.  The situation in L<"EXAMPLE 1">, L<"EXAMPLE 2">,
+and L<"EXAMPLE 3">, when all the work is done inside the "Perl glue", is
+somewhat of an exception rather than the rule.
+
+=end original
+
+これは .xs ファイルではかなり典型的です: 普通 .xs ファイルは既にある
+C 関数へのインターフェースを提供します。
+それからこの C 関数はどこか(外部ライブラリか、.xs ファイルの最初の部分)で
+定義され、この関数への Perl インターフェース(つまり「Perl の糊」)が
+.xs ファイルの 2 番目の部分に記述されます。
+L<"EXAMPLE 1">, L<"EXAMPLE 2">,  L<"EXAMPLE 3"> の状況、
+つまり全ての動作が「Perl の糊」の内側で行われるときは、
+規則ではなく何らかの例外があります。
+
+=head2 Getting the fat out of XSUBs
+
+(太った部分を XSUB の外に出す)
+
+=begin original
+
+In L<"EXAMPLE 4"> the second part of .xs file contained the following
+description of an XSUB:
+
+=end original
+
+L<"EXAMPLE 4"> で、.xs ファイルの 2 番目の部分には、以下の XSUB の
+記述を含んでいます:
+
+	double
+	foo(a,b,c)
+		int             a
+		long            b
+		const char *    c
+	    OUTPUT:
+		RETVAL
+
+=begin original
+
+Note that in contrast with L<"EXAMPLE 1">, L<"EXAMPLE 2"> and L<"EXAMPLE 3">,
+this description does not contain the actual I<code> for what is done
+during a call to Perl function foo().  To understand what is going
+on here, one can add a CODE section to this XSUB:
+
+=end original
+
+L<"EXAMPLE 1">, L<"EXAMPLE 2">, L<"EXAMPLE 3"> と比較して、この記述は
+Perl 関数 foo() の呼び出しに何が起きているのかの実際の I<コード> は
+含んでいません。
+ここで何が起きているのかを理解するために、この XSUB に CODE セクションを
+追加できます:
+
+	double
+	foo(a,b,c)
+		int             a
+		long            b
+		const char *    c
+	    CODE:
+		RETVAL = foo(a,b,c);
+	    OUTPUT:
+		RETVAL
+
+=begin original
+
+However, these two XSUBs provide almost identical generated C code: B<xsubpp>
+compiler is smart enough to figure out the C<CODE:> section from the first
+two lines of the description of XSUB.  What about C<OUTPUT:> section?  In
+fact, that is absolutely the same!  The C<OUTPUT:> section can be removed
+as well, I<as far as C<CODE:> section or C<PPCODE:> section> is not
+specified: B<xsubpp> can see that it needs to generate a function call
+section, and will autogenerate the OUTPUT section too.  Thus one can
+shortcut the XSUB to become:
+
+=end original
+
+しかし、これら 2 つの XSUB はほとんど同じ C コードを生成します:
+B<xsubpp> コンパイラは、XSUB の記述の最初の 2 行から
+C<CODE:> セクションを見つけ出すことができるぐらい賢いです。
+C<OUTPUT:> セクションについてはどうでしょう?
+実際、これは全く同じです!
+I<C<CODE:> セクションや C<PPCODE:> セクションが指定されない限り>、
+C<OUTPUT:> セクションも同様に削除でき、同様に OUTPUT セクションを
+自動生成します。
+従って、XSUB を以下のように省略できます:
+
+	double
+	foo(a,b,c)
+		int             a
+		long            b
+		const char *    c
+
+=begin original
+
+Can we do the same with an XSUB
+
+=end original
+
+同じことを L<"EXAMPLE 2"> の XSUB:
+
+	int
+	is_even(input)
+		int	input
+	    CODE:
+		RETVAL = (input % 2 == 0);
+	    OUTPUT:
+		RETVAL
+
+=begin original
+
+of L<"EXAMPLE 2">?  To do this, one needs to define a C function C<int
+is_even(int input)>.  As we saw in L<Anatomy of .xs file>, a proper place
+for this definition is in the first part of .xs file.  In fact a C function
+
+=end original
+
+で出来るでしょうか?
+これをするためには、C 関数 C<int is_even(int input)> を定義する
+必要があります。
+L<Anatomy of .xs file> で見たように、この定義に適切な場所は .xs ファイルの
+最初の部分です。
+実際、C 関数
+
+	int
+	is_even(int arg)
+	{
+		return (arg % 2 == 0);
+	}
+
+=begin original
+
+is probably overkill for this.  Something as simple as a C<#define> will
+do too:
+
+=end original
+
+というのはおそらくここではやりすぎです。
+C<#define> と同じぐらい単純なこともできます:
+
+	#define is_even(arg)	((arg) % 2 == 0)
+
+=begin original
+
+After having this in the first part of .xs file, the "Perl glue" part becomes
+as simple as
+
+=end original
+
+.xs ファイルの最初の部分にこれを入れた後、
+「Perl の糊」の部分は以下のように単純です
+
+	int
+	is_even(input)
+		int	input
+
+=begin original
+
+This technique of separation of the glue part from the workhorse part has
+obvious tradeoffs: if you want to change a Perl interface, you need to
+change two places in your code.  However, it removes a lot of clutter,
+and makes the workhorse part independent from idiosyncrasies of Perl calling
+convention.  (In fact, there is nothing Perl-specific in the above description,
+a different version of B<xsubpp> might have translated this to TCL glue or
+Python glue as well.)
+
+=end original
+
+実際の動作の部分から糊の部分を分離する技術は明らかなトレードオフです:
+もし Perl インターフェースをしようとすると、コードの 2 箇所を変更する
+必要があります。
+しかし、これは多くの乱雑なものを取り除き、実際の動作の部分を Perl 呼び出し
+規則の特異性から独立させます。
+(実際のところ、上述の記述には Perl 固有のものはなく、異なるバージョンの
+B<xsubpp> はこれを TCL の糊や Python の糊にも変換できるかもしれません。)
+
+=head2 More about XSUB arguments
+
+(さらに XSUB 引数について)
+
+=begin original
+
+With the completion of Example 4, we now have an easy way to simulate some
+real-life libraries whose interfaces may not be the cleanest in the world.
+We shall now continue with a discussion of the arguments passed to the
+B<xsubpp> compiler.
+
+=end original
+
+例 4 を補完するために、私たちは世界で最もクリーンというわけではないであろう
+現実のライブラリのシミュレートをするための簡単な方法があります。
+私たちは B<xsubpp> コンパイラに渡す引数についての議論を
+続けなければなりません。
+
+=begin original
+
+When you specify arguments to routines in the .xs file, you are really
+passing three pieces of information for each argument listed.  The first
+piece is the order of that argument relative to the others (first, second,
+etc).  The second is the type of argument, and consists of the type
+declaration of the argument (e.g., int, char*, etc).  The third piece is
+the calling convention for the argument in the call to the library function.
+
+=end original
+
+.xs ファイルでルーチンへの引数を指定したとき、あなたはそれぞれの
+引数がリストアップされた三つの情報ブロックを渡しているでしょう。
+最初のブロックは、引数の相対的な順序(一番目、二番目、…)です。
+二番目のブロックは引数の型で、引数の型宣言からなります。
+三番目のブロックは、引数がライブラリ関数を呼び出すときに使われる引数の
+呼び出し規約です。
+
+=begin original
+
+While Perl passes arguments to functions by reference,
+C passes arguments by value; to implement a C function which modifies data
+of one of the "arguments", the actual argument of this C function would be
+a pointer to the data.  Thus two C functions with declarations
+
+=end original
+
+Perl は関数に引数を参照渡ししますが、C は引数を値渡しします; 「引数」の
+一つのデータを修正する C 関数を実装するには、この C 関数の実際の引数は
+そのデータへのポインタになります。
+従って、2 つの C 関数宣言:
+
+	int string_length(char *s);
+	int upper_case_char(char *cp);
+
+=begin original
+
+may have completely different semantics: the first one may inspect an array
+of chars pointed by s, and the second one may immediately dereference C<cp>
+and manipulate C<*cp> only (using the return value as, say, a success
+indicator).  From Perl one would use these functions in
+a completely different manner.
+
+=end original
+
+は完全に異なった動作をします:
+前者は s で示された char の配列を検査します; 後者は直ちに C<cp> を
+デリファレンスして、C<*cp> だけを操作します(返り値は成功を示すものとして
+使われます)。
+Perl からはこれらの関数は全く異なった方法で使います。
+
+=begin original
+
+One conveys this info to B<xsubpp> by replacing C<*> before the
+argument by C<&>.  C<&> means that the argument should be passed to a library
+function by its address.  The above two function may be XSUB-ified as
+
+=end original
+
+C<&> による引数の前に C<*> を置き換えることで、この情報を B<xsubpp> に
+伝えられます。
+C<&> は、引数がアドレスでライブラリ関数に渡されることを意味します。
+上記の 2 つの関数は以下のように XSUB 化できます
+
+	int
+	string_length(s)
+		char *	s
+
+	int
+	upper_case_char(cp)
+		char	&cp
+
+=begin original
+
+For example, consider:
+
+=end original
+
+例として、次のものを考えます:
+
+	int
+	foo(a,b)
+		char	&a
+		char *	b
+
+=begin original
+
+The first Perl argument to this function would be treated as a char and
+assigned to the variable a, and its address would be passed into the function
+foo. The second Perl argument would be treated as a string pointer and assigned
+to the variable b. The I<value> of b would be passed into the function foo.
+The actual call to the function foo that B<xsubpp> generates would look like
+this:
+
+=end original
+
+最初の Perl の引数はこの関数では char として扱われ、変数 a に代入され、
+そしてそのアドレスは関数 foo に渡されます。
+二番目の Perl の引数は文字列へのポインターとして扱われ、変数 b へ
+代入されます。
+b の I<値> も関数 foo へ渡されます。
+B<xsubpp> が生成する関数 foo への実際の呼び出しは次のようになります。
+
+	foo(&a, b);
+
+=begin original
+
+B<xsubpp> will parse the following function argument lists identically:
+
+=end original
+
+B<xsubpp> は以下の関数引数リストを同じものと解析します:
+
+	char	&a
+	char&a
+	char	& a
+
+=begin original
+
+However, to help ease understanding, it is suggested that you place a "&"
+next to the variable name and away from the variable type), and place a
+"*" near the variable type, but away from the variable name (as in the
+call to foo above).  By doing so, it is easy to understand exactly what
+will be passed to the C function; it will be whatever is in the "last
+column".
+
+=end original
+
+しかしながらわかりやすくするために、 "&" に変数名を続けて変数の型からは
+離しておくことと、 "*" を型名に近づけるが変数名からは離す(前述した foo の
+呼び出しのように)ということをお勧めします。
+これを行うことで、実際に C の関数に渡されるがなんなのかを簡単に
+理解できます; これは "last column" にあるものでしょう。
+
+=begin original
+
+You should take great pains to try to pass the function the type of variable
+it wants, when possible.  It will save you a lot of trouble in the long run.
+
+=end original
+
+可能ならば、関数に(自分が望む)変数の型を渡すことに挑戦して苦労したほうが
+良いでしょう。
+長い目で見ればそれによって多くのトラブルを避けることになります。
+
+=head2 The Argument Stack
+
+(引数スタック)
+
+=begin original
+
+If we look at any of the C code generated by any of the examples except
+example 1, you will notice a number of references to ST(n), where n is
+usually 0.  "ST" is actually a macro that points to the n'th argument
+on the argument stack.  ST(0) is thus the first argument on the stack and
+therefore the first argument passed to the XSUB, ST(1) is the second
+argument, and so on.
+
+=end original
+
+例 1 以外の このチュートリアルで作成した C コードを見たのならば、
+たくさんのST(n) (n は通常は 0)に対する参照に気がついたことでしょう。
+"ST" は実際には引数スタック上の n 番目の引数を指し示すマクロです。
+従って ST(0) はスタック上の最初の引数なので、XSUB に渡される最初の
+引数であり、ST(1) は二番目の引数となります。
+
+=begin original
+
+When you list the arguments to the XSUB in the .xs file, that tells B<xsubpp>
+which argument corresponds to which of the argument stack (i.e., the first
+one listed is the first argument, and so on).  You invite disaster if you
+do not list them in the same order as the function expects them.
+
+=end original
+
+.xs ファイル中で XSUB に対する引数をリストアップしたとき、それは引数
+スタックの対応する引数を B<xsubpp> に指定するということです(例えば、
+リストの最初にあれば第一引数、二番目なら第二引数ということ)。
+関数が期待するのと同じ順番でリストアップしなければ、思いがけない
+災害を招くことになります。
+
+=begin original
+
+The actual values on the argument stack are pointers to the values passed
+in.  When an argument is listed as being an OUTPUT value, its corresponding
+value on the stack (i.e., ST(0) if it was the first argument) is changed.
+You can verify this by looking at the C code generated for Example 3.
+The code for the round() XSUB routine contains lines that look like this:
+
+=end original
+
+引数スタックの実際の値は渡された値へのポインタです。
+引数が OUTPUT の値として挙げられている場合、スタック上の対応する値
+(例えば、最初の引数なら ST(0)) が変更されます。
+例 3 で生成された C コードを見ることでこれを検証できます。
+round() XSUB ルーチンのコードは以下のように見える行を含んでいます:
+
+	double  arg = (double)SvNV(ST(0));
+	/* Round the contents of the variable arg */
+	sv_setnv(ST(0), (double)arg);
+
+=begin original
+
+The arg variable is initially set by taking the value from ST(0), then is
+stored back into ST(0) at the end of the routine.
+
+=end original
+
+引数変数は、まず ST(0) の値から取られるものにセットされ、その後ルーチンの
+最後に ST(0) に書き戻されます。
+
+=begin original
+
+XSUBs are also allowed to return lists, not just scalars.  This must be
+done by manipulating stack values ST(0), ST(1), etc, in a subtly
+different way.  See L<perlxs> for details.
+
+=end original
+
+XSUB は単なるスカラではなく、リストを返すこともできます。
+これはスタック値 ST(0), ST(1) などを微妙に違う方法で操作することによって
+行う必要があります。
+詳しくは L<perlxs> を参照してください。
+
+=begin original
+
+XSUBs are also allowed to avoid automatic conversion of Perl function arguments
+to C function arguments.  See L<perlxs> for details.  Some people prefer
+manual conversion by inspecting C<ST(i)> even in the cases when automatic
+conversion will do, arguing that this makes the logic of an XSUB call clearer.
+Compare with L<"Getting the fat out of XSUBs"> for a similar tradeoff of
+a complete separation of "Perl glue" and "workhorse" parts of an XSUB.
+
+=end original
+
+XSUB はまた、Perl 関数引数から C 関数引数への自動変換を回避することも
+できます。
+詳しくは L<perlxs> を参照してください。
+自動変換が行われる場合でも C<ST(i)> を検査することでの手動変換を好む
+人々もいて、これにより XSUB 呼び出しのロジックがよりきれいになると
+主張しています。
+XSUB における「Perl の糊」と「実働部隊」の完全な分離に関する似たような
+トレードオフに関して、L<"Getting the fat out of XSUBs"> と
+比較してください。
+
+=begin original
+
+While experts may argue about these idioms, a novice to Perl guts may
+prefer a way which is as little Perl-guts-specific as possible, meaning
+automatic conversion and automatic call generation, as in
+L<"Getting the fat out of XSUBs">.  This approach has the additional
+benefit of protecting the XSUB writer from future changes to the Perl API.
+
+=end original
+
+専門家はこれらの慣用法について主張する一方、Perl の内部に関する初心者は
+Perl 内部に固有のものを可能な限り小さくする方法を好みます; これはつまり
+L<"Getting the fat out of XSUBs"> のような、自動変換と自動呼び出し
+生成です。
+この手法には、XSUB 作者を Perl API の将来の変更から守るという追加の利点も
+あります。
+
+=head2 Extending your Extension
+
+(エクステンションを拡張する)
+
+=begin original
+
+Sometimes you might want to provide some extra methods or subroutines
+to assist in making the interface between Perl and your extension simpler
+or easier to understand.  These routines should live in the .pm file.
+Whether they are automatically loaded when the extension itself is loaded
+or only loaded when called depends on where in the .pm file the subroutine
+definition is placed.  You can also consult L<AutoLoader> for an alternate
+way to store and load your extra subroutines.
+
+=end original
+
+Perlとあなたのエクステンションとの間のインターフェースをより簡単に、
+より理解しやすくするのを助けるためにメソッドやサブルーチンを
+作りたいと思う事があるかもしれません。
+こういったルーチンは .pm ファイルに置くのが良いです。
+これがエクステンション自身がロードされたときロードされるにしろ、
+サブルーチン定義が置かれている. pm ファイルに依存する呼び出しのときのみ
+ロードするにしろ、自動的にロードが行われます。
+追加のサブルーチンを保管して読み込むもう一つの方法としては
+L<AutoLoader> を参考にすることもできます。
+
+=head2 Documenting your Extension
+
+(エクステンションを文書化する)
+
+=begin original
+
+There is absolutely no excuse for not documenting your extension.
+Documentation belongs in the .pm file.  This file will be fed to pod2man,
+and the embedded documentation will be converted to the manpage format,
+then placed in the blib directory.  It will be copied to Perl's
+manpage directory when the extension is installed.
+
+=end original
+
+あなたのエクステンションに関するドキュメントがないということについて、
+あなたは何の言い訳もできません。
+ドキュメントは .pm ファイルに属します。
+このファイルは pod2man に送り込まれ、埋め込まれたドキュメントが
+man ページフォーマットに変換され、それから blib ディレクトリに置かれます。
+このドキュメントは、エクステンションがインストールされるときに Perl の
+man ページディレクトリにもコピーされます。
+
+=begin original
+
+You may intersperse documentation and Perl code within the .pm file.
+In fact, if you want to use method autoloading, you must do this,
+as the comment inside the .pm file explains.
+
+=end original
+
+あなたは .pm ファイルにあるドキュメントと Perl コードをまき散らすことが
+あるかもしれません。
+事実、あなたがメソッドを autoload しようとするならば、.pm ファイルの中に
+あるコメントで説明されているようにこれを行わねばなりません。
+
+=begin original
+
+See L<perlpod> for more information about the pod format.
+
+=end original
+
+pod フォーマットについてのより詳しい情報は L<perlpod> を参照してください。
+
+=head2 Installing your Extension
+
+(エクステンションをインストールする)
+
+=begin original
+
+Once your extension is complete and passes all its tests, installing it
+is quite simple: you simply run "make install".  You will either need
+to have write permission into the directories where Perl is installed,
+or ask your system administrator to run the make for you.
+
+=end original
+
+あなたの作ったエクステンションが完成し、かつすべてのテストに合格すれば、
+それを実に単純なやりかたでインストールします。
+ただ単に "make install" と実行するだけです。
+Perl がインストールされたディレクトリに対する書き込み権限が持っている
+必要がありますが、あるいは、あなたのシステム管理者にあなたの make を
+実行するようお願いする必要があるでしょう。
+
+=begin original
+
+Alternately, you can specify the exact directory to place the extension's
+files by placing a "PREFIX=/destination/directory" after the make install.
+(or in between the make and install if you have a brain-dead version of make).
+This can be very useful if you are building an extension that will eventually
+be distributed to multiple systems.  You can then just archive the files in
+the destination directory and distribute them to your destination systems.
+
+=end original
+
+別の方法として、"make install" の後ろに (あるいはおかしな make を使っている
+場合は "make" と "install" の間に)"PREFIX=/destination/directory" と
+書くことで、エクステンションのファイルを置く正確なディレクトリを
+指定できます。
+これは、最終的に複数のシステムに配布されるエクステンションをビルドしている
+場合にとても有用です。
+その後単に出力先のディレクトリのファイルをアーカイブして、目的のシステムに
+配布します。
+
+=head2 EXAMPLE 5
+
+(例 5)
+
+=begin original
+
+In this example, we'll do some more work with the argument stack.  The
+previous examples have all returned only a single value.  We'll now
+create an extension that returns an array.
+
+=end original
+
+この例では、引数スタックにさらなる作業をします。
+前の例では全て、単一の値を返すものだけです。
+ここでは、配列を返すエクステンションを作ります。
+
+=begin original
+
+This extension is very Unix-oriented (struct statfs and the statfs system
+call).  If you are not running on a Unix system, you can substitute for
+statfs any other function that returns multiple values, you can hard-code
+values to be returned to the caller (although this will be a bit harder
+to test the error case), or you can simply not do this example.  If you
+change the XSUB, be sure to fix the test cases to match the changes.
+
+=end original
+
+このエクステンションはとても Unix 指向です(struct statfs と
+statfs システムコール)。
+もし Unix システム以外で実行するなら、statfs を複数の値を返す別の関数に
+置き換えるか、呼び出し元に返す値をハードコーディングする(しかしこれは
+エラーの場合をテストするのが少し難しくなります)か、あるいは単に
+この例を実行しないということもできます。
+もし XSUB を変更したなら、テストケースも変更にあわせて確実に
+修正してください。
+
+=begin original
+
+Return to the Mytest directory and add the following code to the end of
+Mytest.xs:
+
+=end original
+
+Mytest ディレクトリに戻って、Mytest.xs の末尾に以下のコードを追加します:
+
+	void
+	statfs(path)
+		char *  path
+	    INIT:
+		int i;
+		struct statfs buf;
+
+	    PPCODE:
+		i = statfs(path, &buf);
+		if (i == 0) {
+			XPUSHs(sv_2mortal(newSVnv(buf.f_bavail)));
+			XPUSHs(sv_2mortal(newSVnv(buf.f_bfree)));
+			XPUSHs(sv_2mortal(newSVnv(buf.f_blocks)));
+			XPUSHs(sv_2mortal(newSVnv(buf.f_bsize)));
+			XPUSHs(sv_2mortal(newSVnv(buf.f_ffree)));
+			XPUSHs(sv_2mortal(newSVnv(buf.f_files)));
+			XPUSHs(sv_2mortal(newSVnv(buf.f_type)));
+		} else {
+			XPUSHs(sv_2mortal(newSVnv(errno)));
+		}
+
+=begin original
+
+You'll also need to add the following code to the top of the .xs file, just
+after the include of "XSUB.h":
+
+=end original
+
+また、.xs ファイルの先頭、"XSUB.h" をインクルードした直後に、以下のコードを
+追加する必要があります:
+
+	#include <sys/vfs.h>
+
+=begin original
+
+Also add the following code segment to Mytest.t while incrementing the "9"
+tests to "11":
+
+=end original
+
+また、以下のコードを Mytest.t に追加する一方、"9" のテストを "11" に
+増やします:
+
+	@a = &Mytest::statfs("/blech");
+	ok( scalar(@a) == 1 && $a[0] == 2 );
+	@a = &Mytest::statfs("/");
+	is( scalar(@a), 7 );
+
+=head2 New Things in this Example
+
+(この例での新しいこと)
+
+=begin original
+
+This example added quite a few new concepts.  We'll take them one at a time.
+
+=end original
+
+この例はいくつかの全く新しい概念を追加します。
+一回に一つずつやります。
+
+=over 4
+
+=item *
+
+=begin original
+
+The INIT: directive contains code that will be placed immediately after
+the argument stack is decoded.  C does not allow variable declarations at
+arbitrary locations inside a function,
+so this is usually the best way to declare local variables needed by the XSUB.
+(Alternatively, one could put the whole C<PPCODE:> section into braces, and
+put these declarations on top.)
+
+=end original
+
+INIT: 指示子は、引数スタックがデコードされた直後に置かれるコードを含みます。
+C では関数内の任の市での変数宣言を許していないので、
+これは普通 XSUB によって必要なローカル変数を宣言するための最善の方法です。
+(代替案としては、C<PPCODE:> セクション全体を中かっこで囲って、それらの
+宣言を先頭に置くこともできます。)
+
+=item *
+
+=begin original
+
+This routine also returns a different number of arguments depending on the
+success or failure of the call to statfs.  If there is an error, the error
+number is returned as a single-element array.  If the call is successful,
+then a 7-element array is returned.  Since only one argument is passed into
+this function, we need room on the stack to hold the 7 values which may be
+returned.
+
+=end original
+
+このルーチンはまた、statfs の呼び出しが成功か失敗かに依存して、異なった
+数の値を返します。
+エラーの場合は、エラー番号が単一の要素の配列として返されます。
+呼び出しが成功した場合は、7 要素の配列が返されます。
+この関数には引数が 1 つだけ渡されるので、返す 7 つの値を保持するために
+スタックに空きを作る必要があります。
+
+=begin original
+
+We do this by using the PPCODE: directive, rather than the CODE: directive.
+This tells B<xsubpp> that we will be managing the return values that will be
+put on the argument stack by ourselves.
+
+=end original
+
+これを、CODE: 指示子ではなく PPCODE: 指示子を使うことで行います。
+これは、引数スタックに置かれる返り値の管理を自分自身で行うことを
+B<xsubpp> に知らせます。
+
+=item *
+
+=begin original
+
+When we want to place values to be returned to the caller onto the stack,
+we use the series of macros that begin with "XPUSH".  There are five
+different versions, for placing integers, unsigned integers, doubles,
+strings, and Perl scalars on the stack.  In our example, we placed a
+Perl scalar onto the stack.  (In fact this is the only macro which
+can be used to return multiple values.)
+
+=end original
+
+呼び出し元に返す値を置くための場所がスタック上にほしい時、
+"XPUSH" で始まる一連のマクロを使います。
+これには、スタック上に整数、符号なし整数、double、文字列、Perl スカラを
+置くための 5 種類があります。
+この例では、スタック上に Perl スカラをおきます。
+(実際のところ、これは複数の値を返すときに使える唯一のマクロです。)
+
+=begin original
+
+The XPUSH* macros will automatically extend the return stack to prevent
+it from being overrun.  You push values onto the stack in the order you
+want them seen by the calling program.
+
+=end original
+
+XPUSH* マクロは、返り値スタックがオーバーランすることを防ぐために、自動的に
+返り値スタックを拡張します。
+呼び出しプログラムから見えてほしい順番にスタックに値をプッシュします。
+
+=item *
+
+=begin original
+
+The values pushed onto the return stack of the XSUB are actually mortal SV's.
+They are made mortal so that once the values are copied by the calling
+program, the SV's that held the returned values can be deallocated.
+If they were not mortal, then they would continue to exist after the XSUB
+routine returned, but would not be accessible.  This is a memory leak.
+
+=end original
+
+XSUB の返り値スタックにプッシュされた値は実際には揮発性の SV です。
+これは揮発性なので、一旦呼び出しプログラムによって値がコピーされれば、
+返り値を保持している SV は開放できます。
+もしこれらが揮発性でないなら、XSUB ルーチンから返った後も存在し続けますが、
+アクセスできなくなります。
+これはメモリリークです。
+
+=item *
+
+=begin original
+
+If we were interested in performance, not in code compactness, in the success
+branch we would not use C<XPUSHs> macros, but C<PUSHs> macros, and would
+pre-extend the stack before pushing the return values:
+
+=end original
+
+もしコードサイズではなく性能に興味があるのなら、成功時には
+C<XPUSHs> ではなく C<PUSHs> を使って、返り値をプッシュする前に予めスタックを
+拡張しておきます:
+
+	EXTEND(SP, 7);
+
+=begin original
+
+The tradeoff is that one needs to calculate the number of return values
+in advance (though overextending the stack will not typically hurt
+anything but memory consumption).
+
+=end original
+
+トレードオフは、予め返り値の数を計算しておく必要があることです
+(しかしスタックを余分に拡張しても、典型的にはメモリ消費以外にはなんの問題も
+ありません)。
+
+=begin original
+
+Similarly, in the failure branch we could use C<PUSHs> I<without> extending
+the stack: the Perl function reference comes to an XSUB on the stack, thus
+the stack is I<always> large enough to take one return value.
+
+=end original
+
+同様に、失敗時にはスタックを I<拡張せずに> C<PUSHs> を使えます:
+Perl 関数のリファレンスはスタックで XSUB に渡されるので、
+スタックは I<常に> 一つの返り値を返すには十分な大きさがあります。
+
+=back
+
+=head2 EXAMPLE 6
+
+(例 6)
+
+=begin original
+
+In this example, we will accept a reference to an array as an input
+parameter, and return a reference to an array of hashes.  This will
+demonstrate manipulation of complex Perl data types from an XSUB.
+
+=end original
+
+この例では、入力パラメータとして配列へのリファレンスを受け付け、ハッシュの
+配列へのリファレンスを返します。
+ここでは、複雑な Perl データ型を XSUB から操作する方法を示します。
+
+=begin original
+
+This extension is somewhat contrived.  It is based on the code in
+the previous example.  It calls the statfs function multiple times,
+accepting a reference to an array of filenames as input, and returning
+a reference to an array of hashes containing the data for each of the
+filesystems.
+
+=end original
+
+このエクステンションはやや不自然です。
+これは以前の例のコードを基礎にしています。
+これは statfs 関数を複数呼び出し、入力としてファイル名の配列への
+リファレンスを受け付けて、それぞれのファイルシステムのデータを含む
+ハッシュの配列へのリファレンスを返します。
+
+=begin original
+
+Return to the Mytest directory and add the following code to the end of
+Mytest.xs:
+
+=end original
+
+Mytest ディレクトリに戻って、Mytest.xs の末尾に以下のコードを追加します:
+
+    SV *
+    multi_statfs(paths)
+	    SV * paths
+	INIT:
+	    AV * results;
+	    SSize_t numpaths = 0, n;
+	    int i;
+	    struct statfs buf;
+
+	    SvGETMAGIC(paths);
+	    if ((!SvROK(paths))
+		|| (SvTYPE(SvRV(paths)) != SVt_PVAV)
+		|| ((numpaths = av_top_index((AV *)SvRV(paths))) < 0))
+	    {
+		XSRETURN_UNDEF;
+	    }
+	    results = (AV *)sv_2mortal((SV *)newAV());
+	CODE:
+	    for (n = 0; n <= numpaths; n++) {
+		HV * rh;
+		STRLEN l;
+		char * fn = SvPV(*av_fetch((AV *)SvRV(paths), n, 0), l);
+
+		i = statfs(fn, &buf);
+		if (i != 0) {
+		    av_push(results, newSVnv(errno));
+		    continue;
+		}
+
+		rh = (HV *)sv_2mortal((SV *)newHV());
+
+		hv_store(rh, "f_bavail", 8, newSVnv(buf.f_bavail), 0);
+		hv_store(rh, "f_bfree",  7, newSVnv(buf.f_bfree),  0);
+		hv_store(rh, "f_blocks", 8, newSVnv(buf.f_blocks), 0);
+		hv_store(rh, "f_bsize",  7, newSVnv(buf.f_bsize),  0);
+		hv_store(rh, "f_ffree",  7, newSVnv(buf.f_ffree),  0);
+		hv_store(rh, "f_files",  7, newSVnv(buf.f_files),  0);
+		hv_store(rh, "f_type",   6, newSVnv(buf.f_type),   0);
+
+		av_push(results, newRV((SV *)rh));
+	    }
+	    RETVAL = newRV((SV *)results);
+	OUTPUT:
+	    RETVAL
+
+=begin original
+
+And add the following code to Mytest.t, while incrementing the "11"
+tests to "13":
+
+=end original
+
+また、以下のコードを Mytest.t に追加する一方、"11" のテストを
+"13" に増やします:
+
+	$results = Mytest::multi_statfs([ '/', '/blech' ]);
+	ok( ref $results->[0] );
+	ok( ! ref $results->[1] );
+
+=head2 New Things in this Example
+
+(この例での新しいこと)
+
+=begin original
+
+There are a number of new concepts introduced here, described below:
+
+=end original
+
+ここでは後述するいくつかの新しい概念があります:
+
+=over 4
+
+=item *
+
+=begin original
+
+This function does not use a typemap.  Instead, we declare it as accepting
+one SV* (scalar) parameter, and returning an SV* value, and we take care of
+populating these scalars within the code.  Because we are only returning
+one value, we don't need a C<PPCODE:> directive - instead, we use C<CODE:>
+and C<OUTPUT:> directives.
+
+=end original
+
+この関数は typemap を使いません。
+代わりに、一つの SV* (スカラ) 引数を受け入れ、一つの SV* 値を返すように
+定義して、これらのスカラをコード内で引き受けます。
+一つの値だけを返すので、 C<PPCODE:> 指示子は不要です - 代わりに、
+C<CODE:> と C<OUTPUT:> の指示子を使います。
+
+=item *
+
+=begin original
+
+When dealing with references, it is important to handle them with caution.
+The C<INIT:> block first calls SvGETMAGIC(paths), in case
+paths is a tied variable.  Then it checks that C<SvROK> returns
+true, which indicates that paths is a valid reference.  (Simply
+checking C<SvROK> won't trigger FETCH on a tied variable.)  It
+then verifies that the object referenced by paths is an array, using C<SvRV>
+to dereference paths, and C<SvTYPE> to discover its type.  As an added test,
+it checks that the array referenced by paths is non-empty, using the
+C<av_top_index> function (which returns -1 if the array is empty). The
+XSRETURN_UNDEF macro is used to abort the XSUB and return the undefined value
+whenever all three of these conditions are not met.
+
+=end original
+
+リファレンスを扱うとき、これを注意して扱うことが重要です。
+パスが tie された変数の場合、C<INIT:> ブロックはまず、SvGETMAGIC(paths) を
+呼び出します。
+それから、C<SvROK> が真を返すことをチェックします;
+これをパスが正当なリファレンスであることを示しています。
+(単に C<SvROK> をチェックしても、tie された変数の FETCH の引き金には
+なりません。)
+それから、C<SvRV> でパスをデリファレンスして、C<SvTYPE> でその型を
+調べることで、パスでリファレンスされているオブジェクトが配列であることを
+検証します。
+追加のテストとして、(配列が空の場合に -1 を返す)C<av_top_index> 関数を使って、
+パスでリファレンスされた配列が空でないことをチェックします。
+XSRETURN_UNDEF マクロは、これら 3 つの条件のどれかが成立しないときに
+XSUB を中断して未定義値を返すために使われます。
+
+=item *
+
+=begin original
+
+We manipulate several arrays in this XSUB.  Note that an array is represented
+internally by an AV* pointer.  The functions and macros for manipulating
+arrays are similar to the functions in Perl: C<av_top_index> returns the
+highest index in an AV*, much like $#array; C<av_fetch> fetches a single scalar
+value from an array, given its index; C<av_push> pushes a scalar value onto the
+end of the array, automatically extending the array as necessary.
+
+=end original
+
+この XSUB でいくつかの配列を操作します。 
+配列は内部的に AV* ポインタで表現されていることに注意してください。
+配列操作のための関数とマクロは Perl の関数と似ています: C<av_top_index> は、
+$#array と同様、AV* の最大の添え字を返します; C<av_fetch> は添え字を
+取って、配列から 1 つのスカラ値を取り出します; C<av_push> はスカラ値を
+配列の最後にスカラ値をプッシュし、もし必要なら自動的に配列を拡張します。
+
+=begin original
+
+Specifically, we read pathnames one at a time from the input array, and
+store the results in an output array (results) in the same order.  If
+statfs fails, the element pushed onto the return array is the value of
+errno after the failure.  If statfs succeeds, though, the value pushed
+onto the return array is a reference to a hash containing some of the
+information in the statfs structure.
+
+=end original
+
+特に、入力配列から一度に 1 つだけパス名を読み込み、結果を出力配列に
+同じ順序で保管します。
+もし statfs が失敗すると、返り値配列にプッシュされる要素は失敗時の
+errno です。
+しかし、statfs が成功すると、返り値配列にプッシュされる値は statfs 構造体の
+情報を含むハッシュへのリファレンスです。
+
+=begin original
+
+As with the return stack, it would be possible (and a small performance win)
+to pre-extend the return array before pushing data into it, since we know
+how many elements we will return:
+
+=end original
+
+返り値スタックに関して、いくつの要素が返されるかは分かっているので、
+データをプッシュする前に返り値配列を予め拡張しておくことが可能です
+(そして少し性能がよくなります):
+
+	av_extend(results, numpaths);
+
+=item *
+
+=begin original
+
+We are performing only one hash operation in this function, which is storing
+a new scalar under a key using C<hv_store>.  A hash is represented by an HV*
+pointer.  Like arrays, the functions for manipulating hashes from an XSUB
+mirror the functionality available from Perl.  See L<perlguts> and L<perlapi>
+for details.
+
+=end original
+
+この関数では、C<hv_store> を使ってキーに対して新しいスカラを保管するという、
+1 つのハッシュ操作のみを行います。
+ハッシュは HV* ポインタで表現されます。
+配列と同様、XSUB からハッシュを操作する関数は、Perl から利用可能な機能と
+鏡写しです。
+詳しくは L<perlguts> と L<perlapi> を参照してください。
+
+=item *
+
+=begin original
+
+To create a reference, we use the C<newRV> function.  Note that you can
+cast an AV* or an HV* to type SV* in this case (and many others).  This
+allows you to take references to arrays, hashes and scalars with the same
+function.  Conversely, the C<SvRV> function always returns an SV*, which may
+need to be cast to the appropriate type if it is something other than a
+scalar (check with C<SvTYPE>).
+
+=end original
+
+リファレンスを作るには、 C<newRV> 関数を使います。
+この場合(およびその他多くの場合)、AV* か HV* を SV* 型に
+キャストできることに注意してください。
+これにより、同じ関数で配列、ハッシュ、スカラのリファレンスを得ることが
+できます。
+反対に、 C<SvRV> 関数は常に SV* を返すので、もしこれが(C<SvTYPE> を
+チェックして)スカラ以外の場合、適切な型にキャストする必要があります。
+
+=item *
+
+=begin original
+
+At this point, xsubpp is doing very little work - the differences between
+Mytest.xs and Mytest.c are minimal.
+
+=end original
+
+この時点で、xsubpp はほとんど何もしていません - Mytest.xs と Mytest.c との
+差は最小限です。
+
+=back
+
+=head2 EXAMPLE 7 (Coming Soon)
+
+(例 7 (近日公開))
+
+=begin original
+
+XPUSH args AND set RETVAL AND assign return value to array
+
+=end original
+
+引数の XPUSH と RETVAL のセットと返り値の配列への代入
+
+=head2 EXAMPLE 8 (Coming Soon)
+
+(例 8 (近日公開))
+
+=begin original
+
+Setting $!
+
+=end original
+
+$! をセットする
+
+=head2 EXAMPLE 9 Passing open files to XSes
+
+(例 9 オープンしたファイルを XS に渡す)
+
+=begin original
+
+You would think passing files to an XS is difficult, with all the
+typeglobs and stuff. Well, it isn't.
+
+=end original
+
+型グロブなどで、XS にファイルを渡すのは難しいと考えるかもしれません。
+えっと、そうではありません。
+
+=begin original
+
+Suppose that for some strange reason we need a wrapper around the
+standard C library function C<fputs()>. This is all we need:
+
+=end original
+
+標準 C ライブラリ関数 C<fputs()> のラッパーが必要、という不思議な
+理由があるとしましょう。
+必要なものは以下のものだけです:
+
+	#define PERLIO_NOT_STDIO 0
+	#define PERL_NO_GET_CONTEXT
+	#include "EXTERN.h"
+	#include "perl.h"
+	#include "XSUB.h"
+
+	#include <stdio.h>
+
+	int
+	fputs(s, stream)
+		char *          s
+		FILE *	        stream
+
+=begin original
+
+The real work is done in the standard typemap.
+
+=end original
+
+実際の作業は標準の typemap で行われます。
+
+=begin original
+
+B<But> you lose all the fine stuff done by the perlio layers. This
+calls the stdio function C<fputs()>, which knows nothing about them.
+
+=end original
+
+B<しかし>、perlio 層で行われる素晴らしい機能全てを手放すことになります。
+これは stdio 関数 C<fputs()> を呼び出すので、それらについては何もしません。
+
+=begin original
+
+The standard typemap offers three variants of PerlIO *:
+C<InputStream> (T_IN), C<InOutStream> (T_INOUT) and C<OutputStream>
+(T_OUT). A bare C<PerlIO *> is considered a T_INOUT. If it matters
+in your code (see below for why it might) #define or typedef
+one of the specific names and use that as the argument or result
+type in your XS file.
+
+=end original
+
+標準 typemap は 3 種類の PerlIO * を提供します:
+C<InputStream> (T_IN), C<InOutStream> (T_INOUT),
+C<OutputStream> (T_OUT) です。
+生の C<PerlIO *> は T_INOUT として扱われます。
+コード中でこれが問題になる場合(なぜそうなり得るかは以下を
+参照してください)、特定の名前の一つを #define や typedef して、
+それを XS ファイルで引数や結果の型として使ってください。
+
+=begin original
+
+The standard typemap does not contain PerlIO * before perl 5.7,
+but it has the three stream variants. Using a PerlIO * directly
+is not backwards compatible unless you provide your own typemap.
+
+=end original
+
+perl 5.7 以前の標準 typemap には PerlIO * は含まれていませんが、
+3 種類のストリームの種類があります。
+PerlIO * を直接使うと、独自の typemap を提供しない限り、
+後方互換ではありません。
+
+=begin original
+
+For streams coming I<from> perl the main difference is that
+C<OutputStream> will get the output PerlIO * - which may make
+a difference on a socket. Like in our example...
+
+=end original
+
+perl I<から> 来るストリームについて、主な違いは C<OutputStream> が
+出力 PerlIO * を得るということです - これはソケットの場合に違いとなります。
+私たちの例と同様に…
+
+=begin original
+
+For streams being handed I<to> perl a new file handle is created
+(i.e. a reference to a new glob) and associated with the PerlIO *
+provided. If the read/write state of the PerlIO * is not correct then you
+may get errors or warnings from when the file handle is used.
+So if you opened the PerlIO * as "w" it should really be an
+C<OutputStream> if open as "r" it should be an C<InputStream>.
+
+=end original
+
+perl I<に> 渡されるストリームについて、新しいファイルハンドル
+(つまり、新しいグロブへのリファレンス)が作成され、提供された PerlIO * と
+結び付けられます。
+もし PerlIO * の読み込み/書き込み状態が正しくない場合、ファイルハンドルが
+使われたときにエラーや警告を受けることになります。
+従って、もし PerlIO * を "w" としてオープンしたなら実際には 
+C<OutputStream> であるべきですし、"r" としてオープンしたなら
+C<InputStream> であるべきです。
+
+=begin original
+
+Now, suppose you want to use perlio layers in your XS. We'll use the
+perlio C<PerlIO_puts()> function as an example.
+
+=end original
+
+ここで、XS で perlio 層を使いたいとしましょう。
+例のように、perlio の C<PerlIO_puts()> 関数を使います。
+
+=begin original
+
+In the C part of the XS file (above the first MODULE line) you
+have
+
+=end original
+
+XS ファイルの C の部分 (最初の MODULE 行の上) に以下のようにします
+
+	#define OutputStream	PerlIO *
+    or
+	typedef PerlIO *	OutputStream;
+
+=begin original
+
+And this is the XS code:
+
+=end original
+
+そして XS コードはこれです:
+
+	int
+	perlioputs(s, stream)
+		char *          s
+		OutputStream	stream
+	CODE:
+		RETVAL = PerlIO_puts(stream, s);
+	OUTPUT:
+		RETVAL
+
+=begin original
+
+We have to use a C<CODE> section because C<PerlIO_puts()> has the arguments
+reversed compared to C<fputs()>, and we want to keep the arguments the same.
+
+=end original
+
+C<PerlIO_puts()> は C<fputs()> と比較する予約された引数を持っていて、
+引数は同じままにしたいので、C<CODE> セクションを使う必要があります。
+
+=begin original
+
+Wanting to explore this thoroughly, we want to use the stdio C<fputs()>
+on a PerlIO *. This means we have to ask the perlio system for a stdio
+C<FILE *>:
+
+=end original
+
+これを完全に探索するために、PerlIO * に stdio の C<fputs()> を使いたいです。
+これは、perlio システムに stdio の C<FILE *> を問い合わせる必要があります:
+
+	int
+	perliofputs(s, stream)
+		char *          s
+		OutputStream	stream
+	PREINIT:
+		FILE *fp = PerlIO_findFILE(stream);
+	CODE:
+		if (fp != (FILE*) 0) {
+			RETVAL = fputs(s, fp);
+		} else {
+			RETVAL = -1;
+		}
+	OUTPUT:
+		RETVAL
+
+=begin original
+
+Note: C<PerlIO_findFILE()> will search the layers for a stdio
+layer. If it can't find one, it will call C<PerlIO_exportFILE()> to
+generate a new stdio C<FILE>. Please only call C<PerlIO_exportFILE()> if
+you want a I<new> C<FILE>. It will generate one on each call and push a
+new stdio layer. So don't call it repeatedly on the same
+file. C<PerlIO_findFILE()> will retrieve the stdio layer once it has been
+generated by C<PerlIO_exportFILE()>.
+
+=end original
+
+注意: C<PerlIO_findFILE()> は stdio 層の層を検索します。
+もしそれが見つからなければ、新しい stdio C<FILE> を生成するために
+C<PerlIO_exportFILE()> を呼び出します。
+I<新しい> C<FILE> が必要な場合にのみ C<PerlIO_exportFILE()> を
+呼び出すようにしてください。
+これは呼び出し毎に新しいものを生成して新しい stdio 層にプッシュします。
+従って、同じファイルに対して繰り返し呼び出さないでください。
+C<PerlIO_findFILE()> は、一度 C<PerlIO_exportFILE()> で生成された stdio 層を
+取り出します。
+
+=begin original
+
+This applies to the perlio system only. For versions before 5.7,
+C<PerlIO_exportFILE()> is equivalent to C<PerlIO_findFILE()>.
+
+=end original
+
+これは perlio システムにのみ適用されます。
+5.7 以前のバージョンでは、C<PerlIO_exportFILE()> は C<PerlIO_findFILE()> と
+等価です。
+
+=head2 Troubleshooting these Examples
+
+(これらの例のトラブルシューティング)
+
+=begin original
+
+As mentioned at the top of this document, if you are having problems with
+these example extensions, you might see if any of these help you.
+
+=end original
+
+この文書の最初に触れたように、もしこれらの例のエクステンションで問題が
+あった場合、以下が参考になるかもしれません。
+
+=over 4
+
+=item *
+
+=begin original
+
+In versions of 5.002 prior to the gamma version, the test script in Example
+1 will not function properly.  You need to change the "use lib" line to
+read:
+
+=end original
+
+γバージョン以前のバージョン 5.002 では、L<EXAMPLE 1> にあるテスト
+スクリプトは正しく動作しません。
+"use lib" という行を以下の様に変更する必要があります。
+
+	use lib './blib';
+
+=item *
+
+=begin original
+
+In versions of 5.002 prior to version 5.002b1h, the test.pl file was not
+automatically created by h2xs.  This means that you cannot say "make test"
+to run the test script.  You will need to add the following line before the
+"use extension" statement:
+
+=end original
+
+バージョン 5.002b1h 以前のバージョン 5.002 では、test.pl というファイルが
+h2xs によって自動生成されません。
+これはテストスクリプトを実行するために、"make test" とすることが
+できないということです。
+"use extension" という文の前に以下の行を追加する必要があります:
+
+	use lib './blib';
+
+=item *
+
+=begin original
+
+In versions 5.000 and 5.001, instead of using the above line, you will need
+to use the following line:
+
+=end original
+
+バージョン 5.000 および 5.001 では、上で示した行ではなく、以下に示した行を
+使う必要があるでしょう。
+
+	BEGIN { unshift(@INC, "./blib") }
+
+=item *
+
+=begin original
+
+This document assumes that the executable named "perl" is Perl version 5.
+Some systems may have installed Perl version 5 as "perl5".
+
+=end original
+
+このドキュメントでは、"perl" という名前の実行ファイルが Perl のバージョン
+5 であることを仮定しています。
+Perl のバージョン 5 は "perl5" としてインストールされているシステムも
+あるかもしれません。
+
+=back
+
+=head1 See also
+
+=begin original
+
+For more information, consult L<perlguts>, L<perlapi>, L<perlxs>, L<perlmod>,
+and L<perlpod>.
+
+=end original
+
+より詳しい情報は、L<perlguts>, L<perlapi>, L<perlxs>, L<perlmod>,
+L<perlpod> を参照してください。
+
+=head1 Author
+
+=begin original
+
+Jeff Okamoto <F<okamoto@corp.hp.com>>
+
+=end original
+
+Jeff Okamoto <F<okamoto@corp.hp.com>>
+
+=begin original
+
+Reviewed and assisted by Dean Roehrich, Ilya Zakharevich, Andreas Koenig,
+and Tim Bunce.
+
+=end original
+
+Dean Roehrich, Ilya Zakharevich, Andreas Koenig, Tim Bunce によるレビューと
+助力を受けました。
+
+=begin original
+
+PerlIO material contributed by Lupe Christoph, with some clarification
+by Nick Ing-Simmons.
+
+=end original
+
+PerlIO の素材は Lupe Christoph によって提供され、Nick Ing-Simmons によって
+明確化されたものです。
+
+=begin original
+
+Changes for h2xs as of Perl 5.8.x by Renee Baecker
+
+=end original
+
+Perl 5.8.x での h2xs に関しては Renee Baecker が変更しました。
+
+=head2 Last Changed
+
+2012-01-20
+
+=begin meta
+
+Translate: KIMURA Koichi
+Update: SHIRAKATA Kentaro <argrath@ub32.org> (5.8.8-)
+Status: in progress
+
+=end meta
+
