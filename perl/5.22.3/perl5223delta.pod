@@ -1,0 +1,760 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+perldelta - what is new for perl v5.22.3
+
+=end original
+
+perl5223delta - perl v5.22.3 での変更点
+
+=head1 DESCRIPTION
+
+=begin original
+
+This document describes differences between the 5.22.2 release and the 5.22.3
+release.
+
+=end original
+
+この文書は 5.22.2 リリースと 5.22.3 リリースの変更点を記述しています。
+
+=begin original
+
+If you are upgrading from an earlier release such as 5.22.1, first read
+L<perl5222delta>, which describes differences between 5.22.1 and 5.22.2.
+
+=end original
+
+5.22.1 のような以前のリリースから更新する場合は、まず 5.22.1 と
+5.22.2 の違いについて記述している L<perl5222delta> を読んでください。
+
+=head1 Security
+
+(セキュリティ)
+
+=head2 B<-Di> switch is now required for PerlIO debugging output
+
+(PerlIO デバッグ出力には B<-Di> オプションが必要になりました)
+
+=begin original
+
+Previously PerlIO debugging output would be sent to the file specified by the
+C<PERLIO_DEBUG> environment variable if perl wasn't running setuid and the
+B<-T> or B<-t> switches hadn't been parsed yet.
+
+=end original
+
+以前は、perl が setuid されておらず B<-T> や B<-t> オプションがまだ
+渡されていない場合は、PerlIO デバッグ出力は C<PERLIO_DEBUG> 環境変数で
+指定されたファイルに出力されていました。
+
+=begin original
+
+If perl performed output at a point where it hadn't yet parsed its switches
+this could result in perl creating or overwriting the file named by
+C<PERLIO_DEBUG> even when the B<-T> switch had been supplied.
+
+=end original
+
+これらのオプションがまだパースされていない時点で perl が出力を行うと、
+B<-T> オプションが指定されているときでも perl が C<PERLIO_DEBUG> の名前の
+ファイルを作成したり上書きしたりしていました。
+
+=begin original
+
+Perl now requires the B<-Di> switch to produce PerlIO debugging output.  By
+default this is written to C<stderr>, but can optionally be redirected to a
+file by setting the C<PERLIO_DEBUG> environment variable.
+
+=end original
+
+PerlIO デバッグ出力を作成するためには B<-Di> オプションが必要になりました。
+デフォルトではこれは C<stderr> に書かれますが、C<PERLIO_DEBUG> 環境変数を
+設定することでファイルにリダイレクトすることも出来ます。
+
+=begin original
+
+If perl is running setuid or the B<-T> switch was supplied C<PERLIO_DEBUG> is
+ignored and the debugging output is sent to C<stderr> as for any other B<-D>
+switch.
+
+=end original
+
+perl が setuid されていたり B<-T> オプションが指定されている場合は、
+C<PERLIO_DEBUG> は無視され、デバッグ出力は他の B<-D> オプションと同様
+C<stderr> に出力されます。
+
+=head2 Core modules and tools no longer search F<"."> for optional modules
+
+(コアモジュールとツールはオプションのモジュールを F<"."> から探さなくなりました)
+
+=begin original
+
+The tools and many modules supplied in core no longer search the default
+current directory entry in L<C<@INC>|perlvar/@INC> for optional modules.  For
+example, L<Storable> will remove the final F<"."> from C<@INC> before trying to
+load L<Log::Agent>.
+
+=end original
+
+コアで適用されているツールや多くのモジュールは、もはやオプションのモジュールを
+L<C<@INC>|perlvar/@INC> のデフォルトのカレントディレクトリエントリを
+探さなくなりました。
+例えば、L<Storable> は L<Log::Agent> を読み込もうとする前に C<@INC> の末尾の
+F<"."> を取り除きます。
+
+=begin original
+
+This prevents an attacker injecting an optional module into a process run by
+another user where the current directory is writable by the attacker, e.g. the
+F</tmp> directory.
+
+=end original
+
+これにより、攻撃者によって書き込み可能なディレクトリ (F</tmp> など) を
+カレントディレクトリとして実行されているプロセスに、攻撃者がオプションの
+モジュールを注入するのを防ぎます。
+
+=begin original
+
+In most cases this removal should not cause problems, but difficulties were
+encountered with L<base>, which treats every module name supplied as optional.
+These difficulties have not yet been resolved, so for this release there are no
+changes to L<base>.  We hope to have a fix for L<base> in Perl 5.22.4.
+
+=end original
+
+ほとんどの場合、この除去によって問題は起こらないはずですが、指定された全ての
+モジュール名をオプションとして扱う L<base> では問題があります。
+この問題はまだ解決していないので、このリリースでは L<base> は
+変更されていません。
+私たちは Perl 5.22.4 で L<base> を修正したいと考えています。
+
+=begin original
+
+To protect your own code from this attack, either remove the default F<".">
+entry from C<@INC> at the start of your script, so:
+
+=end original
+
+自分自身のコードをこの攻撃から守るには、スクリプトの先頭で C<@INC> から
+デフォルトの F<"."> エントリを取り除く、つまり:
+
+  #!/usr/bin/perl
+  use strict;
+  ...
+
+=begin original
+
+becomes:
+
+=end original
+
+これを:
+
+  #!/usr/bin/perl
+  BEGIN { pop @INC if $INC[-1] eq '.' }
+  use strict;
+  ...
+
+=begin original
+
+or for modules, remove F<"."> from a localized C<@INC>, so:
+
+=end original
+
+のようにするか、モジュールに対しては、ローカル化された C<@INC> から F<"."> を
+取り除く、つまり:
+
+  my $can_foo = eval { require Foo; }
+
+=begin original
+
+becomes:
+
+=end original
+
+これを以下のようにします:
+
+  my $can_foo = eval {
+      local @INC = @INC;
+      pop @INC if $INC[-1] eq '.';
+      require Foo;
+  };
+
+=head1 Incompatible Changes
+
+(互換性のない変更)
+
+=begin original
+
+Other than the security changes above there are no changes intentionally
+incompatible with Perl 5.22.2.  If any exist, they are bugs, and we request
+that you submit a report.  See L</Reporting Bugs> below.
+
+=end original
+
+上述のセキュリティの変更以外に、故意に 5.22.2 から互換性がなくなるようにした
+変更はありません。
+もし 5.22.2 との互換性がなければ、それはバグですので、報告をお願いします。
+以下の L</Reporting Bugs> を参照してください。
+
+=head1 Modules and Pragmata
+
+(モジュールとプラグマ)
+
+=head2 Updated Modules and Pragmata
+
+(更新されたモジュールとプラグマ)
+
+=over 4
+
+=item *
+
+=begin original
+
+L<Archive::Tar> has been upgraded from version 2.04 to 2.04_01.
+
+=end original
+
+L<Archive::Tar> はバージョン 2.04 から 2.04_01 に更新されました。
+
+=item *
+
+=begin original
+
+L<bignum> has been upgraded from version 0.39 to 0.39_01.
+
+=end original
+
+L<bignum> はバージョン 0.39 から 0.39_01 に更新されました。
+
+=item *
+
+=begin original
+
+L<CPAN> has been upgraded from version 2.11 to 2.11_01.
+
+=end original
+
+L<CPAN> はバージョン 2.11 から 2.11_01 に更新されました。
+
+=item *
+
+=begin original
+
+L<Digest> has been upgraded from version 1.17 to 1.17_01.
+
+=end original
+
+L<Digest> はバージョン 1.17 から 1.17_01 に更新されました。
+
+=item *
+
+=begin original
+
+L<Digest::SHA> has been upgraded from version 5.95 to 5.95_01.
+
+=end original
+
+L<Digest::SHA> はバージョン 5.95 から 5.95_01 に更新されました。
+
+=item *
+
+=begin original
+
+L<Encode> has been upgraded from version 2.72 to 2.72_01.
+
+=end original
+
+L<Encode> はバージョン 2.72 から 2.72_01 に更新されました。
+
+=item *
+
+=begin original
+
+L<ExtUtils::Command> has been upgraded from version 1.20 to 1.20_01.
+
+=end original
+
+L<ExtUtils::Command> はバージョン 1.20 から 1.20_01 に更新されました。
+
+=item *
+
+=begin original
+
+L<ExtUtils::MakeMaker> has been upgraded from version 7.04_01 to 7.04_02.
+
+=end original
+
+L<ExtUtils::MakeMaker> はバージョン 7.04_01 から 7.04_02 に更新されました。
+
+=item *
+
+=begin original
+
+L<File::Fetch> has been upgraded from version 0.48 to 0.48_01.
+
+=end original
+
+L<File::Fetch> はバージョン 0.48 から 0.48_01 に更新されました。
+
+=item *
+
+=begin original
+
+L<File::Spec> has been upgraded from version 3.56_01 to 3.56_02.
+
+=end original
+
+L<File::Spec> はバージョン 3.56_01 から 3.56_02 に更新されました。
+
+=item *
+
+=begin original
+
+L<HTTP::Tiny> has been upgraded from version 0.054 to 0.054_01.
+
+=end original
+
+L<HTTP::Tiny> はバージョン 0.054 から 0.054_01 に更新されました。
+
+=item *
+
+=begin original
+
+L<IO> has been upgraded from version 1.35 to 1.35_01.
+
+=end original
+
+L<IO> はバージョン 1.35 から 1.35_01 に更新されました。
+
+=item *
+
+=begin original
+
+The IO-Compress modules have been upgraded from version 2.068 to 2.068_001.
+
+=end original
+
+IO-Compress モジュールはバージョン 2.068 から 2.068_001 に更新されました。
+
+=item *
+
+=begin original
+
+L<IPC::Cmd> has been upgraded from version 0.92 to 0.92_01.
+
+=end original
+
+L<IPC::Cmd> はバージョン 0.92 から 0.92_01 に更新されました。
+
+=item *
+
+=begin original
+
+L<JSON::PP> has been upgraded from version 2.27300 to 2.27300_01.
+
+=end original
+
+L<JSON::PP> はバージョン 2.27300 から 2.27300_01 に更新されました。
+
+=item *
+
+=begin original
+
+L<Locale::Maketext> has been upgraded from version 1.26 to 1.26_01.
+
+=end original
+
+L<Locale::Maketext> はバージョン 1.26 から 1.26_01 に更新されました。
+
+=item *
+
+=begin original
+
+L<Locale::Maketext::Simple> has been upgraded from version 0.21 to 0.21_01.
+
+=end original
+
+L<Locale::Maketext::Simple> はバージョン 0.21 から 0.21_01 に更新されました。
+
+=item *
+
+=begin original
+
+L<Memoize> has been upgraded from version 1.03 to 1.03_01.
+
+=end original
+
+L<Memoize> はバージョン 1.03 から 1.03_01 に更新されました。
+
+=item *
+
+=begin original
+
+L<Module::CoreList> has been upgraded from version 5.20160429 to 5.20170114_22.
+
+=end original
+
+L<Module::CoreList> はバージョン 5.20160429 から 5.20170114_22 に更新されました。
+
+=item *
+
+=begin original
+
+L<Net::Ping> has been upgraded from version 2.43 to 2.43_01.
+
+=end original
+
+L<Net::Ping> はバージョン 2.43 から 2.43_01 に更新されました。
+
+=item *
+
+=begin original
+
+L<Parse::CPAN::Meta> has been upgraded from version 1.4414 to 1.4414_001.
+
+=end original
+
+L<Parse::CPAN::Meta> はバージョン 1.4414 から 1.4414_001 に更新されました。
+
+=item *
+
+=begin original
+
+L<Pod::Html> has been upgraded from version 1.22 to 1.2201.
+
+=end original
+
+L<Pod::Html> はバージョン 1.22 から 1.2201 に更新されました。
+
+=item *
+
+=begin original
+
+L<Pod::Perldoc> has been upgraded from version 3.25 to 3.25_01.
+
+=end original
+
+L<Pod::Perldoc> はバージョン 3.25 から 3.25_01 に更新されました。
+
+=item *
+
+=begin original
+
+L<Storable> has been upgraded from version 2.53_01 to 2.53_02.
+
+=end original
+
+L<Storable> はバージョン 2.53_01 から 2.53_02 に更新されました。
+
+=item *
+
+=begin original
+
+L<Sys::Syslog> has been upgraded from version 0.33 to 0.33_01.
+
+=end original
+
+L<Sys::Syslog> はバージョン 0.33 から 0.33_01 に更新されました。
+
+=item *
+
+=begin original
+
+L<Test> has been upgraded from version 1.26 to 1.26_01.
+
+=end original
+
+L<Test> はバージョン 1.26 から 1.26_01 に更新されました。
+
+=item *
+
+=begin original
+
+L<Test::Harness> has been upgraded from version 3.35 to 3.35_01.
+
+=end original
+
+L<Test::Harness> はバージョン 3.35 から 3.35_01 に更新されました。
+
+=item *
+
+=begin original
+
+L<XSLoader> has been upgraded from version 0.20 to 0.20_01, fixing a security
+hole in which binary files could be loaded from a path outside of C<@INC>.
+L<[perl #128528]|https://rt.perl.org/Public/Bug/Display.html?id=128528>
+
+=end original
+
+L<XSLoader> はバージョン 0.20 から 0.20_01 に更新され、
+バイナリファイルが C<@INC> 以外のパスから読み込まれることがある
+セキュリティホールが修正されました。
+L<[perl #128528]|https://rt.perl.org/Public/Bug/Display.html?id=128528>
+
+=back
+
+=head1 Documentation
+
+(文書)
+
+=head2 Changes to Existing Documentation
+
+(既存の文書の変更)
+
+=head3 L<perlapio>
+
+=over 4
+
+=item *
+
+=begin original
+
+The documentation of C<PERLIO_DEBUG> has been updated.
+
+=end original
+
+C<PERLIO_DEBUG> の文書が更新されました。
+
+=back
+
+=head3 L<perlrun>
+
+=over 4
+
+=item *
+
+=begin original
+
+The new B<-Di> switch has been documented, and the documentation of
+C<PERLIO_DEBUG> has been updated.
+
+=end original
+
+新しい B<-Di> オプションが文書化され、C<PERLIO_DEBUG> の文書が更新されました。
+
+=back
+
+=head1 Testing
+
+(テスト)
+
+=over 4
+
+=item *
+
+=begin original
+
+A new test script, F<t/run/switchDx.t>, has been added to test that the new
+B<-Di> switch is working correctly.
+
+=end original
+
+新しい B<-Di> オプションが正しく動作するかをテストする新しい
+テストスクリプト F<t/run/switchDx.t> が追加されました。
+
+=back
+
+=head1 Selected Bug Fixes
+
+(バグ修正の抜粋)
+
+=over 4
+
+=item *
+
+=begin original
+
+The C<PadlistNAMES> macro is an lvalue again.
+
+=end original
+
+C<PadlistNAMES> マクロは再び左辺値になりました。
+
+=back
+
+=head1 Acknowledgements
+
+=begin original
+
+Perl 5.22.3 represents approximately 9 months of development since Perl 5.22.2
+and contains approximately 4,400 lines of changes across 240 files from 20
+authors.
+
+=end original
+
+Perl 5.22.3 は、Perl 5.22.2 以降、20 人の作者によって、
+240 のファイルに約 4,400 行の変更を加えて、
+約 9 ヶ月開発されてきました。
+
+=begin original
+
+Excluding auto-generated files, documentation and release tools, there were
+approximately 2,200 lines of changes to 170 .pm, .t, .c and .h files.
+
+=end original
+
+自動生成ファイル、文書、リリースツールを除くと、170 の .pm, .t, .c,
+.h ファイルに約 2,200 行の変更を加えました。
+
+=begin original
+
+Perl continues to flourish into its third decade thanks to a vibrant community
+of users and developers.  The following people are known to have contributed
+the improvements that became Perl 5.22.3:
+
+=end original
+
+Perl は、活気のあるユーザーと開発者のコミュニティのおかげで 20 年を超えて
+繁栄しています。
+以下の人々が、Perl 5.22.3 になるための改良に貢献したことが分かっています:
+
+Aaron Crane, Abigail, Alex Vandiver, Aristotle Pagaltzis, Chad Granum, Chris
+'BinGOs' Williams, Craig A. Berry, David Mitchell, Father Chrysostomos, James E
+Keenan, Jarkko Hietaniemi, Karen Etheridge, Karl Williamson, Matthew Horsfall,
+Niko Tyni, Ricardo Signes, Sawyer X, Stevan Little, Steve Hay, Tony Cook.
+
+=begin original
+
+The list above is almost certainly incomplete as it is automatically generated
+from version control history.  In particular, it does not include the names of
+the (very much appreciated) contributors who reported issues to the Perl bug
+tracker.
+
+=end original
+
+これはバージョンコントロール履歴から自動的に生成しているので、ほぼ確実に
+不完全です。
+特に、Perl バグトラッカーに問題を報告をしてくれた (とてもありがたい)貢献者の
+名前を含んでいません。
+
+=begin original
+
+Many of the changes included in this version originated in the CPAN modules
+included in Perl's core.  We're grateful to the entire CPAN community for
+helping Perl to flourish.
+
+=end original
+
+このバージョンに含まれている変更の多くは、Perl コアに含まれている CPAN
+モジュール由来のものです。
+私たちは Perl の発展を助けている CPAN コミュニティ全体に感謝します。
+
+=begin original
+
+For a more complete list of all of Perl's historical contributors, please see
+the F<AUTHORS> file in the Perl source distribution.
+
+=end original
+
+全ての Perl の歴史的な貢献者のより完全な一覧については、どうか Perl ソース
+配布に含まれている F<AUTHORS> を参照してください。
+
+=head1 Reporting Bugs
+
+(バグ報告)
+
+=begin original
+
+If you find what you think is a bug, you might check the articles recently
+posted to the comp.lang.perl.misc newsgroup and the Perl bug database at
+https://rt.perl.org/ .  There may also be information at http://www.perl.org/ ,
+the Perl Home Page.
+
+=end original
+
+もしバグと思われるものを見つけたら、comp.lang.perl.misc ニュースグループに
+最近投稿された記事や https://rt.perl.org/ にある Perl バグ
+データベースを確認してください。
+Perl ホームページ、http://www.perl.org/ にも情報があります。
+
+=begin original
+
+If you believe you have an unreported bug, please run the L<perlbug> program
+included with your release.  Be sure to trim your bug down to a tiny but
+sufficient test case.  Your bug report, along with the output of C<perl -V>,
+will be sent off to perlbug@perl.org to be analysed by the Perl porting team.
+
+=end original
+
+もしまだ報告されていないバグだと確信したら、そのリリースに含まれている
+L<perlbug> プログラムを実行してください。
+バグの再現スクリプトを十分小さく、しかし有効なコードに切りつめることを
+意識してください。
+バグレポートは C<perl -V> の出力と一緒に perlbug@perl.org に送られ
+Perl porting チームによって解析されます。
+
+=begin original
+
+If the bug you are reporting has security implications, which make it
+inappropriate to send to a publicly archived mailing list, then please send it
+to perl5-security-report@perl.org.  This points to a closed subscription
+unarchived mailing list, which includes all the core committers, who will be
+able to help assess the impact of issues, figure out a resolution, and help
+co-ordinate the release of patches to mitigate or fix the problem across all
+platforms on which Perl is supported.  Please only use this address for
+security issues in the Perl core, not for modules independently distributed on
+CPAN.
+
+=end original
+
+もし報告しようとしているバグがセキュリティに関するもので、公開されている
+メーリングリストに送るのが不適切なものなら、
+perl5-security-report@perl.org に送ってください。
+このアドレスは、問題の影響を評価し、解決法を見つけ、Perl が対応している
+全てのプラットフォームで問題を軽減または解決するパッチをリリースするのを
+助けることが出来る、全てのコアコミッタが参加している非公開の
+メーリングリストになっています。
+このアドレスは、独自に CPAN で配布されているモジュールではなく、
+Perl コアのセキュリティ問題だけに使ってください。
+
+=head1 SEE ALSO
+
+=begin original
+
+The F<Changes> file for an explanation of how to view exhaustive details on
+what changed.
+
+=end original
+
+変更点の完全な詳細を見る方法については F<Changes> ファイル。
+
+=begin original
+
+The F<INSTALL> file for how to build Perl.
+
+=end original
+
+Perl のビルド方法については F<INSTALL> ファイル。
+
+=begin original
+
+The F<README> file for general stuff.
+
+=end original
+
+一般的なことについては F<README> ファイル。
+
+=begin original
+
+The F<Artistic> and F<Copying> files for copyright information.
+
+=end original
+
+著作権情報については F<Artistic> 及び F<Copying> ファイル。
+
+=cut
+
+=begin meta
+
+Translate: SHIRAKATA Kentaro <argrath@ub32.org>
+Status: completed
+
+=end meta
+
