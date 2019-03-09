@@ -1,0 +1,1960 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+Storable - persistence for Perl data structures
+
+=end original
+
+Storable - Perl データ構造体の永続化
+
+=head1 SYNOPSIS
+
+ use Storable;
+ store \%table, 'file';
+ $hashref = retrieve('file');
+
+ use Storable qw(nstore store_fd nstore_fd freeze thaw dclone);
+
+=begin original
+
+ # Network order
+ nstore \%table, 'file';
+ $hashref = retrieve('file');	# There is NO nretrieve()
+
+=end original
+
+ # ネットワーク様式
+ nstore \%table, 'file';
+ $hashref = retrieve('file');   # There is NO nretrieve()
+
+=begin original
+
+ # Storing to and retrieving from an already opened file
+ store_fd \@array, \*STDOUT;
+ nstore_fd \%table, \*STDOUT;
+ $aryref = fd_retrieve(\*SOCKET);
+ $hashref = fd_retrieve(\*SOCKET);
+
+=end original
+
+ # 既にオープンされているファイルへ格納し、取込ます
+ store_fd \@array, \*STDOUT;
+ nstore_fd \%table, \*STDOUT;
+ $aryref = fd_retrieve(\*SOCKET);
+ $hashref = fd_retrieve(\*SOCKET);
+
+=begin original
+
+ # Serializing to memory
+ $serialized = freeze \%table;
+ %table_clone = %{ thaw($serialized) };
+
+=end original
+
+ # メモリへの直列化
+ $serialized = freeze \%table;
+ %table_clone = %{ thaw($serialized) };
+
+=begin original
+
+ # Deep (recursive) cloning
+ $cloneref = dclone($ref);
+
+=end original
+
+ # 深い(再帰的な)複写
+ $cloneref = dclone($ref);
+
+=begin original
+
+ # Advisory locking
+ use Storable qw(lock_store lock_nstore lock_retrieve)
+ lock_store \%table, 'file';
+ lock_nstore \%table, 'file';
+ $hashref = lock_retrieve('file');
+
+=end original
+
+ # アドバイザリロック
+ use Storable qw(lock_store lock_nstore lock_retrieve)
+ lock_store \%table, 'file';
+ lock_nstore \%table, 'file';
+ $hashref = lock_retrieve('file');
+
+=head1 DESCRIPTION
+
+=begin original
+
+The Storable package brings persistence to your Perl data structures
+containing SCALAR, ARRAY, HASH or REF objects, i.e. anything that can be
+conveniently stored to disk and retrieved at a later time.
+
+=end original
+
+Storableパッケージは、スカラ(SCALAR)、配列(ARRAY)、ハッシュ(HASH)、
+オブジェクトのリファレンス(REF)を持った Perl のデータ構造体を永続化します。
+つまり簡単にディスクに格納し、後で取り込むことを可能にします。
+
+=begin original
+
+It can be used in the regular procedural way by calling C<store> with
+a reference to the object to be stored, along with the file name where
+the image should be written.
+
+=end original
+
+格納するオブジェクトへのリファレンスとイメージが書き込まれるファイル名を
+指定して C<store> を呼び出すという、通常の手続き的な方法で使うことが出来ます。
+
+=begin original
+
+The routine returns C<undef> for I/O problems or other internal error,
+a true value otherwise. Serious errors are propagated as a C<die> exception.
+
+=end original
+
+そのルーチンは I/O 障害や他の内部エラーが発生すると C<undef> を返し、
+そうでなければ true を返します。
+重大なエラーは C<die> 例外で伝えられます。
+
+=begin original
+
+To retrieve data stored to disk, use C<retrieve> with a file name.
+The objects stored into that file are recreated into memory for you,
+and a I<reference> to the root object is returned. In case an I/O error
+occurs while reading, C<undef> is returned instead. Other serious
+errors are propagated via C<die>.
+
+=end original
+
+ディスクに格納されたデータを取り込むには、ファイル名を付けて C<retrieve> を
+使います。
+そしてそのファイルに格納されたオブジェクトはメモリ上に再生成されます。
+元になるオブジェクトへのI<リファレンス>が返されます。
+読込の途中でI/O エラーが発生すると、C<undef> が代わりに返されます。
+他の重大なエラーの場合には、エラーが C<die> を通じて伝えられます。
+
+=begin original
+
+Since storage is performed recursively, you might want to stuff references
+to objects that share a lot of common data into a single array or hash
+table, and then store that object. That way, when you retrieve back the
+whole thing, the objects will continue to share what they originally shared.
+
+=end original
+
+格納が再帰的に行われるので、共通のデータの多くを共有しているオブジェクトへの
+リファレンスたちを１つの配列またはハッシュテーブルに詰め込んでしまい、
+そのオブジェクトを格納したいと思うかもしれません。
+この方法では、全体を
+取り込んだときに、元々共有していたものを引き続き共有します。
+
+=begin original
+
+At the cost of a slight header overhead, you may store to an already
+opened file descriptor using the C<store_fd> routine, and retrieve
+from a file via C<fd_retrieve>. Those names aren't imported by default,
+so you will have to do that explicitly if you need those routines.
+The file descriptor you supply must be already opened, for read
+if you're going to retrieve and for write if you wish to store.
+
+=end original
+
+ヘッダにちょっと手をいれると、C<store_fd> ルーチンを使って既に開いている
+ファイル記述子に格納し、C<fd_retrieve> を通じてファイルから
+取り出すことができます。
+それらの名前はデフォルトではインポートされません。
+そのため、これらのルーチンが必要であれば、明示的に
+インポートしなければいけません。
+指定するファイル記述子は、取り込むつもりであれば読み込み (read) で、
+格納するつもりであれば書き込み (write) で、既に開かれていなければなりません。
+
+	store_fd(\%table, *STDOUT) || die "can't store to stdout\n";
+	$hashref = fd_retrieve(*STDIN);
+
+=begin original
+
+You can also store data in network order to allow easy sharing across
+multiple platforms, or when storing on a socket known to be remotely
+connected. The routines to call have an initial C<n> prefix for I<network>,
+as in C<nstore> and C<nstore_fd>. At retrieval time, your data will be
+correctly restored so you don't have to know whether you're restoring
+from native or network ordered data.  Double values are stored stringified
+to ensure portability as well, at the slight risk of loosing some precision
+in the last decimals.
+
+=end original
+
+複数のプラットフォームで共有することを簡単にしたり、リモートに
+接続されていることが分かっているソケットに格納するときに、ネットワーク様式で
+格納することも出来ます。
+呼び出すルーチンには C<nstore> と C<nstore_fd> のように、頭に network を
+表す n が付きます。
+取り込むときはデータが正しく元に戻るので、取り込むのがネイティブからなのか、
+ネットワーク様式のデータからなのかを知る必要はありません。
+double(倍精度浮動小数点数型)の値も移植性が保証されるように
+文字列化されます。
+ただし最後の桁の精度が若干失われる危険性があります。
+
+=begin original
+
+When using C<fd_retrieve>, objects are retrieved in sequence, one
+object (i.e. one recursive tree) per associated C<store_fd>.
+
+=end original
+
+C<retrieve_fd> を使うとき、オブジェクトは、対応する C<store_fd> 毎、
+一つのオブジェクト(つまり一つの再帰ツリー)を順番に取り込まれます。
+
+=begin original
+
+If you're more from the object-oriented camp, you can inherit from
+Storable and directly store your objects by invoking C<store> as
+a method. The fact that the root of the to-be-stored tree is a
+blessed reference (i.e. an object) is special-cased so that the
+retrieve does not provide a reference to that object but rather the
+blessed object reference itself. (Otherwise, you'd get a reference
+to that blessed object).
+
+=end original
+
+さらにオブジェクト指向陣営寄りであれば、Storable を継承して、
+C<store> をメソッドとして呼び出すことにより、あなたのオブジェクトを
+直接格納することができます。
+格納されるツリーの元が bless された
+リファレンス(つまりオブジェクト)であれば、特別なケースになります。
+そのため取込は、そのオブジェクトへのリファレンスを提供せず、
+bless されたオブジェクトリファレンスを提供します。
+(そうでなければ、そのblessされたオブジェクトへのリファレンスを
+取得することにでしょう)
+
+=head1 MEMORY STORE
+
+(メモリへの格納)
+
+=begin original
+
+The Storable engine can also store data into a Perl scalar instead, to
+later retrieve them. This is mainly used to freeze a complex structure in
+some safe compact memory place (where it can possibly be sent to another
+process via some IPC, since freezing the structure also serializes it in
+effect). Later on, and maybe somewhere else, you can thaw the Perl scalar
+out and recreate the original complex structure in memory.
+
+=end original
+
+Storable エンジンは後から取り込むために、Perl スカラにデータを
+格納することもできます。
+これは主に複雑な構造体を安全で小さなメモリ空間に固めるため(freeze)に
+使われます(構造体を固めると実際には直列化もされるので、他のプロセスに
+IPC を通じて送ることも潜在的には可能です)。
+後で、そして多分どこか別のところで、Perl スカラを解凍(thaw)し、
+元の複雑な構造体をメモリ上に再生成することができます。
+
+=begin original
+
+Surprisingly, the routines to be called are named C<freeze> and C<thaw>.
+If you wish to send out the frozen scalar to another machine, use
+C<nfreeze> instead to get a portable image.
+
+=end original
+
+驚いたことに、呼ばれるルーチンの名前は C<freeze> と C<thaw> といいます。
+もし固めたスカラを他のマシンに送信したければ、代わりに C<nfreeze> を
+ポータブルなイメージを取得してください。
+
+=begin original
+
+Note that freezing an object structure and immediately thawing it
+actually achieves a deep cloning of that structure:
+
+=end original
+
+オブジェクト構造を固め、すぐに解凍すると、実際には、その構造を深く
+複写することを実現していることに注意して下さい：
+
+    dclone(.) = thaw(freeze(.))
+
+=begin original
+
+Storable provides you with a C<dclone> interface which does not create
+that intermediary scalar but instead freezes the structure in some
+internal memory space and then immediately thaws it out.
+
+=end original
+
+Storable は、中間のスカラを作成することなく、代わりに内部メモリ空間に
+構造を固め、すぐに解凍する C<dclone> インターフェイスを提供しています。
+
+=head1 ADVISORY LOCKING
+
+(アドバイザリロック)
+
+=begin original
+
+The C<lock_store> and C<lock_nstore> routine are equivalent to
+C<store> and C<nstore>, except that they get an exclusive lock on
+the file before writing.  Likewise, C<lock_retrieve> does the same
+as C<retrieve>, but also gets a shared lock on the file before reading.
+
+=end original
+
+C<lock_store> と C<lock_nstore> は C<store> と C<nstore> と同じです。
+ただし、書き込む前に占有ロックを行います。
+同様に C<lock_retrieve> は C<retrieve> のように動きます。
+しかし読み込む前に共有ロックを行います。
+
+=begin original
+
+As with any advisory locking scheme, the protection only works if you
+systematically use C<lock_store> and C<lock_retrieve>.  If one side of
+your application uses C<store> whilst the other uses C<lock_retrieve>,
+you will get no protection at all.
+
+=end original
+
+全てのアドバイザリロックのスキームと同じように、保護はあなたが
+システマティックに C<lock_store> と C<lock_retrieve> を使うときにだけ
+機能します。
+もし他の部分が C<lock_retrieve> を使っているときに、あなたの
+アプリケーションのある部分が C<store> を使うと、何も保護されません。
+
+=begin original
+
+The internal advisory locking is implemented using Perl's flock()
+routine.  If your system does not support any form of flock(), or if
+you share your files across NFS, you might wish to use other forms
+of locking by using modules such as LockFile::Simple which lock a
+file using a filesystem entry, instead of locking the file descriptor.
+
+=end original
+
+アドバイザリロックの内部は Perl の flock() ルーチンを使って実装されます。
+もしあなたのシステムが flock() のいかなる形式もサポートしていなかったり、
+あなたのファイルを NFS 越しにファイルを共有しているのであれば、
+ファイル記述子ではなくファイルシステムのエントリを使ってロックする
+LockFile:Simple のようなモジュールを使って他の形式のロックを
+使いたいことでしょう。
+
+=head1 SPEED
+
+(スピード)
+
+=begin original
+
+The heart of Storable is written in C for decent speed. Extra low-level
+optimizations have been made when manipulating perl internals, to
+sacrifice encapsulation for the benefit of greater speed.
+
+=end original
+
+スピードを上げるため、Storable の中核部分は C で書かれています。
+Perl 内部を操作するとき、
+よりスピードを上げるためにカプセル化を犠牲にするという、特別な低レベルの
+最適化がなされています。 
+
+=head1 CANONICAL REPRESENTATION
+
+(規範形式)
+
+=begin original
+
+Normally, Storable stores elements of hashes in the order they are
+stored internally by Perl, i.e. pseudo-randomly.  If you set
+C<$Storable::canonical> to some C<TRUE> value, Storable will store
+hashes with the elements sorted by their key.  This allows you to
+compare data structures by comparing their frozen representations (or
+even the compressed frozen representations), which can be useful for
+creating lookup tables for complicated queries.
+
+=end original
+
+通常 Storable はハッシュを Perl が内部的に格納している順序で要素を格納します。
+つまり疑似ランダムになります。
+もし C<$Storable::canonical> を C<TRUE> 値に設定すると、
+Storable はハッシュをそのキーの順に要素を格納します。
+これにより、データ構造体を固められた形式で(または固められ圧縮された
+形式でさえ)比較することができるようになります。
+これは複雑な問い合わせのための参照テーブルを作るのに便利でしょう。
+
+=begin original
+
+Canonical order does not imply network order; those are two orthogonal
+settings.
+
+=end original
+
+規範様式(=Canonical)はネットワーク様式を意味していません。
+それらはまったく違う設定です。
+
+=head1 CODE REFERENCES
+
+(コードリファレンス)
+
+=begin original
+
+Since Storable version 2.05, CODE references may be serialized with
+the help of L<B::Deparse>. To enable this feature, set
+C<$Storable::Deparse> to a true value. To enable deserialization,
+C<$Storable::Eval> should be set to a true value. Be aware that
+deserialization is done through C<eval>, which is dangerous if the
+Storable file contains malicious data. You can set C<$Storable::Eval>
+to a subroutine reference which would be used instead of C<eval>. See
+below for an example using a L<Safe> compartment for deserialization
+of CODE references.
+
+=end original
+
+Storable バージョン 2.05 から、コード(CODE)リファレンスが L<B::Deparse> の
+助けを借りて直列化できます。
+この機能を有効にするためには、C<$Storable::Deparse> を true 値に
+設定してください。
+非直列化を有効にするためには、C<$Storable::Eval> が true 値に
+設定されていなければなりません。
+非直列化が C<eval> を通して行われることに注意してください。
+もし Storable ファイルに悪意のあるデータが入っていると危険です。
+C<$Storable::Eval> に C<eval> の代わりに使われるサブルーチンリファレンスを
+設定することができます。
+コード(CODE)リファレンスの非直列化については、L<Safe> コンポーネントを
+使っている下記の例をご覧ください。
+
+=begin original
+
+If C<$Storable::Deparse> and/or C<$Storable::Eval> are set to false
+values, then the value of C<$Storable::forgive_me> (see below) is
+respected while serializing and deserializing.
+
+=end original
+
+If C<$Storable::Deparse> and/or C<$Storable::Eval> are set to false
+values, then the value of C<$Storable::forgive_me> (see below) is
+respected while serializing and deserializing.
+(TBT)
+
+=head1 FORWARD COMPATIBILITY
+
+(将来への互換性)
+
+=begin original
+
+This release of Storable can be used on a newer version of Perl to
+serialize data which is not supported by earlier Perls.  By default,
+Storable will attempt to do the right thing, by C<croak()>ing if it
+encounters data that it cannot deserialize.  However, the defaults
+can be changed as follows:
+
+=end original
+
+今回の Storable のリリースでは、Perl のより新しいバージョンで以前の Perl では
+サポートされていなかったデータを直列化するために使うことができます。
+デフォルトでは Storable は適切なことをしようとし、非直列化できない
+データにぶつかったら C<croak()> します。
+しかしデフォルトは以下のように変更することができます:
+
+=over 4
+
+=item utf8 data
+
+(utf8データ)
+
+=begin original
+
+Perl 5.6 added support for Unicode characters with code points > 255,
+and Perl 5.8 has full support for Unicode characters in hash keys.
+Perl internally encodes strings with these characters using utf8, and
+Storable serializes them as utf8.  By default, if an older version of
+Perl encounters a utf8 value it cannot represent, it will C<croak()>.
+To change this behaviour so that Storable deserializes utf8 encoded
+values as the string of bytes (effectively dropping the I<is_utf8> flag)
+set C<$Storable::drop_utf8> to some C<TRUE> value.  This is a form of
+data loss, because with C<$drop_utf8> true, it becomes impossible to tell
+whether the original data was the Unicode string, or a series of bytes
+that happen to be valid utf8.
+
+=end original
+
+Perl 5.6 は 255 よりも大きなコード値を持つ Unicode 文字のサポートが
+加わりました。
+そして Perl 5.8 では、ハッシュキーでのフルサポートを持ちます。
+Perl は内部的に、これらの文字を持つ文字列を utf8 を使ってエンコードします。
+Storable は utf8 として、それらを直列化します。
+デフォルトでは、より古いバージョンがそれが表すことが出来ない utf8 の値に
+ぶつかると、それは C<croak()> します。
+Storable が utf8 をバイトの文字列としてエンコードされたものとして
+非直列化するよう、この動きを変更するためには、$C<Storable::drop_utf8> を
+何らかの C<TRUE> の値に設定してください。
+これはデータが失われることになります。
+というのも C<$drop_utf8> が true であると、もとのデータが
+Unicode 文字列だったのか、たまたま utf8 として正しいバイトの
+並びだったのかが分からなくなってしまいます。
+
+=item restricted hashes
+
+(限定ハッシュ)
+
+=begin original
+
+Perl 5.8 adds support for restricted hashes, which have keys
+restricted to a given set, and can have values locked to be read only.
+By default, when Storable encounters a restricted hash on a perl
+that doesn't support them, it will deserialize it as a normal hash,
+silently discarding any placeholder keys and leaving the keys and
+all values unlocked.  To make Storable C<croak()> instead, set
+C<$Storable::downgrade_restricted> to a C<FALSE> value.  To restore
+the default set it back to some C<TRUE> value.
+
+=end original
+
+Perl 5.8 は限定ハッシュ(restricted hash) のサポートを追加します。
+それは与えられた集合にのみキーが制限され、値を読込のみに
+ロックすることが出来ます。
+デフォルトではそれらをサポートしていない perl では Storable が
+限定ハッシュにぶつかると、それを通常のハッシュとして非直列化します。
+場所を保持するためのキーを全て黙って処分し、キーと値のロックを全て外します。
+代わりに Storable に C<croak()> させるためには、
+C<$Storable::downgrade_restricted> を C<FALSE> の値に設定してください。
+デフォルトの設定に戻すためには何らかの C<TRUE> 値に戻してください。
+
+=item files from future versions of Storable
+
+(将来のバージョンのStorableからのファイル)
+
+=begin original
+
+Earlier versions of Storable would immediately croak if they encountered
+a file with a higher internal version number than the reading Storable
+knew about.  Internal version numbers are increased each time new data
+types (such as restricted hashes) are added to the vocabulary of the file
+format.  This meant that a newer Storable module had no way of writing a
+file readable by an older Storable, even if the writer didn't store newer
+data types.
+
+=end original
+
+以前の Storable は、読んでいる Storable が知っているものより高い
+内部バージョンを持ったファイルにぶつかるとすぐに croak しました。
+内部バージョン番号は新しいデータ型(限定ハッシュのような)がファイル形式の
+用語に加えられるたびに上がります。
+これはより新しい Storable モジュールには、たとえ新しいデータ型を
+格納しなかったとしても、古い Storable で読めるようなファイルを書く方法が
+ないことを意味します。 
+
+=begin original
+
+This version of Storable will defer croaking until it encounters a data
+type in the file that it does not recognize.  This means that it will
+continue to read files generated by newer Storable modules which are careful
+in what they write out, making it easier to upgrade Storable modules in a
+mixed environment.
+
+=end original
+
+Storable のこのバージョンは、ファイルの中で、それが理解しないデータ型に
+ぶつかるまで croak しないという点で異なります。
+つまりこれは出力するものに注意を払えば、新しい Storable モジュールで作られた
+ファイルでも読むことが出来るということです。
+これにより混在する環境で Storable をアップグレードすることが簡単になります。
+
+=begin original
+
+The old behaviour of immediate croaking can be re-instated by setting
+C<$Storable::accept_future_minor> to some C<FALSE> value.
+
+=end original
+
+C<$Storable::accept_future_minor> を C<FALSE> 値にすることにより、即座に
+croak するという Storable の古い動きに戻すことが出来ます。
+
+=back
+
+=begin original
+
+All these variables have no effect on a newer Perl which supports the
+relevant feature.
+
+=end original
+
+これらの変数は関連する機能をサポートしている新しい Perl では何の効果も
+ありません。
+
+=head1 ERROR REPORTING
+
+(エラーレポート)
+
+=begin original
+
+Storable uses the "exception" paradigm, in that it does not try to workaround
+failures: if something bad happens, an exception is generated from the
+caller's perspective (see L<Carp> and C<croak()>).  Use eval {} to trap
+those exceptions.
+
+=end original
+
+Storable は"例外"パラダイムを使っています。
+それでは障害を回避しようとはしません:
+何かよくないことが発生したら、呼び出した側の視点で例外が発生します
+(L<Carp> と C<croak()> をご覧ください)。
+それらの例外を捕らえるために eval {} を使ってください。
+
+=begin original
+
+When Storable croaks, it tries to report the error via the C<logcroak()>
+routine from the C<Log::Agent> package, if it is available.
+
+=end original
+
+Storable が croak するとき、C<Log::Agent> パッケージが利用できるのであれば、
+その C<logcroak()> ルーチンを経由してエラーを報告しようとします。
+
+=begin original
+
+Normal errors are reported by having store() or retrieve() return C<undef>.
+Such errors are usually I/O errors (or truncated stream errors at retrieval).
+
+=end original
+
+通常のエラーは storable() や retrieve() に C<undef> を返すことにより
+報告されます。
+そのようなエラーは通常 I/O のエラー(あるいは retrieve のさいにストリームが
+切り捨てられたか)です。
+
+=head1 WIZARDS ONLY
+
+(上級者のみ)
+
+=head2 Hooks
+
+(フック)
+
+=begin original
+
+Any class may define hooks that will be called during the serialization
+and deserialization process on objects that are instances of that class.
+Those hooks can redefine the way serialization is performed (and therefore,
+how the symmetrical deserialization should be conducted).
+
+=end original
+
+全てのクラスで、そのクラスのインスタンスを直列化や非直列化の処理の途中で
+呼ばれるフックを定義することもできます。
+それらのフックは実行される直列化を実行する方法を再定義することが出来ます。
+(そのため、対になる非直列化も、そのように振舞わなければなりません)
+
+=begin original
+
+Since we said earlier:
+
+=end original
+
+前述の通り:
+
+    dclone(.) = thaw(freeze(.))
+
+=begin original
+
+everything we say about hooks should also hold for deep cloning. However,
+hooks get to know whether the operation is a mere serialization, or a cloning.
+
+=end original
+
+フックについて述べたことはすべて、深いクローン作成にも当てはまります。
+しかしフックには、その処理が単なるシリライゼーションなのかクローンなのかが
+わかります。
+
+=begin original
+
+Therefore, when serializing hooks are involved,
+
+=end original
+
+このため、直列化のフックが呼び出されるとになります。
+
+    dclone(.) <> thaw(freeze(.))
+
+=begin original
+
+Well, you could keep them in sync, but there's no guarantee it will always
+hold on classes somebody else wrote.  Besides, there is little to gain in
+doing so: a serializing hook could keep only one attribute of an object,
+which is probably not what should happen during a deep cloning of that
+same object.
+
+=end original
+
+同期を取ることもできます。
+しかし誰か他の人が書いたクラスについて常に当てはまるような保証はありません。
+さらに、そうすることによって得られるものはあまりありません: 直列化のフックは、
+あるオブジェクトの１つの属性を保持することだけができます。
+それは、その同じオブジェクトの深い複写の間に起きることとは多分、違います。
+
+=begin original
+
+Here is the hooking interface:
+
+=end original
+
+以下にフックのインターフェイスを示します：
+
+=over 4
+
+=item C<STORABLE_freeze> I<obj>, I<cloning>
+
+=begin original
+
+The serializing hook, called on the object during serialization.  It can be
+inherited, or defined in the class itself, like any other method.
+
+=end original
+
+直列化フック。
+オブジェクトが直列化されるときに呼ばれます。
+これは他のメソッドと同様に継承したり、クラスの中で再定義することができます。 
+
+=begin original
+
+Arguments: I<obj> is the object to serialize, I<cloning> is a flag indicating
+whether we're in a dclone() or a regular serialization via store() or freeze().
+
+=end original
+
+引数: I<obj> はシリアラズするオブジェクト、I<cloning> は dclone() の
+中であるか、store() や freeze() を経由した通常の直列化かを示します。
+
+=begin original
+
+Returned value: A LIST C<($serialized, $ref1, $ref2, ...)> where $serialized
+is the serialized form to be used, and the optional $ref1, $ref2, etc... are
+extra references that you wish to let the Storable engine serialize.
+
+=end original
+
+戻り値:リスト C<($serialized, $ref1, $ref2, ...) >。
+$serialized は、使われる直列化された形式、オプションの $ref1, $ref2 などは、
+Storable エンジンにシリアラズさせたい特別なリファレンスです。
+
+=begin original
+
+At deserialization time, you will be given back the same LIST, but all the
+extra references will be pointing into the deserialized structure.
+
+=end original
+
+非直列化のときには、あなたは同じリスト(LIST)が与えられます。
+しかし特別なリファレンスは全て非直列化された構造体を示します。
+
+=begin original
+
+The B<first time> the hook is hit in a serialization flow, you may have it
+return an empty list.  That will signal the Storable engine to further
+discard that hook for this class and to therefore revert to the default
+serialization of the underlying Perl data.  The hook will again be normally
+processed in the next serialization.
+
+=end original
+
+B<最初に> フックが直列化の流れの中でヒットしたとき、あなたは空のリストを
+返すことができます。
+それはこのクラスのためのフックを、それから先、捨てらるよう Storable エンジンに
+合図し、このため元になっている Perl データのデフォルトの直列化に戻ります。
+そのフックは次の直列化では再び通常通り処理されます。
+
+=begin original
+
+Unless you know better, serializing hook should always say:
+
+=end original
+
+よく分からなければ、直列化のフックは以下のようにするべきです:
+
+=begin original
+
+    sub STORABLE_freeze {
+        my ($self, $cloning) = @_;
+        return if $cloning;         # Regular default serialization
+        ....
+    }
+
+=end original
+
+    sub STORABLE_freeze {
+        my ($self, $cloning) = @_;
+        return if $cloning;         # 通常のデフォルトの直列化
+        ....
+    }
+
+=begin original
+
+in order to keep reasonable dclone() semantics.
+
+=end original
+
+dclone() セマンティクスでも合理的になるようにします。
+
+=item C<STORABLE_thaw> I<obj>, I<cloning>, I<serialized>, ...
+
+=begin original
+
+The deserializing hook called on the object during deserialization.
+But wait: if we're deserializing, there's no object yet... right?
+
+=end original
+
+オブジェクトが非直列化されるときに呼ばれる非直列化フック。
+しかし待ってください: もし非直列化しているのであれば、
+オブジェクトはまだないのでは...?
+
+=begin original
+
+Wrong: the Storable engine creates an empty one for you.  If you know Eiffel,
+you can view C<STORABLE_thaw> as an alternate creation routine.
+
+=end original
+
+違います: Storable エンジンはあなたのために空のものを生成します。
+Eiffel をご存知であれば、C<STORABLE_thaw> は代替生成ルーチンとして
+みることが出来ます。
+
+=begin original
+
+This means the hook can be inherited like any other method, and that
+I<obj> is your blessed reference for this particular instance.
+
+=end original
+
+つまり、フックは他のメソッドと同じように継承することができ、
+C<obj> はこの特定のインスタンスのための bless されたリファレンスになります。
+
+=begin original
+
+The other arguments should look familiar if you know C<STORABLE_freeze>:
+I<cloning> is true when we're part of a deep clone operation, I<serialized>
+is the serialized string you returned to the engine in C<STORABLE_freeze>,
+and there may be an optional list of references, in the same order you gave
+them at serialization time, pointing to the deserialized objects (which
+have been processed courtesy of the Storable engine).
+
+=end original
+
+その他の引数は C<STORABLE_freeze> を知っていれば慣れているでしょう:深い
+クローン処理の一部であれば I<cloning> はtrueになります。
+I<serialized> は I<STORABLE_freeze> でエンジンに返した直列化された
+文字列です。
+そしてオプションのリファレンスのリストもあるかもしれません。
+それはシリアル化のときにあなたが与えた順番で、非直列化された
+オブジェクトを指します(それらは Storable エンジンによって特別に扱われます)。
+
+=begin original
+
+When the Storable engine does not find any C<STORABLE_thaw> hook routine,
+it tries to load the class by requiring the package dynamically (using
+the blessed package name), and then re-attempts the lookup.  If at that
+time the hook cannot be located, the engine croaks.  Note that this mechanism
+will fail if you define several classes in the same file, but L<perlmod>
+warned you.
+
+=end original
+
+Storable エンジンが何も STORABLE_thaw フックルーチンを見つけられなければ、
+それは動的にパッケージを(bless されたパッケージ名を使って)
+require することによりロードしようとします。
+そして再び参照しようとします。
+もしこの時点でフックが見つからなければ、エンジンは croak します。
+この仕組は同じファイルでいくつものクラスを定義しているとうまくいきません。
+しかし L<perlmod> が警告するでしょう。
+
+=begin original
+
+It is up to you to use this information to populate I<obj> the way you want.
+
+=end original
+
+これらの情報を使って、どのように I<obj> を作成するかは、あなた次第です。
+
+=begin original
+
+Returned value: none.
+
+=end original
+
+戻り値: ありません。
+
+=item C<STORABLE_attach> I<class>, I<cloning>, I<serialized>
+
+=begin original
+
+While C<STORABLE_freeze> and C<STORABLE_thaw> are useful for classes where
+each instance is independent, this mechanism has difficulty (or is
+incompatible) with objects that exist as common process-level or
+system-level resources, such as singleton objects, database pools, caches
+or memoized objects.
+
+=end original
+
+While C<STORABLE_freeze> and C<STORABLE_thaw> are useful for classes where
+each instance is independent, this mechanism has difficulty (or is
+incompatible) with objects that exist as common process-level or
+system-level resources, such as singleton objects, database pools, caches
+or memoized objects.
+(TBT)
+
+=begin original
+
+The alternative C<STORABLE_attach> method provides a solution for these
+shared objects. Instead of C<STORABLE_freeze> --E<gt> C<STORABLE_thaw>,
+you implement C<STORABLE_freeze> --E<gt> C<STORABLE_attach> instead.
+
+=end original
+
+The alternative C<STORABLE_attach> method provides a solution for these
+shared objects. Instead of C<STORABLE_freeze> --E<gt> C<STORABLE_thaw>,
+you implement C<STORABLE_freeze> --E<gt> C<STORABLE_attach> instead.
+(TBT)
+
+=begin original
+
+Arguments: I<class> is the class we are attaching to, I<cloning> is a flag
+indicating whether we're in a dclone() or a regular de-serialization via
+thaw(), and I<serialized> is the stored string for the resource object.
+
+=end original
+
+Arguments: I<class> is the class we are attaching to, I<cloning> is a flag
+indicating whether we're in a dclone() or a regular de-serialization via
+thaw(), and I<serialized> is the stored string for the resource object.
+(TBT)
+
+=begin original
+
+Because these resource objects are considered to be owned by the entire
+process/system, and not the "property" of whatever is being serialized,
+no references underneath the object should be included in the serialized
+string. Thus, in any class that implements C<STORABLE_attach>, the
+C<STORABLE_freeze> method cannot return any references, and C<Storable>
+will throw an error if C<STORABLE_freeze> tries to return references.
+
+=end original
+
+Because these resource objects are considered to be owned by the entire
+process/system, and not the "property" of whatever is being serialized,
+no references underneath the object should be included in the serialized
+string. Thus, in any class that implements C<STORABLE_attach>, the
+C<STORABLE_freeze> method cannot return any references, and C<Storable>
+will throw an error if C<STORABLE_freeze> tries to return references.
+(TBT)
+
+=begin original
+
+All information required to "attach" back to the shared resource object
+B<must> be contained B<only> in the C<STORABLE_freeze> return string.
+Otherwise, C<STORABLE_freeze> behaves as normal for C<STORABLE_attach>
+classes.
+
+=end original
+
+All information required to "attach" back to the shared resource object
+B<must> be contained B<only> in the C<STORABLE_freeze> return string.
+Otherwise, C<STORABLE_freeze> behaves as normal for C<STORABLE_attach>
+classes.
+(TBT)
+
+=begin original
+
+Because C<STORABLE_attach> is passed the class (rather than an object),
+it also returns the object directly, rather than modifying the passed
+object.
+
+=end original
+
+Because C<STORABLE_attach> is passed the class (rather than an object),
+it also returns the object directly, rather than modifying the passed
+object.
+(TBT)
+
+=begin original
+
+Returned value: object of type C<class>
+
+=end original
+
+Returned value: object of type C<class>
+(TBT)
+
+=back
+
+=head2 Predicates
+
+(述語)
+
+=begin original
+
+Predicates are not exportable.  They must be called by explicitly prefixing
+them with the Storable package name.
+
+=end original
+
+述語(Predicates) はエクスポート可能ではありません。
+それらは Storable パッケージ名を明示的に前につけて
+呼び出されなければなりません。
+
+=over 4
+
+=item C<Storable::last_op_in_netorder>
+
+=begin original
+
+The C<Storable::last_op_in_netorder()> predicate will tell you whether
+network order was used in the last store or retrieve operation.  If you
+don't know how to use this, just forget about it.
+
+=end original
+
+述語 C<Storable::last_op_in_netorder()> は、最後の store あるいは
+retrieve 操作の際、ネットワーク順であったかを示します。
+もしこの使い方がわからなければ、忘れてください。 
+
+=item C<Storable::is_storing>
+
+=begin original
+
+Returns true if within a store operation (via STORABLE_freeze hook).
+
+=end original
+
+(STORABLE_freeze フックを経由して)store 操作の中であれば true を返します。 
+
+=item C<Storable::is_retrieving>
+
+=begin original
+
+Returns true if within a retrieve operation (via STORABLE_thaw hook).
+
+=end original
+
+(STORABLE_thaw フックを経由して)retrieve 操作の中であれば true を返します。
+
+=back
+
+=head2 Recursion
+
+(再帰)
+
+=begin original
+
+With hooks comes the ability to recurse back to the Storable engine.
+Indeed, hooks are regular Perl code, and Storable is convenient when
+it comes to serializing and deserializing things, so why not use it
+to handle the serialization string?
+
+=end original
+
+フックによって Storable エンジンに再帰的に戻ってくることが可能になります。
+実際、フックは通常の Perl コードです。
+そして Storable は、あるものを直列化したり非直列化するときに便利です。
+それならば、直列化された文字列を扱うために、それを
+使っていけないなんてことあるんでしょうか？
+
+=begin original
+
+There are a few things you need to know, however:
+
+=end original
+
+しかしいくつか覚えておかなければならないことがあります:
+
+=over 4
+
+=item *
+
+=begin original
+
+You can create endless loops if the things you serialize via freeze()
+(for instance) point back to the object we're trying to serialize in
+the hook.
+
+=end original
+
+もし freeze() で直列化しようとしているものが、(例えば)フックの中で
+直列化しようとしているオブジェクトを指しているとすると無限ループを
+作ってしまうかもしれません。
+
+=item *
+
+=begin original
+
+Shared references among objects will not stay shared: if we're serializing
+the list of object [A, C] where both object A and C refer to the SAME object
+B, and if there is a serializing hook in A that says freeze(B), then when
+deserializing, we'll get [A', C'] where A' refers to B', but C' refers to D,
+a deep clone of B'.  The topology was not preserved.
+
+=end original
+
+オブジェクト間で共有される参照は共有されなくなります:オブジェクト A と C の
+両方が同じオブジェクト B を参照しているとき、オブジェクトのリスト [A, C] を
+直列化し、そして A に freeze(B) と書いてある直列化のためのフックがあるなば、
+非直列化すると、[A', C'] を取得し、A' は B' を参照します。
+しかし C' は B' の深いクローンである D を参照します。
+トポロジーは保持されません。
+
+=back
+
+=begin original
+
+That's why C<STORABLE_freeze> lets you provide a list of references
+to serialize.  The engine guarantees that those will be serialized in the
+same context as the other objects, and therefore that shared objects will
+stay shared.
+
+=end original
+
+このために C<STORABLE_freeze> は直列化するリファレンスのリストを
+提供させているのです。
+エンジンは他のオブジェクトと同じコンテキストの中で、それらが
+直列化されることを、そのため共有されたオブジェクトは共有されたままに
+なることを保証します。
+
+=begin original
+
+In the above [A, C] example, the C<STORABLE_freeze> hook could return:
+
+=end original
+
+上記の [A, C] の例では、C<STORABLE_freeze> フックは以下のように
+返すことができます:
+
+	("something", $self->{B})
+
+=begin original
+
+and the B part would be serialized by the engine.  In C<STORABLE_thaw>, you
+would get back the reference to the B' object, deserialized for you.
+
+=end original
+
+そして B 部分はエンジンによって直列化されます。
+C<STORABLE_thaw> では、非直列化された B' オブジェクトへのリファレンスを
+取得するでしょう。
+
+=begin original
+
+Therefore, recursion should normally be avoided, but is nonetheless supported.
+
+=end original
+
+このため再帰は通常は避けられるはずです。
+しかしそれでもサポートされています。
+
+=head2 Deep Cloning
+
+(深いクローン作成)
+
+=begin original
+
+There is a Clone module available on CPAN which implements deep cloning
+natively, i.e. without freezing to memory and thawing the result.  It is
+aimed to replace Storable's dclone() some day.  However, it does not currently
+support Storable hooks to redefine the way deep cloning is performed.
+
+=end original
+
+CPAN から、深いクローン作成をネイティブに、つまりメモリ上に固め、
+その結果を解凍することがなしに実装する新しい Clone モジュールが利用できます。
+それは将来、Storable の dclone() を置き換えることを目標にしています。
+しかし、実行される深いクローン作成の方法を再定義するための Storable フックは、
+まだサポートしていません。
+
+=head1 Storable magic
+
+(Storableのmagic)
+
+=begin original
+
+Yes, there's a lot of that :-) But more precisely, in UNIX systems
+there's a utility called C<file>, which recognizes data files based on
+their contents (usually their first few bytes).  For this to work,
+a certain file called F<magic> needs to taught about the I<signature>
+of the data.  Where that configuration file lives depends on the UNIX
+flavour; often it's something like F</usr/share/misc/magic> or
+F</etc/magic>.  Your system administrator needs to do the updating of
+the F<magic> file.  The necessary signature information is output to
+STDOUT by invoking Storable::show_file_magic().  Note that the GNU
+implementation of the C<file> utility, version 3.38 or later,
+is expected to contain support for recognising Storable files
+out-of-the-box, in addition to other kinds of Perl files.
+
+=end original
+
+そう、それはたくさん:-)。
+しかしより正確には、UNIX システムでは C<file> と呼ばれるユーティリティが
+あります。
+それはその内容(通常はその先頭の数バイト)をベースにデータファイルを
+評価します。
+これが機能するためには、F<magic> と呼ばれる、あるファイルがそのデータの
+I<特徴>(signature)について教える必要があります。
+その構成設定ファイルがある場所は UNIX の種類に依存し、
+F</usr/share/misc/magic> や F</etc/magic> のようなところによくあります。
+あなたのシステム管理者は F<magic> ファイルを更新する必要があります。
+必要な特徴情報は Storable::show_file_magic() を呼び出すことにより STDOUT へ
+出力されます。
+C<file> ユーティリティ 3.38 以降のGNU の実装には、他の種類の Perl ファイルに
+加えて、Stoable ファイルを評価するためのサポートが入っていると
+期待することができます。
+
+=begin original
+
+You can also use the following functions to extract the file header
+information from Storable images:
+
+=end original
+
+You can also use the following functions to extract the file header
+information from Storable images:
+(TBT)
+
+=over
+
+=item $info = Storable::file_magic( $filename )
+
+=begin original
+
+If the given file is a Storable image return a hash describing it.  If
+the file is readable, but not a Storable image return C<undef>.  If
+the file does not exist or is unreadable then croak.
+
+=end original
+
+If the given file is a Storable image return a hash describing it.  If
+the file is readable, but not a Storable image return C<undef>.  If
+the file does not exist or is unreadable then croak.
+(TBT)
+
+=begin original
+
+The hash returned has the following elements:
+
+=end original
+
+The hash returned has the following elements:
+(TBT)
+
+=over
+
+=item C<version>
+
+=begin original
+
+This returns the file format version.  It is a string like "2.7".
+
+=end original
+
+This returns the file format version.  It is a string like "2.7".
+(TBT)
+
+=begin original
+
+Note that this version number is not the same as the version number of
+the Storable module itself.  For instance Storable v0.7 create files
+in format v2.0 and Storable v2.15 create files in format v2.7.  The
+file format version number only increment when additional features
+that would confuse older versions of the module are added.
+
+=end original
+
+Note that this version number is not the same as the version number of
+the Storable module itself.  For instance Storable v0.7 create files
+in format v2.0 and Storable v2.15 create files in format v2.7.  The
+file format version number only increment when additional features
+that would confuse older versions of the module are added.
+(TBT)
+
+=begin original
+
+Files older than v2.0 will have the one of the version numbers "-1",
+"0" or "1".  No minor number was used at that time.
+
+=end original
+
+Files older than v2.0 will have the one of the version numbers "-1",
+"0" or "1".  No minor number was used at that time.
+(TBT)
+
+=item C<version_nv>
+
+=begin original
+
+This returns the file format version as number.  It is a string like
+"2.007".  This value is suitable for numeric comparisons.
+
+=end original
+
+This returns the file format version as number.  It is a string like
+"2.007".  This value is suitable for numeric comparisons.
+(TBT)
+
+=begin original
+
+The constant function C<Storable::BIN_VERSION_NV> returns a comparable
+number that represent the highest file version number that this
+version of Storable fully support (but see discussion of
+C<$Storable::accept_future_minor> above).  The constant
+C<Storable::BIN_WRITE_VERSION_NV> function returns what file version
+is written and might be less than C<Storable::BIN_VERSION_NV> in some
+configuations.
+
+=end original
+
+The constant function C<Storable::BIN_VERSION_NV> returns a comparable
+number that represent the highest file version number that this
+version of Storable fully support (but see discussion of
+C<$Storable::accept_future_minor> above).  The constant
+C<Storable::BIN_WRITE_VERSION_NV> function returns what file version
+is written and might be less than C<Storable::BIN_VERSION_NV> in some
+configuations.
+(TBT)
+
+=item C<major>, C<minor>
+
+=begin original
+
+This also returns the file format version.  If the version is "2.7"
+then major would be 2 and minor would be 7.  The minor element is
+missing for when major is less than 2.
+
+=end original
+
+This also returns the file format version.  If the version is "2.7"
+then major would be 2 and minor would be 7.  The minor element is
+missing for when major is less than 2.
+(TBT)
+
+=item C<hdrsize>
+
+=begin original
+
+The is the number of bytes that the Storable header occupies.
+
+=end original
+
+The is the number of bytes that the Storable header occupies.
+(TBT)
+
+=item C<netorder>
+
+=begin original
+
+This is TRUE if the image store data in network order.  This means
+that it was created with nstore() or similar.
+
+=end original
+
+This is TRUE if the image store data in network order.  This means
+that it was created with nstore() or similar.
+(TBT)
+
+=item C<byteorder>
+
+=begin original
+
+This is only present when C<netorder> is FALSE.  It is the
+$Config{byteorder} string of the perl that created this image.  It is
+a string like "1234" (32 bit little endian) or "87654321" (64 bit big
+endian).  This must match the current perl for the image to be
+readable by Storable.
+
+=end original
+
+This is only present when C<netorder> is FALSE.  It is the
+$Config{byteorder} string of the perl that created this image.  It is
+a string like "1234" (32 bit little endian) or "87654321" (64 bit big
+endian).  This must match the current perl for the image to be
+readable by Storable.
+(TBT)
+
+=item C<intsize>, C<longsize>, C<ptrsize>, C<nvsize>
+
+=begin original
+
+These are only present when C<netorder> is FALSE. These are the sizes of
+various C datatypes of the perl that created this image.  These must
+match the current perl for the image to be readable by Storable.
+
+=end original
+
+These are only present when C<netorder> is FALSE. These are the sizes of
+various C datatypes of the perl that created this image.  These must
+match the current perl for the image to be readable by Storable.
+(TBT)
+
+=begin original
+
+The C<nvsize> element is only present for file format v2.2 and
+higher.
+
+=end original
+
+The C<nvsize> element is only present for file format v2.2 and
+higher.
+(TBT)
+
+=item C<file>
+
+=begin original
+
+The name of the file.
+
+=end original
+
+The name of the file.
+(TBT)
+
+=back
+
+=item $info = Storable::read_magic( $buffer )
+
+=item $info = Storable::read_magic( $buffer, $must_be_file )
+
+=begin original
+
+The $buffer should be a Storable image or the first few bytes of it.
+If $buffer starts with a Storable header, then a hash describing the
+image is returned, otherwise C<undef> is returned.
+
+=end original
+
+The $buffer should be a Storable image or the first few bytes of it.
+If $buffer starts with a Storable header, then a hash describing the
+image is returned, otherwise C<undef> is returned.
+(TBT)
+
+=begin original
+
+The hash has the same structure as the one returned by
+Storable::file_magic().  The C<file> element is true if the image is a
+file image.
+
+=end original
+
+The hash has the same structure as the one returned by
+Storable::file_magic().  The C<file> element is true if the image is a
+file image.
+(TBT)
+
+=begin original
+
+If the $must_be_file argument is provided and is TRUE, then return
+C<undef> unless the image looks like it belongs to a file dump.
+
+=end original
+
+If the $must_be_file argument is provided and is TRUE, then return
+C<undef> unless the image looks like it belongs to a file dump.
+(TBT)
+
+=begin original
+
+The maximum size of a Storable header is currently 21 bytes.  If the
+provided $buffer is only the first part of a Storable image it should
+at least be this long to ensure that read_magic() will recognize it as
+such.
+
+=end original
+
+The maximum size of a Storable header is currently 21 bytes.  If the
+provided $buffer is only the first part of a Storable image it should
+at least be this long to ensure that read_magic() will recognize it as
+such.
+(TBT)
+
+=back
+
+=head1 EXAMPLES
+
+=begin original
+
+Here are some code samples showing a possible usage of Storable:
+
+=end original
+
+Storable の使用法を示すコードサンプルを以下に示します:
+
+	use Storable qw(store retrieve freeze thaw dclone);
+
+	%color = ('Blue' => 0.1, 'Red' => 0.8, 'Black' => 0, 'White' => 1);
+
+	store(\%color, 'mycolors') or die "Can't store %a in mycolors!\n";
+
+	$colref = retrieve('mycolors');
+	die "Unable to retrieve from mycolors!\n" unless defined $colref;
+	printf "Blue is still %lf\n", $colref->{'Blue'};
+
+	$colref2 = dclone(\%color);
+
+	$str = freeze(\%color);
+	printf "Serialization of %%color is %d bytes long.\n", length($str);
+	$colref3 = thaw($str);
+
+=begin original
+
+which prints (on my machine):
+
+=end original
+
+(私のマシンでの)出力結果：
+
+	Blue is still 0.100000
+	Serialization of %color is 102 bytes long.
+
+=begin original
+
+Serialization of CODE references and deserialization in a safe
+compartment:
+
+=end original
+
+Safe コンポーネント内でのコード(CODE)リファレンスの直列化と
+非直列化:
+
+=for example begin
+
+	use Storable qw(freeze thaw);
+	use Safe;
+	use strict;
+	my $safe = new Safe;
+        # because of opcodes used in "use strict":
+	$safe->permit(qw(:default require));
+	local $Storable::Deparse = 1;
+	local $Storable::Eval = sub { $safe->reval($_[0]) };
+	my $serialized = freeze(sub { 42 });
+	my $code = thaw($serialized);
+	$code->() == 42;
+
+=for example end
+
+=for example_testing
+        is( $code->(), 42 );
+
+=head1 WARNING
+
+=begin original
+
+If you're using references as keys within your hash tables, you're bound
+to be disappointed when retrieving your data. Indeed, Perl stringifies
+references used as hash table keys. If you later wish to access the
+items via another reference stringification (i.e. using the same
+reference that was used for the key originally to record the value into
+the hash table), it will work because both references stringify to the
+same string.
+
+=end original
+
+ハッシュテーブルのキーとしてリファレンスを使っているならば、データを
+取り出したときにガッカリするかもしれません。
+実際のところ Perl はハッシュのキーとして使われているリファレンスを
+文字列化します。
+もし後で他のリファレンスの文字列化を通じて(つまり元々、ハッシュテーブルの
+中に値を記録するためにキーとして使われたものと
+同じリファレンスを使って)要素にアクセスしたければ、両方のリファレンスが
+文字列化されたものが同じ文字列なので機能します。
+
+=begin original
+
+It won't work across a sequence of C<store> and C<retrieve> operations,
+however, because the addresses in the retrieved objects, which are
+part of the stringified references, will probably differ from the
+original addresses. The topology of your structure is preserved,
+but not hidden semantics like those.
+
+=end original
+
+しかし、C<store> と C<retieve> 操作をまたぐと動きません。
+なぜなら取り込まれたオブジェクトでのアドレス(文字列化された
+リファレンスの一部です)が、おそらく元のアドレスとは違っているからです。
+構造体の形は保持されますが、このような隠された意味は保存されません。
+
+=begin original
+
+On platforms where it matters, be sure to call C<binmode()> on the
+descriptors that you pass to Storable functions.
+
+=end original
+
+問題となるプラットフォームでは、Storable 関数に渡す記述子に C<binmode> を
+呼ぶようにして下さい。
+
+=begin original
+
+Storing data canonically that contains large hashes can be
+significantly slower than storing the same data normally, as
+temporary arrays to hold the keys for each hash have to be allocated,
+populated, sorted and freed.  Some tests have shown a halving of the
+speed of storing -- the exact penalty will depend on the complexity of
+your data.  There is no slowdown on retrieval.
+
+=end original
+
+データを規範形式で格納すると、大きなハッシュでは通常にデータを格納するのに
+比べて非常に遅くなるかもしれません。
+というのも各ハッシュのためのキーを保持するための一時的な配列を占有し、
+生き延びさせ、ソートし、解放しなければならないためです。
+いくつかのテストでは格納のスピードが半減しました-- 
+どれくらい遅くなるかはデータの複雑さに依存します。
+取り込みでは遅くなることはありません。
+
+=head1 BUGS
+
+=begin original
+
+You can't store GLOB, FORMLINE, etc.... If you can define semantics
+for those operations, feel free to enhance Storable so that it can
+deal with them.
+
+=end original
+
+GLOB, FORMLINE 等は格納することが出来ません。
+これらの操作のための意味をはっきり決めたら、それらを扱えるよう自由に
+Storable を拡張して下さい。
+
+=begin original
+
+The store functions will C<croak> if they run into such references
+unless you set C<$Storable::forgive_me> to some C<TRUE> value. In that
+case, the fatal message is turned in a warning and some
+meaningless string is stored instead.
+
+=end original
+
+store 関数は、C<$Strable::forgive_me> をなんらかの C<TRUE> 値に
+設定しておかなければ、それらのリファレンスに踏み込むと C<croak> します。
+その場合、警告で致命的なメッセージが返され、代わりに意味のない文字列が
+格納されます。
+
+=begin original
+
+Setting C<$Storable::canonical> may not yield frozen strings that
+compare equal due to possible stringification of numbers. When the
+string version of a scalar exists, it is the form stored; therefore,
+if you happen to use your numbers as strings between two freezing
+operations on the same data structures, you will get different
+results.
+
+=end original
+
+C<$Storable::canonical> を設定すると、数値が文字列化される可能性から
+同じものであると比較される固められた文字列を作り出さないかもしれません。
+スカラの文字列バージョンが存在するときには、それが格納される形式に
+なります。
+このため、もし同じデータ構造の 2 回固める操作をする間に、
+たまたま数値を文字列として使ってしまうと、違う結果になります。
+
+=begin original
+
+When storing doubles in network order, their value is stored as text.
+However, you should also not expect non-numeric floating-point values
+such as infinity and "not a number" to pass successfully through a
+nstore()/retrieve() pair.
+
+=end original
+
+double(倍精度浮動小数点)をネットワーク様式で格納するとき、その値は
+テキストとして格納されます。
+しかし、nstore()/retrieve() の組み合わせに正常に渡すことにより、無限や
+「非数」ようなのような数値でない浮動小数点を予想する必要はありません。
+
+=begin original
+
+As Storable neither knows nor cares about character sets (although it
+does know that characters may be more than eight bits wide), any difference
+in the interpretation of character codes between a host and a target
+system is your problem.  In particular, if host and target use different
+code points to represent the characters used in the text representation
+of floating-point numbers, you will not be able be able to exchange
+floating-point data, even with nstore().
+
+=end original
+
+Storable は文字集合について知りませんし、気にもしません
+(それは文字が 8 ビットよりも大きいかもしれないということは知っています)。
+ホストとターゲットシステムでの文字コードの解釈における違いは、
+すべてあなたの問題です。
+特にもしホストとターゲットが浮動小数点数のテキスト形式で異なる符号位置を
+使うのであれば、nstore() を使ったとしても浮動小数点のデータを
+やりとりできないかもしれません。
+
+=begin original
+
+C<Storable::drop_utf8> is a blunt tool.  There is no facility either to
+return B<all> strings as utf8 sequences, or to attempt to convert utf8
+data back to 8 bit and C<croak()> if the conversion fails.
+
+=end original
+
+C<Storable::drop_utf8> は鈍器のようなものです。
+それには B<全ての> 文字列を utf8 の並びとして返すか、utf8 データを 8 ビットに
+変換しようとし、変換に失敗したら C<croak()> する以外に機能はありません。
+
+=begin original
+
+Prior to Storable 2.01, no distinction was made between signed and
+unsigned integers on storing.  By default Storable prefers to store a
+scalars string representation (if it has one) so this would only cause
+problems when storing large unsigned integers that had never been converted
+to string or floating point.  In other words values that had been generated
+by integer operations such as logic ops and then not used in any string or
+arithmetic context before storing.
+
+=end original
+
+Storable 2.01 より以前、格納時に符号付と符号なし整数での区別は
+つけられませんでした。
+デフォルトでは Storable は(もし持っていれば)スカラを文字列表現を選びます。
+そのため文字列や浮動小数点数に変換されたことがない大きな符号なし整数を
+格納するときにだけ問題になります。
+言い換えれば、論理演算のような整数処理により作成され、格納の前に何も
+文字列操作や算術コンテキストで使われなかった値です。
+
+=head2 64 bit data in perl 5.6.0 and 5.6.1
+
+(perl 5.6.0 と 5.6.1 での 64 ビットデータ)
+
+=begin original
+
+This section only applies to you if you have existing data written out
+by Storable 2.02 or earlier on perl 5.6.0 or 5.6.1 on Unix or Linux which
+has been configured with 64 bit integer support (not the default)
+If you got a precompiled perl, rather than running Configure to build
+your own perl from source, then it almost certainly does not affect you,
+and you can stop reading now (unless you're curious). If you're using perl
+on Windows it does not affect you.
+
+=end original
+
+このセクションは、64 ビット整数(デフォルトではありません)に対応するように
+構成設定されている Unix あるいは Linux 上の perl 5.6.0 や 5.6.1 で
+Storable 2.20 あるいはそれ以前によって出力された既存のデータを持っている
+場合にのみ当てはまります。
+ソースから独自の perl を構築するために Configure を実行するのではなく、
+既にコンパイルされている perl を取得したのであれば、おそらく何も
+影響はないでしょう。
+そして、(あなたが疑問を持っていなければ) ここで読むのを止めることが出来ます。
+Windows で perl を使っていれば、何も影響はありません。
+
+=begin original
+
+Storable writes a file header which contains the sizes of various C
+language types for the C compiler that built Storable (when not writing in
+network order), and will refuse to load files written by a Storable not
+on the same (or compatible) architecture.  This check and a check on
+machine byteorder is needed because the size of various fields in the file
+are given by the sizes of the C language types, and so files written on
+different architectures are incompatible.  This is done for increased speed.
+(When writing in network order, all fields are written out as standard
+lengths, which allows full interworking, but takes longer to read and write)
+
+=end original
+
+Storable は、Storable を構築した C コンパイラのさまざまな C 言語の型の
+大きさが入ったファイルヘッダを出力します。
+そして同じ(あるいは互換性のある)アーキテクチャではない Storable によって
+書かれたファイルをロードすることを拒絶します。
+ファイルの中のさまざまなフィールドは C 言語の型の大きさによって与えられ、
+そのため異なるアーキテクチャで書かれたファイルは互換性がないので、
+このチェックとマシンのバイト順についてのチェックは必要です。
+これはスピードを向上させるために行われます(ネットワーク順で出力するとき、
+全てのフィールドは標準の長さでかかれます。
+これは完全にネットワーク越えることを可能にしますが、読み込みと書き込みは
+より時間がかかります)
+
+=begin original
+
+Perl 5.6.x introduced the ability to optional configure the perl interpreter
+to use C's C<long long> type to allow scalars to store 64 bit integers on 32
+bit systems.  However, due to the way the Perl configuration system
+generated the C configuration files on non-Windows platforms, and the way
+Storable generates its header, nothing in the Storable file header reflected
+whether the perl writing was using 32 or 64 bit integers, despite the fact
+that Storable was storing some data differently in the file.  Hence Storable
+running on perl with 64 bit integers will read the header from a file
+written by a 32 bit perl, not realise that the data is actually in a subtly
+incompatible format, and then go horribly wrong (possibly crashing) if it
+encountered a stored integer.  This is a design failure.
+
+=end original
+
+Perl 5.6.x は、perl インタプリタが 32 ビットシステムで 64 ビット整数を
+格納できるスカラを可能にする C の C<long long> 型を使う、オプションの
+構成設定の機能を導入しました。
+しかし Windows プラットフォーム以外で Perl 構成設定システムが C 構成
+設定ファイルを生成した方法や、Storable がそのハンドラを生成する方法のために、
+Storable は別にいくつかのデータをファイルに格納しているにも関わらず
+perl が 32 あるいは 64 ビット整数を使って出力したかは、
+Storable ファイルヘッダの内容に反映されません。
+このため 64 ビット整数で perl を実行している Storable は 32 ビット
+perl によって出力されたファイルからのヘッダを読み、データが実際には微妙に
+互換性のないものであると理解せず、格納された整数にぶつかると恐ろしい間違いを
+起こすでしょう(おそらくはクラッシュしてしまいます)。
+これは設計上の失敗です。
+
+=begin original
+
+Storable has now been changed to write out and read in a file header with
+information about the size of integers.  It's impossible to detect whether
+an old file being read in was written with 32 or 64 bit integers (they have
+the same header) so it's impossible to automatically switch to a correct
+backwards compatibility mode.  Hence this Storable defaults to the new,
+correct behaviour.
+
+=end original
+
+Storable は現在は整数の大きさについての情報を持ったファイルヘッダを
+出力し、読み込むように変更されています。
+読み込まれた古いファイルが、32 ビット整数なのか 64 ビットなのかを
+判定することはできません(同じヘッダを持っています)。
+そのため自動的に正しい後方互換性モードに自動的に移ることはできません。
+そのため Storable はデフォルトでは、新しい正しい動きをになっています。
+
+=begin original
+
+What this means is that if you have data written by Storable 1.x running
+on perl 5.6.0 or 5.6.1 configured with 64 bit integers on Unix or Linux
+then by default this Storable will refuse to read it, giving the error
+I<Byte order is not compatible>.  If you have such data then you you
+should set C<$Storable::interwork_56_64bit> to a true value to make this
+Storable read and write files with the old header.  You should also
+migrate your data, or any older perl you are communicating with, to this
+current version of Storable.
+
+=end original
+
+これが意味することは、Unix あるいは Linux 上で 64 ビット整数で構成設定された
+perl 5.6.0 や 5.6.1 で実行した Storable 1.x によって書かれたデータを
+持っているのであれば、デフォルトではこの Storable はそれを読み込むことを
+拒絶し、I<Byte order is not compatible>(バイト順に互換性がありません)という
+エラーになります。
+もしそのようなデータを持っているのであれば、この Storable が古いヘッダを
+持っているファイルを読み書きできるよう、C<$Storable::interwork_56_64bit> を
+真の値に設定しなければなりません。
+あなたのデータやあなたが通信する古い perl を、Storable の現行バージョンに
+移すこともしなければなりません。
+
+=begin original
+
+If you don't have data written with specific configuration of perl described
+above, then you do not and should not do anything.  Don't set the flag -
+not only will Storable on an identically configured perl refuse to load them,
+but Storable a differently configured perl will load them believing them
+to be correct for it, and then may well fail or crash part way through
+reading them.
+
+=end original
+
+上記で記述された特定の perl の構成設定で書かれたデータを持っていなければ、
+何もしなくてもいいですし、するべきでもありません。
+フラグを設定しないでください - 同じように構成設定された perl での
+Storable が、それらをロードすることを拒絶するだけでなく、違うように
+構成設定された perl での Storable が、それらをそれにとって正しいものと信じて
+ロードし、読み込んでいる途中で失敗したり、クラッシュしてしまいます。
+
+=head1 CREDITS
+
+=begin original
+
+Thank you to (in chronological order):
+
+=end original
+
+以下の方に感謝いたします (時系列順):
+
+	Jarkko Hietaniemi <jhi@iki.fi>
+	Ulrich Pfeifer <pfeifer@charly.informatik.uni-dortmund.de>
+	Benjamin A. Holzman <bah@ecnvantage.com>
+	Andrew Ford <A.Ford@ford-mason.co.uk>
+	Gisle Aas <gisle@aas.no>
+	Jeff Gresham <gresham_jeffrey@jpmorgan.com>
+	Murray Nesbitt <murray@activestate.com>
+	Marc Lehmann <pcg@opengroup.org>
+	Justin Banks <justinb@wamnet.com>
+	Jarkko Hietaniemi <jhi@iki.fi> (AGAIN, as perl 5.7.0 Pumpkin!)
+	Salvador Ortiz Garcia <sog@msg.com.mx>
+	Dominic Dunlop <domo@computer.org>
+	Erik Haugan <erik@solbors.no>
+
+=begin original
+
+for their bug reports, suggestions and contributions.
+
+=end original
+
+バグ報告、提案、貢献がありました。
+
+=begin original
+
+Benjamin Holzman contributed the tied variable support, Andrew Ford
+contributed the canonical order for hashes, and Gisle Aas fixed
+a few misunderstandings of mine regarding the perl internals,
+and optimized the emission of "tags" in the output streams by
+simply counting the objects instead of tagging them (leading to
+a binary incompatibility for the Storable image starting at version
+0.6--older images are, of course, still properly understood).
+Murray Nesbitt made Storable thread-safe.  Marc Lehmann added overloading
+and references to tied items support.
+
+=end original
+
+Benjamin Holzman は tie された変数のサポートに貢献してくれました。
+Andrew Ford はハッシュための標準様式に貢献してくれました。
+そして Gisle Aas は Perl の内部についての私の誤解を修正し、タグをつける
+代わりに単純にオブジェクトの数を数えることによって、
+出力ストリームでの「タグ」の吐き出しを最適化してくれました。
+(これによりバージョン 0.6 以降でバイナリでの Storable イメージの
+互換性をなくすことになりました。
+しかし古いイメージもまだきちんと理解されます)。
+Murray Nesbitt は Storable をスレッドセーフにしてくれました。
+Marc Lehmann は tie されている要素へのオーバーロードと参照のサポートを
+追加してくれました。
+
+=head1 AUTHOR
+
+=begin original
+
+Storable was written by Raphael Manfredi F<E<lt>Raphael_Manfredi@pobox.comE<gt>>
+Maintenance is now done by the perl5-porters F<E<lt>perl5-porters@perl.orgE<gt>>
+
+=end original
+
+Storable は Raphael Manfredi <Raphael_Manfredi@pobox.com> によって
+作成されました。
+現在、perl5-porters <perl5-porters@perl.org> によって保守されています。
+
+=begin original
+
+Please e-mail us with problems, bug fixes, comments and complaints,
+although if you have compliments you should send them to Raphael.
+Please don't e-mail Raphael with problems, as he no longer works on
+Storable, and your message will be delayed while he forwards it to us.
+
+=end original
+
+障害、バグ修正、コメント、苦情などは、例え Raphael に送られるべき
+賛辞であっても、私たちにメールしてください。
+どうか障害について Raphael に
+メールしないでください。
+彼はもう Storable について取り組んでいません。
+そしてあなたのメッセージは彼が私たちに転送するまで遅れてしまいます。
+
+=head1 SEE ALSO
+
+L<Clone>.
+
+=begin meta
+
+Update: Kentaro Shirakata <argrath@ub32.org> (2.20)
+Status: in progress
+
+=end meta
+
+=cut
+
