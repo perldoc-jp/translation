@@ -1,0 +1,2854 @@
+
+=encoding euc-jp
+
+=head1 NAME
+X<debug> X<debugger>
+
+=begin original
+
+perldebug - Perl debugging
+
+=end original
+
+perldebug - Perl のデバッグ
+
+=head1 DESCRIPTION
+
+=begin original
+
+First of all, have you tried using L<C<use strict;>|strict> and
+L<C<use warnings;>|warnings>?
+
+=end original
+
+まず最初に、もう L<C<use strict;>|strict> と L<C<use warnings;>|warnings> は
+使ってみましたか?
+
+=begin original
+
+If you're new to the Perl debugger, you may prefer to read
+L<perldebtut>, which is a tutorial introduction to the debugger.
+
+=end original
+
+もし Perl デバッガに慣れていないなら、デバッガに関するチュートリアルである
+L<perldebtut> を読んだ方がいいかもしれません。
+
+=begin original
+
+If you're looking for the nitty gritty details of how the debugger is
+I<implemented>, you may prefer to read L<perldebguts>.
+
+=end original
+
+デバッガがどのように I<実装されているか> に関する詳細を探している場合は、
+L<perldebguts> を読んだ方が良いでしょう。
+
+=head1 The Perl Debugger
+
+=begin original
+
+If you invoke Perl with the B<-d> switch, your script runs under the
+Perl source debugger.  This works like an interactive Perl
+environment, prompting for debugger commands that let you examine
+source code, set breakpoints, get stack backtraces, change the values of
+variables, etc.  This is so convenient that you often fire up
+the debugger all by itself just to test out Perl constructs
+interactively to see what they do.  For example:
+X<-d>
+
+=end original
+
+Perl を B<-d> スイッチを付けて起動すれば、スクリプトは Perl ソースデバッガ
+上で実行されることになります。
+これは対話的な Perl 環境のように動作し、
+ソースコードの表示、ブレークポイントの設定、スタックのバックトレース、
+変数の値の変更、などを実行するデバッガコマンドを入力できます。
+これはとても便利なので、単にやりたいことを対話的に試すために
+デバッガを起動するようになるでしょう。
+例えば:
+X<-d>
+
+    $ perl -d -e 42
+
+=begin original
+
+In Perl, the debugger is not a separate program the way it usually is in the
+typical compiled environment.  Instead, the B<-d> flag tells the compiler
+to insert source information into the parse trees it's about to hand off
+to the interpreter.  That means your code must first compile correctly
+for the debugger to work on it.  Then when the interpreter starts up, it
+preloads a special Perl library file containing the debugger.
+
+=end original
+
+しかし、Perl デバッガは典型的なコンパイルされた環境の様に独立した
+プログラムではありません。　その代わりに、
+-d フラグによって、コンパイラがインタプリタに渡すパース木にソース情報を
+埋め込むようにしています。これは、ソースがデバッガ上で動作できるためには、
+一度正常にコンパイルできないといけないということです。
+それからインタプリタが起動され、デバッガを含む
+特別な Perl ライブラリをロードします。
+
+=begin original
+
+The program will halt I<right before> the first run-time executable
+statement (but see below regarding compile-time statements) and ask you
+to enter a debugger command.  Contrary to popular expectations, whenever
+the debugger halts and shows you a line of code, it always displays the
+line it's I<about> to execute, rather than the one it has just executed.
+
+=end original
+
+プログラムは、最初の実行時実行文のI<直前>で停止し
+(ただし、以下コンパイル時実行文については後述します)、以下に示すいずれかの
+コマンドが入力されるのを待ちます。
+よくある期待とは逆に、
+デバッガが停止してある行のコードを表示しているときは、
+直前に実行した行ではなく、常にI<今から実行する>行を表示します。
+
+=begin original
+
+Any command not recognized by the debugger is directly executed
+(C<eval>'d) as Perl code in the current package.  (The debugger
+uses the DB package for keeping its own state information.)
+
+=end original
+
+デバッガが認識できないコマンドは現在のパッケージ内で Perl のコードとして
+実行(C<eval>)されます。
+(デバッガは自分自身の状態を保存するために DB パッケージを使います。)
+
+=begin original
+
+Note that the said C<eval> is bound by an implicit scope. As a
+result any newly introduced lexical variable or any modified
+capture buffer content is lost after the eval. The debugger is a
+nice environment to learn Perl, but if you interactively experiment using
+material which should be in the same scope, stuff it in one line.
+
+=end original
+
+C<eval> は暗黙のスコープで区切られていることに注意してください。
+結果として、新しく導入されたレキシカル変数や変更された捕捉バッファの内容は
+eval の後失われます。
+デバッガは Perl を学ぶよい環境ですが、もし同じスコープ内であるべき
+ものを使って対話的に実験したい場合は、それを 1 行に書いてください。
+
+=begin original
+
+For any text entered at the debugger prompt, leading and trailing whitespace
+is first stripped before further processing.  If a debugger command
+coincides with some function in your own program, merely precede the
+function with something that doesn't look like a debugger command, such
+as a leading C<;> or perhaps a C<+>, or by wrapping it with parentheses
+or braces.
+
+=end original
+
+デバッガコマンドとして入力された文字列は、まず先頭と末尾の
+空白が切り詰められます。
+デバッガコマンドがプログラムの関数名と一致する場合、
+関数名の前に C<;> や C<+> のような、デバッガコマンドに見えない文字を
+付け加えるか、括弧でくくってください。
+
+=head2 Calling the Debugger
+
+(デバッガを呼び出す)
+
+=begin original
+
+There are several ways to call the debugger:
+
+=end original
+
+デバッガを呼び出すにはいくつかの方法があります:
+
+=over 4
+
+=item perl -d program_name
+
+=begin original
+
+On the given program identified by C<program_name>.
+
+=end original
+
+C<program_name> で識別されるプログラムに対して。
+
+=item perl -d -e 0 
+
+=begin original
+
+Interactively supply an arbitrary C<expression> using C<-e>.
+
+=end original
+
+C<-e> を使って指定された任意の C<expression> を対話的に。
+
+=item perl -d:ptkdb program_name
+
+=begin original
+
+Debug a given program via the C<Devel::ptkdb> GUI.
+
+=end original
+
+C<Devel::Ptkdb> GUI 経由で与えられたプログラムをデバッグする。
+
+=item perl -dt threaded_program_name
+
+=begin original
+
+Debug a given program using threads (experimental).
+
+=end original
+
+スレッドを使っているプログラムをデバッグする(実験的機能)。
+
+=back
+
+=head2 Debugger Commands
+
+(デバッガコマンド)
+
+=begin original
+
+The interactive debugger understands the following commands:
+
+=end original
+
+対話式のデバッガは以下のコマンドを理解します:
+
+=over 12
+
+=item h
+X<debugger command, h>
+
+=begin original
+
+Prints out a summary help message
+
+=end original
+
+サマリヘルプメッセージを表示します。
+
+=item h [command]
+
+=begin original
+
+Prints out a help message for the given debugger command.
+
+=end original
+
+指定されたコマンドの説明を表示します。
+
+=item h h
+
+=begin original
+
+The special argument of C<h h> produces the entire help page, which is quite long.
+
+=end original
+
+C<h h> という特別なコマンドは、かなり長い、ヘルプ全体を表示します。
+
+=begin original
+
+If the output of the C<h h> command (or any command, for that matter) scrolls
+past your screen, precede the command with a leading pipe symbol so
+that it's run through your pager, as in
+
+=end original
+
+C<h h> コマンド(や他のコマンドでも)の出力で画面がスクロールしてしまう場合、
+以下のようにコマンドの前にパイプ記号をつけるとページャーを呼び出します:
+
+    DB> |h h
+
+=begin original
+
+You may change the pager which is used via C<o pager=...> command.
+
+=end original
+
+使用されるページャーは C<O pager=...> コマンドで変更できます。
+
+=item p expr
+X<debugger command, p>
+
+=begin original
+
+Same as C<print {$DB::OUT} expr> in the current package.  In particular,
+because this is just Perl's own C<print> function, this means that nested
+data structures and objects are not dumped, unlike with the C<x> command.
+
+=end original
+
+現在のパッケージでの C<print {$DB::OUT} expr> と同じです。
+特に、これは Perl 自身の C<print> 関数なので、
+C<x> コマンドと違って、ネストしたデータ構造やオブジェクトはダンプしません。
+
+=begin original
+
+The C<DB::OUT> filehandle is opened to F</dev/tty>, regardless of
+where STDOUT may be redirected to.
+
+=end original
+
+STDOUT がどこにリダイレクトされていても、
+ファイルハンドル C<DB::OUT> は F</dev/tty> に対して
+オープンされています。
+
+=item x [maxdepth] expr
+X<debugger command, x>
+
+=begin original
+
+Evaluates its expression in list context and dumps out the result in a
+pretty-printed fashion.  Nested data structures are printed out
+recursively, unlike the real C<print> function in Perl.  When dumping
+hashes, you'll probably prefer 'x \%h' rather than 'x %h'.
+See L<Dumpvalue> if you'd like to do this yourself.
+
+=end original
+
+式をリストコンテキストで評価し、結果を多少読みやすい形で表示します。
+ネストしたデータは再帰的に表示します; これは Perl の実際の C<print> 関数とは
+異なります。
+ハッシュをダンプするとき、おそらく 'x %h' より 'x \%h' を好むでしょう。
+これを自分自身で行いたい場合は L<Dumpvalue> を参照して下さい。
+
+=begin original
+
+The output format is governed by multiple options described under
+L</"Configurable Options">.
+
+=end original
+
+出力フォーマットは L<"/Configurable Options"> に記された
+様々なオプションの影響を受けます。
+
+=begin original
+
+If the C<maxdepth> is included, it must be a numeral I<N>; the value is
+dumped only I<N> levels deep, as if the C<dumpDepth> option had been
+temporarily set to I<N>.
+
+=end original
+
+C<maxdepth> が指定されている場合、それは数値 I<N> でなければなりません;
+C<dumpDepth> オプションが一時的に I<N> に設定されたかのように、
+値は I<N> レベルの深さでだけダンプされます。
+
+=item V [pkg [vars]]
+X<debugger command, V>
+
+=begin original
+
+Display all (or some) variables in package (defaulting to C<main>)
+using a data pretty-printer (hashes show their keys and values so
+you see what's what, control characters are made printable, etc.).
+Make sure you don't put the type specifier (like C<$>) there, just
+the symbol names, like this:
+
+=end original
+
+package (デフォルトは C<main>) 内のすべて (または、一部) の
+変数 (variable) をデータプリティプリンタを使って表示します
+(ハッシュは何が何か解るように、key と value を表示し、
+コントロール文字は表示できる形にします)。
+以下に示すように、symbol は名前だけを示し、(C<$> などの) 型識別子を
+付けないようにしてください:
+
+    V DB filename line
+
+=begin original
+
+Use C<~pattern> and C<!pattern> for positive and negative regexes.
+
+=end original
+
+正と逆の正規表現のためには C<~pattern> と C<!pattern> を使ってください。
+
+=begin original
+
+This is similar to calling the C<x> command on each applicable var.
+
+=end original
+
+これは有効な変数のそれぞれについて C<x> を呼び出すのと似ています。
+
+=item X [vars]
+X<debugger command, X>
+
+=begin original
+
+Same as C<V currentpackage [vars]>.
+
+=end original
+
+C<V 現在のパッケージ [vars]> と同じです。
+
+=item y [level [vars]]
+X<debugger command, y>
+
+=begin original
+
+Display all (or some) lexical variables (mnemonic: C<mY> variables)
+in the current scope or I<level> scopes higher.  You can limit the
+variables that you see with I<vars> which works exactly as it does
+for the C<V> and C<X> commands.  Requires the C<PadWalker> module
+version 0.08 or higher; will warn if this isn't installed.  Output
+is pretty-printed in the same style as for C<V> and the format is
+controlled by the same options.
+
+=end original
+
+現在のスコープや、I<level> だけ高いスコープの全て(またはいくつか)の
+レキシカル変数を表示します(記憶法: C<mY> 変数)。
+C<V> や C<X> コマンドと全く同じように、I<vars> を制定することで
+表示される変数を制限できます。
+バージョン 0.08 以降の C<PadWalker> モジュールが必要です;
+もしインストールされていなければ警告されます。
+出力は C<V> コマンドと同じスタイルにフォーマットされ、
+このフォーマットは同じオプションで制御されます。
+
+=item T
+X<debugger command, T> X<backtrace> X<stack, backtrace>
+
+=begin original
+
+Produce a stack backtrace.  See below for details on its output.
+
+=end original
+
+スタックのバックトレースを行います。出力についての詳細は後述します。
+
+=item s [expr]
+X<debugger command, s> X<step>
+
+=begin original
+
+Single step.  Executes until the beginning of another
+statement, descending into subroutine calls.  If an expression is
+supplied that includes function calls, it too will be single-stepped.
+
+=end original
+
+シングルステップ実行します。
+サブルーチンをたどりながら、別の実行文の先頭に到達するまで実行します。
+関数呼び出しを含む式が与えられた場合、これもシングルステップ実行します。
+
+=item n [expr]
+X<debugger command, n>
+
+=begin original
+
+Next.  Executes over subroutine calls, until the beginning
+of the next statement.  If an expression is supplied that includes
+function calls, those functions will be executed with stops before
+each statement.
+
+=end original
+
+ネクスト。次の実行文の先頭に到達するまで、サブルーチンにまたがって実行します。
+関数呼び出しを含む式が与えられた場合、
+各行毎に停止しながら関数を実行します。
+
+=item r
+X<debugger command, r>
+
+=begin original
+
+Continue until the return from the current subroutine.
+Dump the return value if the C<PrintRet> option is set (default).
+
+=end original
+
+現在のサブルーチンから戻るまで実行します。
+C<PrintRet> がセットされていれば(デフォルトではセットされています)
+返り値をダンプします。
+
+=item <CR>
+
+=begin original
+
+Repeat last C<n> or C<s> command.
+
+=end original
+
+最後の C<n> または C<s> を繰り返します。
+
+=item c [line|sub]
+X<debugger command, c>
+
+=begin original
+
+Continue, optionally inserting a one-time-only breakpoint
+at the specified line or subroutine.
+
+=end original
+
+続きを実行します; オプションとして、1 回限りのブレークポイントを指定された
+行またはサブルーチンに設定します。
+
+=item l
+X<debugger command, l>
+
+=begin original
+
+List next window of lines.
+
+=end original
+
+次の 1 画面分をリスト表示します。
+
+=item l min+incr
+
+=begin original
+
+List C<incr+1> lines starting at C<min>.
+
+=end original
+
+C<min> から C<incr+1> 行をリスト表示します。
+
+=item l min-max
+
+=begin original
+
+List lines C<min> through C<max>.  C<l -> is synonymous to C<->.
+
+=end original
+
+C<min> 行から C<max> 行をリスト表示します。
+C<l -> は C<-> と同じです。
+
+=item l line
+
+=begin original
+
+List a single line.
+
+=end original
+
+指定行をリスト表示します。
+
+=item l subname
+
+=begin original
+
+List first window of lines from subroutine.  I<subname> may
+be a variable that contains a code reference.
+
+=end original
+
+サブルーチンの最初の一画面分をリスト表示します。
+I<subname> は コードリファレンスが入った変数でも構いません。
+
+=item -
+X<debugger command, ->
+
+=begin original
+
+List previous window of lines.
+
+=end original
+
+前の 1 画面分をリスト表示します。
+
+=item v [line]
+X<debugger command, v>
+
+=begin original
+
+View a few lines of code around the current line.
+
+=end original
+
+指定行付近の(数行のコードをリスト表示します。
+
+=item .
+X<debugger command, .>
+
+=begin original
+
+Return the internal debugger pointer to the line last
+executed, and print out that line.
+
+=end original
+
+最後に実行した行への内部デバッガポインタを返し、
+その行を表示します。
+
+=item f filename
+X<debugger command, f>
+
+=begin original
+
+Switch to viewing a different file or C<eval> statement.  If I<filename>
+is not a full pathname found in the values of %INC, it is considered
+a regex.
+
+=end original
+
+異なるファイルまたは C<eval> 行に表示を切り替えます。
+もし I<filename> が %INC にあるフルパス名でなければ、
+正規表現として扱われます。
+
+=begin original
+
+C<eval>ed strings (when accessible) are considered to be filenames:
+C<f (eval 7)> and C<f eval 7\b> access the body of the 7th C<eval>ed string
+(in the order of execution).  The bodies of the currently executed C<eval>
+and of C<eval>ed strings that define subroutines are saved and thus
+accessible.
+
+=end original
+
+C<eval> した文字列は(アクセス可能なら)ファイル名として扱われます:
+C<f (eval 7)> と C<f eval 7\b> は (実行した順で) 7 番目に C<eval> した
+文字列の中身にアクセスします。
+現在実行した C<eval> の中身と、サブルーチンを定義する C<eval> した
+中身は保存されるので、アクセス可能です。
+
+=item /pattern/
+
+=begin original
+
+Search forwards for pattern (a Perl regex); final / is optional.
+The search is case-insensitive by default.
+
+=end original
+
+pattern を用いて Perl 正規表現による前方検索を行います; 最後の / は
+なくてもかまいません。
+デフォルトでは検索は大文字小文字を区別しません。
+
+=item ?pattern?
+
+=begin original
+
+Search backwards for pattern; final ? is optional.
+The search is case-insensitive by default.
+
+=end original
+
+pattern を用いて後方検索を行います; 最後の ? はなくてもかまいません。
+デフォルトでは検索は大文字小文字を区別しません。
+
+=item L [abw]
+X<debugger command, L>
+
+=begin original
+
+List (default all) actions, breakpoints and watch expressions
+
+=end original
+
+ブレークポイント、アクション、ウォッチ式を
+(デフォルトは全て)リストアップします。
+
+=item S [[!]regex]
+X<debugger command, S>
+
+=begin original
+
+List subroutine names [not] matching the regex.
+
+=end original
+
+regex に一致する(または一致しない)サブルーチン名をリストアップします。
+
+=item t [n]
+X<debugger command, t>
+
+=begin original
+
+Toggle trace mode (see also the C<AutoTrace> option).
+Optional argument is the maximum number of levels to trace below
+the current one; anything deeper than that will be silent.
+
+=end original
+
+トレースモードの on/off を切り替えます (C<AutoTrace> オプションも
+参照して下さい)。
+オプションの引数は現在のもの以下でトレースする最大レベル数です;
+これよりも深いものは沈黙します。
+
+=item t [n] expr
+X<debugger command, t>
+
+=begin original
+
+Trace through execution of C<expr>.
+Optional first argument is the maximum number of levels to trace below
+the current one; anything deeper than that will be silent.
+See L<perldebguts/"Frame Listing Output Examples"> for examples.
+
+=end original
+
+C<expr> の実行をトレースします。
+オプションの引数は現在のもの以下でトレースする最大レベル数です;
+これよりも深いものは沈黙します。
+例については L<perldebguts/"Frame Listing Output Examples"> を
+参照して下さい。
+
+=item b
+X<breakpoint>
+X<debugger command, b>
+
+=begin original
+
+Sets breakpoint on current line
+
+=end original
+
+現在の位置にブレークポイントを設定します。
+
+=item b [line] [condition]
+X<breakpoint>
+X<debugger command, b>
+
+=begin original
+
+Set a breakpoint before the given line.  If a condition
+is specified, it's evaluated each time the statement is reached: a
+breakpoint is taken only if the condition is true.  Breakpoints may
+only be set on lines that begin an executable statement.  Conditions
+don't use C<if>:
+
+=end original
+
+与えられた行の直前にブレークポイントを設定します。
+condition が指定されると、その文にさしかかる度に評価されます: condition が
+真となったときにだけブレークポイントが働きます。
+ブレークポイントは、実行可能な文で始まる行にだけ、設定できます。
+condition には C<if> を使いません:
+
+    b 237 $x > 30
+    b 237 ++$count237 < 11
+    b 33 /pattern/i
+
+=begin original
+
+If the line number is C<.>, sets a breakpoint on the current line:
+
+=end original
+
+行番号が C<.> なら、現在行にブレークポイントを設定します:
+
+    b . $n > 100
+
+=item b [file]:[line] [condition]
+X<breakpoint>
+X<debugger command, b>
+
+=begin original
+
+Set a breakpoint before the given line in a (possibly different) file.  If a
+condition is specified, it's evaluated each time the statement is reached: a
+breakpoint is taken only if the condition is true.  Breakpoints may only be set
+on lines that begin an executable statement.  Conditions don't use C<if>:
+
+=end original
+
+ブレークポイントを(おそらくは異なった)ファイルの指定された行に設定します。
+condition が指定されると、その文にさしかかる度に評価されます: condition が
+真となったときにだけブレークポイントが働きます。
+ブレークポイントは、実行可能な文で始まる行にだけ、設定できます。
+condition には C<if> を使いません:
+
+    b lib/MyModule.pm:237 $x > 30
+    b /usr/lib/perl5/site_perl/CGI.pm:100 ++$count100 < 11
+
+=item b subname [condition]
+X<breakpoint>
+X<debugger command, b>
+
+=begin original
+
+Set a breakpoint before the first line of the named subroutine.  I<subname> may
+be a variable containing a code reference (in this case I<condition>
+is not supported).
+
+=end original
+
+サブルーチンの最初の実行可能文にブレークポイントを設定します。
+I<subname> は コードリファレンスが入った変数でも構いません
+(この場合は I<condition> は非対応です)。
+
+=item b postpone subname [condition]
+X<breakpoint>
+X<debugger command, b>
+
+=begin original
+
+Set a breakpoint at first line of subroutine after it is compiled.
+
+=end original
+
+コンパイル後、サブルーチンの最初の行にブレークポイントをセットします。
+
+=item b load filename
+X<breakpoint>
+X<debugger command, b>
+
+=begin original
+
+Set a breakpoint before the first executed line of the I<filename>,
+which should be a full pathname found amongst the %INC values.
+
+=end original
+
+I<filename> の最初に実行される行の手前にブレークポイントをセットします;
+これは %INC の値に含まれるフルパス名であるべきです。
+
+=item b compile subname
+X<breakpoint>
+X<debugger command, b>
+
+=begin original
+
+Sets a breakpoint before the first statement executed after the specified
+subroutine is compiled.
+
+=end original
+
+指定されたサブルーチンがコンパイルされた後、最初に実行される文の手前に
+ブレークポイントをセットします。
+
+=item B line
+X<breakpoint>
+X<debugger command, B>
+
+=begin original
+
+Delete a breakpoint from the specified I<line>.
+
+=end original
+
+I<line> で指定されたブレークポイントを削除します。
+
+=item B *
+X<breakpoint>
+X<debugger command, B>
+
+=begin original
+
+Delete all installed breakpoints.
+
+=end original
+
+すべてのブレークポイントを削除します。
+
+=item disable [file]:[line]
+X<breakpoint>
+X<debugger command, disable>
+X<disable>
+
+=begin original
+
+Disable the breakpoint so it won't stop the execution of the program. 
+Breakpoints are enabled by default and can be re-enabled using the C<enable>
+command.
+
+=end original
+
+ブレークポイントを向こうにして、プログラムの実行を止めないようにします。
+ブレークポイントはデフォルトで有効で、C<enable> コマンドを使って
+再有効化できます。
+
+=item disable [line]
+X<breakpoint>
+X<debugger command, disable>
+X<disable>
+
+=begin original
+
+Disable the breakpoint so it won't stop the execution of the program. 
+Breakpoints are enabled by default and can be re-enabled using the C<enable>
+command.
+
+=end original
+
+ブレークポイントを向こうにして、プログラムの実行を止めないようにします。
+ブレークポイントはデフォルトで有効で、C<enable> コマンドを使って
+再有効化できます。
+
+=begin original
+
+This is done for a breakpoint in the current file.
+
+=end original
+
+これは現在のファイルのブレークポイントに対して行われます。
+
+=item enable [file]:[line]
+X<breakpoint>
+X<debugger command, disable>
+X<disable>
+
+=begin original
+
+Enable the breakpoint so it will stop the execution of the program. 
+
+=end original
+
+ブレークポイントを有効にして、プログラムの実行を止めるようにします。
+
+=item enable [line]
+X<breakpoint>
+X<debugger command, disable>
+X<disable>
+
+=begin original
+
+Enable the breakpoint so it will stop the execution of the program. 
+
+=end original
+
+ブレークポイントを有効にして、プログラムの実行を止めるようにします。
+
+=begin original
+
+This is done for a breakpoint in the current file.
+
+=end original
+
+これは現在のファイルのブレークポイントに対して行われます。
+
+=item a [line] command
+X<debugger command, a>
+
+=begin original
+
+Set an action to be done before the line is executed.  If I<line> is
+omitted, set an action on the line about to be executed.
+The sequence of steps taken by the debugger is
+
+=end original
+
+その行を実行する前に行うアクションを設定します。
+I<line> が省略されると、いままさに実行しようとしていた行に
+アクションを設定します。
+デバッガが実行する処理の順番は以下の通りです。
+
+=begin original
+
+  1. check for a breakpoint at this line
+  2. print the line if necessary (tracing)
+  3. do any actions associated with that line
+  4. prompt user if at a breakpoint or in single-step
+  5. evaluate line
+
+=end original
+
+  1. この行のブレークポイントをチェックします
+  2. 必要なら行を表示します(トレース)
+  3. この行に結び付けられたアクションを実行します
+  4. ブレークポイントやシングルステップの場合はユーザーに確認します
+  5. 行を評価します
+
+=begin original
+
+For example, this will print out $foo every time line
+53 is passed:
+
+=end original
+
+例えば、以下のコードは 53 行を通過する毎に $foo を表示します。
+
+    a 53 print "DB FOUND $foo\n"
+
+=item A line
+X<debugger command, A>
+
+=begin original
+
+Delete an action from the specified line.
+
+=end original
+
+指定された行に設定されたアクションを削除します。
+
+=item A *
+X<debugger command, A>
+
+=begin original
+
+Delete all installed actions.
+
+=end original
+
+設定されたすべてのアクションを削除します。
+
+=item w expr
+X<debugger command, w>
+
+=begin original
+
+Add a global watch-expression. Whenever a watched global changes the
+debugger will stop and display the old and new values.
+
+=end original
+
+グローバルなウォッチ式を追加します。
+グローバルな変更が行われたときは、デバッガは停止して新旧の値を表示します。
+
+=item W expr
+X<debugger command, W>
+
+=begin original
+
+Delete watch-expression
+
+=end original
+
+ウォッチ式を削除します。
+
+=item W *
+X<debugger command, W>
+
+=begin original
+
+Delete all watch-expressions.
+
+=end original
+
+全てのウォッチ式を削除します。
+
+=item o
+X<debugger command, o>
+
+=begin original
+
+Display all options.
+
+=end original
+
+全てのオプションを表示します。
+
+=item o booloption ...
+X<debugger command, o>
+
+=begin original
+
+Set each listed Boolean option to the value C<1>.
+
+=end original
+
+リストされた各真偽値オプションの値を C<1> に設定します。
+
+=item o anyoption? ...
+X<debugger command, o>
+
+=begin original
+
+Print out the value of one or more options.
+
+=end original
+
+1 つ、あるいは複数のオプションの値を表示します。
+
+=item o option=value ...
+X<debugger command, o>
+
+=begin original
+
+Set the value of one or more options.  If the value has internal
+whitespace, it should be quoted.  For example, you could set C<o
+pager="less -MQeicsNfr"> to call B<less> with those specific options.
+You may use either single or double quotes, but if you do, you must
+escape any embedded instances of same sort of quote you began with,
+as well as any escaping any escapes that immediately precede that
+quote but which are not meant to escape the quote itself.  In other
+words, you follow single-quoting rules irrespective of the quote;
+eg: C<o option='this isn\'t bad'> or C<o option="She said, \"Isn't
+it?\"">.
+
+=end original
+
+一つまたは複数のオプションをセットします。
+値自身に空白を含む場合、クォートする必要があります。
+例えば、B<less> をオプション付きで呼び出す場合は
+C<o pager="less -MQeicsNfr"> のようにします。
+シングルクォートとダブルクォートのどちらでも使えますが、クォートする場合は、
+クォート文字と同じ文字はエスケープする必要があります;
+そしてエスケープ文字自身もエスケープして、クォート文字を
+エスケープしているのではないことを示す必要があります。
+言い換えると、クォートに関わりなく、シングルクォートルールに従います;
+例えば: C<o option='this isn\'t bad'> や
+C<o option="She said, \"Isn't it?\"">
+
+=begin original
+
+For historical reasons, the C<=value> is optional, but defaults to
+1 only where it is safe to do so--that is, mostly for Boolean
+options.  It is always better to assign a specific value using C<=>.
+The C<option> can be abbreviated, but for clarity probably should
+not be.  Several options can be set together.  See L</"Configurable Options">
+for a list of these.
+
+=end original
+
+歴史的な理由により、C<=value> は省略可能ですが、そうするのが安全な場合にのみ
+デフォルトは 1 です -- これは、ほとんどの場合ブール値オプションです。
+C<=> を使って指定した値を代入する方が常によいです。
+C<option> は短縮できますが、明確化のためにはそうしない方がいいでしょう。
+いくつかのオプションは互いにセットできます。
+それらの一覧については L<"/Configurable Options"> を参照してください。
+
+=item < ?
+X<< debugger command, < >>
+
+=begin original
+
+List out all pre-prompt Perl command actions.
+
+=end original
+
+プロンプト表示前に実行するアクションを全て表示します。
+
+=item < [ command ]
+X<< debugger command, < >>
+
+=begin original
+
+Set an action (Perl command) to happen before every debugger prompt.
+A multi-line command may be entered by backslashing the newlines.
+
+=end original
+
+デバッガがプロンプトを出す直前に、毎回実行するアクション
+(Perl のコマンド)を設定します。
+複数行の command は、バックスラッシュと改行で書くことができます。
+
+=item < *
+X<< debugger command, < >>
+
+=begin original
+
+Delete all pre-prompt Perl command actions.
+
+=end original
+
+プロンプト表示前に実行するアクションを全て削除します。
+
+=item << command
+X<< debugger command, << >>
+
+=begin original
+
+Add an action (Perl command) to happen before every debugger prompt.
+A multi-line command may be entered by backwhacking the newlines.
+
+=end original
+
+デバッガがプロンプトを出す直前に、毎回実行するアクション
+(Perl のコマンド)を追加します。
+複数行の command は、バックスラッシュと改行で書くことができます。
+
+=item > ?
+X<< debugger command, > >>
+
+=begin original
+
+List out post-prompt Perl command actions.
+
+=end original
+
+プロンプト表示後に実行するアクションを全て表示します。
+
+=item > command
+X<< debugger command, > >>
+
+=begin original
+
+Set an action (Perl command) to happen after the prompt when you've
+just given a command to return to executing the script.  A multi-line
+command may be entered by backslashing the newlines (we bet you
+couldn't have guessed this by now).
+
+=end original
+
+スクリプトの実行に戻るコマンドを入力した時に、デバッガが
+プロンプトを出した後で、毎回実行するアクション(Perl のコマンド)を設定します。
+複数行の command は、バックスラッシュと改行で書くことができます
+(きっとあなたは今までこのことを知らなかったはずです)。
+
+=item > *
+X<< debugger command, > >>
+
+=begin original
+
+Delete all post-prompt Perl command actions.
+
+=end original
+
+プロンプト表示後に実行するアクションを全て削除します。
+
+=item >> command
+X<<< debugger command, >> >>>
+
+=begin original
+
+Adds an action (Perl command) to happen after the prompt when you've
+just given a command to return to executing the script.  A multi-line
+command may be entered by backslashing the newlines.
+
+=end original
+
+スクリプトの実行に戻るコマンドを入力した時に、デバッガが
+プロンプトを出した後で、毎回実行するアクション(Perl のコマンド)を追加します。
+複数行の command は、バックスラッシュと改行で書くことができます。
+
+=item { ?
+X<debugger command, {>
+
+=begin original
+
+List out pre-prompt debugger commands.
+
+=end original
+
+プロンプト表示前に実行するデバッガコマンドを表示します。
+
+=item { [ command ]
+
+=begin original
+
+Set an action (debugger command) to happen before every debugger prompt.
+A multi-line command may be entered in the customary fashion.
+
+=end original
+
+デバッガがプロンプトを出す前に、毎回実行するアクション(デバッガの
+コマンド)を設定します。
+複数行の command は、いつもの方法で書くことができます
+B<警告> もし C<command> がないと、全てのアクションが消えてしまいます!
+
+=begin original
+
+Because this command is in some senses new, a warning is issued if
+you appear to have accidentally entered a block instead.  If that's
+what you mean to do, write it as with C<;{ ... }> or even
+C<do { ... }>.
+
+=end original
+
+このコマンドはある意味新しいので、もし代わりに間違ってブロックを
+入力したように見えるときには、警告が出ます。
+本当に奏したい場合は、C<;{ ... }> か、いっそ C<do { ... }> と
+書いてください。
+
+=item { *
+X<debugger command, {>
+
+=begin original
+
+Delete all pre-prompt debugger commands.
+
+=end original
+
+プロンプト前に実行するデバッガコマンドを全て削除します。
+
+=item {{ command
+X<debugger command, {{>
+
+=begin original
+
+Add an action (debugger command) to happen before every debugger prompt.
+A multi-line command may be entered, if you can guess how: see above.
+
+=end original
+
+毎回デバッガプロンプトを表示する前に実行するアクション(デバッガコマンド)を
+追加します。予測可能な方法な方法で複数行コマンドも登録できます:
+上記を参照してください。
+
+=item ! number
+X<debugger command, !>
+
+=begin original
+
+Redo a previous command (defaults to the previous command).
+
+=end original
+
+以前のコマンドを再実行します(number が省略されると、直前のコマンドを
+実行します)。
+
+=item ! -number
+X<debugger command, !>
+
+=begin original
+
+Redo number'th previous command.
+
+=end original
+
+指定数値分前のコマンドを実行します。
+
+=item ! pattern
+X<debugger command, !>
+
+=begin original
+
+Redo last command that started with pattern.
+See C<o recallCommand>, too.
+
+=end original
+
+pattern で始まるうち、最も最近に実行されたコマンドを
+再実行します。
+C<O recallCommand> も参照して下さい。
+
+=item !! cmd
+X<debugger command, !!>
+
+=begin original
+
+Run cmd in a subprocess (reads from DB::IN, writes to DB::OUT) See
+C<o shellBang>, also.  Note that the user's current shell (well,
+their C<$ENV{SHELL}> variable) will be used, which can interfere
+with proper interpretation of exit status or signal and coredump
+information.
+
+=end original
+
+cmd をサブプロセスとして実行します(DB::IN から読み込み、DB::OUT に
+書き出します)。
+C<O shellBang> も参照してください。
+ユーザーの現在のシェル(つまり、 C<$ENV{SHELL}> 変数)が使われるので、
+終了コードの適切な解釈やシグナルとコアダンプの情報が妨害されるかもしれない
+ことに注意してください。
+
+=item source file
+X<debugger command, source>
+
+=begin original
+
+Read and execute debugger commands from I<file>.
+I<file> may itself contain C<source> commands.
+
+=end original
+
+デバッガコマンドを I<file> から読み込んで実行します。
+I<file> 自身に C<source> コマンドを含んでいても構いません。
+
+=item H -number
+X<debugger command, H>
+
+=begin original
+
+Display last n commands.  Only commands longer than one character are
+listed.  If I<number> is omitted, list them all.
+
+=end original
+
+最近の指定数値分のコマンドを表示します。
+2 文字以上のコマンドのみが表示されます。
+I<number> が省略されると、全てを表示します。
+
+=item q or ^D
+X<debugger command, q>
+X<debugger command, ^D>
+
+=begin original
+
+Quit.  ("quit" doesn't work for this, unless you've made an alias)
+This is the only supported way to exit the debugger, though typing
+C<exit> twice might work.
+
+=end original
+
+デバッガを終了します。
+(エイリアスを設定しない限り、"quit" はこの目的には使えません。)
+これはデバッガを終了する唯一の方法ですが、C<exit> を2回
+入力しても動作します。
+
+=begin original
+
+Set the C<inhibit_exit> option to 0 if you want to be able to step
+off the end the script.  You may also need to set $finished to 0
+if you want to step through global destruction.
+
+=end original
+
+スクリプトの最後にステップ実行できるようにしたい場合は、
+C<inhibit_exit> オプションに 0 を設定してください。
+グローバルなデストラクタを実行してステップ実行したい場合は、
+$finished に 0 を設定する必要があります。
+
+=item R
+X<debugger command, R>
+
+=begin original
+
+Restart the debugger by C<exec()>ing a new session.  We try to maintain
+your history across this, but internal settings and command-line options
+may be lost.
+
+=end original
+
+新しいセッションを C<exec()> することでデバッガを再起動します。
+履歴は残そうと努力しますが、内部設定やコマンドラインオプションは
+失われるかもしれません。
+
+=begin original
+
+The following setting are currently preserved: history, breakpoints,
+actions, debugger options, and the Perl command-line
+options B<-w>, B<-I>, and B<-e>.
+
+=end original
+
+今のところ、以下の設定は保存されます: 履歴、ブレークポイント、アクション、
+デバッガオプション、Perl コマンドラインオプション B<-w>, B<-I>, B<-e>。
+
+=item |dbcmd
+X<debugger command, |>
+
+=begin original
+
+Run the debugger command, piping DB::OUT into your current pager.
+
+=end original
+
+デバッガコマンドを実行し、DB::OUT をパイプであなたの現在のページャと繋ぎます。
+
+=item ||dbcmd
+X<debugger command, ||>
+
+=begin original
+
+Same as C<|dbcmd> but DB::OUT is temporarily C<select>ed as well.
+
+=end original
+
+C<|dbcmd> と同様ですが、 DB::OUT は一時的に C<select> で
+選択されているものになります。
+
+=item = [alias value]
+X<debugger command, =>
+
+=begin original
+
+Define a command alias, like
+
+=end original
+
+以下のようにコマンドエイリアスを定義する:
+
+    = quit q
+
+=begin original
+
+or list current aliases.
+
+=end original
+
+または現在のエイリアスの一覧を表示します。
+
+=item command
+
+=begin original
+
+Execute command as a Perl statement.  A trailing semicolon will be
+supplied.  If the Perl statement would otherwise be confused for a
+Perl debugger, use a leading semicolon, too.
+
+=end original
+
+command を Perl の文として実行します。文末のセミコロンはなくてもかまいません。
+Perl の文が Perl デバッガにとって紛らわしい場合は
+先頭にセミコロンをつけてください。
+
+=item m expr
+X<debugger command, m>
+
+=begin original
+
+List which methods may be called on the result of the evaluated
+expression.  The expression may evaluated to a reference to a
+blessed object, or to a package name.
+
+=end original
+
+評価した表現の結果が呼び出されたメソッドを一覧表示します。
+表現は bless されたオブジェクトへのリファレンスか、パッケージ名として
+評価されます。
+
+=item M
+X<debugger command, M>
+
+=begin original
+
+Display all loaded modules and their versions.
+
+=end original
+
+読み込まれたモジュールとバージョンを全て表示します。
+
+=item man [manpage]
+X<debugger command, man>
+
+=begin original
+
+Despite its name, this calls your system's default documentation
+viewer on the given page, or on the viewer itself if I<manpage> is
+omitted.  If that viewer is B<man>, the current C<Config> information
+is used to invoke B<man> using the proper MANPATH or S<B<-M>
+I<manpath>> option.  Failed lookups of the form C<XXX> that match
+known manpages of the form I<perlXXX> will be retried.  This lets
+you type C<man debug> or C<man op> from the debugger.
+
+=end original
+
+その名前にも関わらず、これは与えられたページ(I<manpage> が省略された
+場合はビューワ自身)に対してシステムのデフォルトのドキュメントビューワを
+呼び出します。
+ビューワが B<man> の場合、適切な MANPATH や S<B<-M> I<manpath>>
+オプションを使って B<man> を起動するために、現在の C<Config> 情報が
+使われます。
+C<XXX> の形で一致する man ページの検索に失敗した場合、
+I<perlXXX> の形のものを再検索します。
+これにより、デバッガから C<man debug> や C<man op> と
+タイプできるようになります。
+
+=begin original
+
+On systems traditionally bereft of a usable B<man> command, the
+debugger invokes B<perldoc>.  Occasionally this determination is
+incorrect due to recalcitrant vendors or rather more felicitously,
+to enterprising users.  If you fall into either category, just
+manually set the $DB::doccmd variable to whatever viewer to view
+the Perl documentation on your system.  This may be set in an rc
+file, or through direct assignment.  We're still waiting for a
+working example of something along the lines of:
+
+=end original
+
+伝統的に利用可能な B<man> コマンドを奪われたシステムでは、デバッガは<
+B<perldoc> を起動します。
+反抗的なベンダーや、より適切には、積極的なユーザーによって、この判断は
+正しくありません。
+もしあなたがどちらかの分類に当てはまってしまうなら、Perl のドキュメントを
+表示するためにどのビューワを使うかを、手動で $DB::doccmd 変数に
+セットしてください。
+これは rc ファイルででも、直接の代入ででもセットできます。
+私たちは以下のような感じで、実際に動作する例を待っています:
+
+    $DB::doccmd = 'netscape -remote http://something.here/';
+
+=back
+
+=head2 Configurable Options
+
+(設定可能なオプション)
+
+=begin original
+
+The debugger has numerous options settable using the C<o> command,
+either interactively or from the environment or an rc file.
+(./.perldb or ~/.perldb under Unix.)
+
+=end original
+
+デバッガには C<O> コマンドで設定できるさまざまなオプションがあります。
+これは対話的、環境変数、rc ファイル (Unix では ./.perldb または
+~/.perldb) で設定できます。
+
+=over 12
+
+=item C<recallCommand>, C<ShellBang>
+X<debugger option, recallCommand>
+X<debugger option, ShellBang>
+
+=begin original
+
+The characters used to recall a command or spawn a shell.  By
+default, both are set to C<!>, which is unfortunate.
+
+=end original
+
+再呼び出しコマンドとシェル起動に使われる文字です。
+デフォルトでは、残念ながら、両方とも C<!> にセットされています。
+
+=item C<pager>
+X<debugger option, pager>
+
+=begin original
+
+Program to use for output of pager-piped commands (those beginning
+with a C<|> character.)  By default, C<$ENV{PAGER}> will be used.
+Because the debugger uses your current terminal characteristics
+for bold and underlining, if the chosen pager does not pass escape
+sequences through unchanged, the output of some debugger commands
+will not be readable when sent through the pager.
+
+=end original
+
+ページャにパイプされるコマンド(文字 C<|> で始まるもの)の出力に
+使われるプログラム。
+デフォルトでは、C<$ENV{PAGER}> が使われます。
+デバッガは強調と下線に関して現在の端末設定を使うので、もし選択した
+ページャがエスケープシーケンスを変更せずに通過させられない場合、
+一部のデバッガコマンドの出力は、ページャに送られると読めなくなるでしょう。
+
+=item C<tkRunning>
+X<debugger option, tkRunning>
+
+=begin original
+
+Run Tk while prompting (with ReadLine).
+
+=end original
+
+プロンプトで (ReadLine と共に) Tk を実行します。
+
+=item C<signalLevel>, C<warnLevel>, C<dieLevel>
+X<debugger option, signalLevel> X<debugger option, warnLevel>
+X<debugger option, dieLevel>
+
+=begin original
+
+Level of verbosity.  By default, the debugger leaves your exceptions
+and warnings alone, because altering them can break correctly running
+programs.  It will attempt to print a message when uncaught INT, BUS, or
+SEGV signals arrive.  (But see the mention of signals in L</BUGS> below.)
+
+=end original
+
+詳細さのレベル。
+デフォルトでは、デバッガは例外と警告を放っておきます;
+これを変更すると、プログラムが正しく動かなくなることがあるからです。
+捕捉されていない INT, BUS, SEGV シグナルがあると、メッセージを
+表示しようとします。
+(しかし、以下の L<BUGS> のシグナルに関する注意を参照してください。)
+
+=begin original
+
+To disable this default safe mode, set these values to something higher
+than 0.  At a level of 1, you get backtraces upon receiving any kind
+of warning (this is often annoying) or exception (this is
+often valuable).  Unfortunately, the debugger cannot discern fatal
+exceptions from non-fatal ones.  If C<dieLevel> is even 1, then your
+non-fatal exceptions are also traced and unceremoniously altered if they
+came from C<eval'ed> strings or from any kind of C<eval> within modules
+you're attempting to load.  If C<dieLevel> is 2, the debugger doesn't
+care where they came from:  It usurps your exception handler and prints
+out a trace, then modifies all exceptions with its own embellishments.
+This may perhaps be useful for some tracing purposes, but tends to hopelessly
+destroy any program that takes its exception handling seriously.
+
+=end original
+
+このデフォルトのセーフモードを無効にするには、これらの値を 0 以上に
+セットしてください。
+レベル 1 では、あらゆる種類の警告(これはしばしばうんざりさせるものです)や
+例外(これはしばしば価値があります)を受信した時にバックトレースを得ます。
+残念ながら、デバッガは致命的な例外と致命的でない例外を識別できません。
+C<dieLevel> は 1 であっても、致命的でない例外もトレースされ、
+それが C<eval された> 文字列からか、読み込もうとしたモジュール内の
+あらゆる種類の C<eval> からのものであるなら、突然置き換えられます。
+C<dieLevel> が 2 なら、デバッガは例外の出所を気にしません:
+例外ハンドラを横取りしてトレースを表示し、それから全ての例外を自身の装飾で
+修正します。
+これはある種のトレースの目的にはおそらく有用ですが、
+例外をまじめに扱っているプログラムをどうしようもなく破壊してしまう傾向が
+あります。
+
+=item C<AutoTrace>
+X<debugger option, AutoTrace>
+
+=begin original
+
+Trace mode (similar to C<t> command, but can be put into
+C<PERLDB_OPTS>).
+
+=end original
+
+トレースモード(C<t> コマンドと同様ですが、C<PERLDB_OPTS> に書けます)。
+
+=item C<LineInfo>
+X<debugger option, LineInfo>
+
+=begin original
+
+File or pipe to print line number info to.  If it is a pipe (say,
+C<|visual_perl_db>), then a short message is used.  This is the
+mechanism used to interact with a slave editor or visual debugger,
+such as the special C<vi> or C<emacs> hooks, or the C<ddd> graphical
+debugger.
+
+=end original
+
+行番号情報を記録するファイルまたはパイプ。
+これが (C<|visual_perl_db> のように) パイプの場合、短い文章が使われます。
+これは、特別な C<vi> や C<emacs> のフックや、C<ddd> グラフィカル
+デバッガのようなスレーブエディタやビジュアルデバッガと相互作用するために
+使われる機構です。
+
+=item C<inhibit_exit>
+X<debugger option, inhibit_exit>
+
+=begin original
+
+If 0, allows I<stepping off> the end of the script.
+
+=end original
+
+0 だと、スクリプトの最後で I<プログラムを終了する> ことを認めます。
+
+=item C<PrintRet>
+X<debugger option, PrintRet>
+
+=begin original
+
+Print return value after C<r> command if set (default).
+
+=end original
+
+設定されると(デフォルト)、C<r> コマンドの後に返り値を表示します。
+
+=item C<ornaments>
+X<debugger option, ornaments>
+
+=begin original
+
+Affects screen appearance of the command line (see L<Term::ReadLine>).
+There is currently no way to disable these, which can render
+some output illegible on some displays, or with some pagers.
+This is considered a bug.
+
+=end original
+
+コマンドラインの画面への表示に影響を与えます(L<Term::ReadLine> を
+参照してください)。
+今のところ、これを無効にする方法はありません;
+これにより、ディスプレイやページャーによっては判読できない出力を
+行うことがあります。
+これはバグと考えられています。
+
+=item C<frame>
+X<debugger option, frame>
+
+=begin original
+
+Affects the printing of messages upon entry and exit from subroutines.  If
+C<frame & 2> is false, messages are printed on entry only. (Printing
+on exit might be useful if interspersed with other messages.)
+
+=end original
+
+サブルーチンへの出入り時のメッセージ表示に影響を与えます。
+C<frame & 2> が偽なら、サブルーチンに入る時にのみメッセージを出力します。
+(出るときのメッセージは、他のメッセージがまき散らされているときには
+有用でしょう。)
+
+=begin original
+
+If C<frame & 4>, arguments to functions are printed, plus context
+and caller info.  If C<frame & 8>, overloaded C<stringify> and
+C<tie>d C<FETCH> is enabled on the printed arguments.  If C<frame
+& 16>, the return value from the subroutine is printed.
+
+=end original
+
+C<frame & 4> の場合、関数の引数に加えて、コンテキストと呼び出し元の
+情報を表示します。
+C<frame & 8> の場合、引数の表示にオーバーロードされた C<文字列化> と
+C<tie> した C<FETCH> が有効になります。
+C<frame & 16> の場合、サブルーチンからの返り値が表示されます。
+
+=begin original
+
+The length at which the argument list is truncated is governed by the
+next option:
+
+=end original
+
+引数リストが切り詰められた時の長さは次のオプションの管轄となります:
+
+=item C<maxTraceLen>
+X<debugger option, maxTraceLen>
+
+=begin original
+
+Length to truncate the argument list when the C<frame> option's
+bit 4 is set.
+
+=end original
+
+C<frame> オプションの bit 4 がセットされている時の引数リストを切り詰める
+長さ。
+
+=item C<windowSize>
+X<debugger option, windowSize>
+
+=begin original
+
+Change the size of code list window (default is 10 lines).
+
+=end original
+
+コードリストウィンドウの大きさを変更します(デフォルトは 10 行です)。
+
+=back
+
+=begin original
+
+The following options affect what happens with C<V>, C<X>, and C<x>
+commands:
+
+=end original
+
+以下のオプションは C<V>, C<X>, C<x> コマンドに影響を与えます。
+
+=over 12
+
+=item C<arrayDepth>, C<hashDepth>
+X<debugger option, arrayDepth> X<debugger option, hashDepth>
+
+=begin original
+
+Print only first N elements ('' for all).
+
+=end original
+
+最初の N 要素だけを表示します('' を指定すると全て表示します)。
+
+=item C<dumpDepth>
+X<debugger option, dumpDepth>
+
+=begin original
+
+Limit recursion depth to N levels when dumping structures.
+Negative values are interpreted as infinity.  Default: infinity.
+
+=end original
+
+構造をダンプするときに再帰の深さを N レベルに制限します。
+負数を指定すると無限として解釈されます。
+デフォルト: 無限。
+
+=item C<compactDump>, C<veryCompact>
+X<debugger option, compactDump> X<debugger option, veryCompact>
+
+=begin original
+
+Change the style of array and hash output.  If C<compactDump>, short array
+may be printed on one line.
+
+=end original
+
+配列とハッシュの出力スタイルを変更します。
+C<compactDump> の場合は、短い配列は 1 行で表示します。
+
+=item C<globPrint>
+X<debugger option, globPrint>
+
+=begin original
+
+Whether to print contents of globs.
+
+=end original
+
+グロブの内容を表示するかどうかです。
+
+=item C<DumpDBFiles>
+X<debugger option, DumpDBFiles>
+
+=begin original
+
+Dump arrays holding debugged files.
+
+=end original
+
+デバッグしていているファイルが保持している配列をダンプします。
+
+=item C<DumpPackages>
+X<debugger option, DumpPackages>
+
+=begin original
+
+Dump symbol tables of packages.
+
+=end original
+
+パッケージのシンボルテーブルをダンプします。
+
+=item C<DumpReused>
+X<debugger option, DumpReused>
+
+=begin original
+
+Dump contents of "reused" addresses.
+
+=end original
+
+「再利用された」アドレスの内容をダンプします。
+
+=item C<quote>, C<HighBit>, C<undefPrint>
+X<debugger option, quote> X<debugger option, HighBit>
+X<debugger option, undefPrint>
+
+=begin original
+
+Change the style of string dump.  The default value for C<quote>
+is C<auto>; one can enable double-quotish or single-quotish format
+by setting it to C<"> or C<'>, respectively.  By default, characters
+with their high bit set are printed verbatim.
+
+=end original
+
+文字列ダンプのスタイルを変更します。
+C<quote> のデフォルトは C<auto> です;
+C<"> や C<'> にセットすることでダブルクォート風やシングルクォート風に
+できます。
+デフォルトでは、最上位ビットがセットされている文字はそのまま表示されます。
+
+=item C<UsageOnly>
+X<debugger option, UsageOnly>
+
+=begin original
+
+Rudimentary per-package memory usage dump.  Calculates total
+size of strings found in variables in the package.  This does not
+include lexicals in a module's file scope, or lost in closures.
+
+=end original
+
+基本的なパッケージ単位のメモリ使用量ダンプ。
+パッケージ内の変数で見つかった文字列のサイズの合計を計算します。
+モジュールのファイルスコープ内のレキシカルや、クロージャ内で
+失われたものは含まれません。
+
+=item C<HistFile>
+X<debugger option, history, HistFile>
+
+=begin original
+
+The path of the file from which the history (assuming a usable
+Term::ReadLine backend) will be read on the debugger's startup, and to which
+it will be saved on shutdown (for persistence across sessions). Similar in
+concept to Bash's C<.bash_history> file.
+
+=end original
+
+デバッガの起動時に読み込まれ、(セッションをまたいで永続させるために)終了時に
+保管されるヒストリ (Term::ReadLine バックエンドが利用可能であることを
+仮定しています) のファイルのパス。
+Bash の C<.bash_history> ファイルと同じ考え方です。
+
+=item C<HistSize>
+X<debugger option, history, HistSize>
+
+=begin original
+
+The count of the saved lines in the history (assuming C<HistFile> above).
+
+=end original
+
+ヒストリに保管される行数 (上述の C<HistFile> を仮定します)。
+
+=back
+
+=begin original
+
+After the rc file is read, the debugger reads the C<$ENV{PERLDB_OPTS}>
+environment variable and parses this as the remainder of a "O ..."
+line as one might enter at the debugger prompt.  You may place the
+initialization options C<TTY>, C<noTTY>, C<ReadLine>, and C<NonStop>
+there.
+
+=end original
+
+rc ファイルが読み込まれた後、デバッガは C<$ENV{PERLDB_OPTS}> 環境変数を
+読み込み、デバッガのプロンプトから "O ..." として入力されたかのように
+パースします。
+初期化オプション C<TTY>, C<noTTY>, C<ReadLine>, C<NonStop> も
+ここで設定できます。
+
+=begin original
+
+If your rc file contains:
+
+=end original
+
+rc ファイルに以下のように書くと:
+
+  parse_options("NonStop=1 LineInfo=db.out AutoTrace");
+
+=begin original
+
+then your script will run without human intervention, putting trace
+information into the file I<db.out>.  (If you interrupt it, you'd
+better reset C<LineInfo> to F</dev/tty> if you expect to see anything.)
+
+=end original
+
+スクリプトは人間の介入なしに実行され、トレース情報を
+I<db.out> ファイルに出力します。
+(中断して、何も表示されない場合は、C<LineInfo> を F</dev/tty> に
+リセットしたほうがよいでしょう。)
+
+=over 12
+
+=item C<TTY>
+X<debugger option, TTY>
+
+=begin original
+
+The TTY to use for debugging I/O.
+
+=end original
+
+デバッグ I/O として TTY を使います。
+
+=item C<noTTY>
+X<debugger option, noTTY>
+
+=begin original
+
+If set, the debugger goes into C<NonStop> mode and will not connect to a TTY.  If
+interrupted (or if control goes to the debugger via explicit setting of
+$DB::signal or $DB::single from the Perl script), it connects to a TTY
+specified in the C<TTY> option at startup, or to a tty found at
+runtime using the C<Term::Rendezvous> module of your choice.
+
+=end original
+
+セットすると、デバッガは C<NonStop> モードとなり、TTY と接続されません。
+もし中断された(または Perl スクリプトから明示的に $DB::signal や
+$DB::single をセットすることによってデバッガに制御が移った)場合、
+起動時に C<TTY> オプションで指定された TTY か、実行時に C<Term::Rendezvous>
+モジュールで選択された TTY に接続されます。
+
+=begin original
+
+This module should implement a method named C<new> that returns an object
+with two methods: C<IN> and C<OUT>.  These should return filehandles to use
+for debugging input and output correspondingly.  The C<new> method should
+inspect an argument containing the value of C<$ENV{PERLDB_NOTTY}> at
+startup, or C<"$ENV{HOME}/.perldbtty$$"> otherwise.  This file is not
+inspected for proper ownership, so security hazards are theoretically
+possible.
+
+=end original
+
+このモジュールは、2 つのメソッド C<IN> と C<OUT> をもつオブジェクトを
+返すメソッド C<new> を実装する必要があります。
+これらはそれぞれ、デバッグ入力と出力のためのファイルハンドルを
+返すようにします。
+C<new> メソッドは起動時に C<$ENV{PERLDB_NOTTY}> の値を含んでいる
+引数を検査し、さもなければ C<"$ENV{HOME}/.perldbtty$$"> となります。
+このファイルは適切な所有権について検査されないので、
+理論的にはセキュリティの問題が起こり得ます。
+
+=item C<ReadLine>
+X<debugger option, ReadLine>
+
+=begin original
+
+If false, readline support in the debugger is disabled in order
+to debug applications that themselves use ReadLine.
+
+=end original
+
+偽だと、デバッグするアプリケーション自身が ReadLine を使うために、
+readline 対応を無効にします。
+
+=item C<NonStop>
+X<debugger option, NonStop>
+
+=begin original
+
+If set, the debugger goes into non-interactive mode until interrupted, or
+programmatically by setting $DB::signal or $DB::single.
+
+=end original
+
+設定されると、デバッガは中断されるか、プログラム的に $DB::signal か
+$DB::single に設定されるまで、非対話的モードとなります。
+
+=back
+
+=begin original
+
+Here's an example of using the C<$ENV{PERLDB_OPTS}> variable:
+
+=end original
+
+以下に C<$ENV{PERLDB_OPTS}> 変数を使った例を示します:
+
+    $ PERLDB_OPTS="NonStop frame=2" perl -d myprogram
+
+=begin original
+
+That will run the script B<myprogram> without human intervention,
+printing out the call tree with entry and exit points.  Note that
+C<NonStop=1 frame=2> is equivalent to C<N f=2>, and that originally,
+options could be uniquely abbreviated by the first letter (modulo
+the C<Dump*> options).  It is nevertheless recommended that you
+always spell them out in full for legibility and future compatibility.
+
+=end original
+
+これは、人間の関与なしでスクリプト B<myprogram> を実行し、進入と終了の
+ポイントの呼び出し木を表示します。
+C<NonStop=1 frame=2> は C<N f=2> と等価で、もともとオプションは最初の文字
+(C<Dump*> オプションを法として) に省略できます。
+それでもやはり、読みやすさと将来の互換性のために、常にフルスペルを書くことが
+推奨されます。
+
+=begin original
+
+Other examples include
+
+=end original
+
+もう一つの例としては:
+
+    $ PERLDB_OPTS="NonStop LineInfo=listing frame=2" perl -d myprogram
+
+=begin original
+
+which runs script non-interactively, printing info on each entry
+into a subroutine and each executed line into the file named F<listing>.
+(If you interrupt it, you would better reset C<LineInfo> to something
+"interactive"!)
+
+=end original
+
+とするとスクリプトは非対話的に実行され、サブルーチンへの進入と実行行を
+F<listing> という名前のファイルに記録します。
+(中断すると、何か「対話的」にするために C<LineInfo> をリセットする方が
+良いでしょう!)
+
+=begin original
+
+Other examples include (using standard shell syntax to show environment
+variable settings):
+
+=end original
+
+(環境変数設定を表示する標準シェル構文を使った)もう一つの例としては:
+
+  $ ( PERLDB_OPTS="NonStop frame=1 AutoTrace LineInfo=tperl.out"
+      perl -d myprogram )
+
+=begin original
+
+which may be useful for debugging a program that uses C<Term::ReadLine>
+itself.  Do not forget to detach your shell from the TTY in the window that
+corresponds to F</dev/ttyXX>, say, by issuing a command like
+
+=end original
+
+これは C<Term::ReadLine> 地震を使っているプログラムをデバッグするのに
+便利です。
+以下のようなコマンドを使って、使用中のシェルを、F</dev/ttyXX> に対応する
+ウィンドウの TTY からデタッチすることを忘れないで下さい:
+
+  $ sleep 1000000
+
+=begin original
+
+See L<perldebguts/"Debugger Internals"> for details.
+
+=end original
+
+詳細については L<perldebguts/"Debugger Internals"> を参照してください。
+
+=head2 Debugger Input/Output
+
+(デバッガの入出力)
+
+=over 8
+
+=item Prompt
+
+=begin original
+
+The debugger prompt is something like
+
+=end original
+
+デバッガのプロンプトは以下のようだったり:
+
+    DB<8>
+
+=begin original
+
+or even
+
+=end original
+
+あるいは以下のようだったりします:
+
+    DB<<17>>
+
+=begin original
+
+where that number is the command number, and which you'd use to
+access with the built-in B<csh>-like history mechanism.  For example,
+C<!17> would repeat command number 17.  The depth of the angle
+brackets indicates the nesting depth of the debugger.  You could
+get more than one set of brackets, for example, if you'd already
+at a breakpoint and then printed the result of a function call that
+itself has a breakpoint, or you step into an expression via C<s/n/t
+expression> command.
+
+=end original
+
+ここで数値はコマンド番号で、組み込みの B<csh> 風履歴機構を使って
+アクセスするのに使います。
+例えば、C<!17> はコマンド番号 17 を再実行します。
+不等号の深さはデバッガのネストの深さを示します。
+例えば、既にブレークポイントにいて、それ自身にもブレークポイントを
+含む関数呼び出しの結果を表示させたり、C<s/n/t expression> コマンドを
+使って式をステップ実行したりした時に複数の不等号の組を見ることがあります。
+
+=item Multiline commands
+
+=begin original
+
+If you want to enter a multi-line command, such as a subroutine
+definition with several statements or a format, escape the newline
+that would normally end the debugger command with a backslash.
+Here's an example:
+
+=end original
+
+複数の文からなるサブルーチン定義やフォーマットといった、複数行の
+コマンドを入力したい場合は、通常はデバッガコマンドを終了させる改行を
+バックスラッシュでエスケープしてください。
+以下は例です:
+
+      DB<1> for (1..4) {         \
+      cont:     print "ok\n";   \
+      cont: }
+      ok
+      ok
+      ok
+      ok
+
+=begin original
+
+Note that this business of escaping a newline is specific to interactive
+commands typed into the debugger.
+
+=end original
+
+この、改行をエスケープする問題は、対話的にデバッガに入力されたコマンドに
+特有であることに注意してください。
+
+=item Stack backtrace
+X<backtrace> X<stack, backtrace>
+
+=begin original
+
+Here's an example of what a stack backtrace via C<T> command might
+look like:
+
+=end original
+
+これは、C<T> コマンドによって表示されるスタックバックトレースの
+例です:
+
+ $ = main::infested called from file 'Ambulation.pm' line 10
+ @ = Ambulation::legs(1, 2, 3, 4) called from file 'camel_flea'
+                                                          line 7
+ $ = main::pests('bactrian', 4) called from file 'camel_flea'
+                                                          line 4
+
+=begin original
+
+The left-hand character up there indicates the context in which the
+function was called, with C<$> and C<@> meaning scalar or list
+contexts respectively, and C<.> meaning void context (which is
+actually a sort of scalar context).  The display above says
+that you were in the function C<main::infested> when you ran the
+stack dump, and that it was called in scalar context from line
+10 of the file I<Ambulation.pm>, but without any arguments at all,
+meaning it was called as C<&infested>.  The next stack frame shows
+that the function C<Ambulation::legs> was called in list context
+from the I<camel_flea> file with four arguments.  The last stack
+frame shows that C<main::pests> was called in scalar context,
+also from I<camel_flea>, but from line 4.
+
+=end original
+
+上記の左側の文字は関数が呼び出されたコンテキストを示しています;
+C<$> と C<@> はそれぞれスカラコンテキストとリストコンテキストを意味し、
+C<.> は無効コンテキスト(実際のところはスカラコンテキストのようなもの)を
+意味します。
+上記の表示は、スタックダンプを実行したときに C<main::infested> にいて、
+これはファイル I<Ambulation.pm> の 10 行目から、スカラコンテキストで
+引数なしで呼び出されています; つまり C<&infested> のようにして
+呼び出されています。
+次のスタックフレームは、関数 C<Ambulation::legs> が I<camel_flea> から
+リストコンテキストで 4 つの引数と共に呼び出されています。
+最後のスタックフレームは、C<main::pests> が、同じファイル I<camel_flea> の
+4 行目からスカラコンテキストで呼び出されています。
+
+=begin original
+
+If you execute the C<T> command from inside an active C<use>
+statement, the backtrace will contain both a C<require> frame and
+an C<eval> frame.
+
+=end original
+
+有効な C<use> 文の中から C<T> コマンドを実行すると、バックとレースには
+C<require> フレームと C<eval> フレームの両方が含まれます。
+
+=item Line Listing Format
+
+=begin original
+
+This shows the sorts of output the C<l> command can produce:
+
+=end original
+
+これは C<l> コマンドの出力を示しています:
+
+   DB<<13>> l
+ 101:        @i{@i} = ();
+ 102:b       @isa{@i,$pack} = ()
+ 103             if(exists $i{$prevpack} || exists $isa{$pack});
+ 104     }
+ 105
+ 106     next
+ 107==>      if(exists $isa{$pack});
+ 108
+ 109:a   if ($extra-- > 0) {
+ 110:        %isa = ($pack,1);
+
+=begin original
+
+Breakable lines are marked with C<:>.  Lines with breakpoints are
+marked by C<b> and those with actions by C<a>.  The line that's
+about to be executed is marked by C<< ==> >>.
+
+=end original
+
+ブレーク可能な行には C<:> が付いています。
+ブレークポイントのある行には C<b> が、アクションがある行には
+C<a> があります。
+今から実行しようとしている行には C<< ==> >> が付いています。
+
+=begin original
+
+Please be aware that code in debugger listings may not look the same
+as your original source code.  Line directives and external source
+filters can alter the code before Perl sees it, causing code to move
+from its original positions or take on entirely different forms.
+
+=end original
+
+デバッガで表示されるコードは、元のソースコードと同じように見えるとは
+限らないことに注意してください。
+行指示子と外部ソースフィルタが、Perl がコードを見る前にコードを
+変更することがあり、それによってコードが元の位置から移動したり、
+完全に異なる形になったりします。
+
+=item Frame listing
+
+=begin original
+
+When the C<frame> option is set, the debugger would print entered (and
+optionally exited) subroutines in different styles.  See L<perldebguts>
+for incredibly long examples of these.
+
+=end original
+
+C<frame> オプションが設定されると、デバッガはサブルーチンに入ったとき
+(および出たときもオプションで)違ったスタイルで表示します。
+これらの非常に長い例については L<perldebguts> を参照してください。
+
+=back
+
+=head2 Debugging Compile-Time Statements
+
+(コンパイル時に実行される文のデバッグ)
+
+=begin original
+
+If you have compile-time executable statements (such as code within
+BEGIN, UNITCHECK and CHECK blocks or C<use> statements), these will
+I<not> be stopped by debugger, although C<require>s and INIT blocks
+will, and compile-time statements can be traced with the C<AutoTrace>
+option set in C<PERLDB_OPTS>).  From your own Perl code, however, you
+can transfer control back to the debugger using the following
+statement, which is harmless if the debugger is not running:
+
+=end original
+
+コンパイル時に実行される文 (BEGIN, UNITCHECK, CHECK のブロック内のコードや
+C<use> 文) があれば、それらはデバッガによってI<止めることができません>;
+C<require> と INIT ブロックは可能です; また、コンパイル時実行文は
+C<PERLDB_OPTS> で C<AutoTrace> オプションを設定することでトレースできます。
+しかし、以下のような文を自分で Perl コードに含めれば、
+デバッガに制御を渡すことができます; この文は、デバッガを
+起動していないときには、何もしません:
+
+    $DB::single = 1;
+
+=begin original
+
+If you set C<$DB::single> to 2, it's equivalent to having
+just typed the C<n> command, whereas a value of 1 means the C<s>
+command.  The C<$DB::trace>  variable should be set to 1 to simulate
+having typed the C<t> command.
+
+=end original
+
+C<$DB::single> に 2 をセットすると、C<n>コマンドをタイプしたのと
+等価になります; 1 を設定すると C<s> コマンドとなります。
+C<$DB::trace> 変数は C<t> コマンドをタイプした状態をシミュレートするために
+1 にセットするべきです。
+
+=begin original
+
+Another way to debug compile-time code is to start the debugger, set a
+breakpoint on the I<load> of some module:
+
+=end original
+
+コンパイル時に実行されるコードをデバッグするもう一つの方法は、
+モジュールの I<load> にブレークポイントを設定して:
+
+    DB<7> b load f:/perllib/lib/Carp.pm
+  Will stop on load of 'f:/perllib/lib/Carp.pm'.
+
+=begin original
+
+and then restart the debugger using the C<R> command (if possible).  One can use C<b
+compile subname> for the same purpose.
+
+=end original
+
+(可能なら) C<R> コマンドを使ってデバッガを再起動することです。
+C<b compile subname> も同じ目的に使えます。
+
+=head2 Debugger Customization
+
+(デバッガのカスタマイズ)
+
+=begin original
+
+The debugger probably contains enough configuration hooks that you
+won't ever have to modify it yourself.  You may change the behaviour
+of the debugger from within the debugger using its C<o> command, from
+the command line via the C<PERLDB_OPTS> environment variable, and
+from customization files.
+
+=end original
+
+デバッガにはおそらくあなたが自分で修正する必要があるとは思わないような
+ところまで含んだ設定フックがあります。
+デバッガの振る舞いは、デバッガ内で C<o> コマンドを使って変更できます;
+これは C<PERLDB_OPT> 環境変数経由でコマンドラインからか、設定ファイルから
+変更できます。
+
+=begin original
+
+You can do some customization by setting up a F<.perldb> file, which
+contains initialization code.  For instance, you could make aliases
+like these (the last one is one people expect to be there):
+
+=end original
+
+初期化コードを入れたファイル .perldb を設定することでも、
+いくらかのカスタマイズができます。
+たとえば、以下のようなエイリアスが行えます (最後のものは、
+人々があると思っているものです):
+
+    $DB::alias{'len'}  = 's/^len(.*)/p length($1)/';
+    $DB::alias{'stop'} = 's/^stop (at|in)/b/';
+    $DB::alias{'ps'}   = 's/^ps\b/p scalar /';
+    $DB::alias{'quit'} = 's/^quit(\s*)/exit/';
+
+=begin original
+
+You can change options from F<.perldb> by using calls like this one;
+
+=end original
+
+F<.perldb> のオプションを、以下のような呼び出しによって変更できます:
+
+    parse_options("NonStop=1 LineInfo=db.out AutoTrace=1 frame=2");
+
+=begin original
+
+The code is executed in the package C<DB>.  Note that F<.perldb> is
+processed before processing C<PERLDB_OPTS>.  If F<.perldb> defines the
+subroutine C<afterinit>, that function is called after debugger
+initialization ends.  F<.perldb> may be contained in the current
+directory, or in the home directory.  Because this file is sourced
+in by Perl and may contain arbitrary commands, for security reasons,
+it must be owned by the superuser or the current user, and writable
+by no one but its owner.
+
+=end original
+
+コードは C<DB> パッケージで実行されます。
+F<.perldb> は C<PERLDB_OPTS> の前に処理されることに注意してください。
+F<.perldb> で C<afterinit> サブルーチンが定義されていると、この関数は
+デバッガの初期化終了後に呼び出されます。
+F<.perldb> はカレントディレクトリかホームディレクトリに置くことができます。
+このファイルは Perl によって実行され、任意のコマンドを含めることが
+できるので、セキュリティ上の理由から、スーパーユーザーが現在のユーザーに
+よって所有され、所有者以外には書込み禁止になっていなければなりません。
+
+=begin original
+
+You can mock TTY input to debugger by adding arbitrary commands to
+@DB::typeahead. For example, your F<.perldb> file might contain:
+
+=end original
+
+@DB::typeahead に任意のコマンドを追加することで、デバッガへの TTY 入力を
+模倣できます。
+例えば、あなたの F<.perldb> ファイルに以下のように書くと:
+
+    sub afterinit { push @DB::typeahead, "b 4", "b 6"; }
+
+=begin original
+
+Which would attempt to set breakpoints on lines 4 and 6 immediately
+after debugger initialization. Note that @DB::typeahead is not a supported
+interface and is subject to change in future releases.
+
+=end original
+
+デバッガ初期化の直後に 4 行目と 6 行目にブレークポイントを
+設定しようとします。
+@DB::typeahead はサポートしているインターフェースではなく、将来の
+リリースでは変更されることがあることに注意してください。
+
+=begin original
+
+If you want to modify the debugger, copy F<perl5db.pl> from the
+Perl library to another name and hack it to your heart's content.
+You'll then want to set your C<PERL5DB> environment variable to say
+something like this:
+
+=end original
+
+デバッガを変更したい場合には、perl5db.pl を Perl ライブラリから
+別の名前にコピーし、修正してください。それから
+環境変数 C<PERL5DB> には、以下のように設定する必要があるでしょう:
+
+    BEGIN { require "myperl5db.pl" }
+
+=begin original
+
+As a last resort, you could also use C<PERL5DB> to customize the debugger
+by directly setting internal variables or calling debugger functions.
+
+=end original
+
+最後の手段として、 C<PERL5DB> を、直接内部変数を設定したり
+デバッガ関数を呼び出すことでデバッガをカスタマイズすることもできます。
+
+=begin original
+
+Note that any variables and functions that are not documented in
+this document (or in L<perldebguts>) are considered for internal
+use only, and as such are subject to change without notice.
+
+=end original
+
+このドキュメント(や L<perldebguts>)に記述されていない変数や
+関数は内部使用専用として扱われ、予告なく変更されることがあります。
+
+=head2 Readline Support / History in the Debugger
+
+(readline 対応 / デバッガのヒストリ)
+
+=begin original
+
+As shipped, the only command-line history supplied is a simplistic one
+that checks for leading exclamation points.  However, if you install
+the Term::ReadKey and Term::ReadLine modules from CPAN (such as
+Term::ReadLine::Gnu, Term::ReadLine::Perl, ...) you will
+have full editing capabilities much like those GNU I<readline>(3) provides.
+Look for these in the F<modules/by-module/Term> directory on CPAN.
+These do not support normal B<vi> command-line editing, however.
+
+=end original
+
+出荷時の状態では、コマンドライン履歴参照機能として提供されるのは、
+エクスクラメーションマークを付けることによる単純なものだけです。
+しかし、(Term::ReadLine::Gnu, Term::ReadLine::Perl, ... のように)
+CPAN から Term::ReadKey と Term::ReadLine のモジュールを
+インストールすることで、GNU I<readline>(3) が提供するような
+完全な編集機能が使えるようになります。
+これらは CPAN の F<modules/by-module/Term> ディレクトリにあります。
+しかし、これらは通常の B<vi> コマンドライン編集は対応していません。
+
+=begin original
+
+A rudimentary command-line completion is also available, including
+lexical variables in the current scope if the C<PadWalker> module
+is installed.
+
+=end original
+
+基本的なパッケージ単位のメモリ使用量ダンプ; C<PadWalker> モジュールが
+インストールされているなら現在のスコープのレキシカル変数も含みます。
+
+=begin original
+
+Without Readline support you may see the symbols "^[[A", "^[[C", "^[[B",
+"^[[D"", "^H", ... when using the arrow keys and/or the backspace key.
+
+=end original
+
+Readline 対応なしでは、矢印キーやバックスペースキーを使うと
+"^[[A", "^[[C", "^[[B", "^[[D"", "^H" のような表示を見るかもしれません。
+
+=head2 Editor Support for Debugging
+
+(デバッグのためのエディタ対応)
+
+=begin original
+
+If you have the GNU's version of B<emacs> installed on your system,
+it can interact with the Perl debugger to provide an integrated
+software development environment reminiscent of its interactions
+with C debuggers.
+
+=end original
+
+GNU 版の B<emacs> がシステムにインストールされている場合は、
+C デバッガとの連携を連想させるような、Perl デバッガとの統合
+ソフトウェア開発環境を提供します。
+
+=begin original
+
+Recent versions of Emacs come with a
+start file for making B<emacs> act like a
+syntax-directed editor that understands (some of) Perl's syntax.
+See L<perlfaq3>.
+
+=end original
+
+最近のバージョンの Emacs には B<emacs> を Perl の文法(の一部)を解釈する文法指向の
+エディタとして振舞わせるためのスタートファイルを同梱しています。
+L<perlfaq3> を参照してください。
+
+=begin original
+
+Users of B<vi> should also look into B<vim> and B<gvim>, the mousey
+and windy version, for coloring of Perl keywords.
+
+=end original
+
+B<vi> ユーザーは、Perl のキーワードを色付けする、マウスとウィンドウ対応の
+B<vim> と B<gvim> を調べてみてください。
+
+=begin original
+
+Note that only perl can truly parse Perl, so all such CASE tools
+fall somewhat short of the mark, especially if you don't program
+your Perl as a C programmer might.
+
+=end original
+
+perl のみが完全に Perl をパースできるので、これら全ての CASE ツールには
+足りないところがあることに注意してください; 特に C プログラマーが書くような
+Perl プログラムを書いていない場合はそうです。
+
+=head2 The Perl Profiler
+X<profile> X<profiling> X<profiler>
+
+(Perl プロファイラ)
+
+=begin original
+
+If you wish to supply an alternative debugger for Perl to run,
+invoke your script with a colon and a package argument given to the
+B<-d> flag.  Perl's alternative debuggers include a Perl profiler,
+L<Devel::NYTProf>, which is available separately as a CPAN
+distribution.  To profile your Perl program in the file F<mycode.pl>,
+just type:
+
+=end original
+
+Perl の実行に代替デバッガを使いたい場合は、B<-d> オプションに
+コロンとパッケージからなる引数を付けてスクリプトを起動してください。
+Perl 用代替デバッガは Perl プロファイラを含む 
+L<Devel::DProf> で、CPAN 配布として別に利用可能です。
+ファイル F<mycode.pl> にある Perl プログラムをプロファイリングしたい
+場合、以下のようにします:
+
+    $ perl -d:NYTProf mycode.pl
+
+=begin original
+
+When the script terminates the profiler will create a database of the
+profile information that you can turn into reports using the profiler's
+tools. See <perlperf> for details.
+
+=end original
+
+スクリプトが終了すると、プロファイラはプロファイラのツールを使ってレポートに
+変換出来るプロファイル情報のデータベースを作成します。
+詳しくは L<perlperf> を参照してください。
+
+=head1 Debugging Regular Expressions
+X<regular expression, debugging>
+X<regex, debugging> X<regexp, debugging>
+
+(正規表現のデバッグ)
+
+=begin original
+
+C<use re 'debug'> enables you to see the gory details of how the Perl
+regular expression engine works. In order to understand this typically
+voluminous output, one must not only have some idea about how regular
+expression matching works in general, but also know how Perl's regular
+expressions are internally compiled into an automaton. These matters
+are explored in some detail in
+L<perldebguts/"Debugging Regular Expressions">.
+
+=end original
+
+C<use re 'debug'> を指定すると、Perl 正規表現エンジンがどのように
+動作するかの詳細を見ることができます。
+この、典型的には大量の出力を理解するためには、
+一般的に正規表現マッチがどのように行われるかだけでなく、
+Perl の正規表現が内部的にどのようにオートマトンにコンパイルされるかを
+知らなければなりません。
+これらの事柄は詳細は
+L<perldebguts/"Debugging Regular Expressions"> にあります。
+
+=head1 Debugging Memory Usage
+X<memory usage>
+
+(メモリ使用のデバッグ)
+
+=begin original
+
+Perl contains internal support for reporting its own memory usage,
+but this is a fairly advanced concept that requires some understanding
+of how memory allocation works.
+See L<perldebguts/"Debugging Perl Memory Usage"> for the details.
+
+=end original
+
+Perl には自身のメモリ使用状況を報告するための内部機能がありますが、
+しかしこれはかなり上級の概念で、メモリ割り当てがどのように行われるかに
+ついての理解が必要となります。
+詳細については
+L<perldebguts/"Debugging Perl Memory Usage"> を参照して下さい。
+
+=head1 SEE ALSO
+
+=begin original
+
+You do have C<use strict> and C<use warnings> enabled, don't you?
+
+=end original
+
+C<use strict> と C<use warnings> は有効にしていますよね?
+
+=begin original
+
+L<perldebtut>,
+L<perldebguts>,
+L<re>,
+L<DB>,
+L<Devel::NYTProf>,
+L<Dumpvalue>,
+and
+L<perlrun>.
+
+=end original
+
+L<perldebtut>,
+L<perldebguts>,
+L<re>,
+L<DB>,
+L<Devel::DProf>,
+L<dprofpp>,
+L<Dumpvalue>,
+L<perlrun>.
+
+=begin original
+
+When debugging a script that uses #! and is thus normally found in
+$PATH, the -S option causes perl to search $PATH for it, so you don't
+have to type the path or C<which $scriptname>.
+
+=end original
+
+#! を使っているので普通は $PATH に見つかるスクリプトをデバッグするとき、
+-S オプションを付けると perl は $PATH からスクリプトを探すので、
+パスや C<which $scriptname> をタイプする必要がなくなります。
+
+  $ perl -Sd foo.pl
+
+=head1 BUGS
+
+=begin original
+
+You cannot get stack frame information or in any fashion debug functions
+that were not compiled by Perl, such as those from C or C++ extensions.
+
+=end original
+
+C や C++ 拡張のような、Perl でコンパイルされていないものに対して
+スタックフレーム情報やあらゆるデバッグ関数を使うことはできません。
+
+=begin original
+
+If you alter your @_ arguments in a subroutine (such as with C<shift>
+or C<pop>), the stack backtrace will not show the original values.
+
+=end original
+
+サブルーチン内で(C<shift> や C<pop> を使って) @_ 引数を変更した場合、
+スタックバックトレースで元の値を表示することはできません。
+
+=begin original
+
+The debugger does not currently work in conjunction with the B<-W>
+command-line switch, because it itself is not free of warnings.
+
+=end original
+
+デバッガは現在のところ B<-W> コマンドラインスイッチと同時に使うことは
+できません; これ自身が警告から逃れられないからです。
+
+=begin original
+
+If you're in a slow syscall (like C<wait>ing, C<accept>ing, or C<read>ing
+from your keyboard or a socket) and haven't set up your own C<$SIG{INT}>
+handler, then you won't be able to CTRL-C your way back to the debugger,
+because the debugger's own C<$SIG{INT}> handler doesn't understand that
+it needs to raise an exception to longjmp(3) out of slow syscalls.
+
+=end original
+
+(キーボードやソケットからの C<wait>, C<accept>, C<read>などの)遅い
+システムコールを実行中で、独自の C<$SIG{INT}> ハンドラを設定していない場合、
+デバッガに戻ってくるために CTRL-C を使うことはできません;
+これは、デバッガ自身の C<$SIG{INT}> ハンドラが遅いシステムコールから
+longjmp(3) で出るための例外を発生させる必要性を理解しないからです。
+
+=begin meta
+
+Translate: 吉村 寿人 <JAE00534@niftyserve.or.jp> (5.000)
+Update: SHIRAKATA Kentaro <argrath@ub32.org> (5.6.1-)
+Status: completed
+
+=end meta
+
