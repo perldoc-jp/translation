@@ -1,0 +1,428 @@
+
+=encoding utf8
+
+=for comment
+Consistent formatting of this file is achieved with:
+  perl ./Porting/podtidy pod/perlhacktut.pod
+
+=head1 NAME
+
+=begin original
+
+perlhacktut - Walk through the creation of a simple C code patch
+
+=end original
+
+perlhacktut - 簡単な C コードパッチの作成を一通り試す
+
+=head1 DESCRIPTION
+
+=begin original
+
+This document takes you through a simple patch example.
+
+=end original
+
+この文書は簡単なパッチの例を一通り試します。
+
+=begin original
+
+If you haven't read L<perlhack> yet, go do that first! You might also
+want to read through L<perlsource> too.
+
+=end original
+
+まだ L<perlhack> を読んでいないなら、先に読んでください!
+L<perlsource> も読み通した方が良いかも知れません。
+
+=begin original
+
+Once you're done here, check out L<perlhacktips> next.
+
+=end original
+
+これが終わったら、次に L<perlhacktips> を見てみてください。
+
+=head1 EXAMPLE OF A SIMPLE PATCH
+
+(簡単なパッチの例)
+
+=begin original
+
+Let's take a simple patch from start to finish.
+
+=end original
+
+簡単なパッチの作成を最初から最後まで試してみましょう。
+
+=begin original
+
+Here's something Larry suggested: if a C<U> is the first active format
+during a C<pack>, (for example, C<pack "U3C8", @stuff>) then the
+resulting string should be treated as UTF-8 encoded.
+
+=end original
+
+Larry が提案したことは、C<U> が C<pack> 中で最初に
+アクティブなフォーマットである場合(たとえば、C<pack "U3C8", @stuff>)、
+結果の文字列は UTF-8 エンコードとして扱われるべきであるということです。
+
+=begin original
+
+If you are working with a git clone of the Perl repository, you will
+want to create a branch for your changes. This will make creating a
+proper patch much simpler. See the L<perlgit> for details on how to do
+this.
+
+=end original
+
+Perl リポジトリの git クローン上で作業しているなら、
+あなたの変更のためのブランチを作成した方が良いでしょう。
+これにより適切なパッチの作成がを大幅に簡単になります。
+この方法に関する詳細については L<perlgit> を参照してください。
+
+=head2 Writing the patch
+
+(パッチを書く)
+
+=begin original
+
+How do we prepare to fix this up? First we locate the code in question
+- the C<pack> happens at runtime, so it's going to be in one of the
+F<pp> files. Sure enough, C<pp_pack> is in F<pp.c>. Since we're going
+to be altering this file, let's copy it to F<pp.c~>.
+
+=end original
+
+この問題を解決するための準備はどうすればいいでしょう?
+まず問題のコードを見つけます - C<pack> は実行時に発生するので、
+F<pp> ファイルの一つにあるはずです。
+C<pp_pack> は F<pp.c> にあります。
+このファイルを変更するので、F<pp.c~> にコピーします。
+
+=begin original
+
+[Well, it was in F<pp.c> when this tutorial was written. It has now
+been split off with C<pp_unpack> to its own file, F<pp_pack.c>]
+
+=end original
+
+[そうですね、このチュートリアルが書かれたときは F<pp.c> に書かれていました。
+現在は C<pp_unpack> とともに独自のファイル F<pp_pack.c> に分割されています]
+
+=begin original
+
+Now let's look over C<pp_pack>: we take a pattern into C<pat>, and then
+loop over the pattern, taking each format character in turn into
+C<datum_type>. Then for each possible format character, we swallow up
+the other arguments in the pattern (a field width, an asterisk, and so
+on) and convert the next chunk input into the specified format, adding
+it onto the output SV C<cat>.
+
+=end original
+
+C<pp_pack>を見てみましょう:
+パターンを C<pat> に取り込み、そのパターンをループして、各フォーマット文字を
+順番に C<datum_type> に取り込みます。
+次に、可能なフォーマット文字ごとに、パターン内の他の引数
+(フィールド幅やアスタリスクなど)を取り込み、
+次のチャンク入力を指定されたフォーマットに変換し、
+出力 SV C<cat> に追加します。
+
+=begin original
+
+How do we know if the C<U> is the first format in the C<pat>? Well, if
+we have a pointer to the start of C<pat> then, if we see a C<U> we can
+test whether we're still at the start of the string. So, here's where
+C<pat> is set up:
+
+=end original
+
+C<U> が C<pat> の最初のフォーマットであるかどうかはどうすれば
+わかるでしょう?
+さて、C<pat> の先頭へのポインタがあれば、C<U> が見つかったら、
+まだ文字列の先頭にいるかどうかをテストできます。
+ここで C<pat> が設定されています:
+
+    STRLEN fromlen;
+    char *pat = SvPVx(*++MARK, fromlen);
+    char *patend = pat + fromlen;
+    I32 len;
+    I32 datumtype;
+    SV *fromstr;
+
+=begin original
+
+We'll have another string pointer in there:
+
+=end original
+
+ここには別の文字列ポインタがあります:
+
+    STRLEN fromlen;
+    char *pat = SvPVx(*++MARK, fromlen);
+    char *patend = pat + fromlen;
+ +  char *patcopy;
+    I32 len;
+    I32 datumtype;
+    SV *fromstr;
+
+=begin original
+
+And just before we start the loop, we'll set C<patcopy> to be the start
+of C<pat>:
+
+=end original
+
+ループを開始する直前に、C<patcopy> を C<pat> の開始点に設定します。
+
+    items = SP - MARK;
+    MARK++;
+    SvPVCLEAR(cat);
+ +  patcopy = pat;
+    while (pat < patend) {
+
+=begin original
+
+Now if we see a C<U> which was at the start of the string, we turn on
+the C<UTF8> flag for the output SV, C<cat>:
+
+=end original
+
+文字列の先頭に C<U> がある場合、出力 SV である C<cat>に対して
+C<UTF8> フラグをオンにします。
+
+ +  if (datumtype == 'U' && pat==patcopy+1)
+ +      SvUTF8_on(cat);
+    if (datumtype == '#') {
+        while (pat < patend && *pat != '\n')
+            pat++;
+
+=begin original
+
+Remember that it has to be C<patcopy+1> because the first character of
+the string is the C<U> which has been swallowed into C<datumtype!>
+
+=end original
+
+文字列の最初の文字は C<datumtype> に飲み込まれたC<U>なので、
+これは C<patcopy+1> でなければならないことを覚えておいてください!
+
+=begin original
+
+Oops, we forgot one thing: what if there are spaces at the start of the
+pattern? C<pack("  U*", @stuff)> will have C<U> as the first active
+character, even though it's not the first thing in the pattern. In this
+case, we have to advance C<patcopy> along with C<pat> when we see
+spaces:
+
+=end original
+
+おっと、ひとつ忘れていました: パターンの先頭にスペースがあったら?
+C<pack(" U*", @stuff)> は、パターンの先頭ではないにもかかわらず、
+最初のアクティブな文字として C<U> を持ちます。
+この場合、スペースがあるときは、C<pat> とともに C<patcopy> を
+進める必要があります:
+
+    if (isSPACE(datumtype))
+        continue;
+
+=begin original
+
+needs to become
+
+=end original
+
+これは次のようにする必要があります:
+
+    if (isSPACE(datumtype)) {
+        patcopy++;
+        continue;
+    }
+
+=begin original
+
+OK. That's the C part done. Now we must do two additional things before
+this patch is ready to go: we've changed the behaviour of Perl, and so
+we must document that change. We must also provide some more regression
+tests to make sure our patch works and doesn't create a bug somewhere
+else along the line.
+
+=end original
+
+OK。
+これで C の部分は完了です。
+次に、このパッチを準備する前に、次の二つのことを行う必要があります:
+Perlの動作を変更したので、その変更を文書化する必要があります。
+また、パッチが動作し、他の場所でバグが発生しないことを確認するために、
+さらに回帰テストを提供する必要があります。
+
+=head2 Testing the patch
+
+(パッチをテストする)
+
+=begin original
+
+The regression tests for each operator live in F<t/op/>, and so we make
+a copy of F<t/op/pack.t> to F<t/op/pack.t~>. Now we can add our tests
+to the end. First, we'll test that the C<U> does indeed create Unicode
+strings.
+
+=end original
+
+各演算子の退行テストは F<t/op/> に存在するため、
+F<t/op/pack.t> から F<t/op/pack.t~> へのコピーを作成します。
+これで、テストを最後に追加できます。
+まず、C<U> が実際に Unicode 文字列を作成することをテストします。
+
+=begin original
+
+t/op/pack.t has a sensible ok() function, but if it didn't we could use
+the one from t/test.pl.
+
+=end original
+
+t/op/pack.t には適切な ok() 関数がありますが、そうでなければ
+t/test.pl の関数を使うことができます。
+
+ require './test.pl';
+ plan( tests => 159 );
+
+=begin original
+
+so instead of this:
+
+=end original
+
+それで次のようにする代わりに:
+
+ print 'not ' unless "1.20.300.4000" eq sprintf "%vd",
+                                               pack("U*",1,20,300,4000);
+ print "ok $test\n"; $test++;
+
+=begin original
+
+we can write the more sensible (see L<Test::More> for a full
+explanation of is() and other testing functions).
+
+=end original
+
+より実用的な関数を書くことができます
+(is() やその他のテスト関数の詳細については
+L<Test::More> を参照してください)。
+
+ is( "1.20.300.4000", sprintf "%vd", pack("U*",1,20,300,4000),
+                                       "U* produces Unicode" );
+
+=begin original
+
+Now we'll test that we got that space-at-the-beginning business right:
+
+=end original
+
+では、私たちが最初の場所でビジネスの権利を得たことを
+テストしてみましょう:
+
+ is( "1.20.300.4000", sprintf "%vd", pack("  U*",1,20,300,4000),
+                                     "  with spaces at the beginning" );
+
+=begin original
+
+And finally we'll test that we don't make Unicode strings if C<U> is
+B<not> the first active format:
+
+=end original
+
+最後に、C<U> が B<not> である場合、Unicode 文字列を作成しないことを
+テストします:
+
+ isnt( v1.20.300.4000, sprintf "%vd", pack("C0U*",1,20,300,4000),
+                                       "U* not first isn't Unicode" );
+
+=begin original
+
+Mustn't forget to change the number of tests which appears at the top,
+or else the automated tester will get confused. This will either look
+like this:
+
+=end original
+
+一番上にあるテストの数を変更することを忘れないでください;
+さもないと、自動化されたテスターが混乱します。
+これは以下のようになります:
+
+ print "1..156\n";
+
+=begin original
+
+or this:
+
+=end original
+
+または次のようになります:
+
+ plan( tests => 156 );
+
+=begin original
+
+We now compile up Perl, and run it through the test suite. Our new
+tests pass, hooray!
+
+=end original
+
+今度は Perl をコンパイルして、テストスイートで実行します。
+新しいテストに合格しました、万歳!
+
+=head2 Documenting the patch
+
+(パッチの文書を書く)
+
+=begin original
+
+Finally, the documentation. The job is never done until the paperwork
+is over, so let's describe the change we've just made. The relevant
+place is F<pod/perlfunc.pod>; again, we make a copy, and then we'll
+insert this text in the description of C<pack>:
+
+=end original
+
+最後に、文書です。
+事務処理が終わるまで仕事は終わらないので、
+今行った変更について説明しましょう。
+関連する場所は F<pod/perlfunc.pod> です;
+ここでもコピーを作成し、C<pack> の説明に次のテキストを挿入します:
+
+ =item *
+
+ If the pattern begins with a C<U>, the resulting string will be treated
+ as UTF-8-encoded Unicode. You can force UTF-8 encoding on in a string
+ with an initial C<U0>, and the bytes that follow will be interpreted as
+ Unicode characters. If you don't want this to happen, you can begin
+ your pattern with C<C0> (or anything else) to force Perl not to UTF-8
+ encode your string, and then follow this with a C<U*> somewhere in your
+ pattern.
+
+=head2 Submit
+
+(投稿)
+
+=begin original
+
+See L<perlhack> for details on how to submit this patch.
+
+=end original
+
+パッチの投稿方法に関する詳細については L<perlhack> を参照してください。
+
+=head1 AUTHOR
+
+This document was originally written by Nathan Torkington, and is
+maintained by the perl5-porters mailing list.
+
+=begin meta
+
+Translate: SHIRAKATA Kentaro <argrath@ub32.org>
+Status: completed
+
+=end meta
+
