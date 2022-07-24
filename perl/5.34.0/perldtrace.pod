@@ -1,0 +1,380 @@
+
+=encoding utf8
+
+=head1 NAME
+
+=begin original
+
+perldtrace - Perl's support for DTrace
+
+=end original
+
+perldtrace - Perl の DTrace 対応
+
+=head1 SYNOPSIS
+
+ # dtrace -Zn 'perl::sub-entry, perl::sub-return { trace(copyinstr(arg0)) }'
+ dtrace: description 'perl::sub-entry, perl::sub-return ' matched 10 probes
+
+ # perl -E 'sub outer { inner(@_) } sub inner { say shift } outer("hello")'
+ hello
+
+ (dtrace output)
+ CPU     ID                    FUNCTION:NAME
+   0  75915       Perl_pp_entersub:sub-entry   BEGIN
+   0  75915       Perl_pp_entersub:sub-entry   import
+   0  75922      Perl_pp_leavesub:sub-return   import
+   0  75922      Perl_pp_leavesub:sub-return   BEGIN
+   0  75915       Perl_pp_entersub:sub-entry   outer
+   0  75915       Perl_pp_entersub:sub-entry   inner
+   0  75922      Perl_pp_leavesub:sub-return   inner
+   0  75922      Perl_pp_leavesub:sub-return   outer
+
+=head1 DESCRIPTION
+
+=begin original
+
+DTrace is a framework for comprehensive system- and application-level
+tracing. Perl is a DTrace I<provider>, meaning it exposes several
+I<probes> for instrumentation. You can use these in conjunction
+with kernel-level probes, as well as probes from other providers
+such as MySQL, in order to diagnose software defects, or even just
+your application's bottlenecks.
+
+=end original
+
+DTrace は、システムレベルおよびアプリケーションレベルの包括的な
+トレースフレームワークです。
+カーネルレベルのプローブと、MySQL のようなその他のプロバイダの
+プローブを組み合わせて使うことができ、
+ソフトウェアの欠陥や、単にアプリケーションのボトルネックを
+診断できます。
+
+=begin original
+
+Perl must be compiled with the C<-Dusedtrace> option in order to
+make use of the provided probes. While DTrace aims to have no
+overhead when its instrumentation is not active, Perl's support
+itself cannot uphold that guarantee, so it is built without DTrace
+probes under most systems. One notable exception is that Mac OS X
+ships a F</usr/bin/perl> with DTrace support enabled.
+
+=end original
+
+提供されているプローブを使うには、Perl は C<-Dusedtrace> オプション付きで
+コンパイルされていなければなりません。
+DTrace は、機能が有効でないときにはオーバーヘッドがないことを
+目指していますが、Perl 対応自体はそれを守ることはできないので、
+ほとんどのシステムでは DTrace プローブなしでビルドされています。
+注目すべき一つの例外として、Mac OS X は F</usr/bin/perl> を DTrace 対応を
+有効にして出荷されています。
+
+=head1 HISTORY
+
+=over 4
+
+=item 5.10.1
+
+=begin original
+
+Perl's initial DTrace support was added, providing C<sub-entry> and
+C<sub-return> probes.
+
+=end original
+
+Perl の最初の DTrace 対応が追加されました; C<sub-entry> 
+C<sub-return> プローブが提供されました。
+
+=item 5.14.0
+
+=begin original
+
+The C<sub-entry> and C<sub-return> probes gain a fourth argument: the
+package name of the function.
+
+=end original
+
+C<sub-entry> と C<sub-return> プローブが第 4 引数を取るようになりました:
+関数のパッケージ名です。
+
+=item 5.16.0
+
+=begin original
+
+The C<phase-change> probe was added.
+
+=end original
+
+C<phase-change> プローブが追加されました。
+
+=item 5.18.0
+
+=begin original
+
+The C<op-entry>, C<loading-file>, and C<loaded-file> probes were added.
+
+=end original
+
+C<op-entry>, C<loading-file>, C<loaded-file> プローブが追加されました。
+
+=back
+
+=head1 PROBES
+
+(プローブ)
+
+=over 4
+
+=item sub-entry(SUBNAME, FILE, LINE, PACKAGE)
+
+=begin original
+
+Traces the entry of any subroutine. Note that all of the variables
+refer to the subroutine that is being invoked; there is currently
+no way to get ahold of any information about the subroutine's
+I<caller> from a DTrace action.
+
+=end original
+
+任意のサブルーチンの入り口をトレースします。
+全ての変数は起動されようとしているサブルーチンを参照していることに
+注意してください; 現在の所、DTrace のアクションからサブルーチンの
+I<呼び出し元> に関する情報を得る方法はありません。
+
+ :*perl*::sub-entry {
+     printf("%s::%s entered at %s line %d\n",
+           copyinstr(arg3), copyinstr(arg0), copyinstr(arg1), arg2);
+ }
+
+=item sub-return(SUBNAME, FILE, LINE, PACKAGE)
+
+=begin original
+
+Traces the exit of any subroutine. Note that all of the variables
+refer to the subroutine that is returning; there is currently no
+way to get ahold of any information about the subroutine's I<caller>
+from a DTrace action.
+
+=end original
+
+任意のサブルーチンの出口をトレースします。
+全ての変数は返ろうとしているサブルーチンを参照していることに
+注意してください; 現在の所、DTrace のアクションからサブルーチンの
+I<呼び出し元> に関する情報を得る方法はありません。
+
+ :*perl*::sub-return {
+     printf("%s::%s returned at %s line %d\n",
+           copyinstr(arg3), copyinstr(arg0), copyinstr(arg1), arg2);
+ }
+
+=item phase-change(NEWPHASE, OLDPHASE)
+
+=begin original
+
+Traces changes to Perl's interpreter state. You can internalize this
+as tracing changes to Perl's C<${^GLOBAL_PHASE}> variable, especially
+since the values for C<NEWPHASE> and C<OLDPHASE> are the strings that
+C<${^GLOBAL_PHASE}> reports.
+
+=end original
+
+Perl のインタプリタ状態の変更をトレースします。
+Perl の C<${^GLOBAL_PHASE}> 変数の変更をトレースすることで
+これを内部化できます;
+特に C<NEWPHASE> と C<OLDPHASE> の値は、C<${^GLOBAL_PHASE}> が報告する
+文字列だからです。
+
+ :*perl*::phase-change {
+     printf("Phase changed from %s to %s\n",
+         copyinstr(arg1), copyinstr(arg0));
+ }
+
+=item op-entry(OPNAME)
+
+=begin original
+
+Traces the execution of each opcode in the Perl runloop. This probe
+is fired before the opcode is executed. When the Perl debugger is
+enabled, the DTrace probe is fired I<after> the debugger hooks (but
+still before the opcode itself is executed).
+
+=end original
+
+Perl の runloop の中での個々のオペコードの実行をトレースします。
+このプローブは、オペコードが実行される前に起動されます。
+Perl デバッガが有効の場合、
+DTrace プローブは、デバッガフックの I<後に> 起動されます
+(しかしやはりオペコード自体が実行される前です)。
+
+ :*perl*::op-entry {
+     printf("About to execute opcode %s\n", copyinstr(arg0));
+ }
+
+=item loading-file(FILENAME)
+
+=begin original
+
+Fires when Perl is about to load an individual file, whether from
+C<use>, C<require>, or C<do>. This probe fires before the file is
+read from disk. The filename argument is converted to local filesystem
+paths instead of providing C<Module::Name>-style names.
+
+=end original
+
+Perl が、C<use>, C<require>, C<do> のどれかに関わらず、
+個々のファイルを読み込もうとするときに発動します。
+このプローブはファイルがディスクから読み込まれる前に発動します。
+ファイル名引数は、指定された C<Module::Name> 型の名前ではなく、
+ローカルファイルシステムパスに変換されます。
+
+ :*perl*:loading-file {
+     printf("About to load %s\n", copyinstr(arg0));
+ }
+
+=item loaded-file(FILENAME)
+
+=begin original
+
+Fires when Perl has successfully loaded an individual file, whether
+from C<use>, C<require>, or C<do>. This probe fires after the file
+is read from disk and its contents evaluated. The filename argument
+is converted to local filesystem paths instead of providing
+C<Module::Name>-style names.
+
+=end original
+
+Perl が、C<use>, C<require>, C<do> のどれかに関わらず、
+個々のファイルの読み込みに成功したときに発動します。
+このプローブはファイルがディスクから読み込まれ、その内容が評価された後に
+発動します。
+ファイル名引数は、指定された C<Module::Name> 型の名前ではなく、
+ローカルファイルシステムパスに変換されます。
+
+ :*perl*:loaded-file {
+     printf("Successfully loaded %s\n", copyinstr(arg0));
+ }
+
+=back
+
+=head1 EXAMPLES
+
+=over 4
+
+=item Most frequently called functions
+
+(もっともよく呼び出される関数)
+
+ # dtrace -qZn 'sub-entry { @[strjoin(strjoin(copyinstr(arg3),"::"),copyinstr(arg0))] = count() } END {trunc(@, 10)}'
+
+ Class::MOP::Attribute::slots                                    400
+ Try::Tiny::catch                                                411
+ Try::Tiny::try                                                  411
+ Class::MOP::Instance::inline_slot_access                        451
+ Class::MOP::Class::Immutable::Trait:::around                    472
+ Class::MOP::Mixin::AttributeCore::has_initializer               496
+ Class::MOP::Method::Wrapped::__ANON__                           544
+ Class::MOP::Package::_package_stash                             737
+ Class::MOP::Class::initialize                                  1128
+ Class::MOP::get_metaclass_by_name                              1204
+
+=item Trace function calls
+
+(関数呼び出しのトレース)
+
+ # dtrace -qFZn 'sub-entry, sub-return { trace(copyinstr(arg0)) }'
+
+ 0  -> Perl_pp_entersub                        BEGIN
+ 0  <- Perl_pp_leavesub                        BEGIN
+ 0  -> Perl_pp_entersub                        BEGIN
+ 0    -> Perl_pp_entersub                      import
+ 0    <- Perl_pp_leavesub                      import
+ 0  <- Perl_pp_leavesub                        BEGIN
+ 0  -> Perl_pp_entersub                        BEGIN
+ 0    -> Perl_pp_entersub                      dress
+ 0    <- Perl_pp_leavesub                      dress
+ 0    -> Perl_pp_entersub                      dirty
+ 0    <- Perl_pp_leavesub                      dirty
+ 0    -> Perl_pp_entersub                      whiten
+ 0    <- Perl_pp_leavesub                      whiten
+ 0  <- Perl_dounwind                           BEGIN
+
+=item Function calls during interpreter cleanup
+
+(インタプリタのクリーンアップ中の関数呼び出し)
+
+ # dtrace -Zn 'phase-change /copyinstr(arg0) == "END"/ { self->ending = 1 } sub-entry /self->ending/ { trace(copyinstr(arg0)) }'
+
+ CPU     ID                    FUNCTION:NAME
+   1  77214       Perl_pp_entersub:sub-entry   END
+   1  77214       Perl_pp_entersub:sub-entry   END
+   1  77214       Perl_pp_entersub:sub-entry   cleanup
+   1  77214       Perl_pp_entersub:sub-entry   _force_writable
+   1  77214       Perl_pp_entersub:sub-entry   _force_writable
+
+=item System calls at compile time
+
+(コンパイル時のシステムコール)
+
+ # dtrace -qZn 'phase-change /copyinstr(arg0) == "START"/ { self->interesting = 1 } phase-change /copyinstr(arg0) == "RUN"/ { self->interesting = 0 } syscall::: /self->interesting/ { @[probefunc] = count() } END { trunc(@, 3) }'
+
+ lseek                                                           310
+ read                                                            374
+ stat64                                                         1056
+
+=item Perl functions that execute the most opcodes
+
+(もっとも多いオペコードを実行する Perl の関数)
+
+ # dtrace -qZn 'sub-entry { self->fqn = strjoin(copyinstr(arg3), strjoin("::", copyinstr(arg0))) } op-entry /self->fqn != ""/ { @[self->fqn] = count() } END { trunc(@, 3) }'
+
+ warnings::unimport                                             4589
+ Exporter::Heavy::_rebuild_cache                                5039
+ Exporter::import                                              14578
+
+=back
+
+=head1 REFERENCES
+
+=over 4
+
+=item DTrace Dynamic Tracing Guide
+
+L<http://dtrace.org/guide/preface.html>
+
+=item DTrace: Dynamic Tracing in Oracle Solaris, Mac OS X and FreeBSD
+
+L<https://www.amazon.com/DTrace-Dynamic-Tracing-Solaris-FreeBSD/dp/0132091518/>
+
+=back
+
+=head1 SEE ALSO
+
+=over 4
+
+=item L<Devel::DTrace::Provider>
+
+=begin original
+
+This CPAN module lets you create application-level DTrace probes written in
+Perl.
+
+=end original
+
+この CPAN モジュールは、Perl で書かれたアプリケーションレベルの
+DTrace プローブを作れるようにします。
+
+=back
+
+=head1 AUTHORS
+
+Shawn M Moore C<sartak@gmail.com>
+
+=begin meta
+
+Translate: SHIRAKATA Kentaro <argrath@ub32.org>
+Status: completed
+
+=end meta
+
+=cut
+
