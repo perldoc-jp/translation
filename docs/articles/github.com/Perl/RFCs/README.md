@@ -1,6 +1,6 @@
 # Perl/RFCs/README の翻訳
 
-この文書は、[Perl/RFCs/README](https://github.com/Perl/RFCs/README.md)を翻訳したものです。
+この文書は、[Perl/RFCs/README](https://github.com/Perl/RFCs/blob/main/README.md)を翻訳したものです。
 
 <!-- original
 This repository is for *Requests For Comments* - proposals to change the Perl language.
@@ -12,7 +12,7 @@ This repository is for *Requests For Comments* - proposals to change the Perl la
 Right now, we're [trialling the process](docs/process.md). If you would like to submit a feature request, please [email an *elevator pitch*](mailto:perl5-porters@perl.org) - a short message with 4 paragraphs:
 -->
 
-現在、私たちは[このプロセスを試しています](https://github.com/Perl/RFCs/docs/process.md)。機能要求を送る場合は、次の4項目を簡潔にまとめた[エレベーターピッチをメール](mailto:perl5-porters@perl.org)してください。
+現在、私たちは[このプロセスを試しています](https://github.com/Perl/RFCs/blob/main/docs/process.md)。機能要求を送る場合は、次の4項目を簡潔にまとめた[エレベーターピッチをメール](mailto:perl5-porters@perl.org)してください。
 
 <!-- original
 1. Here is a problem
@@ -77,11 +77,11 @@ These files describe the process we are trialling
 * [others.md](docs/others.md) - what others do (or did), and what we can learn from them
 -->
 
-* [motivation.md](docs/motivation.md) - 何がしたいのか
-* [process.md](docs/process.md) - このプロセスの初期バージョン
-* [template.md](docs/template.md) - このRFCのテンプレート
-* [future.md](docs/future.md) - このプロセスの今後のイメージ
-* [others.md](docs/others.md) - what others do (or did), and what we can learn from them
+* [motivation.md](https://github.com/Perl/RFCs/blob/main/docs/motivation.md) - 何がしたいのか
+* [process.md](https://github.com/Perl/RFCs/blob/main/docs/process.md) - このプロセスの初期バージョン
+* [template.md](https://github.com/Perl/RFCs/blob/main/docs/template.md) - このRFCのテンプレート
+* [future.md](https://github.com/Perl/RFCs/blob/main/docs/future.md) - このプロセスの今後のイメージ
+* [others.md](https://github.com/Perl/RFCs/blob/main/docs/others.md) - what others do (or did), and what we can learn from them
 
 <!-- original
 ## The Tracker
