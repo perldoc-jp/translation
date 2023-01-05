@@ -46,10 +46,10 @@ That will be enough to make it obvious whether the idea is
 -->
 
 
-0) 実際に**バグ**である - メンテナンスリリースへの変更も考慮すべき変更（そのため、*[Report a Perl 5 bug*](https://github.com/Perl/perl5/issues/new/choose)のようにオープンであるべき）
-0) RFCを作成する価値がある
-0) まずCPANに置いた方が良い
-0) "CPANに置くことを止められないが、実現できるとは思えない"
+* 0) 実際に**バグ**である - メンテナンスリリースへの変更も考慮すべき変更（そのため、*[Report a Perl 5 bug*](https://github.com/Perl/perl5/issues/new/choose)のようにオープンであるべき）
+* 0) RFCを作成する価値がある
+* 0) まずCPANに置いた方が良い
+* 0) "CPANに置くことを止められないが、実現できるとは思えない"
 
 <!-- original
 You don't need to subscribe to the list to send an idea (or see updates). By keeping all discussion there during the trial, we can see if the process works as hoped, and fix the parts that don't.
