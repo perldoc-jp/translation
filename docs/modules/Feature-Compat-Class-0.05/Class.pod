@@ -1,0 +1,247 @@
+=head1 NAME
+
+C<Feature::Compat::Class> - make C<class> syntax available
+
+=head1 SYNOPSIS
+
+   use Feature::Compat::Class;
+
+   class Point {
+      field $x :param = 0;
+      field $y :param = 0;
+
+      method move_to ($new_x, $new_y) {
+         $x = $new_x;
+         $y = $new_y;
+      }
+
+      method describe {
+         say "A point at ($x, $y)";
+      }
+   }
+
+   Point->new(x => 5, y => 10)->describe;
+
+=head1 DESCRIPTION
+
+This module provides the new C<class> keyword and related others (C<method>,
+C<field> and C<ADJUST>) in a forward-compatible way.
+
+There is a branch of Perl development source code which provides this syntax,
+under the C<class> named feature. If all goes well, this will become available
+in a stable release in due course. On such perls that contain the feature,
+this module simple enables it.
+
+On older versions of perl before such syntax is availble in core, it is
+currently provided instead using the L<Object::Pad> module, imported with a
+special set of options to configure it to only recognise the same syntax as
+the core perl feature, thus ensuring any code using it will still continue to
+function on that newer perl.
+
+=head2 Perl Branch with C<feature 'class'>
+
+At time of writing, the C<use feature 'class'> syntax is not part of mainline
+perl source but is available in a branch. That branch currently resides at
+L<https://github.com/leonerd/perl5/tree/feature-class/>. It is intended this
+will be migrated to the main C<perl> repository ahead of actually being merged
+once development has progressed further.
+
+This module is a work-in-progress, because the underlying C<feature-class>
+branch is too. Many of the limitations and inabilities listed below are a
+result of the early-access nature of this branch, and are expected to be
+lifted as work progresses towards a more featureful and complete
+implementation.
+
+
+=cut
+
+=head1 KEYWORDS
+
+The keywords provided by this module offer a subset of the abilities of those
+provided by C<Object::Pad>, restricted to specifically only what is commonly
+supported by the core syntax as well. In general, the reader should first
+consult the documentation for the corresponding C<Object::Pad> keyword, but
+the following notes may be of interest:
+
+=head2 class
+
+   class NAME { ... }
+   class NAME VERSION { ... }
+
+   class NAME; ...
+   class NAME VERSION; ...
+
+See also L<Object::Pad/class>.
+
+There is no ability to declare any roles with C<:does>. The legacy subkeywords
+for these are equally not supported.
+
+The C<:repr> attribute is also not supported; the default representation type
+will always be selected.
+
+The C<:strict(params)> attribute is not available, but all constructed classes
+will behave as if the attribute had been declared. Every generated constructor
+will check its parameters for key names left unhandled by C<ADJUST> blocks,
+and throw an exception if any remain.
+
+The following class attributes are supported:
+
+=head3 :isa
+
+   :isa(CLASS)
+
+   :isa(CLASS CLASSVER)
+
+I<Since version 0.02.>
+
+Declares a superclass that this class extends. At most one superclass is
+supported.
+
+If the package providing the superclass does not exist, an attempt is made to
+load it by code equivalent to
+
+   require CLASS ();
+
+and thus it must either already exist, or be locatable via the usual C<@INC>
+mechanisms.
+
+An optional version check can also be supplied; it performs the equivalent of
+
+   BaseClass->VERSION( $ver )
+
+Note that C<class> blocks B<do not> implicitly enable the C<strict> and
+C<warnings> pragmata; either when using the core feature or C<Object::Pad>.
+This is to avoid surprises when eventually switching to purely using the core
+perl feature, which will not do that. Remember however that a C<use VERSION>
+of a version C<v5.36> or above will enable both these pragmata anyway, so that
+will be sufficient.
+
+=head2 method
+
+   method NAME { ... }
+   method NAME;
+
+See also L<Object::Pad/method>.
+
+Attributes are not supported, other than the usual ones provided by perl
+itself. Of these, only C<:lvalue> is particularly useful.
+
+Lexical methods are not supported.
+
+=head2 field
+
+   field $NAME;
+   field @NAME;
+   field %NAME;
+
+   field $NAME = EXPR;
+
+   field $NAME :ATTRS... = EXPR;
+
+See also L<Object::Pad/field>.
+
+Most field attributes are not supported. In particular, rather than using the
+accessor-generator attributes you will have to create accessor methods
+yourself; such as
+
+   field $var;
+   method var { return $var; }
+   method set_var ($new_var) { $var = $new_var; }
+
+I<Since version 0.04> fields of any type may take initialising expressions.
+Initialiser blocks are not supported.
+
+   field $five = 5;
+
+The following field attributes are supported:
+
+=head3 :param
+
+   field $var :param;
+
+   field $var :param(name)
+
+I<Since version 0.04.>
+
+Declares that the constructor will take a named parameter to set the value for
+this field in a new instance.
+
+   field $var :param = EXPR;
+
+Without a defaulting expression, the parameter is mandatory. When combined
+with a defaulting expression, the parameter is optional and the default will
+only apply if the named parameter was not passed to the constructor.
+
+   field $var :param //= EXPR;
+   field $var :param ||= EXPR;
+
+With both the C<:param> attribute and a defaulting expression, the operator
+can also be written as C<//=> or C<||=>. In this case, the defaulting
+expression will be used even if the caller passed an undefined value (for
+C<//=>) or a false value (for C<||=>). This simplifies many situations where
+C<undef> would not be a valid value for a field parameter.
+
+   class C {
+      field $timeout :param //= 20;
+   }
+
+   C->new( timeout => $args{timeout} );
+   # default applies if %args has no 'timeout' key, or if its value is undef
+
+=head2 ADJUST
+
+   ADJUST { ... }
+
+See also L<Object::Pad/ADJUST>.
+
+Attributes are not supported; in particular the C<:params> attribute of
+C<Object::Pad> v0.70.
+
+=head2 Other Keywords
+
+The following other keywords provided by C<Object::Pad> are not supported here
+at all:
+
+   role
+
+   BUILD, ADJUSTPARAMS
+
+   has
+
+   requires
+
+
+=cut
+
+=head1 COMPATIBILITY NOTES
+
+This module may use either L<Object::Pad> or the perl core C<class> feature to
+implement its syntax. While the two behave very similarly and both conform to
+the description given above, the following differences should be noted.
+
+=over 4
+
+=item Fields in later field expressions
+
+The core perl C<class> feature makes every field variable visible to the
+initialising expression of later fields. For example,
+
+   field $one = 1;
+   field $two = $one + 1;
+
+This is not currently supported by C<Object::Pad>. As a result, it is possible
+to write code that works fine with the core perl feature but older perls
+cannot support by using C<Object::Pad>.
+
+=back
+
+
+=cut
+
+=head1 AUTHOR
+
+Paul Evans <leonerd@leonerd.org.uk>
+
+
+=cut
+
