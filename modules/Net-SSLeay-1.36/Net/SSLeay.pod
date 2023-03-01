@@ -1,0 +1,2264 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+Net::SSLeay - Perl extension for using OpenSSL
+
+=end original
+
+Net::SSLeay - OpenSSL を使うための Perl 拡張
+
+=head1 SYNOPSIS
+
+  use Net::SSLeay qw(get_https post_https sslcat make_headers make_form);
+
+  ($page) = get_https('www.bacus.pt', 443, '/');                 # 1
+
+  ($page, $response, %reply_headers)
+	 = get_https('www.bacus.pt', 443, '/',                   # 2
+	 	make_headers(User-Agent => 'Cryptozilla/5.0b1',
+			     Referer    => 'https://www.bacus.pt'
+		));
+
+  ($page, $result, %headers) =                                   # 2b
+         = get_https('www.bacus.pt', 443, '/protected.html',
+	      make_headers(Authorization =>
+			   'Basic ' . MIME::Base64::encode("$user:$pass",''))
+	      );
+
+  ($page, $response, %reply_headers)
+	 = post_https('www.bacus.pt', 443, '/foo.cgi', '',       # 3
+		make_form(OK   => '1',
+			  name => 'Sampo'
+		));
+
+  $reply = sslcat($host, $port, $request);                       # 4
+
+  ($reply, $err, $server_cert) = sslcat($host, $port, $request); # 5
+
+  $Net::SSLeay::trace = 2;  # 0=no debugging, 1=ciphers, 2=trace, 3=dump data
+
+=head1 DESCRIPTION
+
+=begin original
+
+There is a related module called C<Net::SSLeay::Handle> included in this
+distribution that you might want to use instead. It has its own pod
+documentation.
+
+=end original
+
+あなたが代わりに使いたいかもしれない、このディストリビューションに
+含まれている C<Net::SSLeay::Handle> という関連するモジュールがあります。
+それは、それ独自の POD ドキュメントを持っています。
+
+=begin original
+
+This module offers some high level convenience functions for accessing
+web pages on SSL servers (for symmetry, the same API is offered for
+accessing http servers, too), an C<sslcat()> function for writing your own
+clients, and finally access to the SSL api of the SSLeay/OpenSSL package
+so you can write servers or clients for more complicated applications.
+
+=end original
+
+このモジュールは、SSL サーバ上の Web ページにアクセスするためのいくつかの
+高レベルで便利な関数
+(対称性のために、同じ API で http サーバへのアクセスも提供します)、
+独自のクライアントを書くための C<sslcat()> 関数、そして最終的にはよ
+り複雑なアプリケーションのためにサーバやクライアントを書くことができるような
+SSLeay/OpenSSL パッケージの SSL api への
+アクセスを提供します。
+
+=begin original
+
+For high level functions it is most convenient to import them into your
+main namespace as indicated in the synopsis.
+
+=end original
+
+高レベルの関数については、概要で示したように、あなたの main 名前空間に
+インポートすることが、とても便利でしょう。
+
+=begin original
+
+Case 1 demonstrates the typical invocation of get_https() to fetch an HTML
+page from secure server. The first argument provides the hostname or IP
+in dotted decimal notation of the remote server to contact. The second
+argument is the TCP port at the remote end (your own port is picked
+arbitrarily from high numbered ports as usual for TCP). The third
+argument is the URL of the page without the host name part. If in
+doubt consult the HTTP specifications at L<http://www.w3c.org>.
+
+=end original
+
+ケース 1 はセキュアなサーバから HTML ページを取り出すための get_https() の
+典型的な呼び出しを示しています。
+最初の引数は接続するリモートのサーバの
+ホスト名あるいは IP をドット区切られた数字による書き方によって与えます。
+2 番目の引数はリモート側の TCP ポートです（あなた自身のポートは通常の TCP のための
+高く番号が振られたものから勝手に選択されます)。
+3 番目の引数はホスト名の部分を抜いたページの URL です。
+もし疑問があれば、L<http://www.w3c.org> にある HTTP の仕様をあたってみてください。
+
+=begin original
+
+Case 2 demonstrates full fledged use of C<get_https()>. As can be seen,
+C<get_https()> parses the response and response headers and returns them as
+a list, which can be captured in a hash for later reference. Also a
+fourth argument to C<get_https()> is used to insert some additional headers
+in the request. C<make_headers()> is a function that will convert a list or
+hash to such headers. By default C<get_https()> supplies C<Host> (to make
+virtual hosting easy) and C<Accept> (reportedly needed by IIS) headers.
+
+=end original
+
+ケース 2 は、完全に一人前の C<get_https()> の使い方を示しています。
+ご覧になった通り、
+C<get_https()> は応答と応答のヘッダを解析し、それをリストで返しています。
+それらはハッシュや後者のリファレンスで捉えることができます。
+また C<get_https()> の 4 番目の引数は、応答での追加のヘッダを挿入するために
+使われます。
+C<make_headers()> はリストやハッシュを、そのようなヘッダに変換する関数です。
+デフォルトでは C<get_https()> は C<Host>（バーチャルホストを簡単に行えるように）と
+C<Accept> (IIS が必要としているとのこと)ヘッダを提供します。
+
+=begin original
+
+Case 2b demonstrates how to get a password protected page. Refer to
+the HTTP protocol specifications for further details (e.g. RFC-2617).
+
+=end original
+
+ケース 2b はパスワードで保護されているページを取得する方法を示しています。
+更なる詳細に関しては、HTTP プロトコルの仕様を参照してください
+(例えば RFC-2617)。
+
+=begin original
+
+Case 3 invokes C<post_https()> to submit a HTML/CGI form to a secure
+server. The first four arguments are equal to C<get_https()> (note that 
+the empty string (C<''>) is passed as header argument).
+The fifth argument is the
+contents of the form formatted according to CGI specification. In this
+case the helper function C<make_https()> is used to do the formatting,
+but you could pass any string. C<post_https()> automatically adds
+C<Content-Type> and C<Content-Length> headers to the request.
+
+=end original
+
+ケース 3 は HTML/CGI フォームをセキュアなサーバで実行するために
+C<post_https()> を呼び出します。
+最初の 4 つの引数は C<get_https()> と同じです (空文字列(C<''>)が
+ヘッダの引数として渡されていることに注意してください)。
+5 番目の引数は CGI の仕様に従って形式が整えられたフォームの内容です。
+この場合、そのように形式を整えるためにヘルパー関数 C<make_https()> が使われますが、
+どのような文字列でも渡すことができます。
+C<post_https()> は自動的にリクエストに C<Content-Type> と C<Content-Length> ヘッダを
+付与します。
+
+=begin original
+
+Case 4 shows the fundamental C<sslcat()> function (inspired in spirit by
+the C<netcat> utility :-). It's your swiss army knife that allows you to
+easily contact servers, send some data, and then get the response. You
+are responsible for formatting the data and parsing the response -
+C<sslcat()> is just a transport.
+
+=end original
+
+ケース 4 は、基本的な C<sslcat()> 関数を示しています(C<netcat> ユーティリティに
+心を動かされました :-)。
+これは単純にサーバに接続し、データを送信し、
+それから応答を取得することを簡単にするスイスアーミーナイフのようなものです。
+データの整形と応答の解析についてはあなたの責任です - C<sslcat()> は
+単に転送するだけのものです。
+
+=begin original
+
+Case 5 is a full invocation of C<sslcat()> which allows the return of errors
+as well as the server (peer) certificate.
+
+=end original
+
+ケース 5 は、エラーだけでなくサーバ(相手側)証明書と同様も返すことを
+可能にする、C<sslcat()> の完全な呼び出しです。
+
+=begin original
+
+The C<$trace> global variable can be used to control the verbosity of the 
+high level functions. Level 0 guarantees silence, level 1 (the default)
+only emits error messages.
+
+=end original
+
+C<$trace> グローバル変数は高レベル関数の冗長さを制御するために使うことが
+出来ます。
+レベル0は何もいわないことを保証します。
+レベル1 (デフォルト) はエラーメッセージだけを吐き出します。
+
+=head2 Alternate versions of the API
+
+(API の代替版)
+
+=begin original
+
+The above mentioned functions actually return the response headers as
+a list, which only gets converted to hash upon assignment (this
+assignment looses information if the same header occurs twice, as may
+be the case with cookies). There are also other variants of the
+functions that return unprocessed headers and that return a reference
+to a hash.
+
+=end original
+
+上記の関数は実際には応答ヘッダをリストで返します。
+それは代入されたハッシュに変換されます
+(もしクッキーの場合がそうであるかもしれないように同じヘッダが
+2b回発生すると、この代入によって情報が失われるかもしれません)。
+処理されていないヘッダとハッシュへのリファレンスを返す関数の別の形もあります。
+
+  ($page, $response, @headers) = get_https('www.bacus.pt', 443, '/');
+  for ($i = 0; $i < $#headers; $i+=2) {
+      print "$headers[$i] = " . $headers[$i+1] . "\n";
+  }
+
+  ($page, $response, $headers, $server_cert)
+    = get_https3('www.bacus.pt', 443, '/');
+  print "$headers\n";
+
+  ($page, $response, %headers_ref, $server_cert)
+    = get_https4('www.bacus.pt', 443, '/');
+  for $k (sort keys %{headers_ref}) {
+      for $v (@{$headers_ref{$k}}) {
+	  print "$k = $v\n";
+      }
+  }
+
+=begin original
+
+All of the above code fragments accomplish the same thing: display all
+values of all headers. The API functions ending in "3" return the
+headers simply as a scalar string and it is up to the application to
+split them up. The functions ending in "4" return a reference to
+a hash of arrays (see L<perlref> and L<perllol> if you are
+not familiar with complex perl data structures). To access a single value
+of such a header hash you would do something like
+
+=end original
+
+上記の全てのちょっとしたコードは、同じ事を実現します: ヘッダの全ての値を
+表示します。
+"3" で終わる API 関数はヘッダを単なるスカラーの文字列で返します。
+アプリケーションがそれを分割することになります。
+"4" で終わる関数は配列のハッシュへのリファレンスを返します(複雑な
+perl データ構造体に精通していなければ L<perlref> と L<Lperllol>
+マニュアルページをご覧ください)。
+そのようなヘッダハッシュの1つの値にアクセスするためには、
+以下のようにしてください:
+
+  print $headers_ref{COOKIE}[0];
+
+=begin original
+
+Variants 3 and 4 also allow you to discover the server certificate
+in case you would like to store or display it, e.g.
+
+=end original
+
+3 と 4 の形は、それを格納したり表示したいときサーバ証明書を見つけることも
+可能にします。
+例えば:
+
+  ($p, $resp, $hdrs, $server_cert) = get_https3('www.bacus.pt', 443, '/');
+  if (!defined($server_cert) || ($server_cert == 0)) {
+      warn "Subject Name: undefined, Issuer  Name: undefined";
+  } else {
+      warn 'Subject Name: '
+	  . Net::SSLeay::X509_NAME_oneline(
+		 Net::SSLeay::X509_get_subject_name($server_cert))
+	      . 'Issuer  Name: '
+		  . Net::SSLeay::X509_NAME_oneline(
+                         Net::SSLeay::X509_get_issuer_name($server_cert));
+  }
+
+=begin original
+
+Beware that this method only allows after the fact verification of
+the certificate: by the time C<get_https3()> has returned the https
+request has already been sent to the server, whether you decide to
+trust it or not. To do the verification correctly you must either
+employ the OpenSSL certificate verification framework or use
+the lower level API to first connect and verify the certificate
+and only then send the http data. See the implementation of C<ds_https3()>
+for guidance on how to do this.
+
+=end original
+
+この方法は証明書の確認の後にだけ可能になるということに注意してください:
+そのときには、あなたが信用するかどうかに関わらず、C<get_https3()> は
+サーバに送信された https リクエストを返してしまっています。
+正しく確認するためには、OpenSSL 証明書確認フレームワークを採用するか、
+最初に接続し、証明書を確認し、そのときにだけ http データを送信するため
+低レベル API を利用するかのどちらかをする必要があります。
+この
+やり方についてのガイダンスは C<ds_https3()> の実装をご覧ください。
+
+=head2 Using client certificates
+
+(クライアント証明書を使う)
+
+=begin original
+
+Secure web communications are encrypted using symmetric crypto keys
+exchanged using encryption based on the certificate of the
+server. Therefore in all SSL connections the server must have a
+certificate. This serves both to authenticate the server to the
+clients and to perform the key exchange.
+
+=end original
+
+セキュアな Web 通信はサーバの証明書をベースにした暗号を使って
+交換された対称になった暗号鍵を使って暗号化されます。
+このため全ての SSL の通信では、サーバは証明書を持っていなければなりません。
+これはクライアントへのサーバの認証と鍵の交換の両方を提供します。
+
+=begin original
+
+Sometimes it is necessary to authenticate the client as well. Two
+options are available: HTTP basic authentication and a client side
+certificate. The basic authentication over HTTPS is actually quite
+safe because HTTPS guarantees that the password will not travel in
+the clear. Never-the-less, problems like easily guessable passwords
+remain. The client certificate method involves authentication of the
+client at the SSL level using a certificate. For this to work, both the
+client and the server have certificates (which typically are
+different) and private keys.
+
+=end original
+
+場合によってはクライアントも認証する必要があります。
+2 つの選択を利用することができます: HTTP 基本認証とクライアント側の
+証明書です。
+HTTPS がパスワードが平文で流れないことを保障するので、HTTPS 越しの
+基本認証は実際には非常に安全です。
+しかし、そうであったとしても簡単にわかるようなパスワードのような
+問題は残ります。
+クライアント証明書の方法には証明書を使った SSL レベルでのクライアントの
+認証を意味します。
+これが機能するためにはクライアントとサーバの両方が
+(典型的には異なる)証明書と秘密鍵を持つ必要があります。
+
+=begin original
+
+The API functions outlined above accept additional arguments that
+allow one to supply the client side certificate and key files. The
+format of these files is the same as used for server certificates and
+the caveat about encrypting private keys applies.
+
+=end original
+
+上記で概説された API 関数は、クライアント側の証明書と鍵ファイルを
+提供することができる追加の引数を受け取ります。
+これらのファイルの形式はサーバ証明書で使われているものと同じです。
+そして秘密鍵の暗号化に関する注意も当てはまります。
+
+  ($page, $result, %headers) =                                   # 2c
+         = get_https('www.bacus.pt', 443, '/protected.html',
+	      make_headers(Authorization =>
+			   'Basic ' . MIME::Base64::encode("$user:$pass",'')),
+	      '', $mime_type6, $path_to_crt7, $path_to_key8);
+
+  ($page, $response, %reply_headers)
+	 = post_https('www.bacus.pt', 443, '/foo.cgi',           # 3b
+	      make_headers('Authorization' =>
+			   'Basic ' . MIME::Base64::encode("$user:$pass",'')),
+	      make_form(OK   => '1', name => 'Sampo'),
+	      $mime_type6, $path_to_crt7, $path_to_key8);
+
+=begin original
+
+Case 2c demonstrates getting a password protected page that also requires
+a client certificate, i.e. it is possible to use both authentication
+methods simultaneously.
+
+=end original
+
+ケース 2c はクライアント証明書も必要とする、パスワードで保護された
+ページを取得することを示しています。
+つまり両方の認証方法を同時に使うことも可能です。
+
+=begin original
+
+Case 3b is a full blown POST to a secure server that requires both password
+authentication and a client certificate, just like in case 2c.
+
+=end original
+
+ケース 3b は、ケース 2c とちょうど同じようにパスワード認証とクライアント
+証明書の両方を必要とするセキュアなサーバへの完全に展開された POST です。
+
+=begin original
+
+Note: The client will not send a certificate unless the server requests one.
+This is typically achieved by setting the verify mode to C<VERIFY_PEER> on the
+server:
+
+=end original
+
+注意: サーバが要求しなければ、クライアントは証明書を送信しません。
+これは典型的にはサーバで確認モードを C<VERIFY_PEER> に設定することにより
+実現されます:
+
+  Net::SSLeay::set_verify(ssl, Net::SSLeay::VERIFY_PEER, 0);
+
+=begin original
+
+See C<perldoc ~openssl/doc/ssl/SSL_CTX_set_verify.pod> for a full description.
+
+=end original
+
+完全な説明については、C<perldoc ~openssl/doc/ssl/SSL_CTX_set_verify.pod> を
+ご覧ください。
+
+=head2 Working through a web proxy
+
+(Web プロキシを通して動かす)
+
+=begin original
+
+C<Net::SSLeay> can use a web proxy to make its connections. You need to
+first set the proxy host and port using C<set_proxy()> and then just
+use the normal API functions, e.g:
+
+=end original
+
+C<Net::SSLeay> は接続を行うためにWebプロキシを利用することができます。
+最初に C<set_proxy()> を使ってプロキシホストとポートを設定したら、
+後は通常のAPI関数を使うだけです。
+例えば:
+
+  Net::SSLeay::set_proxy('gateway.myorg.com', 8080);
+  ($page) = get_https('www.bacus.pt', 443, '/');
+
+=begin original
+
+If your proxy requires authentication, you can supply a username and
+password as well
+
+=end original
+
+あなたのプロキシが認証を必要とするのであれば、ユーザ名とパスワードも
+与えることができます
+
+  Net::SSLeay::set_proxy('gateway.myorg.com', 8080, 'joe', 'salainen');
+  ($page, $result, %headers) =
+         = get_https('www.bacus.pt', 443, '/protected.html',
+	      make_headers(Authorization =>
+			   'Basic ' . MIME::Base64::encode("susie:pass",''))
+	      );
+
+=begin original
+
+This example demonstrates the case where we authenticate to the proxy as
+C<"joe"> and to the final web server as C<"susie">. Proxy authentication
+requires the C<MIME::Base64> module to work.
+
+=end original
+
+この例は C<"joe"> でプロキシに、最終的なWebサーバには C<"susie"> で認証を
+行うケースを示しています。
+プロキシの認証は C<MIME::Base64> が機能することを必要とします。
+
+=head2 Certificate verification and Certificate Revoocation Lists (CRLs)
+
+(証明書の検証と証明書失効リスト(CRL))
+
+=begin original
+
+OpenSSL supports the ability to verify peer certificates. It can also
+optionally check the peer certificate against a Certificate Revocation
+List (CRL) from the certificates issuer. A CRL is a file, created by
+the certificate issuer that lists all the certificates that it
+previously signed, but which it now revokes. CRLs are in PEM format.
+
+=end original
+
+OpenSSL supports the ability to verify peer certificates. It can also
+optionally check the peer certificate against a Certificate Revocation
+List (CRL) from the certificates issuer. A CRL is a file, created by
+the certificate issuer that lists all the certificates that it
+previously signed, but which it now revokes. CRLs are in PEM format.
+(TBT)
+
+=begin original
+
+You can enable C<Net::SSLeay CRL> checking like this:
+
+=end original
+
+You can enable C<Net::SSLeay CRL> checking like this:
+(TBT)
+
+	    &Net::SSLeay::X509_STORE_CTX_set_flags
+		(&Net::SSLeay::CTX_get_cert_store($ssl), 
+		 &Net::SSLeay::X509_V_FLAG_CRL_CHECK); 
+
+=begin original
+
+After setting this flag, if OpenSSL checks a peer's certificate, then
+it will attempt to find a CRL for the issuer. It does this by looking
+for a specially named file in the search directory specified by
+CTX_load_verify_locations.  CRL files are named with the hash of the
+issuer's subject name, followed by C<.r0>, C<.r1> etc.  For example
+C<ab1331b2.r0>, C<ab1331b2.r1>. It will read all the .r files for the
+issuer, and then check for a revocation of the peer cerificate in all
+of them.  (You can also force it to look in a specific named CRL
+file., see below).  You can find out the hash of the issuer subject
+name in a CRL with
+
+=end original
+
+After setting this flag, if OpenSSL checks a peer's certificate, then
+it will attempt to find a CRL for the issuer. It does this by looking
+for a specially named file in the search directory specified by
+CTX_load_verify_locations.  CRL files are named with the hash of the
+issuer's subject name, followed by C<.r0>, C<.r1> etc.  For example
+C<ab1331b2.r0>, C<ab1331b2.r1>. It will read all the .r files for the
+issuer, and then check for a revocation of the peer cerificate in all
+of them.  (You can also force it to look in a specific named CRL
+file., see below).  You can find out the hash of the issuer subject
+name in a CRL with
+(TBT)
+
+	openssl crl -in crl.pem -hash -noout
+
+=begin original
+
+If the peer certificate does not pass the revocation list, or if no
+CRL is found, then the handshaking fails with an error.
+
+=end original
+
+If the peer certificate does not pass the revocation list, or if no
+CRL is found, then the handshaking fails with an error.
+(TBT)
+
+=begin original
+
+You can also force OpenSSL to look for CRLs in one or more arbitrarily
+named files.
+
+=end original
+
+You can also force OpenSSL to look for CRLs in one or more arbitrarily
+named files.
+(TBT)
+
+    my $bio = Net::SSLeay::BIO_new_file($crlfilename, 'r');
+    my $crl = Net::SSLeay::PEM_read_bio_X509_CRL($bio);
+    if ($crl) {
+        Net::SSLeay::X509_STORE_add_crl(Net::SSLeay::CTX_get_cert_store($ssl, $crl);
+    } else {
+        error reading CRL....
+    }
+
+=head2 Convenience routines
+
+(便利なルーチン)
+
+=begin original
+
+To be used with Low level API
+
+=end original
+
+低レベルで使うために
+
+    Net::SSLeay::randomize($rn_seed_file,$additional_seed);
+    Net::SSLeay::set_cert_and_key($ctx, $cert_path, $key_path);
+    $cert = Net::SSLeay::dump_peer_certificate($ssl);
+    Net::SSLeay::ssl_write_all($ssl, $message) or die "ssl write failure";
+    $got = Net::SSLeay::ssl_read_all($ssl) or die "ssl read failure";
+
+    $got = Net::SSLeay::ssl_read_CRLF($ssl [, $max_length]);
+    $got = Net::SSLeay::ssl_read_until($ssl [, $delimit [, $max_length]]);
+    Net::SSLeay::ssl_write_CRLF($ssl, $message);
+
+=begin original
+
+C<randomize()> seeds the openssl PRNG with C</dev/urandom> (see the top of C<SSLeay.pm>
+for how to change or configure this) and optionally with user provided
+data. It is very important to properly seed your random numbers, so
+do not forget to call this. The high level API functions automatically
+call C<randomize()> so it is not needed with them. See also caveats.
+
+=end original
+
+C<randomize()> は C</dev/urandom> とオプションでユーザに与えられたデータで
+openssl PRNG に種を設定し(これの変更あるいは設定のやり方については、
+C<SSLeay.pm> の先頭をご覧ください）。
+適切に乱数の種を設定することは非常に重要です。
+ですから、これを呼び出すことを忘れないでください。
+高レベルの API 関数は自動的に C<randomize()> を呼び出します。
+そのためそれらでは必要ありません。
+注意もご覧ください。
+
+=begin original
+
+C<set_cert_and_key()> takes two file names as arguments and sets
+the certificate and private key to those. This can be used to
+set either cerver certificates or client certificates.
+
+=end original
+
+C<set_cert_and_key()> は引数として 2 つのファイル名を取り、
+それらを証明書と秘密鍵に設定します。
+これはサーバ証明書とクライアント証明書の両方に使うことが出来ます。
+
+=begin original
+
+C<dump_peer_certificate()> allows you to get a plaintext description of the
+certificate the peer (usually the server) presented to us.
+
+=end original
+
+C<dump_peer_certificate()> は相手側(通常はサーバ)が提出した
+証明書の平文の説明を取得することを可能にします。
+
+=begin original
+
+C<ssl_read_all()> and C<ssl_write_all()> provide true blocking semantics for
+these operations (see limitation, below, for explanation). These are
+much preferred to the low level API equivalents (which implement BSD
+blocking semantics). The message argument to C<ssl_write_all()> can be
+a reference. This is helpful to avoid unnecessary copying when writing
+something big, e.g:
+
+=end original
+
+C<ssl_read_all()> と C<ssl_write_all()> は、これらの処理のための
+本当のブロック化の意味論で提供します(説明については下記の制限を
+ご覧ください)。
+これらは低レベル API と同じものとして非常に好まれます
+(これは BSD ブロック化セマンティクを実装しています)。
+C<ssl_write_all()> への message 引数はリファレンスにすることができます。
+これは何か大きなものを出力するとき、不必要なコピーを避けるために便利です。
+例えば:
+
+    $data = 'A' x 1000000000;
+    Net::SSLeay::ssl_write_all($ssl, \$data) or die "ssl write failed";
+
+=begin original
+
+C<ssl_read_CRLF()> uses C<ssl_read_all()> to read in a line terminated with a
+carriage return followed by a linefeed (CRLF).  The CRLF is included in
+the returned scalar.
+
+=end original
+
+C<ssl_read_CRLF()> は C<ssl_read_all()> を使ってラインフィードが後ろについた
+キャリッジリターン(CRLF)で終わる行を読み込みます。
+CRLF は返されるスカラーに含まれます。
+
+=begin original
+
+C<ssl_read_until()> uses C<ssl_read_all()> to read from the SSL input
+stream until it encounters a programmer specified delimiter.
+If the delimiter is undefined, C<$/> is used.  If C<$/> is undefined,
+C<\n> is used.  One can optionally set a maximum length of bytes to read
+from the SSL input stream.
+
+=end original
+
+C<ssl_read_until()> C<ssl_read_all()> を使って SSL 入力から
+プログラマによって指定された区切り文字まで読み込みます。
+区切り文字が未定義であれば
+C<$/> が使われます。
+C<$/> が未定義であれば、C<\n> が使われます。
+SSL入力ストリームからの
+読み込む最大バイト長をオプションで設定することができます。
+
+=begin original
+
+C<ssl_write_CRLF()> writes C<$message> and appends CRLF to the SSL output stream.
+
+=end original
+
+C<ssl_write_CRLF()> は SSL 出力ストリームに C<$message> を出力し、CRLF を
+追加します。
+
+=head2 Low level API
+
+(低レベル API)
+
+=begin original
+
+In addition to the high level functions outlined above, this module
+contains straight-forward access to SSL part of OpenSSL C api. Only the SSL
+subpart of OpenSSL is implemented (if anyone wants to implement other
+parts, feel free to submit patches).
+
+=end original
+
+上記で説明した高レベル関数に加えて、このモジュールには OpenSSL C api の
+SSL 部分にそのままアクセスすることもできます。
+OpenSSL の SSL サブパートだけが実装されています(他の部分も実装したければ、
+パッチを提供することをためらわないでください)。
+
+=begin original
+
+See the C<ssl.h> header from OpenSSL C distribution for a list of low level
+SSLeay functions to call (check SSLeay.xs to see if some function has been
+implemented). The module strips the initial C<"SSL_"> off of the SSLeay names. Generally you should use C<Net::SSLeay::> in its
+place. For example:
+
+=end original
+
+低レベル SSLeay 関数の呼び出し方の一覧については、OpenSSL C
+ディストリビューションの C<ssl.h> ヘッダをご覧ください(関数が
+実装されているかをチェックするためには、SSLeay.xs をご覧ください)。
+このモジュールでは SSLeay の名前から先頭の C<"SSL_"> をはずしています。
+一般的にはその場所に C<Net::SSLeay::> を使わなければなりません。
+例えば:
+
+=begin original
+
+In C:
+
+=end original
+
+C では:
+
+	#include <ssl.h>
+
+	err = SSL_set_verify (ssl, SSL_VERIFY_CLIENT_ONCE,
+				   &your_call_back_here);
+
+=begin original
+
+In Perl:
+
+=end original
+
+Perl では:
+
+	use Net::SSLeay;
+
+	$err = Net::SSLeay::set_verify ($ssl,
+					Net::SSLeay::VERIFY_CLIENT_ONCE,
+					\&your_call_back_here);
+
+=begin original
+
+If the function does not start with C<SSL_> you should use the full
+function name, e.g.:
+
+=end original
+
+C<SSL_> で始まらない関数では、関数名全体を使わなければなりません。
+例えば:
+
+	$err = Net::SSLeay::ERR_get_error;
+
+=begin original
+
+The following new functions behave in perlish way:
+
+=end original
+
+以下の新しい関数は perl 的に振舞います:
+
+=begin original
+
+	$got = Net::SSLeay::read($ssl);
+                                    # Performs SSL_read, but returns $got
+                                    # resized according to data received.
+                                    # Returns undef on failure.
+
+=end original
+
+	$got = Net::SSLeay::read($ssl);
+                                    # SSL_read を行いますが、受け取られたデータに
+                                    # 従って大きさが変更された $got を返します
+                                    # 失敗したときには undef を返します。
+
+=begin original
+
+	Net::SSLeay::write($ssl, $foo) || die;
+                                    # Performs SSL_write, but automatically
+                                    # figures out the size of $foo
+
+=end original
+
+	Net::SSLeay::write($ssl, $foo) || die;
+                                    # SSL_write を実行します。しかし自動的に
+                                    # $fooの大きさを計算します。
+
+=begin original
+
+In order to use the low level API you should start your programs with
+the following incantation:
+
+=end original
+
+低レベル API を使うためには、あなたのプログラムは以下のように始まらなければ
+なりません:
+
+=begin original
+
+	use Net::SSLeay qw(die_now die_if_ssl_error);
+	Net::SSLeay::load_error_strings();
+	Net::SSLeay::SSLeay_add_ssl_algorithms();    # Important!
+        Net::SSLeay::ENGINE_load_builtin_engines();  # If you want built-in engines
+        Net::SSLeay::ENGINE_register_all_complete(); # If you want built-in engines
+        Net::SSLeay::randomize();
+
+=end original
+
+	use Net::SSLeay qw(die_now die_if_ssl_error);
+	Net::SSLeay::load_error_strings();
+	Net::SSLeay::SSLeay_add_ssl_algorithms();    # 重要!
+        Net::SSLeay::ENGINE_load_builtin_engines();  # 組み込みエンジンが必要なら
+        Net::SSLeay::ENGINE_register_all_complete(); # 組み込みエンジンが必要なら
+        Net::SSLeay::randomize();
+
+=begin original
+
+C<die_now()> and C<die_if_ssl_error()> are used to conveniently print the SSLeay error stack when something goes wrong, thusly:
+
+=end original
+
+C<die_now()> と C<die_if_ssl_error()> は、以下のように何かがおかしくなったとき
+簡単に SSLeay エラースタックを出力するために使用されます:
+
+	Net::SSLeay::connect($ssl) or die_now("Failed SSL connect ($!)");
+	Net::SSLeay::write($ssl, "foo") or die_if_ssl_error("SSL write ($!)");
+
+=begin original
+
+You can also use C<Net::SSLeay::print_errs()> to dump the error stack without
+exiting the program. As can be seen, your code becomes much more readable
+if you import the error reporting functions into your main name space.
+
+=end original
+
+プログラムを終了させることなくエラースタックをダンプさせるために
+C<Net::SSLeay::print_errs()> を使うことも出来ます。
+今見たように、main 名前空間にエラー報告関数をインポートすれば、
+あなたのコードは、さらにとても読みやすくなります。
+
+=begin original
+
+I can not emphasize the need to check for error enough. Use these
+functions even in the most simple programs, they will reduce debugging
+time greatly. Do not ask questions on the mailing list without having
+first sprinkled these in your code.
+
+=end original
+
+エラーの戻り値をチェックする必要性はいくら強調しても足りません。
+非常に単純なプログラムであっても、これらの関数を使ってください。
+これらはデバッグにかかる時間を大幅に削減します。
+先にこれらのものをあなたコードのあちこちに入れることなく、
+メーリングリストに質問しないでください。
+
+=head2 Sockets
+
+(ソケット)
+
+=begin original
+
+Perl uses file handles for all I/O. While SSLeay has a quite flexible BIO
+mechanism and perl has an evolved PerlIO mechanism, this module still
+sticks to using file descriptors. Thus to attach SSLeay to a socket you
+should use C<fileno()> to extract the underlying file descriptor:
+
+=end original
+
+Perl は全ての I/O にファイルハンドルを使います。
+SSLeay は非常に柔軟性のある BIO 機構を持っていますし、perl は PerlIO 機構を
+進化させていますが、
+このモジュールはファイル記述子を使うことにこだわっています。
+このため SSLeay をソケットにつけるためには、元になっているファイル記述子を
+取り出すために C<fineno()> を使わなければなりません:
+
+=begin original
+
+    Net::SSLeay::set_fd($ssl, fileno(S));   # Must use fileno
+
+=end original
+
+    Net::SSLeay::set_fd($ssl, fileno(S));   # finenoを使わなければなりません
+
+=begin original
+
+You should also set C<$|> to 1 to eliminate STDIO buffering so you do not
+get confused if you use perl I/O functions to manipulate your socket
+handle.
+
+=end original
+
+あなたのソケットハンドルを操作するために perl の I/O 関数を使うのであれば、
+混乱しないよう、STDIO のバッファリングを止めさせるためには、C<$|> に 1 を
+設定しなければなりません。
+
+=begin original
+
+If you need to C<select(2)> on the socket, go right ahead, but be warned
+that OpenSSL does some internal buffering so SSL_read does not always
+return data even if the socket selected for reading (just keep on
+selecting and trying to read). C<Net::SSLeay> is no different from the
+C language OpenSSL in this respect.
+
+=end original
+
+ソケットに C<select(2)> する必要があれば、すぐに行ってください。
+ただし OpenSSL は内部バッファリングを行っていて、そのためソケットが読み込みの
+ために選択されているときでも(単に選択し、読み込もうとし続けるだけ)、
+常にデータを返すわけではないことに注意してください。
+この点で C<Net::SSLeay> は C 言語 OpenSSL とは違います。
+
+=head2 Callbacks
+
+(コールバック)
+
+=begin original
+
+You can establish a per-context verify callback function something like this:
+
+=end original
+
+以下のようなコンテキスト単位の検証コールバック関数を設定できます:
+
+	sub verify {
+	    my ($ok, $x509_store_ctx) = @_;
+	    print "Verifying certificate...\n";
+		...
+	    return $ok;
+	}
+
+=begin original
+
+It is used like this:
+
+=end original
+
+これは以下のように使われます:
+
+	Net::SSLeay::set_verify ($ssl, Net::SSLeay::VERIFY_PEER, \&verify);
+
+=begin original
+
+Per-context callbacks for decrypting private keys are implemented.
+
+=end original
+
+復号化するための秘密鍵のためのコンテキスト単位のコールバックは
+実装されています。
+
+        Net::SSLeay::CTX_set_default_passwd_cb($ctx, sub { "top-secret" });
+        Net::SSLeay::CTX_use_PrivateKey_file($ctx, "key.pem",
+					     Net::SSLeay::FILETYPE_PEM)
+            or die "Error reading private key";
+        Net::SSLeay::CTX_set_default_passwd_cb($ctx, undef);
+
+=begin original
+
+If Hello Extensions are supported by your OpenSSL, 
+a session secret callback can be set up to be called when a session secret is set
+by openssl.
+
+=end original
+
+If Hello Extensions are supported by your OpenSSL, 
+a session secret callback can be set up to be called when a session secret is set
+by openssl.
+(TBT)
+
+=begin original
+
+Establish it like this:
+    Net::SSLeay::set_session_secret_cb($ssl, \&session_secret_cb, $somedata);
+
+=end original
+
+Establish it like this:
+    Net::SSLeay::set_session_secret_cb($ssl, \&session_secret_cb, $somedata);
+(TBT)
+
+=begin original
+
+It will be called like this:
+
+=end original
+
+It will be called like this:
+(TBT)
+
+    sub session_secret_cb
+    {
+        my ($secret, \@cipherlist, \$preferredcipher, $somedata) = @_;
+    }
+
+=begin original
+
+No other callbacks are implemented. You do not need to use any
+callback for simple (i.e. normal) cases where the SSLeay built-in
+verify mechanism satisfies your needs.
+
+=end original
+
+その他のコールバックは実装されていません。
+SSLeay 組み込みの確認機構があなたのニーズを満足させているところでは、
+単純な(つまり通常の）ケースでは何もコールバックを使う必要はありません。
+
+=begin original
+
+It is required to reset these callbacks to undef immediately after use to prevent 
+memory leaks, thread safety problems and crashes on exit that 
+can occur if different threads set different callbacks. 
+
+=end original
+
+It is required to reset these callbacks to undef immediately after use to prevent 
+memory leaks, thread safety problems and crashes on exit that 
+can occur if different threads set different callbacks. 
+(TBT)
+
+=begin original
+
+If you want to use callback stuff, see examples/callback.pl! Its the
+only one I am able to make work reliably.
+
+=end original
+
+コールバックを使いたければ、examples/callback.pl をご覧ください!
+それは私が信頼して動かすことができる唯一のものです。
+
+=head2 X509 and RAND stuff
+
+(X509 と RAND について)
+
+=begin original
+
+This module largely lacks interface to the X509 and RAND routines, but
+as I was lazy and needed them, the following kludges are implemented:
+
+=end original
+
+このモジュールでは X509 と RAND ルーチンへのインターフェースが大きく
+欠けていますが、私は怠け者で、それらを必要としていました;
+以下のものが実装されています:
+
+    $x509_name = Net::SSLeay::X509_get_subject_name($x509_cert);
+    $x509_name = Net::SSLeay::X509_get_issuer_name($x509_cert);
+    print Net::SSLeay::X509_NAME_oneline($x509_name);
+    $text = Net::SSLeay::X509_NAME_get_text_by_NID($name, $nid);
+
+    ($type1, $subject1, $type2, $subject2, ...) =
+       Net::SSLeay::X509_get_subjectAltNames($x509_cert)
+
+    subjectAltName types as per x509v3.h GEN_*, for example
+    GEN_DNS or GEN_IPADD which can be imported.
+
+=begin original
+
+    Net::SSLeay::RAND_seed($buf);   # Perlishly figures out buf size
+    Net::SSLeay::RAND_bytes($buf, $num);
+    Net::SSLeay::RAND_pseudo_bytes($buf, $num);
+    Net::SSLeay::RAND_add($buf, $num, $entropy);
+    Net::SSLeay::RAND_poll();
+    Net::SSLeay::RAND_status();
+    Net::SSLeay::RAND_cleanup();
+    Net::SSLeay::RAND_file_name($num);
+    Net::SSLeay::RAND_load_file($file_name, $how_many_bytes);
+    Net::SSLeay::RAND_write_file($file_name);
+    Net::SSLeay::RAND_egd($path);
+    Net::SSLeay::RAND_egd_bytes($path, $bytes);
+
+=end original
+
+    Net::SSLeay::RAND_seed($buf);   # Perl的に大きさを計算します
+    Net::SSLeay::RAND_bytes($buf, $num);
+    Net::SSLeay::RAND_pseudo_bytes($buf, $num);
+    Net::SSLeay::RAND_add($buf, $num, $entropy);
+    Net::SSLeay::RAND_poll();
+    Net::SSLeay::RAND_status();
+    Net::SSLeay::RAND_cleanup();
+    Net::SSLeay::RAND_file_name($num);
+    Net::SSLeay::RAND_load_file($file_name, $how_many_bytes);
+    Net::SSLeay::RAND_write_file($file_name);
+    Net::SSLeay::RAND_egd($path);
+    Net::SSLeay::RAND_egd_bytes($path, $bytes);
+
+=begin original
+
+Actually you should consider using the following helper functions:
+
+=end original
+
+実際には、以下のヘルパー関数を使うことを考えるべきです:
+
+    print Net::SSLeay::dump_peer_certificate($ssl);
+    Net::SSLeay::randomize();
+
+=head2 RSA interface
+
+(RSA インターフェース)
+
+=begin original
+
+Some RSA functions are available:
+
+=end original
+
+いくつかの RSA 関数を利用することができます:
+
+    $rsakey = Net::SSLeay::RSA_generate_key();
+    Net::SSLeay::CTX_set_tmp_rsa($ctx, $rsakey);
+    Net::SSLeay::RSA_free($rsakey);
+
+=head2 Digests
+
+(ダイジェスト)
+
+=begin original
+
+Some Digest functions are available if supported by the underlying
+library.  These may include MD2, MD4, MD5, and RIPEMD160:
+
+=end original
+
+Some Digest functions are available if supported by the underlying
+library.  These may include MD2, MD4, MD5, and RIPEMD160:
+(TBT)
+
+    $hash = Net::SSLeay::MD5($foo);
+    print unpack('H*', $hash);
+
+=head2 BIO interface
+
+(BIO インターフェース)
+
+=begin original
+
+Some BIO functions are available:
+
+=end original
+
+いくつかの BIO 関数を利用することができます:
+
+    Net::SSLeay::BIO_s_mem();
+    $bio = Net::SSLeay::BIO_new(BIO_s_mem())
+    $bio = Net::SSLeay::BIO_new_file($filename, $mode);
+    Net::SSLeay::BIO_free($bio)
+    $count = Net::SSLeay::BIO_write($data);
+    $data = Net::SSLeay::BIO_read($bio);
+    $data = Net::SSLeay::BIO_read($bio, $maxbytes);
+    $is_eof = Net::SSLeay::BIO_eof($bio);
+    $count = Net::SSLeay::BIO_pending($bio);
+    $count = Net::SSLeay::BIO_wpending ($bio);
+
+=head2 Low level API
+
+(低レベル API)
+
+=begin original
+
+Some very low level API functions are available:
+
+=end original
+
+いくつかの非常に低レベルの API 関数を使うことが出来ます:
+
+    $client_random = Net::SSLeay::get_client_random($ssl);
+    $server_random = Net::SSLeay::get_server_random($ssl);
+    $session = Net::SSLeay::get_session($ssl);
+    $master_key = Net::SSLeay::SESSION_get_master_key($session);
+    Net::SSLeay::SESSION_set_master_key($session, $master_secret);
+    $keyblocksize = Net::SSLeay::get_keyblock_size($session);
+
+=head2 HTTP (without S) API
+
+(HTTP (S なし) API)
+
+=begin original
+
+Over the years it has become clear that it would be convenient to use
+the light-weight flavour API of C<Net::SSLeay> for normal HTTP as well (see
+C<LWP> for the heavy-weight object-oriented approach). In fact it would be
+nice to be able to flip https on and off on the fly. Thus regular HTTP
+support was evolved.
+
+=end original
+
+Over the years it has become clear that it would be convenient to use
+the light-weight flavour API of C<Net::SSLeay> for normal HTTP as well (see
+C<LWP> for the heavy-weight object-oriented approach). In fact it would be
+nice to be able to flip https on and off on the fly. Thus regular HTTP
+support was evolved.
+(TBT)
+
+  use Net::SSLeay qw(get_http post_http tcpcat
+                      get_httpx post_httpx tcpxcat
+                      make_headers make_form);
+
+  ($page, $result, %headers) =
+         = get_http('www.bacus.pt', 443, '/protected.html',
+	      make_headers(Authorization =>
+			   'Basic ' . MIME::Base64::encode("$user:$pass",''))
+	      );
+
+  ($page, $response, %reply_headers)
+	 = post_http('www.bacus.pt', 443, '/foo.cgi', '',
+		make_form(OK   => '1',
+			  name => 'Sampo'
+		));
+
+  ($reply, $err) = tcpcat($host, $port, $request);
+
+  ($page, $result, %headers) =
+         = get_httpx($usessl, 'www.bacus.pt', 443, '/protected.html',
+	      make_headers(Authorization =>
+			   'Basic ' . MIME::Base64::encode("$user:$pass",''))
+	      );
+
+  ($page, $response, %reply_headers)
+	 = post_httpx($usessl, 'www.bacus.pt', 443, '/foo.cgi', '',
+		make_form(OK   => '1',  name => 'Sampo'	));
+
+  ($reply, $err, $server_cert) = tcpxcat($usessl, $host, $port, $request);
+
+=begin original
+
+As can be seen, the C<"x"> family of APIs takes as the first argument a flag
+which indicates whether SSL is used or not.
+
+=end original
+
+As can be seen, the C<"x"> family of APIs takes as the first argument a flag
+which indicates whether SSL is used or not.
+(TBT)
+
+=head1 EXAMPLES
+
+=begin original
+
+One very good example to look at is the implementation of C<sslcat()> in the
+C<SSLeay.pm> file.
+
+=end original
+
+1 つの非常に素晴らしい例は、C<SSLeay.pm> ファイルにある C<sslcat()> の実装を
+見ることです。
+
+=begin original
+
+The following is a simple SSLeay client (with too little error checking :-(
+
+=end original
+
+(あまりにもエラーチェックが少ない :-( ) 簡単な SSLeay クライアントを以下に
+示します:
+
+    #!/usr/local/bin/perl
+    use Socket;
+    use Net::SSLeay qw(die_now die_if_ssl_error) ;
+    Net::SSLeay::load_error_strings();
+    Net::SSLeay::SSLeay_add_ssl_algorithms();
+    Net::SSLeay::randomize();
+
+=begin original
+
+    ($dest_serv, $port, $msg) = @ARGV;      # Read command line
+    $port = getservbyname ($port, 'tcp') unless $port =~ /^\d+$/;
+    $dest_ip = gethostbyname ($dest_serv);
+    $dest_serv_params  = sockaddr_in($port, $dest_ip);
+
+=end original
+
+    ($dest_serv, $port, $msg) = @ARGV;      # コマンドラインを読み込みます
+    $port = getservbyname ($port, 'tcp') unless $port =~ /^\d+$/;
+    $dest_ip = gethostbyname ($dest_serv);
+    $dest_serv_params  = sockaddr_in($port, $dest_ip);
+
+=begin original
+
+    socket  (S, &AF_INET, &SOCK_STREAM, 0)  or die "socket: $!";
+    connect (S, $dest_serv_params)          or die "connect: $!";
+    select  (S); $| = 1; select (STDOUT);   # Eliminate STDIO buffering
+
+=end original
+
+    socket  (S, &AF_INET, &SOCK_STREAM, 0)  or die "socket: $!";
+    connect (S, $dest_serv_params)          or die "connect: $!";
+    select  (S); $| = 1; select (STDOUT);   # STDIOへのバッファリングの抑止
+
+=begin original
+
+    # The network connection is now open, lets fire up SSL    
+
+=end original
+
+    # ネットワークへの接続が今、開きました。SSLeayを起動しましょう
+
+=begin original
+
+    $ctx = Net::SSLeay::CTX_new() or die_now("Failed to create SSL_CTX $!");
+    Net::SSLeay::CTX_set_options($ctx, &Net::SSLeay::OP_ALL)
+         and die_if_ssl_error("ssl ctx set options");
+    $ssl = Net::SSLeay::new($ctx) or die_now("Failed to create SSL $!");
+    Net::SSLeay::set_fd($ssl, fileno(S));   # Must use fileno
+    $res = Net::SSLeay::connect($ssl) and die_if_ssl_error("ssl connect");
+    print "Cipher `" . Net::SSLeay::get_cipher($ssl) . "'\n";
+
+=end original
+
+    $ctx = Net::SSLeay::CTX_new() or die_now("Failed to create SSL_CTX $!");
+    Net::SSLeay::CTX_set_options($ctx, &Net::SSLeay::OP_ALL)
+         and die_if_ssl_error("ssl ctx set options");
+    $ssl = Net::SSLeay::new($ctx) or die_now("Failed to create SSL $!");
+    Net::SSLeay::set_fd($ssl, fileno(S));   # filenoを使わなければなりません
+    $res = Net::SSLeay::connect($ssl) and die_if_ssl_error("ssl connect");
+    print "Cipher `" . Net::SSLeay::get_cipher($ssl) . "'\n";
+
+=begin original
+
+    # Exchange data
+
+=end original
+
+    # データの交換
+
+=begin original
+
+    $res = Net::SSLeay::write($ssl, $msg);  # Perl knows how long $msg is
+    die_if_ssl_error("ssl write");
+    CORE::shutdown S, 1;  # Half close --> No more output, sends EOF to server
+    $got = Net::SSLeay::read($ssl);         # Perl returns undef on failure
+    die_if_ssl_error("ssl read");
+    print $got;
+
+=end original
+
+    $res = Net::SSLeay::write($ssl, $msg);  # Perlは$msgの長さがわかります
+    die_if_ssl_error("ssl write");
+    CORE::shutdown S, 1;  # 半分クローズ --> 出力はありません、サーバにEOFを送信します
+    $got = Net::SSLeay::read($ssl);         # Perlは失敗するとundefを返します
+    die_if_ssl_error("ssl read");
+    print $got;
+
+=begin original
+
+    Net::SSLeay::free ($ssl);               # Tear down connection
+    Net::SSLeay::CTX_free ($ctx);
+    close S;
+
+=end original
+
+    Net::SSLeay::free ($ssl);               # 接続を終了させます
+    Net::SSLeay::CTX_free ($ctx);
+    close S;
+
+=begin original
+
+The following is a simple SSLeay echo server (non forking):
+
+=end original
+
+簡単な SSLeay echo サーバ(fork なし)を以下に示します:
+
+    #!/usr/local/bin/perl -w
+    use Socket;
+    use Net::SSLeay qw(die_now die_if_ssl_error);
+    Net::SSLeay::load_error_strings();
+    Net::SSLeay::SSLeay_add_ssl_algorithms();
+    Net::SSLeay::randomize();
+
+=begin original
+
+    $our_ip = "\0\0\0\0"; # Bind to all interfaces
+    $port = 1235;							 
+    $sockaddr_template = 'S n a4 x8';
+    $our_serv_params = pack ($sockaddr_template, &AF_INET, $port, $our_ip);
+
+=end original
+
+    $our_ip = "\0\0\0\0"; # 全てのインターフェースにバインド
+    $port = 1235;							
+    $sockaddr_template = 'S n a4 x8';
+    $our_serv_params = pack ($sockaddr_template, &AF_INET, $port, $our_ip);
+
+    socket (S, &AF_INET, &SOCK_STREAM, 0)  or die "socket: $!";
+    bind (S, $our_serv_params)             or die "bind:   $!";
+    listen (S, 5)                          or die "listen: $!";
+    $ctx = Net::SSLeay::CTX_new ()         or die_now("CTX_new ($ctx): $!");
+    Net::SSLeay::CTX_set_options($ctx, &Net::SSLeay::OP_ALL)
+         and die_if_ssl_error("ssl ctx set options");
+
+=begin original
+
+    # Following will ask password unless private key is not encrypted
+    Net::SSLeay::CTX_use_RSAPrivateKey_file ($ctx, 'plain-rsa.pem',
+                                             &Net::SSLeay::FILETYPE_PEM);
+    die_if_ssl_error("private key");
+    Net::SSLeay::CTX_use_certificate_file ($ctx, 'plain-cert.pem',
+ 				           &Net::SSLeay::FILETYPE_PEM);
+    die_if_ssl_error("certificate");
+
+=end original
+
+    # 以下の行は秘密鍵が暗号化されてないということがなければ、パスワードを尋ねます
+    Net::SSLeay::CTX_use_RSAPrivateKey_file ($ctx, 'plain-rsa.pem',
+                                         &Net::SSLeay::FILETYPE_PEM);
+    die_if_ssl_error("private key");
+    Net::SSLeay::CTX_use_certificate_file ($ctx, 'plain-cert.pem',
+                       &Net::SSLeay::FILETYPE_PEM);
+    die_if_ssl_error("certificate");
+
+=begin original
+
+    while (1) {    
+        print "Accepting connections...\n";
+        ($addr = accept (NS, S))           or die "accept: $!";
+        select (NS); $| = 1; select (STDOUT);  # Piping hot!
+
+=end original
+
+    while (1) {    
+        print "Accepting connections...\n";
+        ($addr = accept (NS, S))           or die "accept: $!";
+        select (NS); $| = 1; select (STDOUT);  # パイプがホット!
+
+        ($af,$client_port,$client_ip) = unpack($sockaddr_template,$addr);
+        @inetaddr = unpack('C4',$client_ip);
+        print "$af connection from " .
+        join ('.', @inetaddr) . ":$client_port\n";
+
+=begin original
+
+        # We now have a network connection, lets fire up SSLeay...
+
+=end original
+
+        # これでネットワーク接続を持っています、SSLeayを起動しましょう...
+
+        $ssl = Net::SSLeay::new($ctx)      or die_now("SSL_new ($ssl): $!");
+        Net::SSLeay::set_fd($ssl, fileno(NS));
+
+        $err = Net::SSLeay::accept($ssl) and die_if_ssl_error('ssl accept');
+        print "Cipher `" . Net::SSLeay::get_cipher($ssl) . "'\n";
+
+=begin original
+
+        # Connected. Exchange some data.
+
+=end original
+
+        # 接続しました。データを交換しましょう。
+
+=begin original
+
+        $got = Net::SSLeay::read($ssl);     # Returns undef on fail
+        die_if_ssl_error("ssl read");
+        print "Got `$got' (" . length ($got) . " chars)\n";
+
+=end original
+
+        $got = Net::SSLeay::read($ssl);     # 失敗したときにはundefを返します
+        die_if_ssl_error("ssl read");
+        print "Got `$got' (" . length ($got) . " chars)\n";
+
+        Net::SSLeay::write ($ssl, uc ($got)) or die "write: $!";
+        die_if_ssl_error("ssl write");
+
+=begin original
+
+        Net::SSLeay::free ($ssl);           # Tear down connection
+        close NS;
+    }
+
+=end original
+
+        Net::SSLeay::free ($ssl);           # 接続を終了させます
+        close NS;
+    }
+
+=begin original
+
+Yet another echo server. This one runs from C</etc/inetd.conf> so it avoids
+all the socket code overhead. Only caveat is opening an rsa key file -
+it had better be without any encryption or else it will not know where
+to ask for the password. Note how C<STDIN> and C<STDOUT> are wired to SSL.
+
+=end original
+
+echo サーバをもう 1 つ。
+今度のものは C</etc/inetd.conf> から走ります。
+そのためソケットコードのオーバーヘッドを全て回避します。
+唯一の注意は、rsa 鍵ファイルを開くことです - 暗号化をしないほうが
+よりうまくいきます。
+そうでなければパスワードをどこで聞けばいいのかわかりません。
+どのように C<STDIN> と C<STDOUT> が SSL につながれるかに注意してください。
+
+    #!/usr/local/bin/perl
+    # /etc/inetd.conf
+    #    ssltst stream tcp nowait root /path/to/server.pl server.pl
+    # /etc/services
+    #    ssltst		1234/tcp
+
+    use Net::SSLeay qw(die_now die_if_ssl_error);
+    Net::SSLeay::load_error_strings();
+    Net::SSLeay::SSLeay_add_ssl_algorithms();
+    Net::SSLeay::randomize();
+
+=begin original
+
+    chdir '/key/dir' or die "chdir: $!";
+    $| = 1;  # Piping hot!
+    open LOG, ">>/dev/console" or die "Can't open log file $!";
+    select LOG; print "server.pl started\n";
+
+=end original
+
+    chdir '/key/dir' or die "chdir: $!";
+    $| = 1;  # パイプがホット!
+    open LOG, ">>/dev/console" or die "Can't open log file $!";
+    select LOG; print "server.pl started\n";
+    
+    $ctx = Net::SSLeay::CTX_new()     or die_now "CTX_new ($ctx) ($!)";
+    $ssl = Net::SSLeay::new($ctx)     or die_now "new ($ssl) ($!)";
+    Net::SSLeay::set_options($ssl, &Net::SSLeay::OP_ALL)
+         and die_if_ssl_error("ssl set options");
+
+    $ctx = Net::SSLeay::CTX_new()     or die_now "CTX_new ($ctx) ($!)";
+    $ssl = Net::SSLeay::new($ctx)     or die_now "new ($ssl) ($!)";
+    Net::SSLeay::set_options($ssl, &Net::SSLeay::OP_ALL)
+         and die_if_ssl_error("ssl set options");
+
+=begin original
+
+    # We get already open network connection from inetd, now we just
+    # need to attach SSLeay to STDIN and STDOUT
+    Net::SSLeay::set_rfd($ssl, fileno(STDIN));
+    Net::SSLeay::set_wfd($ssl, fileno(STDOUT));
+
+=end original
+
+    # inetdからネットワーク接続は既にオープンしてあるので、
+    # STDINとSTDOUTにSSLeayをつける必要があるだけです
+    Net::SSLeay::set_rfd($ssl, fileno(STDIN));
+    Net::SSLeay::set_wfd($ssl, fileno(STDOUT));
+
+    Net::SSLeay::use_RSAPrivateKey_file ($ssl, 'plain-rsa.pem',
+                                         Net::SSLeay::FILETYPE_PEM);
+    die_if_ssl_error("private key");
+    Net::SSLeay::use_certificate_file ($ssl, 'plain-cert.pem',
+                                       Net::SSLeay::FILETYPE_PEM);
+    die_if_ssl_error("certificate");
+
+    Net::SSLeay::accept($ssl) and die_if_ssl_err("ssl accept: $!");
+    print "Cipher `" . Net::SSLeay::get_cipher($ssl) . "'\n";
+
+    $got = Net::SSLeay::read($ssl);
+    die_if_ssl_error("ssl read");
+    print "Got `$got' (" . length ($got) . " chars)\n";
+
+    Net::SSLeay::write ($ssl, uc($got)) or die "write: $!";
+    die_if_ssl_error("ssl write");
+
+=begin original
+
+    Net::SSLeay::free ($ssl);         # Tear down the connection
+    Net::SSLeay::CTX_free ($ctx);
+    close LOG;
+
+=end original
+
+    Net::SSLeay::free ($ssl);         # 接続を終わらせます
+    Net::SSLeay::CTX_free ($ctx);
+    close LOG;
+
+=begin original
+
+There are also a number of example/test programs in the examples directory:
+
+=end original
+
+examples ディレクトリにも例/テストプログラムがたくさん入っています:
+
+=begin original
+
+    sslecho.pl   -  A simple server, not unlike the one above
+    minicli.pl   -  Implements a client using low level SSLeay routines
+    sslcat.pl    -  Demonstrates using high level sslcat utility function
+    get_page.pl  -  Is a utility for getting html pages from secure servers
+    callback.pl  -  Demonstrates certificate verification and callback usage
+    stdio_bulk.pl       - Does SSL over Unix pipes
+    ssl-inetd-serv.pl   - SSL server that can be invoked from inetd.conf
+    httpd-proxy-snif.pl - Utility that allows you to see how a browser
+                          sends https request to given server and what reply
+                          it gets back (very educative :-)
+    makecert.pl  -  Creates a self signed cert (does not use this module)
+
+=end original
+
+    sslecho.pl   -  上記のものと違わない簡単なサーバ
+    minicli.pl   -  低レベル SSLeay ルーチンを使ったクライアントを実装しています
+    sslcat.pl    -  高レベル sslcat ユーティリティ関数の使い方を示しています
+    get_page.pl  -  セキュアなサーバから HTML ページを取り出すためのユーティリティ
+    callback.pl  -  証明書の確認とコールバックの使い方を示しています
+    stdio_bulk.pl       - Unix パイプ越しに SSL を行います
+    ssl-inetd-serv.pl   - inetd.confから呼び出すことができるSSLサーバ
+    httpd-proxy-snif.pl - ブラウザが与えられたどのように https リクエストを送信するのか、
+                          そして応答として何を受け取ったのかを見えるようにするユーティリティ
+                          (とっても教育的 :-)
+    makecert.pl  -  自分で署名した証明書を作成します(このモジュールを使いません)
+
+=head1 LIMITATIONS
+
+(制約)
+
+=begin original
+
+C<Net::SSLeay::read()> uses an internal buffer of 32KB, thus no single read
+will return more. In practice one read returns much less, usually
+as much as fits in one network packet. To work around this,
+you should use a loop like this:
+
+=end original
+
+C<Net::SSLeay::read()> は 32KB の内部バッファを利用しています。
+そのため 1 回の読み込みは、それ以上、多く返すことはありません。
+実際、通常通り 1 つのネットワークパケットに収まっているかぎり、
+1 回の読み込みは、これよりもかなり少なく返します。
+これを回避するためには以下のように
+ループを使わなければなりません:
+
+    $reply = '';
+    while ($got = Net::SSLeay::read($ssl)) {
+        last if print_errs('SSL_read');
+        $reply .= $got;
+    }
+
+=begin original
+
+Although there is no built-in limit in C<Net::SSLeay::write()>, the network
+packet size limitation applies here as well, thus use:
+
+=end original
+
+C<Net::SSLeay::write()> には組み込まれた制約はありませんが、ネットワークパケット
+サイズの制限は、ここでも当てはまります。
+そこで以下のようにしてください:
+
+    $written = 0;
+
+    while ($written < length($message)) {
+        $written += Net::SSLeay::write($ssl, substr($message, $written));
+        last if print_errs('SSL_write');
+    }
+
+=begin original
+
+Or alternatively you can just use the following convenience functions:
+
+=end original
+
+あるいは、代わりに単に以下の便利な関数を使うことも出来ます:
+
+    Net::SSLeay::ssl_write_all($ssl, $message) or die "ssl write failure";
+    $got = Net::SSLeay::ssl_read_all($ssl) or die "ssl read failure";
+
+=head1 KNOWN BUGS AND CAVEATS
+
+(既知のバグと注意)
+
+=begin original
+
+Autoloader emits a
+
+=end original
+
+Autoloader は:
+
+    Argument "xxx" isn't numeric in entersub at blib/lib/Net/SSLeay.pm'
+
+=begin original
+
+warning if die_if_ssl_error is made autoloadable. If you figure out why,
+drop me a line.
+
+=end original
+
+die_if_ssl_error が autoload 可能であると、このの警告を吐き出します。
+なぜだかわかったら、私に連絡してください。
+
+=begin original
+
+Callback set using C<SSL_set_verify()> does not appear to work. This may
+well be an openssl problem (e.g. see C<ssl/ssl_lib.c> line 1029). Try using
+C<SSL_CTX_set_verify()> instead and do not be surprised if even this stops
+working in future versions.
+
+=end original
+
+C<SSL_set_verify()> を使って設定されたコールバックが動かないようです。
+これはeayの問題かもしれません(例えば C<ssl/ssl_lib.c> の 1029 行をご覧ください)。
+代わりに C<SSL_CTX_set_verify()> を使ってみてください。
+そして将来のバージョンでこれが動かないようになっても驚かないでください。
+
+=begin original
+
+Callback and certificate verification stuff is generally too little tested.
+
+=end original
+
+コールバックと証明書の確認に関しては、一般的に余りにも少ししかテストされて
+いません。
+
+=begin original
+
+Random numbers are not initialized randomly enough, especially if you
+do not have C</dev/random> and/or C</dev/urandom> (such as in Solaris
+platforms - but I've been suggested that cryptorand daemon from the SUNski
+package solves this). In this case you should investigate third party
+software that can emulate these devices, e.g. by way of a named pipe
+to some program.
+
+=end original
+
+特に C</dev/random> そして/あるいは C</dev/urandom> を持っていなければ、
+(Solaris プラットホームのように - しかし私は SUNski パッケージからの
+cryptorand デーモンが、これを解決するという提案を受けたことがあります）
+乱数は十分にランダムに初期化されません。
+この場合、これらのデバイスをエミュレートすることができる
+サードパーティのソフトウェア、例えばあるプログラムへの
+名前付きパイプによる方法などを調査する必要があります。
+
+=begin original
+
+Another gotcha with random number initialization is randomness
+depletion. This phenomenon, which has been extensively discussed in
+OpenSSL, Apache-SSL, and Apache-mod_ssl forums, can cause your
+script to block if you use C</dev/random> or to operate insecurely
+if you use C</dev/urandom>. What happens is that when too much
+randomness is drawn from the operating system's randomness pool
+then randomness can temporarily be unavailable. C</dev/random> solves
+this problem by waiting until enough randomness can be gathered - and
+this can take a long time since blocking reduces activity in the
+machine and less activity provides less random events: a vicious circle.
+C</dev/urandom> solves this dilemma more pragmatically by simply returning
+predictable "random" numbers. SomeC< /dev/urandom> emulation software
+however actually seems to implement C</dev/random> semantics. Caveat emptor.
+
+=end original
+
+乱数の初期化に関して、もう 1 つわかっていることは乱数が枯渇することです。
+OpenSSL、Apache-SSL、そして Apache-mod_ssl フォーラムで
+広く議論されていますが、この現象は、C</dev/random> を使うならば、あなたの
+スクリプトをブロックすることを、あるいは C</dev/urandom> を使うならば、
+セキュアでなく操作することを引き起こすかもしれません。
+発生していることは、あまりにも多くの乱数がシステムの乱数プールから
+引っ張られたとき、乱数が一時的に利用不能になることがあります。
+C</dev/random> はこの問題は、十分な乱数が集められるまで待つことにより
+解決します - そしてこれには長い時間がかかることがあります。
+ブロックすることがマシンでの活動を減らしてしまい、活動が少なくなると
+乱数イベントも少なくなるためです:悪循環です。
+C</dev/urandom> は、このジレンマをより実用的に簡単に予測できる
+"ランダムな"数を返すことにより解決します。
+しかしながら、いくつかの C</dev/urandom> エミュレーションソフトウェアは
+実際には C</dev/random> の意味論を実装しているようです。
+利用者はご注意を(Caveat emptor)。
+
+=begin original
+
+I've been pointed to two such daemons by Mik Firestone <mik@@speed.stdio._com>
+who has used them on Solaris 8: 
+
+=end original
+
+私は Solaris 8 でそれらを使っている Mik Firestone <mik@@speed.stdio._com>から、
+そのような 2 つのデーモンを指摘されました:
+
+=over
+
+=item 1
+
+Entropy Gathering Daemon (EGD) at L<http://www.lothar.com/tech/crypto/>
+
+=item 2
+
+Pseudo-random number generating daemon (PRNGD) at
+L<http://www.aet.tu-cottbus.de/personen/jaenicke/postfix_tls/prngd.html>
+
+=back
+
+=begin original
+
+If you are using the low level API functions to communicate with other
+SSL implementations, you would do well to call
+
+=end original
+
+他の SSL 実装と通信するために低レベル API 関数を使っているのであれば、
+以下のようにして、他のいくるかの SSL 実装での、よく知られているバグをうまく
+処理するよう、以下のように呼び出すとうまくいきます:
+
+    Net::SSLeay::CTX_set_options($ctx, &Net::SSLeay::OP_ALL)
+         and die_if_ssl_error("ssl ctx set options");
+
+=begin original
+
+to cope with some well know bugs in some other SSL
+implementations. The high level API functions always set all known
+compatibility options.
+
+=end original
+
+高レベル API 関数は常に全てのわかっている互換性オプションを設定します。
+
+=begin original
+
+Sometimes C<sslcat()> (and the high level HTTPS functions that build on it)
+is too fast in signaling the EOF to legacy HTTPS servers. This causes
+the server to return empty page. To work around this problem you can
+set the global variable
+
+=end original
+
+時折、C<sslcat()> (そしてそれを基に構築された高レベル HTTPS 関数)が、
+レガシーな HTTPS サーバに EOF の合図を出すのが速すぎることがあります。
+これによりサーバが空のページを返してしまいます。
+この問題を回避するためには、グローバル変数を設定することができます
+
+=begin original
+
+    $Net::SSLeay::slowly = 1;   # Add sleep so broken servers can keep up
+
+=end original
+
+    $Net::SSLeay::slowly = 1;   # 壊れたサーバでも保持できるようsleepを追加します
+
+=begin original
+
+HTTP/1.1 is not supported. Specifically this module does not know to
+issue or serve multiple http requests per connection. This is a serious
+shortcoming, but using the SSL session cache on your server helps to
+alleviate the CPU load somewhat.
+
+=end original
+
+HTTP/1.1 はサポートされていません。
+明確に、このモジュールは接続ごとに複数の http リクエストを発行したり、
+それをサービスすることを知りません。
+これは重大な短所です。
+しかしサーバで SSL セッションキャッシュを使うことが CPU の負荷を
+いくぶん軽くすることを助けてくれます。
+
+=begin original
+
+As of version 1.09 many newer OpenSSL auxiliary functions were
+added (from C<REM_AUTOMATICALLY_GENERATED_1_09> onwards in C<SSLeay.xs>).
+Unfortunately I have not had any opportunity to test these. Some of
+them are trivial enough that I believe they "just work", but others
+have rather complex interfaces with function pointers and all. In these
+cases you should proceed wit great caution.
+
+=end original
+
+バージョン 1.09 では多くの新しい OpenSSL 補助関数が追加されました
+(C<SSLeay.xs> では C<REM_AUTOMATICALLY_GENERATED_1_09> が前に付いています)。
+残念ながらこれらをテストする機会を持つことができていません。
+それらのいくつかは私が"動くだけ"だと思うに十分なほどささいなものです。
+しかし他のものは機能ポインタや全てで、どちらかといえば複雑な
+インターフェースを持っています。
+これらの場合には、大いに注意する必要があります。
+
+=begin original
+
+This module defaults to using OpenSSL automatic protocol negotiation
+code for automatically detecting the version of the SSL protocol
+that the other end talks. With most web servers this works just
+fine, but once in a while I get complaints from people that the module
+does not work with some web servers. Usually this can be solved
+by explicitly setting the protocol version, e.g.
+
+=end original
+
+このモジュールはデフォルトで、自動的にもう一方が話す SSL プロトコルコードの
+バージョンを検出するための OpenSSL 自動プロトコルネゴシエーションの
+コードを使います。
+ほとんどのWebサーバでは、これはうまく機能します。
+しかし私は時折、モジュールがある種の Web サーバでは動かないという
+苦情を受けます。
+通常これは、明示的にプロトコルバージョンを
+設定することにより解決することができます。
+例えば:
+
+=begin original
+
+   $Net::SSLeay::ssl_version = 2;  # Insist on SSLv2
+   $Net::SSLeay::ssl_version = 3;  # Insist on SSLv3
+   $Net::SSLeay::ssl_version = 10; # Insist on TLSv1
+
+=end original
+
+   $Net::SSLeay::ssl_version = 2;  # SSLv2を要求します
+   $Net::SSLeay::ssl_version = 3;  # SSLv3を要求します
+   $Net::SSLeay::ssl_version = 10; # TLSv1を要求します
+
+=begin original
+
+Although the autonegotiation is nice to have, the SSL standards
+do not formally specify any such mechanism. Most of the world has
+accepted the SSLeay/OpenSSL way of doing it as the de facto standard. But
+for the few that think differently, you have to explicitly speak
+the correct version. This is not really a bug, but rather a deficiency
+in the standards. If a site refuses to respond or sends back some
+nonsensical error codes (at the SSL handshake level), try this option
+before mailing me.
+
+=end original
+
+自動ネゴシエーションは素晴らしいのですが、SSL 標準では公式には
+そのような機能を規定していません。
+世界中のほとんどが SSLeay/OpenSSL のやり方を
+デファクトスダンダードとして受け入れています。
+しかし中には違う考えを持つ人には、明示的に正しいバージョンを
+話さなければなりません。
+これは本当はバグではありません。
+むしろ標準での欠落です。
+もしサイトが応答を拒絶したり、無意味なエラーコードを送り返してきたら、
+私にメールする前に、このオプションを試してみてください。
+
+=begin original
+
+The high level API returns the certificate of the peer, thus allowing
+one to check what certificate was supplied. However, you will only be
+able to check the certificate after the fact, i.e. you already sent
+your form data by the time you find out that you did not trust them,
+oops.
+
+=end original
+
+高レベル API は相手側の証明書を返します。
+これにより、どんな証明書が提供されたかをチェックすることができます。
+しかしその事の後にだけ、証明書をチェックすることができます。
+つまり彼らを信頼しないことがわかったときには、あなたは既にあなたの
+フォームデータを送信しているのです;
+アリャマ。
+
+=begin original
+
+So, while being able to know the certificate after the fact is surely
+useful, the security minded would still choose to do the connection
+and certificate verification first and only then exchange data
+with the site. Currently none of the high level API functions do
+this, thus you would have to program it using the low level API. A
+good place to start is to see how the C<Net::SSLeay::http_cat()> function
+is implemented.
+
+=end original
+
+そこで、その事が後に証明書を知ることができることが便利だとしても、
+セキュリティを気にする人たちは、先に接続し証明書の確認を行い、
+その後にだけそのサイトとデータを交換することを選択するでしょう。
+現在、これを行う高レベルのAPI関数はありません。
+このため低レベルの API を使ってプログラムしなければなりません。
+C<Net::SSLeay::http_cat()> 関数がどのように実装されているかを見ることから
+はじめるといいでしょう。
+
+=begin original
+
+The high level API functions use a global file handle C<SSLCAT_S>
+internally. This really should not be a problem because there is no
+way to interleave the high level API functions, unless you use threads
+(but threads are not very well supported in perl anyway (as of version
+5.6.1). However, you may run into problems if you call undocumented
+internal functions in an interleaved fashion.
+
+=end original
+
+The high level API functions use a global file handle C<SSLCAT_S>
+internally. This really should not be a problem because there is no
+way to interleave the high level API functions, unless you use threads
+(but threads are not very well supported in perl anyway (as of version
+5.6.1). However, you may run into problems if you call undocumented
+internal functions in an interleaved fashion.
+(TBT)
+
+=head1 DIAGNOSTICS
+
+(診断情報)
+
+=over
+
+=item Random number generator not seeded!!!
+
+=begin original
+
+B<(W)> This warning indicates that C<randomize()> was not able to read
+C</dev/random> or C</dev/urandom>, possibly because your system does not
+have them or they are differently named. You can still use SSL, but
+the encryption will not be as strong.
+
+=end original
+
+B<(W)> この警告は C<randomize()> が C</dev/random> あるいは
+C</dev/urandom> を読むことができなかったことをしめします。
+おそらくあなたのシステムがそれらを持っていないか、
+別の名前になっているからでしょう。
+これでも SSL を使うことは出来ます。
+しかし暗号化はあまり強力ではありません。
+
+=item open_tcp_connection: destination host not found:`server' (port 123) ($!)
+
+=begin original
+
+Name lookup for host named C<server> failed.
+
+=end original
+
+C<server> 名前のホストの名前検索が失敗しました。
+
+=item open_tcp_connection: failed `server', 123 ($!)
+
+=begin original
+
+The name was resolved, but establising the TCP connection failed.
+
+=end original
+
+名前は解決されましたが、TCP 接続の確立が失敗しました。
+
+=item msg 123: 1 - error:140770F8:SSL routines:SSL23_GET_SERVER_HELLO:unknown proto
+
+=begin original
+
+SSLeay error string. The first number (123) is the PID, the second number
+(1) indicates the position of the error message in SSLeay error stack.
+You often see a pile of these messages as errors cascade.
+
+=end original
+
+SSLeay エラー文字列。
+最初の (123) 番号は PID、2 番目の数字 (1) は SSLeay エラースタックでの
+エラーメッセージの位置を示します。
+階段状になったエラーで、これらのメッセージが重なったものを、しばしば
+目にするでしょう。
+
+=item msg 123: 1 - error:02001002::lib(2) :func(1) :reason(2)
+
+=begin original
+
+The same as above, but you didn't call load_error_strings() so SSLeay
+couldn't verbosely explain the error. You can still find out what it
+means with this command:
+
+=end original
+
+上記と同じ。
+しかしload_error_strings()を呼ばなかったので、SSLeay は
+多くの言葉でエラーを説明することができませんでした。
+それでも、それがどんな意味かは以下のコマンドにより知ることができます:
+
+    /usr/local/ssl/bin/ssleay errstr 02001002
+
+=item Password is being asked for private key
+
+(秘密鍵のためのパスワードを聞かれる)
+
+=begin original
+
+This is normal behaviour if your private key is encrypted. Either
+you have to supply the password or you have to use an unencrypted
+private key. Scan OpenSSL.org for the FAQ that explains how to
+do this (or just study examples/makecert.pl which is used
+during C<make test> to do just that).
+
+=end original
+
+あなたの秘密鍵が暗号化されていれば、これは通常の動きです。
+パスワードを与えるか、暗号化されていない秘密鍵を使うかの
+どちらかをする必要があります。
+これをどのように行うかの FAQ については OpenSSL.org をよく見てください。
+(あるいは単純に、C<make test> の時、それを行うためだけに使われる
+examples/makecert.pl を研究してください)。
+
+=back
+
+=head1 BUGS AND SUPPORT
+
+(バグ報告とサポート)
+
+=begin original
+
+Please report any bugs or feature requests to
+C<bug-Net-SSLeay at rt.cpan.org>, or through the web interface at
+L<http://rt.cpan.org/Public/Dist/Display.html?Name=Net-SSLeay>.
+I will be notified, and then you'll automatically be notified of progress on
+your bug as I make changes.
+
+=end original
+
+Please report any bugs or feature requests to
+C<bug-Net-SSLeay at rt.cpan.org>, or through the web interface at
+L<http://rt.cpan.org/Public/Dist/Display.html?Name=Net-SSLeay>.
+I will be notified, and then you'll automatically be notified of progress on
+your bug as I make changes.
+(TBT)
+
+=begin original
+
+Subversion access to the latest source code etc can be obtained at
+L<http://alioth.debian.org/projects/net-ssleay>
+
+=end original
+
+Subversion access to the latest source code etc can be obtained at
+L<http://alioth.debian.org/projects/net-ssleay>
+(TBT)
+
+=begin original
+
+The developer mailing list (for people interested in contributing
+to the source code) can be found at
+L<http://lists.alioth.debian.org/mailman/listinfo/net-ssleay-devel>
+
+=end original
+
+The developer mailing list (for people interested in contributing
+to the source code) can be found at
+L<http://lists.alioth.debian.org/mailman/listinfo/net-ssleay-devel>
+(TBT)
+
+=begin original
+
+You can find documentation for this module with the C<perldoc> command.
+
+=end original
+
+You can find documentation for this module with the C<perldoc> command.
+(TBT)
+
+    perldoc Net::SSLeay
+
+=begin original
+
+You can also look for information at:
+
+=end original
+
+You can also look for information at:
+(TBT)
+
+=over 4
+
+=item * AnnoCPAN: Annotated CPAN documentation
+
+L<http://annocpan.org/dist/Net-SSLeay>
+
+=item * CPAN Ratings
+
+L<http://cpanratings.perl.org/d/Net-SSLeay>
+
+=item * Search CPAN
+
+L<http://search.cpan.org/dist/Net-SSLeay>
+
+=back
+
+=begin original
+
+Commercial support for Net::SSLeay may be obtained from
+
+=end original
+
+Net::SSLeay の商用サポートは、以下のところで得られるでしょう
+
+   Symlabs (netssleay@symlabs.com)
+   Tel: +351-214.222.630
+   Fax: +351-214.222.637
+
+=head1 AUTHOR
+
+(作者)
+
+Maintained by Mike McCauley and Florian Ragwitz since November 2005
+
+Originally written by Sampo KellomE<auml>ki <sampo@symlabs.com>
+
+=head1 COPYRIGHT
+
+Copyright (c) 1996-2003 Sampo KellomE<auml>ki <sampo@symlabs.com>
+
+Copyright (C) 2005-2006 Florian Ragwitz <rafl@debian.org>
+
+Copyright (C) 2005 Mike McCauley <mikem@open.com.au>
+
+All Rights Reserved.
+
+Distribution and use of this module is under the same terms as the
+OpenSSL package itself (i.e. free, but mandatory attribution; NO
+WARRANTY). Please consult LICENSE file in the root of the OpenSSL
+distribution.
+
+While the source distribution of this perl module does not contain
+Eric's or OpenSSL's code, if you use this module you will use OpenSSL
+library. Please give Eric and OpenSSL team credit (as required by
+their licenses).
+
+And remember, you, and nobody else but you, are responsible for
+auditing this module and OpenSSL library for security problems,
+backdoors, and general suitability for your application.
+
+=head1 SEE ALSO
+
+=begin original
+
+  Net::SSLeay::Handle                      - File handle interface
+  ./examples                               - Example servers and a clients
+  <http://www.openssl.org/>                - OpenSSL source, documentation, etc
+  openssl-users-request@openssl.org        - General OpenSSL mailing list
+  <http://www.ietf.org/rfc/rfc2246.txt>    - TLS 1.0 specification
+  <http://www.w3c.org>                     - HTTP specifications
+  <http://www.ietf.org/rfc/rfc2617.txt>    - How to send password
+  <http://www.lothar.com/tech/crypto/>     - Entropy Gathering Daemon (EGD)
+  <http://www.aet.tu-cottbus.de/personen/jaenicke/postfix_tls/prngd.html>
+                           - pseudo-random number generating daemon (PRNGD)
+  perl(1)
+  perlref(1)
+  perllol(1)
+  perldoc ~openssl/doc/ssl/SSL_CTX_set_verify.pod
+
+=end original
+
+  Net::SSLeay::Handle                      - ファイルハンドルのインターフェース
+  ./examples                               - サーバとクライアントの例
+  <http://www.openssl.org/>                - OpenSSL ソース、ドキュメントなど
+  openssl-users-request@openssl.org        - 一般的な OpenSSL メーリングリスト
+  <http://www.ietf.org/rfc/rfc2246.txt>    - TLS 1.0 仕様
+  <http://www.w3c.org>                     - HTTP 仕様
+  <http://www.ietf.org/rfc/rfc2617.txt>    - パスワードの送信方法
+  <http://www.lothar.com/tech/crypto/>     - Entropy Gathering Daemon (EGD)
+  <http://www.aet.tu-cottbus.de/personen/jaenicke/postfix_tls/prngd.html>
+                           - pseudo-random number generating daemon (PRNGD)
+  perl(1)
+  perlref(1)
+  perllol(1)
+  perldoc ~openssl/doc/ssl/SSL_CTX_set_verify.pod
+
+=begin meta
+
+Translate: hippo2000
+Update: SHIRAKATA Kentaro <argrath@ub32.org> (1.36-)
+Status: in progress
+
+=end meta
+
+=cut
