@@ -1,18 +1,19 @@
-# Perl/RFCs/README の翻訳
+# Perl/PPCs/README の翻訳
 
-この文書は、[Perl/RFCs/README](https://github.com/Perl/RFCs/blob/main/README.md)を翻訳したものです。
+この文書は、[Perl/PPCs/README](https://github.com/Perl/PPCs/blob/main/README.md)を翻訳したものです。
 
 <!-- original
 This repository is for *Requests For Comments* - proposals to change the Perl language.
+This repository is for *Proposed Perl Changes* - proposals to change the Perl language.
 -->
 
-このリポジトリは、**リクエスト・フォー・コメンツ**です。 - Perl言語を変更するための提案
+このリポジトリは、**Perlの変更提案(Proposed Perl Changes)**です。 - Perl言語を変更するための提案
 
 <!-- original
 Right now, we're [trialling the process](docs/process.md). If you would like to submit a feature request, please [email an *elevator pitch*](mailto:perl5-porters@perl.org) - a short message with 4 paragraphs:
 -->
 
-現在、私たちは[このプロセスを試しています](https://github.com/Perl/RFCs/blob/main/docs/process.md)。機能要求を送る場合は、次の4項目を簡潔にまとめた[エレベーターピッチをメール](mailto:perl5-porters@perl.org)してください。
+現在、私たちは[このプロセスを試しています](https://github.com/Perl/PPCs/blob/main/docs/process.md)。機能要求を送る場合は、次の4項目を簡潔にまとめた[エレベーターピッチをメール](mailto:perl5-porters@perl.org)してください。
 
 <!-- original
 1. Here is a problem
@@ -40,14 +41,14 @@ That will be enough to make it obvious whether the idea is
 
 <!-- original
 0) actually a **bug** - a change we'd also consider back porting to maintenance releases (so should be a opened as [*Report a Perl 5 bug*](https://github.com/Perl/perl5/issues/new/choose))
-0) worth drafting an RFC for
+0) worth drafting an PPC for
 0) better on CPAN first
 0) "nothing stops you putting it on CPAN, but it doesn't seem viable"
 -->
 
 
 * 0) 実際に**バグ**である - メンテナンスリリースへの変更も考慮すべき変更（そのため、*[Report a Perl 5 bug*](https://github.com/Perl/perl5/issues/new/choose)のようにオープンであるべき）
-* 0) RFCを作成する価値がある
+* 0) PPCを作成する価値がある
 * 0) まずCPANに置いた方が良い
 * 0) "CPANに置くことを止められないが、実現できるとは思えない"
 
@@ -67,21 +68,21 @@ Please **don't** submit ideas as *issues* or *PRs* on this repository. (We can d
 These files describe the process we are trialling
 -->
 
-次のファイルには、試験中のこのRFCsのプロセスについて記載しています。
+次のファイルには、試験中のこのPPCsのプロセスについて記載しています。
 
 <!-- original
 * [motivation.md](docs/motivation.md) - why do we want to do something
 * [process.md](docs/process.md) - the initial version of the process
-* [template.md](docs/template.md) - the RFC template
+* [template.md](docs/template.md) - the PPC template
 * [future.md](docs/future.md) - how we see the process evolving
 * [others.md](docs/others.md) - what others do (or did), and what we can learn from them
 -->
 
-* [motivation.md](https://github.com/Perl/RFCs/blob/main/docs/motivation.md) - 何がしたいのか
-* [process.md](https://github.com/Perl/RFCs/blob/main/docs/process.md) - このプロセスの初期バージョン
-* [template.md](https://github.com/Perl/RFCs/blob/main/docs/template.md) - このRFCのテンプレート
-* [future.md](https://github.com/Perl/RFCs/blob/main/docs/future.md) - このプロセスの今後のイメージ
-* [others.md](https://github.com/Perl/RFCs/blob/main/docs/others.md) - what others do (or did), and what we can learn from them
+* [motivation.md](https://github.com/Perl/PPCs/blob/main/docs/motivation.md) - 何がしたいのか
+* [process.md](https://github.com/Perl/PPCs/blob/main/docs/process.md) - このプロセスの初期バージョン
+* [template.md](https://github.com/Perl/PPCs/blob/main/docs/template.md) - このPPCのテンプレート
+* [future.md](https://github.com/Perl/PPCs/blob/main/docs/future.md) - このプロセスの今後のイメージ
+* [others.md](https://github.com/Perl/PPCs/blob/main/docs/others.md) - what others do (or did), and what we can learn from them
 
 <!-- original
 ## The Tracker
@@ -90,10 +91,10 @@ These files describe the process we are trialling
 ## トラッカー
 
 <!-- original
-The status of proposals is tracked in "[the RFC
+The status of proposals is tracked in "[the PPC
 Tracker](https://docs.google.com/spreadsheets/d/1hVOS7ePuLbVkYcf5S-e_eAodj4izm9Cj7AVs25HvngI)",
 a Google Sheets spreadsheet.  Keep up to date there!
 -->
 
-提案のステータスは、次のスプレッドシートで追跡できます。[the RFC
+提案のステータスは、次のスプレッドシートで追跡できます。[the PPC
 Tracker](https://docs.google.com/spreadsheets/d/1hVOS7ePuLbVkYcf5S-e_eAodj4izm9Cj7AVs25HvngI) ここで最新の情報を入手しましょう！
