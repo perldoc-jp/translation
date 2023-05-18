@@ -1,6 +1,16 @@
+# Perl/PPCs/ppcs/ppc0016-indexed-builtin の翻訳
+
+この文書は、[Perl/PPCs/ppcs/ppc0016-indexed-builtin](https://github.com/Perl/PPCs/blob/main/ppcs/ppc0016-indexed-builtin.md)を翻訳したものです。
+
+原題は「A built-in for getting index-and-value pairs from a list」です。
+
 # A built-in for getting index-and-value pairs from a list
 
+（リストからインデックスと値のペアを取得するビルトイン関数）
+
 ## Preamble
+
+訳注: こちらは、原文の情報です。
 
     Author:  Ricardo Signes <rjbs@semiotic.systems>
     Sponsor:
@@ -9,20 +19,26 @@
 
 ## Abstract
 
+<!-- original
 This PPC proposes `indexed`, a new builtin for interleaving a list of values
 with their index in that list.  Among other things, this makes key/value
 iteration on arrays easy.
+-->
 
 ## Motivation
 
+<!-- original
 With v5.36.0 poised to add n-at-a-time foreach, easily getting a list of
 index/value pairs from an array makes iteration over the pairs also becomes
 easy.
+-->
 
 ## Rationale
 
+<!-- original
 If we start with the specific case of iterating over the indexes and values of
 an array using two-target foreach, we might write this:
+-->
 
 ```perl
 for my ($i, $value) (%array[ keys @array ]) {
@@ -30,8 +46,10 @@ for my ($i, $value) (%array[ keys @array ]) {
 }
 ```
 
+<!-- original
 This is tolerable, but a bit verbose.  If we bury our target array deep in a
 structure, we get this:
+-->
 
 ```perl
 for my ($i, $value) ($alpha->{beta}->[0]->%[ keys $alpha->{beta}->[0]->@* ]) {
@@ -39,9 +57,11 @@ for my ($i, $value) ($alpha->{beta}->[0]->%[ keys $alpha->{beta}->[0]->@* ]) {
 }
 ```
 
+<!-- original
 This is pretty bad.
 
 With `indexed`, we write this:
+-->
 
 ```perl
 for my ($i, $value) (indexed $alpha->{beta}->[0]->@*) {
@@ -49,43 +69,54 @@ for my ($i, $value) (indexed $alpha->{beta}->[0]->@*) {
 }
 ```
 
+<!-- original
 This is probably about as simple as this can get without some significant new
 addition to the language.
+-->
 
 ## Specification
 
     indexed LIST
 
+<!-- original
 `indexed` takes a list of arguments.
 
 In scalar context, `indexed` evalutes to the number of entries in its argument,
 just like `keys` or `values`.  This is useless, and issues a warning in the new
 "scalar" category:
+-->
 
     Useless use of indexed in scalar context
 
+<!-- original
 In void context, the `Useless use of %s in void context` warning is issued.
 
 In list context, `indexed LIST` evalutes to a list twice the size of the list,
 meshing the values with a list of integers starting from zero.  All values are
 copies, unlike `values ARRAY`.  (If your LIST was actually an array, you can
 use the index to modify the array that way!)
+-->
 
 ## Backwards Compatibility
 
+<!-- original
 There should be no significant backwards compatibility concerns.  `indexed`
 will be imported only when requested.  Static analysis tools may need to be
 updated.
 
 A polyfill for indexed can be provided for older perls, but may not be as
 optimizable.
+-->
 
 ## Security Implications
 
+<!-- original
 Nothing specific predicted.
+-->
 
 ## Examples
 
+<!-- original
 (See the examples under **Rationale**.)
 
 I expect that docs for `keys` and `values` will be updated to reference
@@ -95,6 +126,7 @@ and possibly pair slices.
 When n-at-a-time foreach is no longer experimental, we should refer to the
 combination of `for my (...) (...)` with `indexed` as forming an alternative to
 `each` in the documentation for `each`.
+-->
 
 ## Prototype Implementation
 
@@ -102,15 +134,19 @@ None.
 
 ## Future Scope
 
+<!-- original
 I believe this will be complete as is.
+-->
 
 ## Rejected Ideas
 
+<!-- original
 This proposal replaces one for `kv` which could be called on hash or array
 literals to act like a combination of `keys` and `values`.
 
 That proposal replaced one for a slice syntax that evaluated to a slice that
 omitted nothing.
+-->
 
 ## Open Issues
 
