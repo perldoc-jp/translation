@@ -156,6 +156,12 @@ Nothing specific predicted.
 
 （**Rationale** にある例を見てください。）
 
+`keys` と `values` のドキュメントにも `indexed` を参照するように更新されることを
+期待します。また、`for` のドキュメントにもノートを追加します。
+
+n-at-a-time foreach が実験段階でなくなるとき、`each` のドキュメントで
+`indexed` による `for my (...) (...)` を新しい `each` として言及するべきです。
+
 <!-- original
 (See the examples under **Rationale**.)
 
@@ -174,11 +180,17 @@ None.
 
 ## Future Scope
 
+予定通り完了
+
 <!-- original
 I believe this will be complete as is.
 -->
 
 ## Rejected Ideas
+
+ハッシュやアレイリテラルで `keys` と `values` を組み合わせて呼ぶような `kv` の置き換え。
+
+何も省略しないスライス文の置き換え。
 
 <!-- original
 This proposal replaces one for `kv` which could be called on hash or array
