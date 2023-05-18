@@ -1,6 +1,6 @@
-# Perl/RFCs/rfcs/rfc0009 Namespace for Builtin Functions の翻訳
+# Perl/PPCs/ppcs/ppc0009 Namespace for Builtin Functions の翻訳
 
-この文書は、[Perl/RFCs/rfcs/rfc0009](https://github.com/Perl/RFCs/blob/main/rfcs/rfc0009.md)を翻訳したものです。
+この文書は、[Perl/PPCs/ppcs/ppc0009-builtin-namespace](https://github.com/Perl/PPCs/blob/main/ppcs/ppc0009-builtin-namespace.md)を翻訳したものです。
 
 原題は「Namespace for Builtin Functions」です。
 
@@ -60,11 +60,11 @@ or
     say "The reference type of ref is ", builtin::reftype($ref);
 
 
-**Note:** この提案の主な関心ごとは、これらの関数を提供する全体的な**仕組み**です。提供されるべき全ての関数の詳細な一覧の提案はしません。まずは、アイデア全体を試すために、いくつかの有力な候補の関数から始めます。安定が確かめられれば、ケースバイケースで関数の追加を検討します。RFCのプロセスを利用するかどうかは、ケースによります。いずれにせよ、言語が進化するにつれ、この関数の一覧が継続的にメンテナンスされ、リリースごとに関数が追加されることを期待しています。
+**Note:** この提案の主な関心ごとは、これらの関数を提供する全体的な**仕組み**です。提供されるべき全ての関数の詳細な一覧の提案はしません。まずは、アイデア全体を試すために、いくつかの有力な候補の関数から始めます。安定が確かめられれば、ケースバイケースで関数の追加を検討します。PPCのプロセスを利用するかどうかは、ケースによります。いずれにせよ、言語が進化するにつれ、この関数の一覧が継続的にメンテナンスされ、リリースごとに関数が追加されることを期待しています。
 
 
 <!-- original
-**Note:** This proposal largely concerns itself with the overal *mechanism* used to provide these functions, and expressly does not go into a full detailed list of individual proposed functions that ought to be provided. A short list is given containing a few likely candidates to start with, in order to experiment with the overall idea. Once found stable, it is expected that more functions can be added on a case-by-case basis; perhaps by using the RFC process or not, as individual cases require. In any case, it is anticipated that this list would be maintained on an ongoing basis as the language continues to evolve, with more functions being added at every release.
+**Note:** This proposal largely concerns itself with the overal *mechanism* used to provide these functions, and expressly does not go into a full detailed list of individual proposed functions that ought to be provided. A short list is given containing a few likely candidates to start with, in order to experiment with the overall idea. Once found stable, it is expected that more functions can be added on a case-by-case basis; perhaps by using the PPC process or not, as individual cases require. In any case, it is anticipated that this list would be maintained on an ongoing basis as the language continues to evolve, with more functions being added at every release.
 -->
 
 ## Rationale
@@ -264,10 +264,10 @@ As this proposal does not go into a full list of what specific functions might b
 * Some of the `POSIX` functions that act abstractly as in-memory data utilities, such as `ceil` and `floor`. I would not recommend adding the bulk of the operating system interaction functions from POSIX.
 -->
 
-* 新しい名前付き関数を提案するような他のRFCやPre-RFCの議論は、このモジュールの良い候補になると思います。このRFCを参照しながら、提案のメリットを検討できます。この文書を書いた時点では、コアサポートのboolean型(RFC 0008)や新たなモジュールローディング関数(RFC 0006)が候補になりそうです。
+* 新しい名前付き関数を提案するような他のPPCやPre-PPCの議論は、このモジュールの良い候補になると思います。このPPCを参照しながら、提案のメリットを検討できます。この文書を書いた時点では、コアサポートのboolean型(PPC 0008)や新たなモジュールローディング関数(PPC 0006)が候補になりそうです。
 
 <!-- original
-* There are other RFCs or Pre-RFC discussions that suggest adding new named functions that would be good candidates for this module. They can be considered on their own merit, by reference to this RFC. At time of writing this may include new functions to handle core-supported boolean types (RFC 0008) or the new module-loading function (RFC 0006).
+* There are other PPCs or Pre-PPC discussions that suggest adding new named functions that would be good candidates for this module. They can be considered on their own merit, by reference to this PPC. At time of writing this may include new functions to handle core-supported boolean types (PPC 0008) or the new module-loading function (PPC 0006).
 -->
 
 * 関数の安定したセットが定まったら、`feature.pm`と同様にバージョン番号つきのバンドルを検討してください。
@@ -356,16 +356,16 @@ This does initially seem attractive, until one considers the possibility that a 
 
 ### Polyfill for Unavailable Semantics
 
-新しいperlにどのように組み込み関数を提供するかという問題とは直接関係ありませんが、古いperl向けのポリフィルがデュアルライフのCPANモジュールとして提供されいて、もし古いperlが提供された関数のセマンティックをサポートできないとき、どうすべきかという問題が出てきます。現在の提案のように`Scalar::Util`のような既存のコードからコピーしてくる場合は、この問題を引き起こしませんが、追加されるいくつかのRFCを検討した場合、より複雑なエッジケースに遭遇します。
+新しいperlにどのように組み込み関数を提供するかという問題とは直接関係ありませんが、古いperl向けのポリフィルがデュアルライフのCPANモジュールとして提供されいて、もし古いperlが提供された関数のセマンティックをサポートできないとき、どうすべきかという問題が出てきます。現在の提案のように`Scalar::Util`のような既存のコードからコピーしてくる場合は、この問題を引き起こしませんが、追加されるいくつかのPPCを検討した場合、より複雑なエッジケースに遭遇します。
 
 <!-- original
-While not directly related to the question of how to provide builtin functions to new perls, by offering to provide a dual-life module on CPAN as a polyfill for older perl releases, the question arises on what to do if older perls cannot support the semantics of a provided function. The current suggestion of copying existing functions out of places like `Scalar::Util` does not cause this problem, but when we consider some of the additional RFCs we run into some more complex edge-cases.
+While not directly related to the question of how to provide builtin functions to new perls, by offering to provide a dual-life module on CPAN as a polyfill for older perl releases, the question arises on what to do if older perls cannot support the semantics of a provided function. The current suggestion of copying existing functions out of places like `Scalar::Util` does not cause this problem, but when we consider some of the additional PPCs we run into some more complex edge-cases.
 -->
 
-例えば、RFC 0008では、`true`や`false`といった言語レベルの真偽値を返す新たな関数の追加と、`isbool`という与えられた値が真偽値であるか判定する関数を提案しています。古いperlに対して、最初の2つの関数を提供することは簡単ですが、後者はポリフィルすることはできません。なぜなら、古いperlでは、"これが真偽値か？"という問いに意味がないからです。こういった状況を処理する方法はいくつかあります。
+例えば、PPC 0008では、`true`や`false`といった言語レベルの真偽値を返す新たな関数の追加と、`isbool`という与えられた値が真偽値であるか判定する関数を提案しています。古いperlに対して、最初の2つの関数を提供することは簡単ですが、後者はポリフィルすることはできません。なぜなら、古いperlでは、"これが真偽値か？"という問いに意味がないからです。こういった状況を処理する方法はいくつかあります。
 
 <!-- original
-For example, RFC 0008 proposes adding new functions `true` and `false` to provide real language-level boolean values, and an `isbool` predicate function to enquire whether a given value has boolean intention. The first two can be easily provided on older perls, but polyfilling this latter function is not possible, because the question of "does this value have boolean intention?" is not a meaningful question to ask on such perls. There are a number of possible ways to handle this situation:
+For example, PPC 0008 proposes adding new functions `true` and `false` to provide real language-level boolean values, and an `isbool` predicate function to enquire whether a given value has boolean intention. The first two can be easily provided on older perls, but polyfilling this latter function is not possible, because the question of "does this value have boolean intention?" is not a meaningful question to ask on such perls. There are a number of possible ways to handle this situation:
 -->
 
 * 1. シンボルのインポートを拒否する。 例えば、`use builtin 'isbool'`は、コンパイル時に失敗する
@@ -386,10 +386,10 @@ For example, RFC 0008 proposes adding new functions `true` and `false` to provid
 3. Give a meaningful but inaccurate answer - `isbool $x` would always return false, as the concept of "boolean intention" does not exist here
 -->
 
-それぞれ正しい振る舞いだと主張できます。このRFCが、この問いに直接回答する必要はありませんが、少なくとも追加されるポリフィル関数はこういった問題が認められており、全てのポリフィル関数はこの問題に関して可能な限り一貫した振る舞いになることが望まれるでしょう。
+それぞれ正しい振る舞いだと主張できます。このPPCが、この問いに直接回答する必要はありませんが、少なくとも追加されるポリフィル関数はこういった問題が認められており、全てのポリフィル関数はこの問題に関して可能な限り一貫した振る舞いになることが望まれるでしょう。
 
 <!-- original
-Each of these could be argued as the correct behaviour. While it is not directly a question this RFC needs to answer, it is at least acknowledged that some added polyfill functions would have this question, and it would be encouraged that all polyfilled functions should attempt to act as consistently as reasonably possible in this regard.
+Each of these could be argued as the correct behaviour. While it is not directly a question this PPC needs to answer, it is at least acknowledged that some added polyfill functions would have this question, and it would be encouraged that all polyfilled functions should attempt to act as consistently as reasonably possible in this regard.
 -->
 
 ## Copyright
