@@ -19,6 +19,9 @@
 
 ## Abstract
 
+この PPC は、不連続なリストの値とそのインデックスのための新しいビルトイン `indexed` を
+提案します。これは キー/バリュー操作を簡単にします。
+
 <!-- original
 This PPC proposes `indexed`, a new builtin for interleaving a list of values
 with their index in that list.  Among other things, this makes key/value
@@ -27,6 +30,9 @@ iteration on arrays easy.
 
 ## Motivation
 
+v5.36.0で n-at-a-time foreach が加わりました。簡単にリストのインデックス/バリューの
+ペアを取得できるようになり、ペアでイテレーションすることも簡単になりました。
+
 <!-- original
 With v5.36.0 poised to add n-at-a-time foreach, easily getting a list of
 index/value pairs from an array makes iteration over the pairs also becomes
@@ -34,6 +40,8 @@ easy.
 -->
 
 ## Rationale
+
+もし、インデックスとバリューをイテレーションする場面ではこう書きます:
 
 <!-- original
 If we start with the specific case of iterating over the indexes and values of
@@ -46,6 +54,8 @@ for my ($i, $value) (%array[ keys @array ]) {
 }
 ```
 
+これは悪くありませんが、ちょっと冗長です。もし対象の array が構造上深いとこうします:
+
 <!-- original
 This is tolerable, but a bit verbose.  If we bury our target array deep in a
 structure, we get this:
@@ -56,6 +66,10 @@ for my ($i, $value) ($alpha->{beta}->[0]->%[ keys $alpha->{beta}->[0]->@* ]) {
   say "$i == $value";
 }
 ```
+
+これはよくないですね。
+
+`indexed` があればこう書きます。
 
 <!-- original
 This is pretty bad.
@@ -69,6 +83,8 @@ for my ($i, $value) (indexed $alpha->{beta}->[0]->@*) {
 }
 ```
 
+これはたぶんたくさんのものを追加しなくてもできるほど簡単かもしれない。
+
 <!-- original
 This is probably about as simple as this can get without some significant new
 addition to the language.
@@ -77,6 +93,11 @@ addition to the language.
 ## Specification
 
     indexed LIST
+
+`indexed` はリストを引数にします。
+
+スカラーコンテキストでは `indexed` は引数のリストのエントリー数を返します。`keys` や `values` と
+似ています。これはあたらしい "scalar" カテゴリーで warning されません。
 
 <!-- original
 `indexed` takes a list of arguments.
@@ -87,6 +108,16 @@ just like `keys` or `values`.  This is useless, and issues a warning in the new
 -->
 
     Useless use of indexed in scalar context
+
+無効コンテキストでは、`Useless use of %s in void context` というワーニングが
+出ます。
+
+リストコンテキストでは、`indexed LIST` は2倍の長さのリストとして、ゼロからはじまる
+整数値と合わせて評価されます。全ての値はコピーです。`values ARRAY` と違います。
+(もし LISTが確かに array なら、arrayを変更するためにこのインデックスが使えます！)
+
+（翻訳注: `values ARRAY` はコピーではなく実体が返るので、LISTの値を変更するなら
+`values ARRAY` で取り出した値を変更すれば良いということ。`indexed LIST` はコピーが返る）
 
 <!-- original
 In void context, the `Useless use of %s in void context` warning is issued.
@@ -99,6 +130,11 @@ use the index to modify the array that way!)
 
 ## Backwards Compatibility
 
+後方互換性に関してこれといった懸念はありません。`indexed` はリクエストされたときのみ
+インポートされます。静的解析ツールは更新が必要になります。
+
+古い Perl で indexed を使えるようにする機能は提供可能ですが、最適ではないでしょう。
+
 <!-- original
 There should be no significant backwards compatibility concerns.  `indexed`
 will be imported only when requested.  Static analysis tools may need to be
@@ -110,11 +146,15 @@ optimizable.
 
 ## Security Implications
 
+特になし
+
 <!-- original
 Nothing specific predicted.
 -->
 
 ## Examples
+
+（**Rationale** にある例を見てください。）
 
 <!-- original
 (See the examples under **Rationale**.)
