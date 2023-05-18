@@ -1,6 +1,6 @@
-# Perl/RFCs/rfcs/rfc0001 N-at-a-time with for　の翻訳
+# Perl/PPCs/ppcs/ppc0001 N-at-a-time with for　の翻訳
 
-この文書は、[Perl/RFCs/rfcs/rfc0001](https://github.com/Perl/RFCs/blob/main/rfcs/rfc0001.md)を翻訳したものです。
+この文書は、[Perl/PPCs/ppcs/ppc0001-n-at-a-time-for](https://github.com/Perl/PPCs/blob/main/ppcs/ppc0001-n-at-a-time-for.md)を翻訳したものです。
 
 原題は、「Multiple-alias syntax for foreach」です
 

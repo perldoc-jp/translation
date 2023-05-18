@@ -1,6 +1,6 @@
-# Perl/RFCs/rfcs/rfc0011 Command-line flag for slurping の翻訳
+# Perl/PPCs/ppcs/ppc0011 Command-line flag for slurping の翻訳
 
-この文書は、[Perl/RFCs/rfcs/rfc0011](https://github.com/Perl/RFCs/blob/main/rfcs/rfc0011.md)を翻訳したものです。
+この文書は、[Perl/PPCs/ppcs/ppc0011-slurp-argument](https://github.com/Perl/PPCs/blob/main/ppcs/ppc0011-slurp-argument.md)を翻訳したものです。
 
 原題は「Command-line flag for slurping」です。
 
@@ -114,14 +114,14 @@ Hopefully none.
 
 （採用しなかった案）
 
-- `--slurp` という長いフラグはPerlがいまはサポートせず、この RFC の範囲外です。
+- `--slurp` という長いフラグはPerlがいまはサポートせず、この PPC の範囲外です。
 
 - `-R`, `-o` という `-g` より良さそうな別の文字も採用しませんでした。
   残念ながら、もっとも自然な選択だと思われる `-s` は[すでに使われています](https://perldoc.perl.org/5.34.0/perlrun#-s)。
 
 <!-- original
 - Long flag, e.g. `--slurp`. Perl currently doesn't support long flags and
-  adding them would be beyond the scope of this RFC.
+  adding them would be beyond the scope of this PPC.
 
 - Alternative spellings of the flag, e.g. `-R`, `-o`. The author believes none
   of them are better or worse than `-g`. Unfortunately, the most natural choice,

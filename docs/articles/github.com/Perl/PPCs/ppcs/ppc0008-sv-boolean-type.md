@@ -1,6 +1,6 @@
-# Perl/RFCs/rfcs/rfc0008  Stable SV Boolean Typeの翻訳
+# Perl/PPCs/ppcs/ppc0008  Stable SV Boolean Typeの翻訳
 
-この文書は、[Perl/RFCs/rfcs/rfc0008](https://github.com/Perl/RFCs/blob/main/rfcs/rfc0008.md)を翻訳したものです。
+この文書は、[Perl/PPCs/ppcs/ppc0008-sv-boolean-type](https://github.com/Perl/PPCs/blob/main/ppcs/ppc0008-sv-boolean-type.md)を翻訳したものです。
 
 原題は「Stable SV Boolean Type」です。
 
@@ -30,11 +30,11 @@ Add to regular (defined and non-referential) scalars the ability to track whethe
 
 言語の相互運用性の問題から文字列や数値などの型データの区別して表現することが
 必要になる場合がある。Perlの他の場所でも、この区別を追加する試みがなされています。
-このRFCでは trueやfalseと言った真偽値の扱い方を表現することを検討する。
+このPPCでは trueやfalseと言った真偽値の扱い方を表現することを検討する。
 
 
 <!-- original
-Language interoperability concerns sometimes lead to situations where it is necessary to represent typed data - such as strings or numbers - in a way that can be reliably distinguished. Elsewhere in Perl there are attempts to add this distinction. This RFC attempts to address how to handle values of a boolean type; values that represent a simple true-or-false nature.
+Language interoperability concerns sometimes lead to situations where it is necessary to represent typed data - such as strings or numbers - in a way that can be reliably distinguished. Elsewhere in Perl there are attempts to add this distinction. This PPC attempts to address how to handle values of a boolean type; values that represent a simple true-or-false nature.
 -->
 
 例えばJSONやMsgPackなどの一般に使用されるシリアル化形式は、Perlでも生成やパースが可能です。
@@ -161,10 +161,10 @@ my $sv = 4 > 5;  $svはSvIsBOOLを持っている
 
 これらの値を明示的に作成するために、 `true` と `false` の2つの新しいゼロ個性関数を提供することは
 有用であると考えられるでしょう。( 少なくとも同等の `!!1` や `!!0` よりも少しは意図が
-明らかです ) これらは `builtin` モジュール (RFC 0009) から要求することができます。
+明らかです ) これらは `builtin` モジュール (PPC 0009) から要求することができます。
 
 <!-- original
-It may be considered useful to provide two new zero-arity functions, `true` and `false`, to explicitly create these values (which are at least a little more obvious in intent than the equivalent `!!1` and `!!0`). These can be requested from the `builtin` module (RFC 0009):
+It may be considered useful to provide two new zero-arity functions, `true` and `false`, to explicitly create these values (which are at least a little more obvious in intent than the equivalent `!!1` and `!!0`). These can be requested from the `builtin` module (PPC 0009):
 -->
 
 ```perl
@@ -221,10 +221,10 @@ I accept that this is the weakest part of this suggestion so far, and welcome co
 There are not expected to be any backwards compatiblity problems with this proposal. At the interpreter level, extra information is being added to certain SV values, without changing the meaning of any existing information currently stored. Code that is unaware of the new semantics will continue to see existing values unaltered.
 -->
 
-同様にPerlの構文レベルでも、新たに追加される機能は`builtin`名前空間の新関数だけです。（RFC 0009）。
+同様にPerlの構文レベルでも、新たに追加される機能は`builtin`名前空間の新関数だけです。（PPC 0009）。
 
 <!-- original
-Likewise at the Perl syntax level, the only new functionality being added consists of new functions in the `builtin` namespace (RFC 0009).
+Likewise at the Perl syntax level, the only new functionality being added consists of new functions in the `builtin` namespace (PPC 0009).
 -->
 
 ## Security Implications セキュリティの意味合い
