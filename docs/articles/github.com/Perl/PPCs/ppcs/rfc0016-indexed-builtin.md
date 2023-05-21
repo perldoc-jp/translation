@@ -188,7 +188,7 @@ I believe this will be complete as is.
 
 ## Rejected Ideas
 
-ハッシュやアレイリテラルで `keys` と `values` を組み合わせて呼ぶような `kv` の置き換え。
+ハッシュや配列リテラルで `keys` と `values` を組み合わせて呼ぶような `kv` の置き換え。
 
 何も省略しないスライス文の置き換え。
 
