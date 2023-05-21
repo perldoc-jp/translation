@@ -83,7 +83,7 @@ for my ($i, $value) (indexed $alpha->{beta}->[0]->@*) {
 }
 ```
 
-これはたぶんたくさんのものを追加しなくてもできるほど簡単かもしれない。
+これはたぶんたくさんのものをPerlに追加しなくてもできるほど簡単かもしれない。
 
 <!-- original
 This is probably about as simple as this can get without some significant new
