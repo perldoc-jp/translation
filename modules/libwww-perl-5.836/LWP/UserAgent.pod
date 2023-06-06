@@ -1,0 +1,1654 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+LWP::UserAgent - Web user agent class
+
+=end original
+
+LWP::UserAgent - Web ユーザエージェントクラス
+
+=head1 SYNOPSIS
+
+ require LWP::UserAgent;
+ 
+ my $ua = LWP::UserAgent->new;
+ $ua->timeout(10);
+ $ua->env_proxy;
+ 
+ my $response = $ua->get('http://search.cpan.org/');
+ 
+ if ($response->is_success) {
+     print $response->decoded_content;  # or whatever
+ }
+ else {
+     die $response->status_line;
+ }
+
+=head1 DESCRIPTION
+
+=begin original
+
+The C<LWP::UserAgent> is a class implementing a web user agent.
+C<LWP::UserAgent> objects can be used to dispatch web requests.
+
+=end original
+
+C<LWP::UserAgent> は web ユーザエージェントを実装するクラスです。
+C<LWP::UserAgent> オブジェクトは web リクエストを発行(dispatch)するために
+使えます。
+
+=begin original
+
+In normal use the application creates an C<LWP::UserAgent> object, and
+then configures it with values for timeouts, proxies, name, etc. It
+then creates an instance of C<HTTP::Request> for the request that
+needs to be performed. This request is then passed to one of the
+request method the UserAgent, which dispatches it using the relevant
+protocol, and returns a C<HTTP::Response> object.  There are
+convenience methods for sending the most common request types: get(),
+head() and post().  When using these methods then the creation of the
+request object is hidden as shown in the synopsis above.
+
+=end original
+
+通常の使用では、アプリケーションは C<LWP::UserAgent> クラスを作成し、
+タイムアウト、プロキシ、名前などのための値でそれを設定します。
+それから実行される必要があるリクエストのために C<HTTP::Request> の
+インスタンスを作成します。
+そしてこのリクエストは UserAgent のリクエストメソッドの一つに渡されます;
+これは対応するプロトコルを使ってそれを発行し、
+C<HTTP::Response> オブジェクトを返します。
+もっとも一般的なリクエスト型のための便利メソッド get(), head(), post()
+があります。
+これらのメソッドを使うときは、上述の用例の通り、
+リクエストオブジェクトの作成は隠蔽されます。
+
+=begin original
+
+The basic approach of the library is to use HTTP style communication
+for all protocol schemes.  This means that you will construct
+C<HTTP::Request> objects and receive C<HTTP::Response> objects even
+for non-HTTP resources like I<gopher> and I<ftp>.  In order to achieve
+even more similarity to HTTP style communications, gopher menus and
+file directories are converted to HTML documents.
+
+=end original
+
+このライブラリの基本的なアプローチは、HTTP 式通信をすべての
+プロトコルスキームに使うことです。
+つまり I<gopher> や I<ftp> のような非 HTTP リソースでも
+C<HTTP::Request> オブジェクトを構築して
+C<HTTP::Response> オブジェクトを受け取るということです。
+より HTTP 式通信に似せるため、gopher メニューとファイルディレクトリは
+HTML ドキュメントに変換されます。
+
+=head1 CONSTRUCTOR METHODS
+
+(コンストラクタメソッド)
+
+=begin original
+
+The following constructor methods are available:
+
+=end original
+
+以下のコンストラクタメソッドが利用可能です:
+
+=over 4
+
+=item $ua = LWP::UserAgent->new( %options )
+
+=begin original
+
+This method constructs a new C<LWP::UserAgent> object and returns it.
+Key/value pair arguments may be provided to set up the initial state.
+The following options correspond to attribute methods described below:
+
+=end original
+
+このメソッドは新しい C<LWP::UserAgent> オブジェクトを構成して、それを
+返します。
+初期状態を設定するためにキー-値のペアの引数を指定できます。
+以下のオプションは後述する属性メソッドに対応します:
+
+   KEY                     DEFAULT
+   -----------             --------------------
+   agent                   "libwww-perl/#.###"
+   from                    undef
+   conn_cache              undef
+   cookie_jar              undef
+   default_headers         HTTP::Headers->new
+   local_address           undef
+   max_size                undef
+   max_redirect            7
+   parse_head              1
+   protocols_allowed       undef
+   protocols_forbidden     undef
+   requests_redirectable   ['GET', 'HEAD']
+   timeout                 180
+
+=begin original
+
+The following additional options are also accepted: If the
+C<env_proxy> option is passed in with a TRUE value, then proxy
+settings are read from environment variables (see env_proxy() method
+below).  If the C<keep_alive> option is passed in, then a
+C<LWP::ConnCache> is set up (see conn_cache() method below).  The
+C<keep_alive> value is passed on as the C<total_capacity> for the
+connection cache.
+
+=end original
+
+以下の追加のオプションも指定できます:
+C<env_proxy> オプションが真の値とともに渡されると、プロキシセッティングは
+環境変数から読み込まれます(後述する env_proxy() メソッドを参照してください)。
+C<keep_alive> オプションが渡されると、
+C<LWP::ConnCache> が設定されます(後述する conn_cache() メソッドを
+参照してください)。
+C<keep_alive> の値は接続キャッシュのための C<total_capacity> として
+渡されます。
+
+=item $ua->clone
+
+=begin original
+
+Returns a copy of the LWP::UserAgent object.
+
+=end original
+
+LWP::UserAgent オブジェクトのコピーを返します。
+
+=back
+
+=head1 ATTRIBUTES
+
+(属性)
+
+=begin original
+
+The settings of the configuration attributes modify the behaviour of the
+C<LWP::UserAgent> when it dispatches requests.  Most of these can also
+be initialized by options passed to the constructor method.
+
+=end original
+
+設定属性は、C<LWP::UserAgent> がリクエストを発行するときの振る舞いを
+変更します。
+これらのほとんどはコンストラクタメソッドに渡されたオプションによっても
+初期化できます。
+
+=begin original
+
+The following attribute methods are provided.  The attribute value is
+left unchanged if no argument is given.  The return value from each
+method is the old attribute value.
+
+=end original
+
+以下の属性メソッドが提供されています。
+引数がない場合は属性値は変更されません。
+それぞれのメソッドの返り値は古い属性値です。
+
+=over
+
+=item $ua->agent
+
+=item $ua->agent( $product_id )
+
+=begin original
+
+Get/set the product token that is used to identify the user agent on
+the network.  The agent value is sent as the "User-Agent" header in
+the requests.  The default is the string returned by the _agent()
+method (see below).
+
+=end original
+
+ネットワーク上でユーザエージェントを識別するために使われる
+製品トークン(product token)を取得または設定します。
+エージェントの値はリクエストの "User-Agent" ヘッダとして送信されます。
+デフォルトは _agent() メソッド(後述)で返される文字列です。
+
+=begin original
+
+If the $product_id ends with space then the _agent() string is
+appended to it.
+
+=end original
+
+$product_id が空白で終わっている場合は、その値に _agent() の文字列が
+追加されます。
+
+=begin original
+
+The user agent string should be one or more simple product identifiers
+with an optional version number separated by the "/" character.
+Examples are:
+
+=end original
+
+ユーザエージェント文字列は、オプションで "/" 文字で
+区切られたバージョン番号がついた、一つもしくはそれ以上の単純な
+製品トークンです。
+例を以下に示します:
+
+  $ua->agent('Checkbot/0.4 ' . $ua->_agent);
+  $ua->agent('Checkbot/0.4 ');    # same as above
+  $ua->agent('Mozilla/5.0');
+  $ua->agent("");                 # don't identify
+
+=item $ua->_agent
+
+=begin original
+
+Returns the default agent identifier.  This is a string of the form
+"libwww-perl/#.###", where "#.###" is substituted with the version number
+of this library.
+
+=end original
+
+デフォルトのエージェント識別子を返します。
+これは "libwww-perl/#.###" 形式の文字列で、"#.###" はこのライブラリの
+バージョン番号で置き換えられます。
+
+=item $ua->from
+
+=item $ua->from( $email_address )
+
+=begin original
+
+Get/set the e-mail address for the human user who controls
+the requesting user agent.  The address should be machine-usable, as
+defined in RFC 822.  The C<from> value is send as the "From" header in
+the requests.  Example:
+
+=end original
+
+リクエストしているユーザエージェントを制御している人間であるユーザの
+e-mail アドレスを取得または設定します。
+アドレスは RFC で定義されているように、機械で利用できなければなりません。
+C<from> の値はリクエストでの "From" ヘッダとして送信されます。
+例:
+
+  $ua->from('gaas@cpan.org');
+
+=begin original
+
+The default is to not send a "From" header.  See the default_headers()
+method for the more general interface that allow any header to be defaulted.
+
+=end original
+
+デフォルトでは、"From" ヘッダを送信しません。
+任意のヘッダをデフォルトで指定できる、より一般的なインターフェースについては
+default_headers() メソッドを参照してください。
+
+=item $ua->cookie_jar
+
+=item $ua->cookie_jar( $cookie_jar_obj )
+
+=begin original
+
+Get/set the cookie jar object to use.  The only requirement is that
+the cookie jar object must implement the extract_cookies($request) and
+add_cookie_header($response) methods.  These methods will then be
+invoked by the user agent as requests are sent and responses are
+received.  Normally this will be a C<HTTP::Cookies> object or some
+subclass.
+
+=end original
+
+使用するクッキー瓶(cookie jar)オブジェクトを取得または設定します。
+唯一の必要条件は、クッキー瓶オブジェクトは
+extract_cookies($request) メソッドと add_cookie_header($response) メソッドを
+実装している必要があると言うことです。
+これらのメソッドは、リクエストが送信されるときとレスポンスが受信されたときに
+ユーザエージェントによって起動されます。
+通常これは C<HTTP::Cookies> オブジェクトかそのサブクラスです。
+
+=begin original
+
+The default is to have no cookie_jar, i.e. never automatically add
+"Cookie" headers to the requests.
+
+=end original
+
+デフォルトではクッキー瓶を使いません;
+つまり自動的には "Cookie" ヘッダをリクエストに追加しません。
+
+=begin original
+
+Shortcut: If a reference to a plain hash is passed in as the
+$cookie_jar_object, then it is replaced with an instance of
+C<HTTP::Cookies> that is initialized based on the hash.  This form also
+automatically loads the C<HTTP::Cookies> module.  It means that:
+
+=end original
+
+短縮形: もし単純なハッシュへのリファレンスが
+$cookie_jar_object として渡されると、このハッシュを基にして初期化された
+C<HTTP::Cookies> のインスタンスで置き換えられます。
+この形式はまた、自動的に C<HTTP::Cookies> モジュールを読み込みます。
+つまり、以下のようにすると:
+
+  $ua->cookie_jar({ file => "$ENV{HOME}/.cookies.txt" });
+
+=begin original
+
+is really just a shortcut for:
+
+=end original
+
+これは実際には以下の省略形です:
+
+  require HTTP::Cookies;
+  $ua->cookie_jar(HTTP::Cookies->new(file => "$ENV{HOME}/.cookies.txt"));
+
+=item $ua->default_headers
+
+=item $ua->default_headers( $headers_obj )
+
+=begin original
+
+Get/set the headers object that will provide default header values for
+any requests sent.  By default this will be an empty C<HTTP::Headers>
+object.
+
+=end original
+
+任意のレスポンスが送信されるときのデフォルトのヘッダ値を提供する
+ヘッダオブジェクトを取得または設定します。
+デフォルトではこれは空の C<HTTP::Headers> オブジェクトです。
+
+=item $ua->default_header( $field )
+
+=item $ua->default_header( $field => $value )
+
+=begin original
+
+This is just a short-cut for $ua->default_headers->header( $field =>
+$value ). Example:
+
+=end original
+
+これは単に $ua->default_headers->header( $field => $value ) の
+短縮形です。
+例:
+
+  $ua->default_header('Accept-Encoding' => scalar HTTP::Message::decodable());
+  $ua->default_header('Accept-Language' => "no, en");
+
+=item $ua->conn_cache
+
+=item $ua->conn_cache( $cache_obj )
+
+=begin original
+
+Get/set the C<LWP::ConnCache> object to use.  See L<LWP::ConnCache>
+for details.
+
+=end original
+
+使用する C<LWP::ConnCache> オブジェクトを取得または設定します。
+詳しくは L<LWP::ConnCache> を参照してください。
+
+=item $ua->credentials( $netloc, $realm )
+
+=item $ua->credentials( $netloc, $realm, $uname, $pass )
+
+=begin original
+
+Get/set the user name and password to be used for a realm.
+
+=end original
+
+あるレルムのために使われるユーザ名、パスワードを取得/設定します。
+
+=begin original
+
+The $netloc is a string of the form "<host>:<port>".  The username and
+password will only be passed to this server.  Example:
+
+=end original
+
+$netloc は "<host>:<port>" の形式の文字列です。
+ユーザ名とパスワードはこのサーバにのみ渡されます。
+例:
+
+  $ua->credentials("www.example.com:80", "Some Realm", "foo", "secret");
+
+=item $ua->local_address
+
+=item $ua->local_address( $address )
+
+=begin original
+
+Get/set the local interface to bind to for network connections.  The interface
+can be specified as a hostname or an IP address.  This value is passed as the
+C<LocalAddr> argument to L<IO::Socket::INET>.
+
+=end original
+
+ネットワーク接続のために bind するローカルインターフェースを取得/設定します。
+インターフェースはホスト名または IP アドレスとして指定できます。
+この値は L<IO::Socket::INET> に C<LocalAddr> 引数として渡されます。
+
+=item $ua->max_size
+
+=item $ua->max_size( $bytes )
+
+=begin original
+
+Get/set the size limit for response content.  The default is C<undef>,
+which means that there is no limit.  If the returned response content
+is only partial, because the size limit was exceeded, then a
+"Client-Aborted" header will be added to the response.  The content
+might end up longer than C<max_size> as we abort once appending a
+chunk of data makes the length exceed the limit.  The "Content-Length"
+header, if present, will indicate the length of the full content and
+will normally not be the same as C<< length($res->content) >>.
+
+=end original
+
+レスポンスの内容(content)の大きさの制限を取得または設定します。
+デフォルトは C<undef> で、これは制限なしを意味します。
+長さの制限を越えているために、戻されたレスポンスの内容が
+一部だけであれば、"Client-Aborted" ヘッダがレスポンスに追加されます。
+内容の長さが制限を超えることになるデータの固まりに追加するのを
+中断するので、内容の長さは結局 C<max_size> を
+超えることになることがあります。
+もし "Content-Length" ヘッダがあれば、内容全体の長さを示していて、
+これは通常は C<< length($res->content) >> と同じではありません。
+
+=item $ua->max_redirect
+
+=item $ua->max_redirect( $n )
+
+=begin original
+
+This reads or sets the object's limit of how many times it will obey
+redirection responses in a given request cycle.
+
+=end original
+
+これは、1 回のリクエストで従うリダイレクトレスポンスの
+回数の制限を読み込みまたは設定します。
+
+=begin original
+
+By default, the value is 7. This means that if you call request()
+method and the response is a redirect elsewhere which is in turn a
+redirect, and so on seven times, then LWP gives up after that seventh
+request.
+
+=end original
+
+デフォルトでは、この値は 7 です。
+これは、request() を呼び出して、リダイレクトされた先でさらに
+リダイレクトされて、というのを 7 回繰り返すと、LWP は 7 回目の
+リクエストの後に諦めます。
+
+=item $ua->parse_head
+
+=item $ua->parse_head( $boolean )
+
+=begin original
+
+Get/set a value indicating whether we should initialize response
+headers from the E<lt>head> section of HTML documents. The default is
+TRUE.  Do not turn this off, unless you know what you are doing.
+
+=end original
+
+HTML ドキュメントの E<lt>head> セクションからレスポンスヘッダを
+初期化すべきかどうかを示す値を取得または設定します。
+デフォルトは TRUE です。
+何をしているのかわからなければ、これをオフにしないで下さい。
+
+=item $ua->protocols_allowed
+
+=item $ua->protocols_allowed( \@protocols )
+
+=begin original
+
+This reads (or sets) this user agent's list of protocols that the
+request methods will exclusively allow.  The protocol names are case
+insensitive.
+
+=end original
+
+これはこのユーザエージェントが排他的に許可されているプロトコルのリストを
+読み込み(または設定)します。
+プロトコル名は大文字小文字を無視します。
+
+=begin original
+
+For example: C<$ua-E<gt>protocols_allowed( [ 'http', 'https'] );>
+means that this user agent will I<allow only> those protocols,
+and attempts to use this user agent to access URLs with any other
+schemes (like "ftp://...") will result in a 500 error.
+
+=end original
+
+例: C<$ua-E<gt>protocols_allowed( [ 'http', 'https'] );> というのは、
+このユーザエージェントはこれらのプロトコル I<のみ許可されている> ことを
+意味していて、このユーザエージェントが ("ftp://..." のような) その他の
+スキームの URL にアクセスしようとすると 500 エラーとなります。
+
+=begin original
+
+To delete the list, call: C<$ua-E<gt>protocols_allowed(undef)>
+
+=end original
+
+リストを削除するには、以下のように呼び出します: C<$ua-E<gt>protocols_allowed(undef)>
+
+=begin original
+
+By default, an object has neither a C<protocols_allowed> list, nor a
+C<protocols_forbidden> list.
+
+=end original
+
+デフォルトでは、オブジェクトは C<protocols_allowed> リストと
+C<protocols_forbidden> リストのどちらも持ちません。
+
+=begin original
+
+Note that having a C<protocols_allowed> list causes any
+C<protocols_forbidden> list to be ignored.
+
+=end original
+
+C<protocols_allowed> リストがあると C<protocols_forbidden> リストは
+無視されることに注意してください。
+
+=item $ua->protocols_forbidden
+
+=item $ua->protocols_forbidden( \@protocols )
+
+=begin original
+
+This reads (or sets) this user agent's list of protocols that the
+request method will I<not> allow. The protocol names are case
+insensitive.
+
+=end original
+
+これはこのユーザエージェントが I<許可されていない> プロトコルのリストを
+読み込み(または設定)します。
+プロトコル名は大文字小文字を無視します。
+
+=begin original
+
+For example: C<$ua-E<gt>protocols_forbidden( [ 'file', 'mailto'] );>
+means that this user agent will I<not> allow those protocols, and
+attempts to use this user agent to access URLs with those schemes
+will result in a 500 error.
+
+=end original
+
+例: C<$ua-E<gt>protocols_forbidden( [ 'file', 'mailto'] );> は
+このユーザエージェントはこれらのプロトコルを I<許可せず>、
+このユーザエージェントを使ってこれらのスキーマで URL に
+アクセスしようとすると 500 エラーになります。
+
+=begin original
+
+To delete the list, call: C<$ua-E<gt>protocols_forbidden(undef)>
+
+=end original
+
+リストを削除するには、このように呼び出します: C<$ua-E<gt>protocols_forbidden(undef)>
+
+=item $ua->requests_redirectable
+
+=item $ua->requests_redirectable( \@requests )
+
+=begin original
+
+This reads or sets the object's list of request names that
+C<$ua-E<gt>redirect_ok(...)> will allow redirection for.  By
+default, this is C<['GET', 'HEAD']>, as per RFC 2616.  To
+change to include 'POST', consider:
+
+=end original
+
+これは C<$ua-E<gt>redirect_ok(...)> がリダイレクトを許可する
+リクエスト名のリストを読み込みまたは設定します。
+デフォルトでは、これは RFC 2616 に従って C<['GET', 'HEAD']> になっています。
+'POST' を含むようにするには、以下のようにします:
+
+   push @{ $ua->requests_redirectable }, 'POST';
+
+=item $ua->show_progress
+
+=item $ua->show_progress( $boolean )
+
+=begin original
+
+Get/set a value indicating whether a progress bar should be displayed
+on on the terminal as requests are processed. The default is FALSE.
+
+=end original
+
+リクエストの処理時に端末にプログレスバーを表示するかどうかを示す
+値を取得/設定します。
+デフォルトは偽です。
+
+=item $ua->timeout
+
+=item $ua->timeout( $secs )
+
+=begin original
+
+Get/set the timeout value in seconds. The default timeout() value is
+180 seconds, i.e. 3 minutes.
+
+=end original
+
+秒単位のタイムアウト値を取得または設定します。
+デフォルトの timeout() の値は 180 秒、つまり 3 分です。
+
+=begin original
+
+The requests is aborted if no activity on the connection to the server
+is observed for C<timeout> seconds.  This means that the time it takes
+for the complete transaction and the request() method to actually
+return might be longer.
+
+=end original
+
+サーバへの接続において C<timeout> 秒反応がないと、リクエストは中断します。
+つまり、トランザクションが完了して request() メソッドが実際に返るまでの
+時間を意味します。
+
+=back
+
+=head2 Proxy attributes
+
+(プロキシ属性)
+
+=begin original
+
+The following methods set up when requests should be passed via a
+proxy server.
+
+=end original
+
+以下のメソッドはプロキシサーバー経由で渡されるべきリクエストを設定します。
+
+=over
+
+=item $ua->proxy(\@schemes, $proxy_url)
+
+=item $ua->proxy($scheme, $proxy_url)
+
+=begin original
+
+Set/retrieve proxy URL for a scheme:
+
+=end original
+
+あるスキームのためのプロキシ URL を設定または取得します:
+
+ $ua->proxy(['http', 'ftp'], 'http://proxy.sn.no:8001/');
+ $ua->proxy('gopher', 'http://proxy.sn.no:8001/');
+
+=begin original
+
+The first form specifies that the URL is to be used for proxying of
+access methods listed in the list in the first method argument,
+i.e. 'http' and 'ftp'.
+
+=end original
+
+最初の形式はその URL がメソッドの最初に引数のリストに入っている
+アクセスメソッド、つまり 'http' と 'ftp' のプロキシのために
+使われることを指定します。
+
+=begin original
+
+The second form shows a shorthand form for specifying
+proxy URL for a single access scheme.
+
+=end original
+
+2 番目の形式は一つのアクセス機能のためのプロキシ URL を
+指定するための短縮した形式を示しています。
+
+=item $ua->no_proxy( $domain, ... )
+
+=begin original
+
+Do not proxy requests to the given domains.  Calling no_proxy without
+any domains clears the list of domains. Eg:
+
+=end original
+
+与えられたドメインへのリクエストをプロキシしません。
+何もドメインを指定しないで no_proxy を呼ぶと、ドメインのリストを
+クリアします。
+例:
+
+ $ua->no_proxy('localhost', 'example.com');
+
+=item $ua->env_proxy
+
+=begin original
+
+Load proxy settings from *_proxy environment variables.  You might
+specify proxies like this (sh-syntax):
+
+=end original
+
+*_proxy 環境変数からプロキシ設定をロードします。
+以下のように指定できるでしょう(sh での書き方):
+
+  gopher_proxy=http://proxy.my.place/
+  wais_proxy=http://proxy.my.place/
+  no_proxy="localhost,example.com"
+  export gopher_proxy wais_proxy no_proxy
+
+=begin original
+
+csh or tcsh users should use the C<setenv> command to define these
+environment variables.
+
+=end original
+
+csh または tcsh のユーザは、これらの環境変数を定義するために
+C<setenv> コマンドを使わなければなりません。
+
+=begin original
+
+On systems with case insensitive environment variables there exists a
+name clash between the CGI environment variables and the C<HTTP_PROXY>
+environment variable normally picked up by env_proxy().  Because of
+this C<HTTP_PROXY> is not honored for CGI scripts.  The
+C<CGI_HTTP_PROXY> environment variable can be used instead.
+
+=end original
+
+環境変数名に大文字小文字の区別がないシステムでは、
+CGI 環境変数と、通常 env_proxy() によって読み込まれる C<HTTP_PROXY>
+環境変数の間で名前の衝突があります。
+この理由により、C<HTTP_PROXY> は CGI スクリプトのためのものではありません。
+代わりに C<CGI_HTTP_PROXY> 環境変数を使えます。
+
+=back
+
+=head2 Handlers
+
+(ハンドラ)
+
+=begin original
+
+Handlers are code that injected at various phases during the
+processing of requests.  The following methods are provided to manage
+the active handlers:
+
+=end original
+
+ハンドラは、リクエストの処理中の様々なフェーズに注入されるコードです。
+アクティブなハンドラを管理するために次のメソッドが提供されています:
+
+=over
+
+=item $ua->add_handler( $phase => \&cb, %matchspec )
+
+=begin original
+
+Add handler to be invoked in the given processing phase.  For how to
+specify %matchspec see L<HTTP::Config/"Matching">.
+
+=end original
+
+指定された処理フェーズで起動されるハンドラを追加します。
+%matchspec の指定方法については L<HTTP::Config/"Matching"> を
+参照してください。
+
+=begin original
+
+The possible values $phase and the corresponding callback signatures are:
+
+=end original
+
+取り得る $phase の値と、対応するコールバックのシグネチャは:
+
+=over
+
+=item request_preprepare => sub { my($request, $ua, $h) = @_; ... }
+
+=begin original
+
+The handler is called before the C<request_prepare> and other standard
+initialization of of the request.  This can be used to set up headers
+and attributes that the C<request_prepare> handler depends on.  Proxy
+initialization should take place here; but in general don't register
+handlers for this phase.
+
+=end original
+
+ハンドラは、C<request_prepare> とその他のリクエストの標準的な初期化の
+前に呼び出されます。
+これは C<request_prepare> ハンドラが依存するヘッダと属性を
+設定するのに使えます。
+プロキシ初期化はここに置く必要があります;
+しかし一般的にはこのフェーズにハンドルを登録しないでください。
+
+=item request_prepare => sub { my($request, $ua, $h) = @_; ... }
+
+=begin original
+
+The handler is called before the request is sent and can modify the
+request any way it see fit.  This can for instance be used to add
+certain headers to specific requests.
+
+=end original
+
+ハンドラは、リクエストを送信する前に呼び出され、
+適合するならどのような形でもリクエストを変更できます。
+これは例えば特定のリクエストにある種のヘッダを追加するのに使えます。
+
+=begin original
+
+The method can assign a new request object to $_[0] to replace the
+request that is sent fully.
+
+=end original
+
+メソッドは、送られるリクエストを完全に置き換えるために、
+$_[0] に新しいリクエストオブジェクトを代入できます。
+
+=begin original
+
+The return value from the callback is ignored.  If an exceptions is
+raised it will abort the request and make the request method return a
+"400 Bad request" response.
+
+=end original
+
+コールバックからの返り値は無視されます。
+例外が発生すると、リクエストを中止して、
+リクエストメソッドは "400 Bad request" レスポンスを返します。
+
+=item request_send => sub { my($request, $ua, $h) = @_; ... }
+
+=begin original
+
+This handler get a chance of handling requests before it's sent to the
+protocol handlers.  It should return an HTTP::Response object if it
+wishes to terminate the processing; otherwise it should return nothing.
+
+=end original
+
+このハンドラは、プロトコルハンドラに送られる前に
+リクエストを扱う機会を与えます。
+処理を終わらせることを望むなら HTTP::Response オブジェクトを返す
+必要があります; さもなければ何も返さない必要があります。
+
+=begin original
+
+The C<response_header> and C<response_data> handlers will not be
+invoked for this response, but the C<response_done> will be.
+
+=end original
+
+C<response_header> と C<response_data> のハンドラは
+このレスポンスでは起動されませんが、
+C<response_done> は起動されます。
+
+=item response_header => sub { my($response, $ua, $h) = @_; ... }
+
+=begin original
+
+This handler is called right after the response headers have been
+received, but before any content data.  The handler might set up
+handlers for data and might croak to abort the request.
+
+=end original
+
+このハンドラは、レスポンスヘッダを受信した直後、本体データを
+受信する前に呼び出されます。
+ハンドラはデータのためにハンドラを設定したりリクエストを中止するために
+croak したりできます。
+
+=begin original
+
+The handler might set the $response->{default_add_content} value to
+control if any received data should be added to the response object
+directly.  This will initially be false if the $ua->request() method
+was called with a $content_file or $content_cb argument; otherwise true.
+
+=end original
+
+ハンドラは、受信データが直接レスポンスオブジェクトに追加されるかどうかを
+制御するために $response->{default_add_content} の値を設定できます。
+これは、 $content_file または $content_cb 引数付きで $ua->request()
+メソッドが呼び出されたときは偽です; さもなければ真です。
+
+=item response_data => sub { my($response, $ua, $h, $data) = @_; ... }
+
+=begin original
+
+This handlers is called for each chunk of data received for the
+response.  The handler might croak to abort the request.
+
+=end original
+
+このハンドラは、レスポンスとしてデータの塊を受信する毎に呼び出されます。
+このハンドラはリクエストを中止するために croak できます。
+
+=begin original
+
+This handler need to return a TRUE value to be called again for
+subsequent chunks for the same request.
+
+=end original
+
+このハンドラは、同じリクエストの引き続く塊のために再び呼び出されるために、
+真の値を返す必要があります。
+
+=item response_done => sub { my($response, $ua, $h) = @_; ... }
+
+=begin original
+
+The handler is called after the response has been fully received, but
+before any redirect handling is attempted.  The handler can be used to
+extract information or modify the response.
+
+=end original
+
+このハンドルは、レスポンスが完全に受信された後、リダイレクト処理を
+試みる前に呼び出されます。
+ハンドラは、情報を取り出したりレスポンスを修正したりするのに使えます。
+
+=item response_redirect => sub { my($response, $ua, $h) = @_; ... }
+
+=begin original
+
+The handler is called in $ua->request after C<response_done>.  If the
+handler return an HTTP::Request object we'll start over with processing
+this request instead.
+
+=end original
+
+このハンドルは $ua->request で、C<response_done> の後に呼び出されます。
+ハンドラが HTTP::Request オブジェクトを返すと、代わりにこのリクエストを
+処理してやり直します。
+
+=back
+
+=item $ua->remove_handler( undef, %matchspec )
+
+=item $ua->remove_handler( $phase, %matchspec )
+
+=begin original
+
+Remove handlers that match the given %matchspec.  If $phase is not
+provided remove handlers from all phases.
+
+=end original
+
+%matchspec に一致するハンドラを削除します。
+$phase が指定されないと、全てのフェーズからハンドラを削除します。
+
+=begin original
+
+Be careful as calling this function with %matchspec that is not not
+specific enough can remove handlers not owned by you.  It's probably
+better to use the set_my_handler() method instead.
+
+=end original
+
+自分が所有していないハンドラを削除しないのに十分な %matchspec で
+この関数を呼び出すように注意してください。
+おそらく代わりに set_my_handler() メソッドを使った方が良いです。
+
+=begin original
+
+The removed handlers are returned.
+
+=end original
+
+削除されたハンドラが返されます。
+
+=item $ua->set_my_handler( $phase, $cb, %matchspec )
+
+=begin original
+
+Set handlers private to the executing subroutine.  Works by defaulting
+an C<owner> field to the %matchspec that holds the name of the called
+subroutine.  You might pass an explicit C<owner> to override this.
+
+=end original
+
+サブルーチンを実行するのにプライベートなハンドラを設定します。
+C<owner> フィールドに、呼び出したサブルーチン名を保持した %matchspec を
+デフォルトで設定することで動作します。
+これを上書きするために明示的な C<owner> を渡すことができます。
+
+=begin original
+
+If $cb is passed as C<undef>, remove the handler.
+
+=end original
+
+$cb が C<undef> として渡されると、ハンドラを削除します。
+
+=item $ua->get_my_handler( $phase, %matchspec )
+
+=item $ua->get_my_handler( $phase, %matchspec, $init )
+
+=begin original
+
+Will retrieve the matching handler as hash ref.
+
+=end original
+
+一致するハンドラをハッシュリファレンスとして受け取ります。
+
+=begin original
+
+If C<$init> is passed passed as a TRUE value, create and add the
+handler if it's not found.  If $init is a subroutine reference, then
+it's called with the created handler hash as argument.  This sub might
+populate the hash with extra fields; especially the callback.  If
+$init is a hash reference, merge the hashes.
+
+=end original
+
+C<$init> に真の値が渡されると、見つからない場合に
+新しくハンドラを作って追加します。
+$init がサブルーチンリファレンスの場合、
+作成されたハンドラハッシュを引数としてこれが呼び出されます。
+このサブルーチンは、ハッシュに追加のフィールド、特にコールバックを
+追加できます。
+$init がハッシュリファレンスなら、ハッシュをマージします。
+
+=item $ua->handlers( $phase, $request )
+
+=item $ua->handlers( $phase, $response )
+
+=begin original
+
+Returns the handlers that apply to the given request or response at
+the given processing phase.
+
+=end original
+
+指定された処理フェーズで指定されたリクエストまたはレスポンスに
+適用されるハンドラを返します。
+
+=back
+
+=head1 REQUEST METHODS
+
+(リクエストメソッド)
+
+=begin original
+
+The methods described in this section are used to dispatch requests
+via the user agent.  The following request methods are provided:
+
+=end original
+
+この章で記述されているメソッドはユーザエージェント経由でリクエストを
+発行するために使われます。
+以下のリクエストメソッドが提供されています:
+
+=over
+
+=item $ua->get( $url )
+
+=item $ua->get( $url , $field_name => $value, ... )
+
+=begin original
+
+This method will dispatch a C<GET> request on the given $url.  Further
+arguments can be given to initialize the headers of the request. These
+are given as separate name/value pairs.  The return value is a
+response object.  See L<HTTP::Response> for a description of the
+interface it provides.
+
+=end original
+
+このメソッドは、与えられた $url に C<GET> リクエストを発行します。
+リクエストのヘッダを初期化するために追加の引数を与えることもできます。
+これらは別々の名前/値の組で与えられます。
+返り値はレスポンスオブジェクトです。
+これが提供するインターフェースの説明については L<HTTP::Response> を
+参照してください。
+
+=begin original
+
+There will still be a response object returned when LWP can't connect to the
+server specified in the URL or when other failures in protocol handlers occur.
+These internal responses use the standard HTTP status codes, so the responses
+can't be differentiated by testing the response status code alone.  Error
+responses that LWP generates internally will have the "Client-Warning" header
+set to the value "Internal response".  If you need to differentiate these
+internal responses from responses that a remote server actually generates, you
+need to test this header value.
+
+=end original
+
+LWP が URL で指定されたサーバに接続できない場合や、プロトコルハンドラ内で
+その他のエラーが発生した場合でも、レスポンスオブジェクトが返されます。
+これらの内部レスポンスは標準の HTTP ステータスコードを使うので、
+レスポンスステータスコードだけをテストしても、レスポンスを
+区別することはできません。
+LWP が内部で生成したエラーレスポンスは、"Client-Warning" ヘッダに
+"Internal response" という値が設定されます。
+これらの内部レスポンスを実際にリモートサーバが生成したレスポンスと
+区別する必要がある場合は、このヘッダの値をテストする必要があります。
+
+=begin original
+
+Fields names that start with ":" are special.  These will not
+initialize headers of the request but will determine how the response
+content is treated.  The following special field names are recognized:
+
+=end original
+
+":" で始まるフィールド名は特殊です。
+これらはリクエストのヘッダの初期化はせず、レスポンスオブジェクトが
+どのように扱われるかを決定します。
+以下の特殊フィールド名を認識します:
+
+    :content_file   => $filename
+    :content_cb     => \&callback
+    :read_size_hint => $bytes
+
+=begin original
+
+If a $filename is provided with the C<:content_file> option, then the
+response content will be saved here instead of in the response
+object.  If a callback is provided with the C<:content_cb> option then
+this function will be called for each chunk of the response content as
+it is received from the server.  If neither of these options are
+given, then the response content will accumulate in the response
+object itself.  This might not be suitable for very large response
+bodies.  Only one of C<:content_file> or C<:content_cb> can be
+specified.  The content of unsuccessful responses will always
+accumulate in the response object itself, regardless of the
+C<:content_file> or C<:content_cb> options passed in.
+
+=end original
+
+C<:content_file> オプションで $filename が指定されると、レスポンスの内容は
+レスポンスオブジェクトの代わりにこのファイルに保存されます。
+C<:content_cb> オプションでコールバック関数が指定されると、
+レスポンスの内容の塊ををサーバから受信する毎にこの関数が呼び出されます。
+これらのオプションのどちらも指定されなかった場合、レスポンスの内容は
+レスポンスオブジェクト自身に蓄積されます。
+これはレスポンスボディがとても大きい場合には向いていません。
+C<:content_file> と C<:content_cb> のどちらか一つのみが指定できます。
+失敗したレスポンスの内容は、C<:content_file> や C<:content_cb> の
+オプションが指定されているかどうかに関わらず
+常にレスポンスオブジェクト自身に蓄積されます。
+
+=begin original
+
+The C<:read_size_hint> option is passed to the protocol module which
+will try to read data from the server in chunks of this size.  A
+smaller value for the C<:read_size_hint> will result in a higher
+number of callback invocations.
+
+=end original
+
+C<:read_size_hint> オプションは、このサイズの塊でサーバからデータを
+読み込もうとするようにプロトコルモジュールに渡されます。
+C<:read_size_hint> の値を小さくすると、コールバックの起動回数は
+多くなります。
+
+=begin original
+
+The callback function is called with 3 arguments: a chunk of data, a
+reference to the response object, and a reference to the protocol
+object.  The callback can abort the request by invoking die().  The
+exception message will show up as the "X-Died" header field in the
+response returned by the get() function.
+
+=end original
+
+コールバック関数は 3 引数で呼び出されます: データの塊、
+レスポンスオブジェクトへのリファレンス、プロトコルオブジェクトへの
+リファレンス、です。
+コールバックは die() を起動することでリクエストを中断できます。
+例外メッセージは、get() 関数で返されるレスポンスの中の
+"X-Died" ヘッダフィールドで得られます。
+
+=item $ua->head( $url )
+
+=item $ua->head( $url , $field_name => $value, ... )
+
+=begin original
+
+This method will dispatch a C<HEAD> request on the given $url.
+Otherwise it works like the get() method described above.
+
+=end original
+
+このメソッドは、与えられた $url に C<HEAD> リクエストを発行します。
+その他は上述の get() メソッドと同様に動作します。
+
+=item $ua->post( $url, \%form )
+
+=item $ua->post( $url, \@form )
+
+=item $ua->post( $url, \%form, $field_name => $value, ... )
+
+=item $ua->post( $url, $field_name => $value,... Content => \%form )
+
+=item $ua->post( $url, $field_name => $value,... Content => \@form )
+
+=item $ua->post( $url, $field_name => $value,... Content => $content )
+
+=begin original
+
+This method will dispatch a C<POST> request on the given $url, with
+%form or @form providing the key/value pairs for the fill-in form
+content. Additional headers and content options are the same as for
+the get() method.
+
+=end original
+
+このメソッドは、与えられた $url に、フォームの内容として
+%form または @form で与えられるキー/値の組を使って
+C<POST> リクエストを発行します。
+追加のヘッダと内容のオプションは get() メソッドと同じです。
+
+=begin original
+
+This method will use the POST() function from C<HTTP::Request::Common>
+to build the request.  See L<HTTP::Request::Common> for a details on
+how to pass form content and other advanced features.
+
+=end original
+
+このメソッドは、リクエストを構築するために
+C<HTTP::Request::Common> の POST() 関数を使います。
+フォームの内容の渡し方とその他の高度な機能に関する詳細については
+L<HTTP::Request::Common> を参照してください。
+
+=item $ua->mirror( $url, $filename )
+
+=begin original
+
+This method will get the document identified by $url and store it in
+file called $filename.  If the file already exists, then the request
+will contain an "If-Modified-Since" header matching the modification
+time of the file.  If the document on the server has not changed since
+this time, then nothing happens.  If the document has been updated, it
+will be downloaded again.  The modification time of the file will be
+forced to match that of the server.
+
+=end original
+
+このメソッドは $url で識別されるドキュメントを取得し、$filename で
+指定されるファイルに保管します。
+ファイルが既に存在する場合、リクエストにはそのファイルの修正時刻に一致する
+"If-Modified-Since" ヘッダが含まれます。
+ドキュメントが更新されている場合は、再びダウンロードされます。
+ファイルの修正時刻はサーバ上での修正時刻と同じになります。
+
+=begin original
+
+The return value is the the response object.
+
+=end original
+
+返り値はレスポンスオブジェクトです。
+
+=item $ua->request( $request )
+
+=item $ua->request( $request, $content_file )
+
+=item $ua->request( $request, $content_cb )
+
+=item $ua->request( $request, $content_cb, $read_size_hint )
+
+=begin original
+
+This method will dispatch the given $request object.  Normally this
+will be an instance of the C<HTTP::Request> class, but any object with
+a similar interface will do.  The return value is a response object.
+See L<HTTP::Request> and L<HTTP::Response> for a description of the
+interface provided by these classes.
+
+=end original
+
+このメソッドは与えられた $request オブジェクトを発行します。
+通常これは C<HTTP::Request> クラスの実体ですが、似たような
+インターフェースを持つどのようなオブジェクトでも動作します。
+返り値はレスポンスオブジェクトです。
+これらのクラスによって提供されるインターフェースの記述については
+L<HTTP::Request> と L<HTTP::Response> を参照してください。
+
+=begin original
+
+The request() method will process redirects and authentication
+responses transparently.  This means that it may actually send several
+simple requests via the simple_request() method described below.
+
+=end original
+
+request() メソッドはリダイレクトと認証を透過的に処理します。
+これは、実際には後述する simple_request() メソッドを使って単純な
+リクエストを複数回送信するかもしれないことを意味します。
+
+=begin original
+
+The request methods described above; get(), head(), post() and
+mirror(), will all dispatch the request they build via this method.
+They are convenience methods that simply hides the creation of the
+request object for you.
+
+=end original
+
+上述のリクエストメソッド: get(), head(), post(), mirror() は全て
+構築したリクエストをこのメソッド経由で発行します。
+これらは単にリクエストメソッドの作成をあなたから隠すための
+便利メソッドです。
+
+=begin original
+
+The $content_file, $content_cb and $read_size_hint all correspond to
+options described with the get() method above.
+
+=end original
+
+$content_file, $content_cb, $read_size_hint は全て上述の
+get() メソッドで記述したオプションに対応します。
+
+=begin original
+
+You are allowed to use a CODE reference as C<content> in the request
+object passed in.  The C<content> function should return the content
+when called.  The content can be returned in chunks.  The content
+function will be invoked repeatedly until it return an empty string to
+signal that there is no more content.
+
+=end original
+
+リクエストオブジェクトに渡す C<content> としてコードリファレンスも使えます。
+C<content> 関数は、呼び出されたときに内容を返すようにします。
+内容は塊で返すこともできます。
+content 関数は、もう内容がないことを示すために空文字列が返されるまで
+繰り返し起動されます。
+
+=item $ua->simple_request( $request )
+
+=item $ua->simple_request( $request, $content_file )
+
+=item $ua->simple_request( $request, $content_cb )
+
+=item $ua->simple_request( $request, $content_cb, $read_size_hint )
+
+=begin original
+
+This method dispatches a single request and returns the response
+received.  Arguments are the same as for request() described above.
+
+=end original
+
+このメソッドは 1 回のリクエストを発行し、受信したレスポンスを返します。
+引数は上述の request() のものと同じです。
+
+=begin original
+
+The difference from request() is that simple_request() will not try to
+handle redirects or authentication responses.  The request() method
+will in fact invoke this method for each simple request it sends.
+
+=end original
+
+request() との違いは、simple_request() はリダイレクトや認証を
+扱おうとしないことです。
+実際のところ、request() メソッドは、単純なリクエストを送る度に
+このメソッドを起動します。
+
+=item $ua->is_protocol_supported( $scheme )
+
+=begin original
+
+You can use this method to test whether this user agent object supports the
+specified C<scheme>.  (The C<scheme> might be a string (like 'http' or
+'ftp') or it might be an URI object reference.)
+
+=end original
+
+このユーザエージェントが指定された C<scheme> を
+サポートしているかどうかを調べるために使うことができます。
+(C<scheme> には ('http' や 'ftp' のような）文字列や、
+URI オブジェクトリファレンスを指定できます。)
+
+=begin original
+
+Whether a scheme is supported, is determined by the user agent's
+C<protocols_allowed> or C<protocols_forbidden> lists (if any), and by
+the capabilities of LWP.  I.e., this will return TRUE only if LWP
+supports this protocol I<and> it's permitted for this particular
+object.
+
+=end original
+
+あるスキーマが対応しているかどうかは、(もしあれば)ユーザエージェントの
+C<protocols_allowed> と C<protocols_forbidden> のリスト、および
+LWP の能力によって決定されます。
+つまり、このメソッドは LWP がこのプロトコルに対応していて、I<かつ> それが
+このオブジェクトに対して許可されている場合にのみ TRUE を返します。
+
+=back
+
+=head2 Callback methods
+
+(コールバックメソッド)
+
+=begin original
+
+The following methods will be invoked as requests are processed. These
+methods are documented here because subclasses of C<LWP::UserAgent>
+might want to override their behaviour.
+
+=end original
+
+以下のメソッドはリクエストの処理中に起動されます。
+これらのメソッドは、C<LWP::UserAgent> のサブクラスが振る舞いを
+オーバーライドしたいかもしれないので、ここで記述されています。
+
+=over
+
+=item $ua->prepare_request( $request )
+
+=begin original
+
+This method is invoked by simple_request().  Its task is to modify the
+given $request object by setting up various headers based on the
+attributes of the user agent. The return value should normally be the
+$request object passed in.  If a different request object is returned
+it will be the one actually processed.
+
+=end original
+
+このメソッドは simple_request() によって起動されます。
+その使命は、与えられた $request オブジェクトを、ユーザエージェントの
+属性によって様々なヘッダを設定することで変更することです。
+返り値は通常は渡された $request オブジェクトです。
+異なる request オブジェクトが返された場合、それは実際に処理されたものです。
+
+=begin original
+
+The headers affected by the base implementation are; "User-Agent",
+"From", "Range" and "Cookie".
+
+=end original
+
+基本実装によって影響を受けるヘッダは、
+"User-Agent", "From", "Range", "Cookie" です。
+
+=item $ua->redirect_ok( $prospective_request, $response )
+
+=begin original
+
+This method is called by request() before it tries to follow a
+redirection to the request in $response.  This should return a TRUE
+value if this redirection is permissible.  The $prospective_request
+will be the request to be sent if this method returns TRUE.
+
+=end original
+
+このメソッドは、$response のリクエストのリダイレクトに
+従おうとする前に、request() によって呼ばれます。
+このリダイレクトを許可する場合には真の値を返します。
+$prospective_request は、このメソッドが真を返した場合に
+送信されるリクエストです。
+
+=begin original
+
+The base implementation will return FALSE unless the method
+is in the object's C<requests_redirectable> list,
+FALSE if the proposed redirection is to a "file://..."
+URL, and TRUE otherwise.
+
+=end original
+
+基本実装では、メソッドがそのオブジェクトの C<requests_redirectable> リストに
+ない場合と、予定されているリダイレクトが "file://..." URL の場合に
+偽を返し、それ以外では真を返します。
+
+=item $ua->get_basic_credentials( $realm, $uri, $isproxy )
+
+=begin original
+
+This is called by request() to retrieve credentials for documents
+protected by Basic or Digest Authentication.  The arguments passed in
+is the $realm provided by the server, the $uri requested and a boolean
+flag to indicate if this is authentication against a proxy server.
+
+=end original
+
+基本認証またはダイジェスト認証により保護されている文書のための
+証明物 (credentials) の取得のために request() によって呼ばれます。
+渡される引数は、$realm がサーバから提供されるレルム、
+$uri がリクエストされる URI、$isproxy がこれがプロキシサーバーに
+対する認証かどうかを示す真偽値フラグです。
+
+=begin original
+
+The method should return a username and password.  It should return an
+empty list to abort the authentication resolution attempt.  Subclasses
+can override this method to prompt the user for the information. An
+example of this can be found in C<lwp-request> program distributed
+with this library.
+
+=end original
+
+このメソッドはユーザ名とパスワードを返します。
+認証解決の試みを中断させるためには空リストを返します。
+サブクラスはユーザに情報を尋ねるためにこのモジュールを上書きできます。
+この例はこのライブラリと一緒に配布される
+C<lwp-request> プログラムにあります。
+
+=begin original
+
+The base implementation simply checks a set of pre-stored member
+variables, set up with the credentials() method.
+
+=end original
+
+基本実装は単にあらかじめ保管されているメンバ変数をチェックし、
+credentials() メソッドを設定します。
+
+=item $ua->progress( $status, $request_or_response )
+
+=begin original
+
+This is called frequently as the response is received regardless of
+how the content is processed.  The method is called with $status
+"begin" at the start of processing the request and with $state "end"
+before the request method returns.  In between these $status will be
+the fraction of the response currently received or the string "tick"
+if the fraction can't be calculated.
+
+=end original
+
+これは、内容がどのように処理されるかにかかわらず、レスポンスを
+受信する度に呼び出されます。
+このメソッドは、リクエストの処理開始時には
+$status に "begin" を設定して呼び出され、
+リクエストメソッドが返る前には $status に "end" を設定して呼び出されます。
+その間では、$status は現在受信したレスポンスの割合か、
+割合が計算できない場合は文字列 "tick" です。
+
+=begin original
+
+When $status is "begin" the second argument is the request object,
+otherwise it is the response object.
+
+=end original
+
+2 番目の引数は、$status が "begin" の場合はリクエストオブジェクトで、
+そうでない場合はレスポンスオブジェクトです。
+
+=back
+
+=head1 SEE ALSO
+
+=begin original
+
+See L<LWP> for a complete overview of libwww-perl5.  See L<lwpcook>
+and the scripts F<lwp-request> and F<lwp-download> for examples of
+usage.
+
+=end original
+
+libwww-perl5 の完全な概要は L<LWP> を参照してください。
+使い方の例については、L<lwpcook> および
+F<lwp-request> と F<lwp-mirror> のスクリプトを参照してください。
+
+=begin original
+
+See L<HTTP::Request> and L<HTTP::Response> for a description of the
+message objects dispatched and received.  See L<HTTP::Request::Common>
+and L<HTML::Form> for other ways to build request objects.
+
+=end original
+
+発行したり受信したりするメッセージオブジェクトの記述については
+L<HTTP::Request> と L<HTTP::Response> を参照してください。
+リクエストオブジェクトを構築するその他の方法については
+L<HTTP::Request::Common> と L<HTML::Form> を参照してください。
+
+=begin original
+
+See L<WWW::Mechanize> and L<WWW::Search> for examples of more
+specialized user agents based on C<LWP::UserAgent>.
+
+=end original
+
+C<LWP::UserAgent> を基とした、より特殊化したユーザエージェントの例については
+L<WWW::Mechanize> と L<WWW::Search> を参照してください。
+
+=head1 COPYRIGHT
+
+Copyright 1995-2009 Gisle Aas.
+
+This library is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
+
+
+=begin meta
+
+Translate: Hippo2000 <GCD00051@nifty.ne.jp> (5.48)
+Update: SHIRAKATA Kentaro <argrath@ub32.org> (5.813-)
+Status: completed
+
+=end meta
+
