@@ -247,7 +247,7 @@ For easy compatibility on older Perl versions, the CPAN implementation already m
 
 この新たな`defer { BLOCK }` 構文は、レキシカルフィーチャーガードで守られます。フィーチャーガードを認識しない静的解析器の場合、間接呼び出し構文と誤解するかもしれませんが、これは`try/catch`といったブロックを制御するフィーチャーガードで保護された他のキーワードと大差ありません。
 
-古いPerlバージョンとの簡単な互換性のために、上記で言及したCPANの実装が利用できます。もし、このPPCが、コア構文に追加することに成功したら、`Feature::Compat::Defer`モジュールを、[`Feature::Compat::Try`](https://metacpan.org/pod/Feature::Compat::Try)を同様の形で作れます。
+古いPerlバージョンとの簡単な互換性のために、上記で言及したCPANの実装が利用できます。もし、このPPCが、コア構文に追加することに成功したら、`Feature::Compat::Defer`モジュールを、[`Feature::Compat::Try`](https://metacpan.org/pod/Feature::Compat::Try)と同様の形で作れます。
 
 ## Security Implications セキュリティへの影響
 
