@@ -332,7 +332,7 @@ defer if (EXPR) { BLOCK }
 as this adds quite a bit of complication to the grammar, for little benefit. As currently the grammar requires a brace-delimited block to immediately follow the `defer` keyword, it is possible that other ideas - such as this one - could be considered at a later date however.
 -->
 
-これは複雑な文法になる一方、利点があまりないため却下されました。現在の文法だと、`defer`キーワードに続くブロックは、ブレースで区切られている必要がありますが、こういった別のアイデアは、後日好意呂する可能性があります。
+これは複雑な文法になる一方、利点があまりないため却下されました。現在の文法だと、`defer`キーワードに続くブロックは、ブレースで区切られている必要がありますが、こういった別のアイデアは、後日、考慮する可能性があります。
 
 ## Open Issues 
 
