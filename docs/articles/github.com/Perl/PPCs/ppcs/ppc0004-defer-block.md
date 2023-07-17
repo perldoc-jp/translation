@@ -320,7 +320,7 @@ On the subject of naming, this was originally called `LEAVE {}`, which was rejec
 Another rejected idea is that of conditional enqueue:
 -->
 
-名称について言えば、元々は`LEAVE {}`と呼んでいました。ですが、Raku言語の同名のものと意味が一致しないため却下されました。その後、CPANで実装された時、`FINALLY {}`と改名されました。ですが、`try/catch/finally`と似すぎているため、また、SHOUTY PHASER BLOCKであるべきではないといった理由で却下されました。全てのSHOUTY PHASER BLOCKは宣言であり、コンパイル次に単に存在するだけで、活性化されます。一方、`defer {}`は実行時に実際に遭遇した場合のみ効果を発揮します。p5pのメーリングリストやそのCPANモジュールのRTには、UNWIND、UNSTACK、CLEANUPといった様々な却下された命名案が残っています。
+名称について言えば、元々は`LEAVE {}`と呼んでいました。ですが、Raku言語の同名のものと意味が一致しないため却下されました。その後、CPANで実装された時、`FINALLY {}`と改名されました。ですが、`try/catch/finally`と似すぎているため、また、SHOUTY PHASER BLOCKであるべきではないといった理由で却下されました。全てのSHOUTY PHASER BLOCKは宣言であり、コンパイル時に単に存在するだけで、活性化されます。一方、`defer {}`は実行時に実際に遭遇した場合のみ効果を発揮します。p5pのメーリングリストやそのCPANモジュールのRTには、UNWIND、UNSTACK、CLEANUPといった様々な却下された命名案が残っています。
 
 他に却下されたアイデアは、次のコードのような条件つきのキューです。
 
