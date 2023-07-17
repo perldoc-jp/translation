@@ -1,0 +1,322 @@
+
+=encoding utf8
+
+=head1 NAME
+
+=begin original
+
+perlpragma - how to write a user pragma
+
+=end original
+
+perlpragma - ユーザープラグマの書き方
+
+=head1 DESCRIPTION
+
+=begin original
+
+A pragma is a module which influences some aspect of the compile time or run
+time behaviour of Perl, such as C<strict> or C<warnings>. With Perl 5.10 you
+are no longer limited to the built in pragmata; you can now create user
+pragmata that modify the behaviour of user functions within a lexical scope.
+
+=end original
+
+プラグマは、C<strict> や C<warnings> のように、コンパイル時や実行時の Perl の
+振る舞いにある種の影響を与えるモジュールです。
+Perl 5.10 から、プラグマは組み込みのものに制限されません; レキシカル
+スコープ内のユーザー関数の振る舞いを変えるユーザープラグマを
+作れるようになりました。
+
+=head1 A basic example
+
+(基本的な例)
+
+=begin original
+
+For example, say you need to create a class implementing overloaded
+mathematical operators, and would like to provide your own pragma that
+functions much like C<use integer;> You'd like this code
+
+=end original
+
+例えば、オーバーロードされた算術演算子を実装するクラスを作る必要が
+あるとして、C<use integer;> のように働く独自のプラグマを提供したいと
+します; 以下のようなコードで
+
+    use MyMaths;
+
+    my $l = MyMaths->new(1.2);
+    my $r = MyMaths->new(3.4);
+
+    print "A: ", $l + $r, "\n";
+
+    use myint;
+    print "B: ", $l + $r, "\n";
+
+    {
+        no myint;
+        print "C: ", $l + $r, "\n";
+    }
+
+    print "D: ", $l + $r, "\n";
+
+    no myint;
+    print "E: ", $l + $r, "\n";
+
+=begin original
+
+to give the output
+
+=end original
+
+以下のように出力されます
+
+    A: 4.6
+    B: 4
+    C: 4.6
+    D: 4
+    E: 4.6
+
+=begin original
+
+I<i.e.>, where C<use myint;> is in effect, addition operations are forced
+to integer, whereas by default they are not, with the default behaviour being
+restored via C<no myint;>
+
+=end original
+
+I<つまり>、C<use myint;> が有効のときには加法演算子は整数に強制され、
+一方デフォルトではそうではありませんし、デフォルトの振る舞いは
+C<no myint;> で復元されています。
+
+=begin original
+
+The minimal implementation of the package C<MyMaths> would be something like
+this:
+
+=end original
+
+C<MyMaths> パッケージの最低限の実装は以下のようなものです:
+
+    package MyMaths;
+    use v5.36;
+    use myint();
+    use overload '+' => sub {
+        my ($l, $r) = @_;
+	# Pass 1 to check up one call level from here
+        if (myint::in_effect(1)) {
+            int($$l) + int($$r);
+        } else {
+            $$l + $$r;
+        }
+    };
+
+    sub new {
+        my ($class, $value) = @_;
+        bless \$value, $class;
+    }
+
+    1;
+
+=begin original
+
+Note how we load the user pragma C<myint> with an empty list C<()> to
+prevent its C<import> being called.
+
+=end original
+
+C<import> が呼び出されないようにユーザープラグマ C<myint> を空リスト
+C<()> 付きで呼び出す方法に注意してください。
+
+=begin original
+
+The interaction with the Perl compilation happens inside package C<myint>:
+
+=end original
+
+Perl コンパイラとの相互作用はパッケージ C<myint> の内側で起こります:
+
+    package myint;
+
+    use v5.36;
+
+    sub import {
+        $^H{"myint/in_effect"} = 1;
+    }
+
+    sub unimport {
+        $^H{"myint/in_effect"} = 0;
+    }
+
+    sub in_effect {
+        my $level = shift // 0;
+        my $hinthash = (caller($level))[10];
+        return $hinthash->{"myint/in_effect"};
+    }
+
+    1;
+
+=begin original
+
+As pragmata are implemented as modules, like any other module, C<use myint;>
+becomes
+
+=end original
+
+他のモジュールと同様、プラグマもモジュールとして実装され、C<use myint;> は
+以下のようになり:
+
+    BEGIN {
+        require myint;
+        myint->import();
+    }
+
+=begin original
+
+and C<no myint;> is
+
+=end original
+
+C<no myint;> は以下のようになります:
+
+    BEGIN {
+        require myint;
+        myint->unimport();
+    }
+
+=begin original
+
+Hence the C<import> and C<unimport> routines are called at B<compile time>
+for the user's code.
+
+=end original
+
+従って C<import> と C<unimport> のルーチンはユーザーコードの
+B<コンパイル時> に呼び出されます。
+
+=begin original
+
+User pragmata store their state by writing to the magical hash C<%^H>,
+hence these two routines manipulate it. The state information in C<%^H> is
+stored in the optree, and can be retrieved read-only at runtime with C<caller()>,
+at index 10 of the list of returned results. In the example pragma, retrieval
+is encapsulated into the routine C<in_effect()>, which takes as parameter
+the number of call frames to go up to find the value of the pragma in the
+user's script. This uses C<caller()> to determine the value of
+C<$^H{"myint/in_effect"}> when each line of the user's script was called, and
+therefore provide the correct semantics in the subroutine implementing the
+overloaded addition.
+
+=end original
+
+ユーザープラグマは、マジカルなハッシュ C<%^H> に書き込むことで状態を
+保持するので、これらの二つのサブルーチンはこれを操作します。
+C<%^H> の状態情報は構文木に保管され、C<caller()> から返されたリストの
+インデックス 10 の要素としてして実行中に読み込み専用で取得できます。
+例のプラグマでは、返されたものはユーザースクリプトのプラグマの値を
+見つけるために上がっていく呼び出しフレームの数をパラメータとして受け取る
+C<in_effect()> ルーチンでカプセル化されます。
+これはユーザーのスクリプトの各行が呼び出されるときに
+C<$^H{"myint/in_effect"}> の値を決定するために C<caller()> を使うので、
+オーバーロードされた加算を実装しているサブルーチン内で正しい意味論を
+提供します。
+
+=head1 Key naming
+
+(キーの命名規則)
+
+=begin original
+
+There is only a single C<%^H>, but arbitrarily many modules that want
+to use its scoping semantics.  To avoid stepping on each other's toes,
+they need to be sure to use different keys in the hash.  It is therefore
+conventional for a module to use only keys that begin with the module's
+name (the name of its main package) and a "/" character.  After this
+module-identifying prefix, the rest of the key is entirely up to the
+module: it may include any characters whatsoever.  For example, a module
+C<Foo::Bar> should use keys such as C<Foo::Bar/baz> and C<Foo::Bar/$%/_!>.
+Modules following this convention all play nicely with each other.
+
+=end original
+
+C<%^H> は一つだけしかありませんが、そのスコープ意味論を使いたいモジュールは
+任意の数があり得ます。
+お互いの足を踏むことを裂けるために、ハッシュ中で異なったキーを使うように
+する必要があります。
+従って、モジュールはモジュールの名前 (主なパッケージの名前) と "/" 文字から
+始まるキーだけを使うという慣習があります。
+このモジュール識別接頭辞の後、キーの残りは全てモジュール次第です:
+どんな文字でも使えます。
+例えば、モジュール C<Foo::Bar> は C<Foo::Bar/baz> や
+C<Foo::Bar/$%/_!> のようなキーを使うべきです。
+この慣習に従っているモジュールは全て互いにうまく動作します。
+
+=begin original
+
+The Perl core uses a handful of keys in C<%^H> which do not follow this
+convention, because they predate it.  Keys that follow the convention
+won't conflict with the core's historical keys.
+
+=end original
+
+Perl コアは一部この規約に従わないキーで C<%^H> を使います; なぜなら
+以前からあるからです。
+慣習に従うキーはコアの歴史的なキーと衝突することはありません。
+
+=head1 Implementation details
+
+(実装の詳細)
+
+=begin original
+
+The optree is shared between threads.  This means there is a possibility that
+the optree will outlive the particular thread (and therefore the interpreter
+instance) that created it, so true Perl scalars cannot be stored in the
+optree.  Instead a compact form is used, which can only store values that are
+integers (signed and unsigned), strings or C<undef> - references and
+floating point values are stringified.  If you need to store multiple values
+or complex structures, you should serialise them, for example with C<pack>.
+The deletion of a hash key from C<%^H> is recorded, and as ever can be
+distinguished from the existence of a key with value C<undef> with
+C<exists>.
+
+=end original
+
+構文木はスレッド間で共有されます。
+つまり、構文木はそれを作った特定のスレッド(従ってインタプリタ実体)よりも
+長生きする可能性があると言うことです; 従って、真の Perl スカラを構文木に
+保管することが出来ません。
+圧縮形式を使う代わりに、整数(符号付きと符号なし)、文字列、C<undef> の
+いずれかの値のみを保管できます - リファレンスと浮動小数点数は
+文字列化されます。
+もし複数の値や複雑な構造体を保管する必要があるなら、例えば C<pack> などを
+使って直列化するべきです。
+C<%^H> からのハッシュキーの削除は記録され、いままで通り C<exists> を使うことで
+値が C<undef> でキーが存在することと区別できます。
+
+=begin original
+
+B<Don't> attempt to store references to data structures as integers which
+are retrieved via C<caller> and converted back, as this will not be threadsafe.
+Accesses would be to the structure without locking (which is not safe for
+Perl's scalars), and either the structure has to leak, or it has to be
+freed when its creating thread terminates, which may be before the optree
+referencing it is deleted, if other threads outlive it.
+
+=end original
+
+リファレンスをC<caller> 経由で取得して変換し直した整数としてデータ構造に
+保管しようとしてはいけません; これはスレッドセーフではないからです。
+アクセスはロックなしでの構造体に対してであり(これは Perl のスカラに対しては
+安全ではありません)、構造体がメモリリークするか、作成したスレッドが終了時に
+解放され、もしもし他のスレッドが長生きしすぎると、構文木が削除されたものを
+参照することになります。
+
+=begin meta
+
+Translate: SHIRAKATA Kentaro <argrath@ub32.org>
+Status; completed
+
+=end meta
+
