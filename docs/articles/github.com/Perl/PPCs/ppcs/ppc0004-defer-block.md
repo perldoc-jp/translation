@@ -33,13 +33,11 @@ Sometimes a piece of code performs some sort of "setup" operation, that requires
 
 コードの"セットアップ"操作を行い、そのタスクの終わりに"後処理"が必要になることがあります。例外が投げられた時やループ文の時の制御フローを考慮すると、常に次のコードのように簡潔には書けません。
 
-```perl
-{
-  setup();
-  operation();
-  teardown();
-}
-```
+    {
+      setup();
+      operation();
+      teardown();
+    }
 
 <!-- original
 as in this case, if the `operation` function throws an exception the teardown does not take place. Traditional solutions to this often rely on allocating a lexical variable and storing an instance of some object type with a `DESTROY` method, so this runs the required code as a result of object destruction caused by variable cleanup. There are no in-core modules to automate this process, but the CPAN module `Scope::Guard` is among the more popular choices.
@@ -77,10 +75,7 @@ A new lexically-scoped feature bit, requested as
 
 新たなレキシカルスコープの特性は、以下のようにして要求されます。
 
-
-```perl
-use feature 'defer';
-```
+    use feature 'defer';
 
 <!-- original
 enables new syntax, spelled as
@@ -88,9 +83,7 @@ enables new syntax, spelled as
 
 これにより新たな構文が有効になり、以下のように利用できます。
 
-```perl
-defer { BLOCK }
-```
+    defer { BLOCK }
 
 <!-- original
 This syntax stands alone as a full statement; much as e.g. a `while` loop does. The deferred block may contain one or multiple statements.
@@ -106,16 +99,13 @@ If multiple `defer` statements appear within the same block, the are eventually 
 
 もし同じブロックで、複数の`defer`ステートメントがあった場合、LIFOの順で実行されます。つまり、次のコードのように、最も最近遭遇したコードが、最初に実行されます。
 
-
-```perl
-{
-  setup1();
-  defer { say "This runs second"; teardown1(); }
-
-  setup2();
-  defer { say "This runs first"; teardown2(); }
-}
-```
+    {
+      setup1();
+      defer { say "This runs second"; teardown1(); }
+    
+      setup2();
+      defer { say "This runs first"; teardown2(); }
+    }
 
 <!-- original
 `defer` statements are only "activated" if the flow of control actually encounters the line they appear on (as compared to `END` phaser blocks which are activated the moment they have been parsed by the compiler). If the `defer` statement is never reached, then its deferred code will not be invoked:
@@ -123,13 +113,11 @@ If multiple `defer` statements appear within the same block, the are eventually 
 
 `defer`ステートメントは、その行が、実際に制御フローで現れた時のみ"活性化"されます。(コンパイラが解析すれば活性化される`END`ブロックとは異なります。) もし、`defer`ステートメントに到達しない場合、遅延されたコードは呼び出されません。
 
-```perl
-while(1) {
-  defer { say "This will happen"; }
-  last;
-  defer { say "This will *NOT* happen"; }
-}
-```
+    while(1) {
+      defer { say "This will happen"; }
+      last;
+      defer { say "This will *NOT* happen"; }
+    }
 
 <!-- original
 ((TODO: It is currently not explicitly documented, but naturally falls out of the current implementation of both the CPAN and the in-core versions, that the same LIFO stack that implements `defer` also implements other things such as `local` modifications; for example:
@@ -137,16 +125,13 @@ while(1) {
 
 *((TODO: 現時点では明確にドキュメント化されていませんが、CPANバージョンとコアバージョンの両方の現状の実装から自然と次のことが導かれます。`defer`が実装しているLIFOスタックによって、`local`による変更など他のものも実装しています。例えば、次のコードをみてください。
 
-
-```perl
-our $var = 1;
-{
-  defer { say "This prints 1: $var" }
-
-  local $var = 2;
-  defer { say "This prints 2: $var" }
-}
-```
+    our $var = 1;
+    {
+      defer { say "This prints 1: $var" }
+    
+      local $var = 2;
+      defer { say "This prints 2: $var" }
+    }
 
 <!-- original
 ((I have no strong thoughts yet on whether to specify and document - and thus guarantee - this coïncidence, or leave it unsaid.))
@@ -161,12 +146,9 @@ Non-local control flow (`next/last/redo`, `goto`, `return`) is not permitted to 
 
 非ローカルな制御フロー（`next/last/redo`、`goto`や`return`)が、`defer`ブロックの境界を超えようとすることは許可されません。
 
-
-```perl
-foreach my $item (@things) {
-  defer { last; }  ## This is NOT permitted
-}
-```
+    foreach my $item (@things) {
+      defer { last; }  ## This is NOT permitted
+    }
 
 <!-- original
 Attempts to do this will throw an exception, likely worded something about
@@ -184,15 +166,13 @@ Of course, nonlocal control flow is permitted entirely *within* the `defer` bloc
 
 もちろん、非ローカルな制御フローであっても、`defer`ブロックの中に全て完結するのであれば、許可されます。ブロックを抜けようとする場合のみ禁止します。
 
-```perl
-{
-  defer {
-    foreach my $i ( 1 .. 10 ) {
-      last if $i == 5;  ## This is permitted
+    {
+      defer {
+        foreach my $i ( 1 .. 10 ) {
+          last if $i == 5;  ## This is permitted
+        }
+      }
     }
-  }
-}
-```
 
 <!-- original
 The one exception to this (pardon the pun) is that exceptions thrown from within the `defer` block propagate out to the caller.
@@ -204,14 +184,11 @@ For example, in
 
 例えば、次の例をみてください。
 
-
-```perl
-sub f {
-  defer { die "This is thrown\n"; }
-}
-
-f();
-```
+    sub f {
+      defer { die "This is thrown\n"; }
+    }
+    
+    f();
 
 <!-- original
 the caller will see the exception being thrown in the same way as if it appeared in a regular (non-`defer`red) block.
@@ -223,13 +200,10 @@ It is currently unspecified what happens if a `defer` block throws an exception 
 
 現在、スタックが展開されている最中に、`defer`ブロックで例外が発生した時の動作は未定義です。
 
-
-```perl
-{
-  defer { die "Exception A\n"; }
-  die "Exception B\n";
-}
-```
+    {
+      defer { die "Exception A\n"; }
+      die "Exception B\n";
+    }
 
 <!-- original
 In this case, the caller will definitely see *an* exception thrown from the code, but there is currently no guarantee whether that will be A, B, or some third kind of thing that is a combination of the two. This is intentionally left as scope for future expansion; at such time perl ever gains true object-like core exceptions, then it can be represented by some kind of "double exception" condition.
@@ -266,19 +240,17 @@ A couple of small code examples are quoted above. Further, from the docs of `Syn
 
 いくつかの小さなコードは上述の通りです。他には、`Syntax::Keyword::Defer`のドキュメントからも引用できます。
 
-```perl
-use feature 'defer';
+    use feature 'defer';
 
-{
-  my $dbh = DBI->connect( ... ) or die "Cannot connect";
-  defer { $dbh->disconnect; }
-
-  my $sth = $dbh->prepare( ... ) or die "Cannot prepare";
-  defer { $sth->finish; }
-
-  ...
-}
-```
+    {
+      my $dbh = DBI->connect( ... ) or die "Cannot connect";
+      defer { $dbh->disconnect; }
+    
+      my $sth = $dbh->prepare( ... ) or die "Cannot prepare";
+      defer { $sth->finish; }
+    
+      ...
+    }
 
 ## Prototype Implementation プロトタイプ実装
 
@@ -324,9 +296,7 @@ Another rejected idea is that of conditional enqueue:
 
 他に却下されたアイデアは、次のコードのような条件つきのキューです。
 
-```perl
-defer if (EXPR) { BLOCK }
-```
+    defer if (EXPR) { BLOCK }
 
 <!-- original
 as this adds quite a bit of complication to the grammar, for little benefit. As currently the grammar requires a brace-delimited block to immediately follow the `defer` keyword, it is possible that other ideas - such as this one - could be considered at a later date however.
