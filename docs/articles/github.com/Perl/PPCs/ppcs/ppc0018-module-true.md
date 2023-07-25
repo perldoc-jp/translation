@@ -1,22 +1,37 @@
-# No Longer Require a True Value at the End of a Module
+# モジュールの最後の真値はもう必要ありません
 
-## Preamble
+この文書は [PPCs/ppcs
+/ppc0018-module-true.md](https://github.com/Perl/PPCs/blob/main/ppcs/ppc0018-module-true.md) を翻訳したものです。
+
+原題は「No Longer Require a True Value at the End of a Module」です。
+
+## Preamble 序文
+
+翻訳注：以下は原文のママです。
 
     Author:  Curtis "Ovid" Poe <curtis.poe@gmail.com>
     Sponsor:
     ID:      0018
     Status:  Draft
 
-## Abstract
+## Abstract 要約
 
+このPPC提案では、Perlのモジュールの末尾を伝統的に "1" や他の真の値で終わらせる必要をなくすものです。
+
+ <!-- original
 This PPC proposes a feature which, when used, eliminates the need to end a Perl
-module with the conventional "1" or other true value.
+module with the conventional "1" or other true value. 
+-->
 
-## Motivation
+## Motivation 動機
 
+Perlファイルの末尾を真値で終わらせる必要をなくします。
+
+<!--
 Eliminate the need for a true value at the end of a Perl file.
+-->
 
-## Rationale
+## Rationale 提案理由
 
 There's no need to have a true value be hard-coded in our files that we
 `use`. Further, newer programmers can get confused because sometimes code
