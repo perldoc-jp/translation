@@ -12,11 +12,11 @@
 
 ## リポジトリをクローン
 
-まず、[module-pod-jp](https://github.com/perldoc-jp/module-pod-jp) に行って、リポジトリをクローンします。
+まず、[translation](https://github.com/perldoc-jp/translation) に行って、リポジトリをクローンします。
 
 ```
-$ git clone git@github.com:perldoc-jp/module-pod-jp.git
-$ cd module-pod-jp
+$ git clone git@github.com:perldoc-jp/translation.git
+$ cd translation
 ```
 
 以降の作業では、基本的にリポジトリのホームディレクトリにいる前提で説明をします。
@@ -35,7 +35,7 @@ $ cpanm -L local Feature::Compat::Class
 
 翻訳するPODが含まれる `.pm` ファイルの実パスは `local/lib/perl5/Feature/Compat/Class.pm` です。
 
-module-pod-jpリポジトリの `local` ディレクトリは .gitignore に記載されているのでモジュールを自由にインストールできます。
+translationリポジトリの `local` ディレクトリは .gitignore に記載されているのでモジュールを自由にインストールできます。
 
 ### POD を抜き出す
 
@@ -80,7 +80,7 @@ pod を抜き出して配置したら、そこで一度コミットしてしま�
 
 基本的にブロックごとに囲めばOKですが、コード部分やマークアップされる部分をどうするかなど細かい部分はこちらの [翻訳の作法](https://perldoc.jp/manners#code_translation) に詳しくあります。
 
-一気に翻訳対象をブロックごとに囲んだら、再びコミットします。例えば、[こんな感じのコミット](https://github.com/perldoc-jp/module-pod-jp/pull/16/commits/867ece182d5e37a856412ae496cd773f25df76ba) になります。
+一気に翻訳対象をブロックごとに囲んだら、再びコミットします。例えば、[こんな感じのコミット](https://github.com/perldoc-jp/translation/pull/16/commits/867ece182d5e37a856412ae496cd773f25df76ba) になります。
 
 翻訳の都度、ブロックごとに囲みながら作業しても良いのですが、おそらく最初に一気にやってしまった方が翻訳作業に集中しやすいと思います。
 
@@ -100,5 +100,5 @@ PRが整ったらいよいよマージです！おつかれさまでした！
 
 ## 参考PR
 
-最後になりましたが、[Feature::Compat::Classを翻訳したときのPRはこちら](https://github.com/perldoc-jp/module-pod-jp/pull/16) です。けしてきれいなPRではないですが、こんな感じで進むのねーというのを見てもらうのにいいかなと思います。
+最後になりましたが、[Feature::Compat::Classを翻訳したときのPRはこちら](https://github.com/perldoc-jp/translation/pull/16) です。けしてきれいなPRではないですが、こんな感じで進むのねーというのを見てもらうのにいいかなと思います。
 
