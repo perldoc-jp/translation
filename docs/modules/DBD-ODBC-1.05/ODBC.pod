@@ -1,0 +1,462 @@
+
+=encoding euc-jp
+
+=head1 名前
+
+DBD::ODBC - DBIのためのODBCドライバ
+
+=head1 概要
+
+  use DBI;
+
+  $dbh = DBI->connect('dbi:ODBC:DSN', 'user', 'password');
+
+詳細についてはL<DBI>をご覧下さい。
+
+=head1 説明
+
+=head2 注意:
+
+=over 4
+
+=item B<変更ログ/最近の更新は今ではDBD::ODBC::Changes.pmに入っています>
+
+ 変更ログがDBD::ODBC::Changes.pmに移動していることにご注意ください。
+ このドキュメントに簡単にアクセスするためには、perldoc DBD::ODBC::Changesを使ってください
+
+ また、このドキュメントの機能などに対してのFAQのような質問は
+ DBI FAQそのもので回答しようとしています...
+ DBI FAQ (http://www.xmlproj.com/cgi/fom.cgi)
+   
+=item B<テストについての重要な注意!>
+
+ いくつかのテストが失敗したりレポートしたりするかもしれないことに
+ 注意してください。それらは、このプラットホームではサポートされていません。
+ 特にOracleのODBCドライバは、t/08bind2.tにある"高度な"バインディングの
+ テストが失敗します。これらのテストはSQL Server 2000の下では完全に走ります。
+ これは通常で予想されることです。Oracleが、これらのドライバをODBCの見地から
+ 正しいことを行うよう修正するまで、この問題を修正することは難しい
+ ことです。Oracleのための解決方法はSQL_TIMESTAMPでdate型をバインドする
+ ことです。
+   
+ また、複数のリザルト・セットを返すことをサポートしていなければ、
+t/09multi.tのような、いくつかのテストがスキップされることが
+あることにも注意してください。
+
+=item B<DBD::ODBC特有の属性>
+=item odbc_more_results (適用できるのはステートメント・ハンドルだけ!）
+
+まだリザルト・セットがあるかを判定するために、この属性を使ってください。
+SQL Serverは、この機能をサポートしています。以下のように使ってください：
+
+do {
+   my @row;
+   while (@row = $sth->fetchrow_array()) {
+      # do stuff here
+   }
+} while ($sth->{odbc_more_results});
+
+複数のリザルト・セットに出力パラメータ(つまりbind_param_inout)がある場合、
+リザルト・セットが全て取り出されるまで、出力パラメータがバインドされている
+ことを期待しないでください。
+
+=item odbc_ignore_named_placeholders
+
+:newや:nameが何か特別な意味を持ち、単なるプレース・ホルダー名ではない
+(Oracleトリガーなどのような)特別な必要性があれば、これを使ってください。
+パラメータをバインドするためには?を
+I<使わなければいけません>。例えば：
+ $dbh->{odbc_ignore_named_placeholders} = 1;
+ $dbh->do("create trigger foo as if :new.x <> :old.x then ... etc");
+
+これがないとDBD::ODBCは:newと:oldをバインドするためのプレース・ホルダだと
+思い、混同してしまいます。
+ 
+=item odbc_default_bind_type
+
+デフォルトでは、この値は0です。DBD::ODBCの古いバージョンでは、バインドする
+データ型を12 (SQL_VARCHAR)と想定していました。新しいバージョンではデフォルトは
+0です。これは正しいデータ型を判定するため、DBD::ODBCがSQLDescribeParamを通して
+ドライバに問い合わせようとすることを意味します。ドライバがSQLDescribeParamを
+サポートしていなければ、bind_param()により上書きされない限り
+DBD::ODBCはデフォルトとしてSQL_VARCHARを使うように戻ります。
+
+=item odbc_force_rebind
+
+特に複数のリザルト・セットを使うとき、これは特別なケースを扱います。
+実行する前にこれを設定すると、DBD::ODBCに"強制的に"、それぞれの実行での
+リザルト・セットのカラム数とカラム型を再び取得させます。
+実行するたびに、異なるリザルト・セットを返すかもしれない
+ストアド・プロシージャを呼び出すときに特に便利です。
+execute()の間、パフォーマンスが犠牲になります。しかし私はいかなる状況で
+あっても犠牲を招きたくはありません。これはおそらくほとんど起きることは
+ないでしょう。複数のリザルト・セットが引き起こされると、この属性が
+自動的に設定されます。ほとんどの人たちは、これについて心配する必要は
+ありません。
+
+=item odbc_async_exec
+
+問い合わせの非同期実行を可能にします。こうするとすぐ、これは
+sqlが完了するまで、（ちょっと"sleep"しながら）ぐるぐる繰り返します。
+エラーの扱いと非同期メッセージ(下記のerr_handlerをご覧ください)が
+欲しい場合でも、これは便利です。この例についてはt/20SQLServer.tをご覧ください。
+
+=item odbc_exec_direct
+
+DBD::ODBCに強制的にSQLPrepare() してからSQLExecuteする代わりに
+SQLExecDirectを使うようにさせます。
+SQLExecDirectしかサポートしていないドライバがあります。そしてDBD::ODBCが
+上書きするdo()は、リザルト・セットを返すことを許していません。
+このため、これを行う方法は属性が設定されたodbc_exec_directを設定することです。
+現在、これを行うためには２つの方法があります：
+        $dbh->prepare($sql, { odbc_execdirect => 1}); 
+ そして
+        $dbh->{odbc_execdirect} = 1;
+ 0でない値が設定された属性"ExecDirect"を付けて$dbh->prepare()を呼び出すと、
+ dbd_st_prepareはSQLPrepareを呼び出さず、sthフラグodbc_exec_directを1に
+ 設定してください。
+
+=item odbc_err_handler
+
+エラーがアプリケーションにより扱わえるようにします。アプリケーションにより
+メッセージを扱ったり、無視するためのコール・バック関数が与えられます。
+エラー・ハンドラーが0を返すのであれば、エラーは無視され、そうでなければ
+エラーは通常のDBIエラー・ハンドリング構造を通して渡されます。
+ 
+=item odbc_SQL_ROWSET_SIZE
+
+元のパッチからの情報は以下の通りです。しかし私は他の情報源から
+SQL Server"固まらせる(=lock up)"かもしれないということを学びました。
+そのため、あなた自身の責任で使うようにしてください！
+   
+Andrew Brownからの属性SQL_ROWSET_SIZE パッチ
+> SQL_ROWSET_SIZEをdbハンドル・オプションとして設定するために
+> 2行だけ追加します。
+>
+> 私の思いつきの目的は単純です。SqlServer (とにかく7)はデフォルトでは
+> (ODBCカーソルを使って)1度には1つのselectしかサポートしません。
+> SqlServerドキュメントによれば、サーバー・カーソルを使用すよう
+> 3つの変数のデフォルト設定を変更することが可能です - この場合には
+> 複数のselectが可能です。
+> 
+> 変更を可能にするコードは以下の通り:
+> $dbh->{SQL_ROWSET_SIZE} = 2;    # 何か1より大きい値
+>
+> まさにこのためです。
+>
+> SQL_ROWSET_SIZEの設定は、私が判っている限りでは拡張されたfetchコマンドだけに
+> 影響を与えます。そのためこのオプションの設定がDBD::ODBCの処理に直接影響を
+> 与えることはありえません。
+>
+> Andrew
+>
+
+=item SQL_DRIVER_ODBC_VER
+
+get_info()によって利用可能な間、これはここで捕らえられます。
+これはデバッグ目的のためだけに使っているので、これを取り除くかもしれません。
+ 
+=item odbc_version
+
+呼び出し側にODBC 3.0互換性を強制することができるよう、ODBC 3.xに移る前に
+追加されました。これは今はおそらく便利ではないでしょう。しかし
+get_infoとget_type_infoにODBC 2.xが許して/提供していなかった、
+正しい/更新された情報を返すことを可能にします。
+   
+=item B<Private DBD::ODBC Functions>
+
+=item GetInfo (DBI標準であるget_info()に換えられました)
+
+この関数はODBC SQLGetInfo呼び出しに対応付けられます。これはLevel 1 ODBC
+関数です。以下に例を示します：
+
+  $value = $dbh->func(6, GetInfo);
+
+この関数はスカラー値を返します。これは数値かもしれませんし、文字列かもしれません。
+これはGetInfoに渡された引数によります。
+
+
+=item SQLGetTypeInfo (DBI標準であるget_type_info()により置き換えられています)
+
+この関数はODBC SQLGetTypeInfo呼び出しに対応付けられます。これはLevel 1 ODBC
+関数です。以下に例を示します：
+
+  use DBI qw(:sql_types);
+
+  $sth = $dbh->func(SQL_ALL_TYPES, GetInfo);
+  while (@row = $sth->fetch_row) {
+    ...
+  }
+
+この関数はDBIステートメントハンドルを返します。それは要求された型と
+互換性のある型名の入ったリザルト・セットを表します。SQL_ALL_TYPESは
+そのODBCドライバがサポートするすべての型を得るために使われます。
+注意：SQL_VARCHARのような値が正しく解釈されるために、use DBIにqw(:sql_types)を
+入れることが、とても重要です。これはSQL型名をプログラムの名前空間に
+インポートします。qw(:sql_types)を忘れて、おかしな結果を取得することは
+非常によくある間違いです。
+
+=item GetFunctions (現在はODBC V3をサポートしています)
+
+この関数はODBC API SQLGetFunctionsに対応します。これはLevel 1 API 呼び出しで、
+サポートされているドライバ関数を返します。これがどのように
+呼ばれるかによって、true/false値の100個の要素をもった配列を返すか、
+１つのtrue/false値を返します。もしSQL_API_ALL_FUNCTIONS (0)で呼ばれたら、
+100要素の配列を返します。そうでなければ、関数を参照する数字を渡します。
+（このことについてのヘルプはODBCドキュメントをご覧下さい） 
+
+=item SQLColumns 
+
+この関数をサポートすることはバージョン0.17で加えられました。バージョン0.20で
+修正できたようです。
+
+特別な理由がなければDBIステートメント・ハンドル属性NAME、NULLABLE、TYPE、
+PRECISION、SCALEを使ってください。
+
+=item DSNなしの接続
+完全なDSNなしに接続する機能がバージョン0.21から導入されました。
+
+例 (MS Accessを利用しています):
+        my $DSN = 'driver=Microsoft Access Driver (*.mdb);dbq=\\\\cheese\\g$\\perltest.mdb';
+        my $dbh = DBI->connect("dbi:ODBC:$DSN", '','') 
+                or die "$DBI::errstr\n";
+
+=item SQLStatistics
+
+=item SQLForeignKeys
+
+DBIのget_foreign_keysをご覧ください。
+   
+=item SQLPrimaryKeys
+
+DBIのget_primary_keysをご覧ください。
+   
+=item SQLDataSources
+
+現在は(0.21の時点では)扱われます。DBIのdata_sources()もご覧ください。
+
+=item SQLSpecialColumns
+
+バージョン0.28の時点から扱われます。
+ 
+=item その他/やるべきこと？
+
+Level 1
+
+    SQLTables (use tables()) call
+
+Level 2
+
+    SQLColumnPrivileges
+    SQLProcedureColumns
+    SQLProcedures
+    SQLTablePrivileges
+    SQLDrivers
+    SQLNativeSql
+
+=back
+
+=head2 Win32上でWebサーバと一緒にDBD::ODBCを使う
+
+=over 4
+
+=item Webデータベース・アクセスについての一般的なコメント
+
+これは実際にはDBIでよくある質問です。しかしWin32/ODBCでは
+何か一癖あるようです。
+
+典型的には、WebサーバーはNTサービスまたはWindows95/98サービスとして
+インストールされます。これは典型的には、Webサーバー自体はWeb開発者とは
+同じ環境、同じ許可を持っていないことを意味します。この状況は、もちろん
+Unix サーバにも当てはまります。しかしWin32上では、通常、問題が少し違うのです。
+
+=item DSNの定義 -- どのタイプを使えばよいか？ 
+
+Win32上では、注意してDSNをユーザDSNではなく、システムDSNで定義して下さい。
+システムDSNは"グローバル"であり、一方、ユーザはユーザにローカルです。
+典型的には、上記で述べたようにWebサーバはWeb開発者とは違うユーザで
+"ログイン"されます。これはコマンドラインでは正常に動くのに、
+Webサーバから呼び出すと失敗するのはなぜかという状況を起こしたがります。 
+
+=item DSNの定義 -- 注意深くファイルそのものを選ぶことが重要！
+
+ファイルをベースとしたドライバにとっては、クライアント・サーバドライバに比べて、
+ファイルのパスが、とても重要です。気にしなければならないことはそれほど
+多くありません。これは例えばMS Accessデータベースにも当てはまります。
+
+1) ファイルがNTFSパーティションにあれば、Web B<サービス> ユーザがそのファイルに
+アクセスできる権限を持っているかを確認して下さい。
+
+2) ファイルがリモート・コンピュータにあるならば、Web B<サービス> ユーザが
+そのファイルにアクセスする権限を持っているかをチェックしてください。
+
+3) そのファイルがリモート・コンピュータにあるならば、「X:\」という
+書き方ではなく、そのファイルのUNCパスを使ってみて下さい。これはサービスが
+完全に同じアクセス許可を取らない、B<そして>さらに重要なことは、ドライバ文字
+そのものがマシンにグローバルであることから、とても重要になりえます。
+つまりサービスがZ:にアクセスしようとすると、その時点でそのマシンにログイン
+したユーザにZ:が依存してしまいます。（サービスを開発している間、
+これについてテストしてきました。--これは醜く、コストがかかる割に価値がありません）
+
+残念なことに、私が持っているAccess ODBCドライバはUNCパスを指定することを
+許しておらず、X:\という書き方だけを許しています。これを回避するには少なくとも
+１つの方法があります。最も簡単な方法は、多分、Regeditを使って、
+HKYE_LOCALUSERS\SOFTWARE\ODBC\"あなたのDSN"に行くことです
+(もちろんシステムDSNをだと仮定しています）。いくつかの設定があり、それは
+典型的にはドライバを特定するものです。Accessドライバにとって変更する重要な値は、
+例えばDBQという値です。これは実際にはAccessデータベースのファイル名になります。
+
+=item DSNなしの接続
+完全なDSNなしに接続する機能がバージョン0.21から導入されました。
+
+例 (MS Accessを利用しています):
+        my $DSN = 'driver=Microsoft Access Driver
+(*.mdb);dbq=\\\\cheese\\g$\\perltest.mdb';
+        my $dbh = DBI->connect("dbi:ODBC:$DSN", '','') 
+                or die "$DBI::errstr\n";
+
+上記の例ではMSAccessファイル(\\\\cheese\\g$\\perltest.mdb)を示すために
+MicrosoftのUNC名前規定を使っています。dbqパラメータは、どのファイルを
+データベースのために使うかをアクセス・ドライバに伝えています。
+   
+例 (MSSQLサーバーを使っています):
+      my $DSN = 'driver={SQL Server};Server=server_name;
+      database=database_name;uid=user;pwd=password;';
+      my $dbh  = DBI->connect("dbi:ODBC:$DSN") or die "$DBI::errstr\n";
+
+=back
+
+=head2 適当なリンク集
+
+これらはソートして、加えなければいけないのですが。いくつかはODBC開発者に
+だけ関係しています。（でも私はそれらを削りたくありません）。
+
+        http://www.ids.net/~bjepson/freeODBC/index.html
+
+        http://dataramp.com/
+
+        http://www.syware.com
+
+        http://www.microsoft.com/odbc
+
+   Linux/Unixの人たちには、互換性のあるODBCドライバ・マネージャが以下の場所にあります：
+   
+        http://www.easysoft.com         unixODBC ドライバ・マネージャのソース
+                                        *そして* LinuxからWin32 ODBCソースにアクセスするための
+                                        ODBC-ODBC ブリッジ
+
+        http://www.iodbc.org            iODBC ドライバ・マネージャ・ソース
+
+   Linux/Unixの人たちは、以下のもう１つのODBC-ODBCブリッジとiODBCのサポートをチェックアウトすることができます。
+
+        http://www.openlink.co.uk 
+                あるいは
+        http://www.openlinksw.com 
+
+   その他:
+        OpenRDA
+   
+        http://www.atinet.com/support/openrda_samples.asp
+ 
+
+=head2 よくある質問(Frequently Asked Questions)
+よくあるDBIとODBCの質問にお答えします：
+
+=over
+
+=item Memo | BLOB | LONGフィールドからN文字以上読み込む方法は？
+
+DBIドキュメントのLongReadLenをご覧ください。
+
+例:
+        $dbh->{LongReadLen} = 20000;
+        $sth = $dbh->prepare("select long_col from big_table");
+        $sth->execute;
+        etc
+
+=item DBD::ODBCは何ですか？なぜ接続できないのですか？ODBCドライバは必要ですか？ODBCドライバ・マネージャってなんですか？
+
+これらの、一般的な質問は定義を必要とすることにつながります
+
+1) ODBCドライバ - ODBCマネージャがRDBMSに接続し、相互作用するために利用する
+ドライバ。データベースに接続するためには、これが絶対に必要です。
+Win32では、これが豊富にあり、多くのアプリケーションでインストールされます。
+Linux/Unixでは、少しがんばる必要がありますが、便利なものが以下のサイトに
+あるでしょう：
+
+        http://www.openlinksw.com
+        http://www.easysoft.com
+        http://www.intersolv.com
+        http://www.atinet.com/support/openrda_samples.asp
+              
+
+2) ODBCドライバ・マネージャ - アプリケーションのためのドライバと相互作用を行う
+ソフトウェアの一部です。これはドライバー間の、いくつかの違いを"隠します"。
+（例えば、もし関数呼び出しがドライバによってサポートされていなければ、
+それを隠し、アプリケーションにその呼び出しがサポートされていないことを
+伝えます。DBD::ODBCはドライバと通信することが必要です。Win32上では、
+OSに組み込まれています。Unix/Linuxでは、ほとんどの場合、freeODBC, unixODBC
+あるいはiODBCを使いたいでしょう。iODBCはDBD::ODBCにバンドルされます。しかし
+あなたの要求にあうものを探す必要があります。
+www.openlinksw.com, www.easysoft.com あるいは www.iodbc.orgをご覧になってください。
+
+3) DBD::ODBC.  DBD::ODBCはシステム上のODBCドライバ(達)と通信するために
+ドライバ・マネージャを利用します。DBD::ODBCに取り組む前にドライバ・マネージャと
+ドライバの両方をインストールし、テストする必要があります。
+DBD::ODBCをテストできるようになる前に、DSN(下記参照)設定し、*そして*
+テストしておく必要があります。
+
+4) DSN -- データ・ソース名(Data Source Name)。あなたの好きな名前で特定の
+データベースを参照する方法です。名前そのものは、
+必要としているドライバのタイプと設定する必要がある接続情報の
+ぞっとするような詳細を隠すために設定することができます。
+例えば、データベースによっては、TCPアドレスとポートを与える必要があります。
+DSNを参照するとき、DSNが情報を使わせるようDSNを設定することができます。
+
+=item Unix/LinuxのためのODBCドライバ・マネージャはどこで手に入りますか？
+
+DBD::ODBCには１つ(iODBC)ついてきます。DBD::ODBCでは、ソース・リリースは
+iodbcsrcという名前のディレクトリにあります。UnixODBC, FreeODBC その他のドライバには
+これらのマネージャの１つが付いてくるでしょう。
+例えばOpenlinkのドライバ(下記参照)にはiODBCドライバ・マネージャがついてきます。
+EasysoftはODBC-ODBC bridge softwareとunixODBCの両方を提供します。
+
+=item LinuxからMS SQL Serverデータベースにアクセスする方法は？
+
+http://www.openlinksw.comあるいはwww.easysoft.comのドライバを使うことを
+試してみてください。マルチ・ティア(multi-tier)ドライバはLinux と Redhat 5.1で
+テストされています。
+
+=item LinuxからMS-Accessにアクセスする方法は？
+
+私はhttp://www.openlinksw.comにあるマルチ・ティアドライバが使えるものと
+信じています。しかし私は、これをテストしていません。またhttp://www.easysoft.comの
+商業的なソリューションもありますが。私はこれをテストしていません。
+
+だれかもっと情報を持っていたら、どうか、どうかそれを私に送ってください。私はそれを
+このFAQに入れるつもりです。
+
+=item DBD::ODBCのための私のテストのほとんど全てが失敗します。それらは接続できないかDSNが
+見つからないといっています。
+
+どうかお願いですからDBD::ODBCをテストしようとする間に、ODBCとドライバの設定をテストして
+ください。ほとんどいつでも、これはDSN（あるいはODBCが正確に配置されないということ
+から生じます。iODBCにはodbctestが付いてきます。接続できるか確かめるために、それを使ってください。
+
+=item Unix -> Windows DB については、Tom Loweryの記事をご覧ください
+
+http://tlowery.hypermart.net/perl_dbi_dbd_faq.html#HowDoIAccessMSWindowsDB
+
+=item 私はLong Var char（あるいはその他の特定のデータ型）をバインドしようとしています。そしてそれがうまくいきません
+私が使っているコードは以下の通りです：
+
+        $sth->bind_param(1, $str, $DBI::SQL_LONGVARCHAR);
+                                 ^^^
+問題はDBI::SQL_LONGVARCHARが$DBI::SQL_LONGVARCHARが違うからです。そして
+$DBI::SQL_LONGVARCHARはエラーです！
+
+こうしなければなりません：
+
+        $sth->bind_param(1, $str, DBI::SQL_LONGVARCHAR);
+
+

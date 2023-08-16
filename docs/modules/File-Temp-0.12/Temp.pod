@@ -1,0 +1,1305 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+File::Temp - return name and handle of a temporary file safely
+
+=end original
+
+File::Temp - テンポラリファイルの名前とハンドルを安全に返す
+
+=begin __INTERNALS
+
+=head1 PORTABILITY
+
+(ポータビリティ)
+
+=begin original
+
+This module is designed to be portable across operating systems
+and it currently supports Unix, VMS, DOS, OS/2 and Windows. When
+porting to a new OS there are generally three main issues
+that have to be solved:
+
+=end original
+
+このモジュールはオペレーティングシステムをまたいで移植できるように設計されており、
+現在、Unix、VMS、DOS、OS/2、Windows をサポートしています。
+新しいOSに移植するときには、一般的に、3つの、解決されなければならない主要な問題があります:
+
+=over 4
+
+=item *
+
+=begin original
+
+Can the OS unlink an open file? If it can not then the
+C<_can_unlink_opened_file> method should be modified.
+
+=end original
+
+そのOSは、開いているファイルを削除できますか？
+もしできなければ、C<_can_unlink_opend_file>メソッドは修正されるべきです。
+
+=item *
+
+=begin original
+
+Are the return values from C<stat> reliable? By default all the
+return values from C<stat> are compared when unlinking a temporary
+file using the filename and the handle. Operating systems other than
+unix do not always have valid entries in all fields. If C<unlink0> fails
+then the C<stat> comparison should be modified accordingly.
+
+=end original
+
+C<stat>から返される値は信頼出来ますか？ デフォルトでは、
+C<stat>からの返り値の全てが、ファイル名とハンドルを使う一時ファイルを削除するときに、比較されます。
+unix 以外のオペレーティングシステムでは、全てのフィールドについて、
+妥当な項目があるとは限りません。
+もし、C<unlink0> が失敗すると、C<stat> の比較は、それに合わせて、修正されるべきです。
+
+=item *
+
+=begin original
+
+Security. Systems that can not support a test for the sticky bit
+on a directory can not use the MEDIUM and HIGH security tests.
+The C<_can_do_level> method should be modified accordingly.
+
+=end original
+
+セキュリティ。ディレクトリのスティッキービットのテストをサポートしないシステム
+は、中間と、高度の、セキュリティテストを使えません。
+C<_can_do_level>メソッドはそれに応じて、修正されるべきです。
+
+=back
+
+=end __INTERNALS
+
+=head1 SYNOPSIS
+
+  use File::Temp qw/ tempfile tempdir /; 
+
+  $dir = tempdir( CLEANUP => 1 );
+  ($fh, $filename) = tempfile( DIR => $dir );
+
+  ($fh, $filename) = tempfile( $template, DIR => $dir);
+  ($fh, $filename) = tempfile( $template, SUFFIX => '.dat');
+
+  $fh = tempfile();
+
+=begin original
+
+MkTemp family:
+
+=end original
+
+MkTemp 系:
+
+  use File::Temp qw/ :mktemp  /;
+
+  ($fh, $file) = mkstemp( "tmpfileXXXXX" );
+  ($fh, $file) = mkstemps( "tmpfileXXXXXX", $suffix);
+
+  $tmpdir = mkdtemp( $template );
+
+  $unopened_file = mktemp( $template );
+
+=begin original
+
+POSIX functions:
+
+=end original
+
+POSIX 関数:
+
+  use File::Temp qw/ :POSIX /;
+
+  $file = tmpnam();
+  $fh = tmpfile();
+
+  ($fh, $file) = tmpnam();
+  ($fh, $file) = tmpfile();
+
+=begin original
+
+Compatibility functions:
+
+=end original
+
+互換関数:
+
+  $unopened_file = File::Temp::tempnam( $dir, $pfx );
+
+=begin later
+
+Objects (NOT YET IMPLEMENTED):
+
+  require File::Temp;
+
+  $fh = new File::Temp($template);
+  $fname = $fh->filename;
+
+=end later
+
+=head1 DESCRIPTION
+
+=begin original
+
+C<File::Temp> can be used to create and open temporary files in a safe way.
+The tempfile() function can be used to return the name and the open
+filehandle of a temporary file.  The tempdir() function can 
+be used to create a temporary directory.
+
+=end original
+
+C<File::Temp> は、安全な方法で、一時ファイルを作成し、開くのに使えます。
+tempfile() 関数は、一時ファイルの名前と、開いたファイルハンドルを返すのに
+使われます。
+tempdir() 関数は、一時ディレクトリを作成するのに使われます。
+
+=begin original
+
+The security aspect of temporary file creation is emphasized such that
+a filehandle and filename are returned together.  This helps guarantee
+that a race condition can not occur where the temporary file is
+created by another process between checking for the existence of the
+file and its opening.  Additional security levels are provided to
+check, for example, that the sticky bit is set on world writable
+directories.  See L<"safe_level"> for more information.
+
+=end original
+
+一時ファイルを作成することのセキュリティの側面が、ファイルハンドルと
+ファイル名が一緒に返されるということで、強調されます。
+これが、ファイルが存在するかをチェックし、ファイルを開いている間に
+別のプロセスによってテンポラリファイルが作られる、という
+競合条件が起こらないことを保証するのを助けています。
+追加のセキュリティレベルが提供されています;
+例えば、スティッキービットが全体書き込み可能なディレクトリに
+セットされているかのチェックです。
+詳細は L<"safe_level"> を参照してください。
+
+=begin original
+
+For compatibility with popular C library functions, Perl implementations of
+the mkstemp() family of functions are provided. These are, mkstemp(),
+mkstemps(), mkdtemp() and mktemp().
+
+=end original
+
+一般的な C ライブラリ関数との互換性のために、
+mkstemp() 関数の仲間の Perl 実装が提供されています。
+mkstemp(), mkstemps(), mkdtemp(), mktemp() があります。
+
+=begin original
+
+Additionally, implementations of the standard L<POSIX|POSIX>
+tmpnam() and tmpfile() functions are provided if required.
+
+=end original
+
+さらに、もし必要なら、標準の L<POSIX|POSIX> の実装である tmpnam() と
+tmpfile() が提供されます。
+
+=begin original
+
+Implementations of mktemp(), tmpnam(), and tempnam() are provided,
+but should be used with caution since they return only a filename
+that was valid when function was called, so cannot guarantee
+that the file will not exist by the time the caller opens the filename.
+
+=end original
+
+mktemp(), tmpanam(), tempnam() の実装は提供されていますが、
+注意して使われるべきです;
+なぜなら、関数が呼ばれると、妥当なファイル名だけを返すので、
+呼び出し側がファイルを開く時にそのファイルが存在していないことを
+保証できないからです。
+
+=head1 FUNCTIONS
+
+(関数)
+
+=begin original
+
+This section describes the recommended interface for generating
+temporary files and directories.
+
+=end original
+
+この節では、一時ファイルと一時ディレクトリを生成するための、
+推奨されるインターフェースについて説明します。
+
+=over 4
+
+=item B<tempfile>
+
+=begin original
+
+This is the basic function to generate temporary files.
+The behaviour of the file can be changed using various options:
+
+=end original
+
+これは基本的な関数で、一時ファイルを生成します。
+ファイルの振る舞いは様々なオプションで変更できます:
+
+  ($fh, $filename) = tempfile();
+
+=begin original
+
+Create a temporary file in  the directory specified for temporary
+files, as specified by the tmpdir() function in L<File::Spec>.
+
+=end original
+
+L<File::Spec> の tmpdir() 関数で指定される
+一時ファイル用のディレクトリに、一時ファイルを作成します。
+
+  ($fh, $filename) = tempfile($template);
+
+=begin original
+
+Create a temporary file in the current directory using the supplied
+template.  Trailing `X' characters are replaced with random letters to
+generate the filename.  At least four `X' characters must be present
+in the template.
+
+=end original
+
+現在のディレクトリに、提供されたテンプレートを使って、
+一時ファイルを作成します。
+ファイル名を生成するときに、
+末尾の文字 `X' はランダムな文字に置き換えられます。
+少なくとも四つの `X' 文字がテンプレートになければなりません。
+
+  ($fh, $filename) = tempfile($template, SUFFIX => $suffix)
+
+=begin original
+
+Same as previously, except that a suffix is added to the template
+after the `X' translation.  Useful for ensuring that a temporary
+filename has a particular extension when needed by other applications.
+But see the WARNING at the end.
+
+=end original
+
+`X' の変換の後に接尾辞が加えられることを除いて、前のものと同じです。
+他のアプリケーションで必要とされるときに、
+テンポラリファイルに特別の拡張子があるようにしたい場合に便利です。
+しかし、最後の警告を参照してください。
+
+  ($fh, $filename) = tempfile($template, DIR => $dir);
+
+=begin original
+
+Translates the template as before except that a directory name
+is specified.
+
+=end original
+
+ディレクトリの名前が指定されているのを除いて、
+前述のものと同様にテンプレートを変換します。
+
+  ($fh, $filename) = tempfile($template, UNLINK => 1);
+
+=begin original
+
+Return the filename and filehandle as before except that the file is
+automatically removed when the program exits. Default is for the file
+to be removed if a file handle is requested and to be kept if the
+filename is requested. In a scalar context (where no filename is 
+returned) the file is always deleted either on exit or when it is closed.
+
+=end original
+
+前述のようにファイル名とファイルハンドルを返しますが、
+プログラムが終了したときに自動的に一時ファイルが削除されます。
+デフォルトでは、ファイルは、ファイルハンドルが要求されれば削除され、
+ファイル名が要求されれば保持されます。
+(ファイル名が返されない)スカラコンテキストでは、終了時か、閉じられたときに、
+ファイルはいつも削除されます。
+
+=begin original
+
+If the template is not specified, a template is always
+automatically generated. This temporary file is placed in tmpdir()
+(L<File::Spec>) unless a directory is specified explicitly with the 
+DIR option.
+
+=end original
+
+テンプレートが指定されない場合、テンプレートは常に自動的に生成されます。
+この一時ファイルは、DIR オプションで明示的にディレクトリが指定されない限り、
+tmpdir()(L<File::Spec>) に置かれます。
+
+  $fh = tempfile( $template, DIR => $dir );
+
+=begin original
+
+If called in scalar context, only the filehandle is returned
+and the file will automatically be deleted when closed (see 
+the description of tmpfile() elsewhere in this document).
+This is the preferred mode of operation, as if you only 
+have a filehandle, you can never create a race condition
+by fumbling with the filename. On systems that can not unlink
+an open file or can not mark a file as temporary when it is opened
+(for example, Windows NT uses the C<O_TEMPORARY> flag))
+the file is marked for deletion when the program ends (equivalent
+to setting UNLINK to 1). The C<UNLINK> flag is ignored if present.
+
+=end original
+
+スカラコンテキストで呼ばれると、ファイルハンドルが返され、
+閉じられると(この文書の他の場所にある tmpfile() を参照してください)、
+ファイルは自動的に削除されます。
+ファイルハンドルだけを持つのなら、これは好ましい方法です;
+ファイルネームを変更することで競合条件を作ることはありません。
+開いているファイルを削除できない、あるいはファイルを開いていると
+一時的であるとしてファイルにマークをつけることのできないシステムでは
+(たとえば、Windows NT は、C<O_TEMPORARY> フラグを使います)、
+ファイルは、プログラムの終了時に、削除用のマークがつけられます
+(UNLINK を 1 に設定するのと同じ)。
+C<UNLINK> フラグは、あっても無視されます。
+
+  (undef, $filename) = tempfile($template, OPEN => 0);
+
+=begin original
+
+This will return the filename based on the template but
+will not open this file.  Cannot be used in conjunction with
+UNLINK set to true. Default is to always open the file 
+to protect from possible race conditions. A warning is issued
+if warnings are turned on. Consider using the tmpnam()
+and mktemp() functions described elsewhere in this document
+if opening the file is not required.
+
+=end original
+
+これはテンプレートを元にしたファイル名を返しますが、そのファイルを
+開きません。
+UNILINK を真に設定するのと同時には使えません。
+デフォルトでは常にファイルを開き、競合条件の可能性から保護します。
+警告が有効になっている場合は、、警告が出力されます。
+ファイルを開くことを要求しないなら、この文書の他の場所で説明されている
+tmpnam() と、mktemp() 関数を使うことを検討してください。
+
+=begin original
+
+Options can be combined as required.
+
+=end original
+
+オプションは、必要に応じて、組み合わせることができます。
+
+=item B<tempdir>
+
+=begin original
+
+This is the recommended interface for creation of temporary directories.
+The behaviour of the function depends on the arguments:
+
+=end original
+
+これは、一時ディレクトリを作成するための推奨されるインターフェースです。
+この関数の振舞は引数によります:
+
+  $tempdir = tempdir();
+
+=begin original
+
+Create a directory in tmpdir() (see L<File::Spec|File::Spec>).
+
+=end original
+
+tmpdir() でディレクトリを作成します
+(L<File::Spec|File::Spec> を参照してください)。
+
+  $tempdir = tempdir( $template );
+
+=begin original
+
+Create a directory from the supplied template. This template is
+similar to that described for tempfile(). `X' characters at the end
+of the template are replaced with random letters to construct the
+directory name. At least four `X' characters must be in the template.
+
+=end original
+
+提供されたテンプレートから、ディレクトリを作成します。
+このテンプレートは tempfile() で説明されたものと似ています。
+テンプレートの末尾の `X' 文字はランダムな文字に置き換えられ、
+ディレクトリ名を作ります。
+テンプレートには少なくとも四つ `X' 文字がなければいけません。
+
+  $tempdir = tempdir ( DIR => $dir );
+
+=begin original
+
+Specifies the directory to use for the temporary directory.
+The temporary directory name is derived from an internal template.
+
+=end original
+
+一時ディレクトリに使うディレクトリを指定します。
+一時ディレクトリ名は、内部のテンプレートから生成されます。
+
+  $tempdir = tempdir ( $template, DIR => $dir );
+
+=begin original
+
+Prepend the supplied directory name to the template. The template
+should not include parent directory specifications itself. Any parent
+directory specifications are removed from the template before
+prepending the supplied directory.
+
+=end original
+
+指定されたディレクトリ名をテンプレートに前置します。
+テンプレートは、親ディレクトリ指定そのものを含むべきではありません。
+指定されたディレクトリを前置する前に、親ディレクトリ指定は
+テンプレートから削除されます。
+
+  $tempdir = tempdir ( $template, TMPDIR => 1 );
+
+=begin original
+
+Using the supplied template, creat the temporary directory in 
+a standard location for temporary files. Equivalent to doing
+
+=end original
+
+指定された template を使うと、一時ファイルのための標準の場所に、
+一時ディレクトリを作ります。
+次のようにするのと同じですが:
+
+  $tempdir = tempdir ( $template, DIR => File::Spec->tmpdir);
+
+=begin original
+
+but shorter. Parent directory specifications are stripped from the
+template itself. The C<TMPDIR> option is ignored if C<DIR> is set
+explicitly.  Additionally, C<TMPDIR> is implied if neither a template
+nor a directory are supplied.
+
+=end original
+
+上の方が、短くなります。
+親ディレクトリ指定はテンプレート自身から除去されます。
+C<DIR> が明示的に設定されていれば C<TMPDIR> オプションは無視されます。
+加えて、テンプレートもディレクトリも指定されていなければ、
+C<TMPDIR> が仮定されます。
+
+  $tempdir = tempdir( $template, CLEANUP => 1);
+
+=begin original
+
+Create a temporary directory using the supplied template, but 
+attempt to remove it (and all files inside it) when the program
+exits. Note that an attempt will be made to remove all files from
+the directory even if they were not created by this module (otherwise
+why ask to clean it up?). The directory removal is made with
+the rmtree() function from the L<File::Path|File::Path> module.
+Of course, if the template is not specified, the temporary directory
+will be created in tmpdir() and will also be removed at program exit.
+
+=end original
+
+一時ディレクトリを提供されたテンプレートを使って作成しますが、
+プログラムが終了するときに、そのディレクトリ(およびその中の全てのファイル)を
+削除しようとします。
+この試みは、このモジュールが作っていないものも含めて、
+そのディレクトリから全てのファイルを削除しようとします
+(さもなければなぜ削除するか尋ねますか?)。
+ディレクトリの除去は L<File::Path|File::Path> の rmtree() 関数で
+行なわれます。
+もちろん、テンプレートが指定されていなければ、
+一時ディレクトリは tempdir() に作られ、プログラムの終了時に削除されます。
+
+=back
+
+=head1 MKTEMP FUNCTIONS
+
+(MKTEMP 関数)
+
+=begin original
+
+The following functions are Perl implementations of the 
+mktemp() family of temp file generation system calls.
+
+=end original
+
+以下の関数は、一時ファイルを生成するシステムコールである
+mktemp() の仲間の Perl の実装です。
+
+=over 4
+
+=item B<mkstemp>
+
+=begin original
+
+Given a template, returns a filehandle to the temporary file and the name
+of the file.
+
+=end original
+
+テンプレートを与えると、一時ファイルのファイルハンドルとファイル名を返します。
+
+  ($fh, $name) = mkstemp( $template );
+
+=begin original
+
+In scalar context, just the filehandle is returned.
+
+=end original
+
+スカラコンテキストでは、ファイルハンドルだけが返されます。
+
+=begin original
+
+The template may be any filename with some number of X's appended
+to it, for example F</tmp/temp.XXXX>. The trailing X's are replaced
+with unique alphanumeric combinations.
+
+=end original
+
+テンプレートは、いくつかの `X' が追加されたファイル名かもしれません;
+例えば F</tmp/tmp.XXXX>。
+末尾の X は、ユニークな英数字の組合せに置き換えられます。
+
+=item B<mkstemps>
+
+=begin original
+
+Similar to mkstemp(), except that an extra argument can be supplied
+with a suffix to be appended to the template.
+
+=end original
+
+
+mkstemp() に似ていますが、特別な引数を与えて、
+テンプレートに接尾辞を追加できます。
+
+  ($fh, $name) = mkstemps( $template, $suffix );
+
+=begin original
+
+For example a template of C<testXXXXXX> and suffix of C<.dat>
+would generate a file similar to F<testhGji_w.dat>.
+
+=end original
+
+例えば、テンプレート が C<testXXXXXX> で接尾辞が C<.dat> なら、
+F<testthGji_w.dat> のようなファイルを生成します。
+
+=begin original
+
+Returns just the filehandle alone when called in scalar context.
+
+=end original
+
+スカラコンテキストで呼ばれると、ただファイル名だけを返します。
+
+=item B<mkdtemp>
+
+=begin original
+
+Create a directory from a template. The template must end in
+X's that are replaced by the routine.
+
+=end original
+
+テンプレートからディレクトリを作成します。
+ルーチンによって置き換えられるテンプレートは、
+複数の X で終っていなければなりません。
+
+  $tmpdir_name = mkdtemp($template);
+
+=begin original
+
+Returns the name of the temporary directory created.
+Returns undef on failure.
+
+=end original
+
+作成された一時ディレクトリの名前を返します。
+失敗すると undef を返します。
+
+=begin original
+
+Directory must be removed by the caller.
+
+=end original
+
+ディレクトリは、呼び出し元で削除しなければなりません。
+
+=item B<mktemp>
+
+=begin original
+
+Returns a valid temporary filename but does not guarantee
+that the file will not be opened by someone else.
+
+=end original
+
+妥当な一時ファイル名を返します。
+ですが、そのファイルが、他の誰かに開かれていないことは保証しません。
+
+  $unopened_file = mktemp($template);
+
+=begin original
+
+Template is the same as that required by mkstemp().
+
+=end original
+
+テンプレートは、mkstemp() で必要とされるのと同じです。
+
+=back
+
+=head1 POSIX FUNCTIONS
+
+(POSIX 関数)
+
+=begin original
+
+This section describes the re-implementation of the tmpnam()
+and tmpfile() functions described in L<POSIX> 
+using the mkstemp() from this module.
+
+=end original
+
+この節は、このモジュールから mkstemp() を使っている、L<POSIX> に
+説明されている tmpnam() と tmpfile() 関数の再実装を説明しています。
+
+=begin original
+
+Unlike the L<POSIX|POSIX> implementations, the directory used
+for the temporary file is not specified in a system include
+file (C<P_tmpdir>) but simply depends on the choice of tmpdir()
+returned by L<File::Spec|File::Spec>. On some implementations this
+location can be set using the C<TMPDIR> environment variable, which
+may not be secure.
+If this is a problem, simply use mkstemp() and specify a template.
+
+=end original
+
+L<POSIX|POSIX> の実装とは違い、一時ファイルに使われるディレクトリは、
+システム内部のファイル (C<P_tmpdir>) で指定されているのではなく、
+単純に、L<File::Spec|File::Spec> によって、tmpdir() が返すものの選択に
+依っています。
+実装によっては、この場所は、C<TMPDIR> 環境変数を使って
+設定されているかもしれません、これは安全ではないかもしれません。
+このことが問題なら、単純に、mkstemp() を使い、テンプレートを指定して下さい。
+
+=over 4
+
+=item B<tmpnam>
+
+=begin original
+
+When called in scalar context, returns the full name (including path)
+of a temporary file (uses mktemp()). The only check is that the file does
+not already exist, but there is no guarantee that that condition will
+continue to apply.
+
+=end original
+
+スカラコンテキストで呼ばれたら、(mktemp() を使う)一時ファイルの
+(パスを含んだ)フルネームを返します。
+ファイルが既に存在しないことだけをチェックしますが、
+その状態が適用され続ける保証はありません。
+
+  $file = tmpnam();
+
+=begin original
+
+When called in list context, a filehandle to the open file and
+a filename are returned. This is achieved by calling mkstemp()
+after constructing a suitable template.
+
+=end original
+
+リストコンテキストで呼ばれると、ファイルを開くファイルハンドルと
+ファイル名が返ります。
+これは、適切なテンプレートを組み立てた後に mkstemp() を呼ぶことで
+達成されます。
+
+  ($fh, $file) = tmpnam();
+
+=begin original
+
+If possible, this form should be used to prevent possible
+race conditions.
+
+=end original
+
+可能なら、潜在的な競合状態を防ぐためにこの形で使うべきです。
+
+=begin original
+
+See L<File::Spec/tmpdir> for information on the choice of temporary
+directory for a particular operating system.
+
+=end original
+
+特定のオペレーティングシステムで
+一時ディレクトリを選択するための情報については、
+L<File::Spec/tmpdir> を参照してください。
+
+=item B<tmpfile>
+
+=begin original
+
+In scalar context, returns the filehandle of a temporary file.
+
+=end original
+
+スカラコンテキストでは、一時ファイルのファイルハンドルを返します。
+
+  $fh = tmpfile();
+
+=begin original
+
+The file is removed when the filehandle is closed or when the program
+exits. No access to the filename is provided.
+
+=end original
+
+ファイルハンドルが閉じられるときか、プログラムが終了するときに、
+ファイルは削除されます。
+ファイル名へのアクセスは提供されていません。
+
+=begin original
+
+If the temporary file can not be created undef is returned.
+Currently this command will probably not work when the temporary
+directory is on an NFS file system.
+
+=end original
+
+一時ファイルが作られなければ、undef が返ります。
+一時ディレクトリが NFS ファイルシステムの場合、
+現在のところこのコマンドはおそらく動きません。
+
+=back
+
+=head1 ADDITIONAL FUNCTIONS
+
+(追加の関数)
+
+=begin original
+
+These functions are provided for backwards compatibility
+with common tempfile generation C library functions.
+
+=end original
+
+これらの関数は、共通の一時ファイル生成の C ライブラリ関数の
+後方互換のために提供されています。
+
+=begin original
+
+They are not exported and must be addressed using the full package
+name. 
+
+=end original
+
+エクスポートされていないので、完全なパッケージ名を使って
+記述しなければなりません。
+
+=over 4
+
+=item B<tempnam>
+
+=begin original
+
+Return the name of a temporary file in the specified directory
+using a prefix. The file is guaranteed not to exist at the time
+the function was called, but such guarantees are good for one 
+clock tick only.  Always use the proper form of C<sysopen>
+with C<O_CREAT | O_EXCL> if you must open such a filename.
+
+=end original
+
+接頭辞を使って指定したディレクトリ内に、一時ファイルのファイル名を返します。
+ファイルは関数が呼ばれたそのときに存在していないことを保証されます。
+ですが、この保証は一瞬だけのものです。
+そのようなファイル名を開かなければならないなら、
+C<O_CREAT | O_EXCL> で、C<sysopen> の適切な形を常に使ってください。
+
+  $filename = File::Temp::tempnam( $dir, $prefix );
+
+=begin original
+
+Equivalent to running mktemp() with $dir/$prefixXXXXXXXX
+(using unix file convention as an example) 
+
+=end original
+
+$dir/$prefixXXXXXXXXX で、mktemp() を実行するのと同じです。
+(例として、unix のファイルの慣例を使います)
+
+=begin original
+
+Because this function uses mktemp(), it can suffer from race conditions.
+
+=end original
+
+この関数は mktemp() を使うので、競合状態の影響を受けます。
+
+=back
+
+=head1 UTILITY FUNCTIONS
+
+(ユーティリティ関数)
+
+=begin original
+
+Useful functions for dealing with the filehandle and filename.
+
+=end original
+
+ファイルハンドルとファイル名を扱うための便利関数。
+
+=over 4
+
+=item B<unlink0>
+
+=begin original
+
+Given an open filehandle and the associated filename, make a safe
+unlink. This is achieved by first checking that the filename and
+filehandle initially point to the same file and that the number of
+links to the file is 1 (all fields returned by stat() are compared).
+Then the filename is unlinked and the filehandle checked once again to
+verify that the number of links on that file is now 0.  This is the
+closest you can come to making sure that the filename unlinked was the
+same as the file whose descriptor you hold.
+
+=end original
+
+開いているファイルハンドルと、関連付けられたファイル名を与えると、
+安全に削除します。
+これは、ファイル名とファイルハンドルが同じファイルを指し、
+ファイルへのリンクの数が、一つであること
+(stat()が返す全てのフィールドが比較されます)を
+最初にチェックすることで、実現します。
+それからファイル名が削除されて、ファイルハンドルが再びチェックされ、
+そのファイルのリンクの数が今度は 0 であることを検証します。
+このことは、保持しているファイルのディスクリプタと削除されたファイル名が
+同じであることを確かめるのに、最も周到です。
+
+=begin original
+
+On some platforms, for example Windows NT, it is not possible to
+unlink an open file (the file must be closed first). On those
+platforms, the actual unlinking is deferred until the program ends and
+good status is returned. A check is still performed to make sure that
+the filehandle and filename are pointing to the same thing (but not at
+the time the end block is executed since the deferred removal may not
+have access to the filehandle).
+
+=end original
+
+プラットフォームによっては(例えば、Windows NT)、開いているファイルを
+削除できないものもあります
+(ファイルはまず閉じられなければいけません)。
+それらのプラットフォームでは、プログラムが終了し、良い状態になるまで、
+実際の削除は据え置かれます。
+ファイルハンドルとファイル名が同じのを指す事を確かめるまで、チェックは
+行なわれます。
+(しかし、最後のブロックが実行された時点でなければ、
+据え置かれた削除はファイルハンドルにアクセスしないでしょう。)
+
+=begin original
+
+Additionally, on Windows NT not all the fields returned by stat() can
+be compared. For example, the C<dev> and C<rdev> fields seem to be
+different.  Also, it seems that the size of the file returned by stat()
+does not always agree, with C<stat(FH)> being more accurate than
+C<stat(filename)>, presumably because of caching issues even when
+using autoflush (this is usually overcome by waiting a while after
+writing to the tempfile before attempting to C<unlink0> it).
+
+=end original
+
+さらに、Windows NT は、stat() が比較される全てのフィールドを返しません。
+例えば、C<dev> と C<rdev> フィールドは異なっているようです。
+また、stat() が返すファイルのサイズは、常には一致しません;
+C<stat(FH)> は、C<stat(filename)> よりも、狂いがありません;
+おそらく、例え自動フラッシュを使っていても、キャッシングの問題によるものです
+(これは普通、一時ファイルに書き込んだ後、それを C<unlink0> が試される前に
+しばらく待つことで、対処できます)。
+
+=begin original
+
+Finally, on NFS file systems the link count of the file handle does
+not always go to zero immediately after unlinking. Currently, this
+command is expected to fail on NFS disks.
+
+=end original
+
+最後に、NFS ファイルシステムでは、 ファイルハンドルのリンクカウントは、
+削除の後、すぐには、常には 0 になりません。
+現在このコマンドは、NFS ディスク上では失敗すると想定されます。
+
+=back
+
+=head1 PACKAGE VARIABLES
+
+(パッケージ変数)
+
+=begin original
+
+These functions control the global state of the package.
+
+=end original
+
+これらの関数は、パッケージのグローバルな状態を制御します。
+
+=over 4
+
+=item B<safe_level>
+
+=begin original
+
+Controls the lengths to which the module will go to check the safety of the
+temporary file or directory before proceeding.
+Options are:
+
+=end original
+
+このモジュールが処理前に一時ファイルか一時ディレクトリを
+安全にチェックしようとする程度を制御します。
+オプション:
+
+=over 8
+
+=item STANDARD
+
+=begin original
+
+Do the basic security measures to ensure the directory exists and
+is writable, that the umask() is fixed before opening of the file,
+that temporary files are opened only if they do not already exist, and
+that possible race conditions are avoided.  Finally the L<unlink0|"unlink0">
+function is used to remove files safely.
+
+=end original
+
+基本的なセキュリティの程度で、以下のことを保証します;
+ディレクトリが存在し、書き込み可能であること;
+ファイルを開く前に、umask() が固定されていること;
+一時ファイルは、まだ存在していない場合にのみ開いていて、競合条件が
+避けられていること。
+最後に、ファイルを安全に削除するために
+L<unlink0|"unlink0"> 関数が使われます。
+
+=item MEDIUM
+
+=begin original
+
+In addition to the STANDARD security, the output directory is checked
+to make sure that it is owned either by root or the user running the
+program. If the directory is writable by group or by other, it is then
+checked to make sure that the sticky bit is set.
+
+=end original
+
+STANDARD の安全性に加えて、出力ディレクトリが root または
+プログラムを実行しているユーザのどちらかによって
+所有されていることを確かめるチェックをします。
+ディレクトリが他のグループかユーザによって書き込み可能であるならば、
+スティッキービットがセットされていることを確かめるチェックをします。
+
+=begin original
+
+Will not work on platforms that do not support the C<-k> test
+for sticky bit.
+
+=end original
+
+スティッキービットのための C<-k> テストに対応していないプラットフォームでは
+動作しません。
+
+
+=item HIGH
+
+=begin original
+
+In addition to the MEDIUM security checks, also check for the
+possibility of ``chown() giveaway'' using the L<POSIX|POSIX>
+sysconf() function. If this is a possibility, each directory in the
+path is checked in turn for safeness, recursively walking back to the 
+root directory.
+
+=end original
+
+MEDIUM の安全性チェックに加えて、L<POSIX|POSIX> sysconf() 関数を使って、
+``chown() giveaway'' の可能性もチェックします。
+もしこの可能性があれば、それぞれのパスのディレクトリは、
+ルートディレクトリまで再帰的に安全性がチェックされます。
+
+=begin original
+
+For platforms that do not support the L<POSIX|POSIX>
+C<_PC_CHOWN_RESTRICTED> symbol (for example, Windows NT) it is 
+assumed that ``chown() giveaway'' is possible and the recursive test
+is performed.
+
+=end original
+
+L<POSIX|POSIX> の C<_PC_CHOWN_RESTRICTED> シンボルに対応しない
+プラットフォーム(たとえば、Windows NT)では、
+`chown() giveaway'' が可能であると仮定し、再帰的なテストが行われます。
+
+=back
+
+=begin original
+
+The level can be changed as follows:
+
+=end original
+
+レベルは以下のようにして変更できます:
+
+  File::Temp->safe_level( File::Temp::HIGH );
+
+=begin original
+
+The level constants are not exported by the module.
+
+=end original
+
+レベル定数はモジュールによってエクスポートされません。
+
+=begin original
+
+Currently, you must be running at least perl v5.6.0 in order to
+run with MEDIUM or HIGH security. This is simply because the 
+safety tests use functions from L<Fcntl|Fcntl> that are not
+available in older versions of perl. The problem is that the version
+number for Fcntl is the same in perl 5.6.0 and in 5.005_03 even though
+they are different versions.
+
+=end original
+
+MEDIUM か HIGH のセキュリティを実行するためには、
+今のところ少なくとも Perl v5.6.0 で動かさなければなりません。
+これは単純に、安全なテストは v5.6.0 より古いバージョンの perl では
+利用できない <Fcntl|Fcntl> から関数を使うからです。
+perl 5.6.0 と、5.005_03 の Fcntl のバージョン番号が、それらは
+違うものであるにもかかわらず、
+バージョン番号が同じであることが問題です。
+
+=begin original
+
+On systems that do not support the HIGH or MEDIUM safety levels
+(for example Win NT or OS/2) any attempt to change the level will
+be ignored. The decision to ignore rather than raise an exception
+allows portable programs to be written with high security in mind
+for the systems that can support this without those programs failing
+on systems where the extra tests are irrelevant.
+
+=end original
+
+HIGH と、MEDIUM の安全レベルをサポートしない OS(Win NT や OS/2) では、
+レベルを変更しようとしても無視されます。
+例外を起こさずに無視すると言う決定により、
+移植性のあるプログラムを、
+追加のテストが無意味であるシステムでプログラムが失敗するということなしに、
+高い安全性に対応することができるシステムのことを考えて、
+高いセキュリティで書くことを可能にします。
+
+=begin original
+
+If you really need to see whether the change has been accepted
+simply examine the return value of C<safe_level>.
+
+=end original
+
+もし、実際に変更が受け入れられたかどうかを確認する必要があるなら、
+単に C<safe_level> の返り値をを調べてください。
+
+  $newlevel = File::Temp->safe_level( File::Temp::HIGH );
+  die "Could not change to high security" 
+      if $newlevel != File::Temp::HIGH;
+
+=item TopSystemUID
+
+=begin original
+
+This is the highest UID on the current system that refers to a root
+UID. This is used to make sure that the temporary directory is 
+owned by a system UID (C<root>, C<bin>, C<sys> etc) rather than 
+simply by root.
+
+=end original
+
+これは root UID を参照する現在のシステムでもっとも高い UID です。
+これは一時ディレクトリが単純に root のものであるのではなくて、
+システム UID のもの(C<root>, C<bin>, C<sys> など)であることを確かめるのに、
+使われます。
+
+=begin original
+
+This is required since on many unix systems C</tmp> is not owned
+by root.
+
+=end original
+
+多くの unix のシステムで、C</tmp> は root のものではないので、
+これが必要とされます。
+
+=begin original
+
+Default is to assume that any UID less than or equal to 10 is a root
+UID.
+
+=end original
+
+デフォルトでは、10 以下のものはどんな UID も root UID と想定します。
+
+  File::Temp->top_system_uid(10);
+  my $topid = File::Temp->top_system_uid;
+
+=begin original
+
+This value can be adjusted to reduce security checking if required.
+The value is only relevant when C<safe_level> is set to MEDIUM or higher.
+
+=end original
+
+必要ならばこの値を調整してセキュリティチェックを下げることもできます。
+この値は C<safe_level> がMEDIUM 以上に設定されている場合に関連があります。
+
+=back
+
+=head1 WARNING
+
+(警告)
+
+=begin original
+
+For maximum security, endeavour always to avoid ever looking at,
+touching, or even imputing the existence of the filename.  You do not
+know that that filename is connected to the same file as the handle
+you have, and attempts to check this can only trigger more race
+conditions.  It's far more secure to use the filehandle alone and
+dispense with the filename altogether.
+
+=end original
+
+最高のセキュリティのためには、あるファイルの存在を、調べたり、
+作成したり、仮定したりすることを避けるように努力して下さい。
+そのファイル名があなたの持っているハンドルと同じファイルに
+接続されているかどうかはわかりませんし、
+それを調べようとすることはより多くの競合状態を引き起こすだけです。
+ファイルハンドルだけを使い、ファイル名と切り離す方があるかに安全です。
+
+=begin original
+
+If you need to pass the handle to something that expects a filename
+then, on a unix system, use C<"/dev/fd/" . fileno($fh)> for arbitrary
+programs, or more generally C<< "+<=&" . fileno($fh) >> for Perl
+programs.  You will have to clear the close-on-exec bit on that file
+descriptor before passing it to another process.
+
+=end original
+
+ファイルネームを期待するものにハンドルを渡す必要があるなら、
+unix システムでは、任意のプログラムに対して C<"/dev/fd/" . fileno($fh)> を
+使ってください;
+または、より一般的に Perl のプログラムのために
+C<< "+<=&" . fileno($fh) >> を使って下さい。
+他のプロセスにそれを渡す前にファイル記述子で close-on-exec ビット
+をクリアする必要があるでそしょう。
+
+    use Fcntl qw/F_SETFD F_GETFD/;
+    fcntl($tmpfh, F_SETFD, 0)
+        or die "Can't clear close-on-exec flag on temp fh: $!\n";
+
+=head2 Temporary files and NFS
+
+(一時ファイルとNFS)
+
+=begin original
+
+Some problems are associated with using temporary files that reside
+on NFS file systems and it is recommended that a local filesystem
+is used whenever possible. Some of the security tests will most probably
+fail when the temp file is not local. Additionally, be aware that
+the performance of I/O operations over NFS will not be as good as for
+a local disk.
+
+=end original
+
+NFS ファイルシステムにある一時ファイルを使うことに関してはいくつかの
+問題があり、出来る限りローカルのファイルシステムを使うことが
+推奨されます。
+いくつかのセキュリティテストは、一時ファイルがローカルにない場合、
+ほとんどたいてい失敗するでしょう。
+更に、NFS 越しの I/O 操作はローカルディスクほど良くないことに
+気をつけて下さい。
+
+=head1 HISTORY
+
+(経緯)
+
+=begin original
+
+Originally began life in May 1999 as an XS interface to the system
+mkstemp() function. In March 2000, the OpenBSD mkstemp() code was
+translated to Perl for total control of the code's
+security checking, to ensure the presence of the function regardless of
+operating system and to help with portability.
+
+=end original
+
+もともとは、1999 年の 5 月にシステムの mkstemp() 関数への
+XS インターフェースとして生まれました。
+2000 年 5 月に、コードのセキュリティチェックを完全に制御するために、
+OpenBSD の mkstemp() コードが Perl に移植されました;
+オペレーティングシステムに依存しない関数の存在を保証することになり、
+移植性を助けることになりました。
+
+=head1 SEE ALSO
+
+L<POSIX/tmpnam>, L<POSIX/tmpfile>, L<File::Spec>, L<File::Path>
+
+=begin original
+
+See L<IO::File> and L<File::MkTemp> for different implementations of 
+temporary file handling.
+
+=end original
+
+一時ファイルを扱う異なった実装については L<IO::File> と L<File::MkTemp> を
+参照してください。
+
+=head1 AUTHOR
+
+Tim Jenness E<lt>t.jenness@jach.hawaii.eduE<gt>
+
+Copyright (C) 1999-2001 Tim Jenness and the UK Particle Physics and
+Astronomy Research Council. All Rights Reserved.  This program is free
+software; you can redistribute it and/or modify it under the same
+terms as Perl itself.
+
+Original Perl implementation loosely based on the OpenBSD C code for 
+mkstemp(). Thanks to Tom Christiansen for suggesting that this module
+should be written and providing ideas for code improvements and
+security enhancements.
+
+=begin meta
+
+Update: SHIRAKATA Kentaro <argrath@ub32.org> (0.12-)
+Status: completed
+
+=end meta

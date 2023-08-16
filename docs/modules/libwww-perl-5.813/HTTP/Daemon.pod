@@ -1,0 +1,607 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+HTTP::Daemon - a simple http server class
+
+=end original
+
+HTTP::Daemon - 簡単な http サーバクラス
+
+=head1 SYNOPSIS
+
+  use HTTP::Daemon;
+  use HTTP::Status;
+
+  my $d = HTTP::Daemon->new || die;
+  print "Please contact me at: <URL:", $d->url, ">\n";
+  while (my $c = $d->accept) {
+      while (my $r = $c->get_request) {
+	  if ($r->method eq 'GET' and $r->url->path eq "/xyzzy") {
+              # remember, this is *not* recommended practice :-)
+	      $c->send_file_response("/etc/passwd");
+	  }
+	  else {
+	      $c->send_error(RC_FORBIDDEN)
+	  }
+      }
+      $c->close;
+      undef($c);
+  }
+
+=head1 DESCRIPTION
+
+=begin original
+
+Instances of the C<HTTP::Daemon> class are HTTP/1.1 servers that
+listen on a socket for incoming requests. The C<HTTP::Daemon> is a
+subclass of C<IO::Socket::INET>, so you can perform socket operations
+directly on it too.
+
+=end original
+
+C<HTTP::Daemon> のインスタンスは、リクエストがやってくるソケットを
+listen する HTTP/1.1 サーバです。
+C<HTTP::Daemon> は C<IO::Socket::INET> クラスのサブクラスなので、
+そのため直接ソケット操作を行うことも出来ます。
+
+=begin original
+
+The accept() method will return when a connection from a client is
+available.  The returned value will be an C<HTTP::Daemon::ClientConn>
+object which is another C<IO::Socket::INET> subclass.  Calling the
+get_request() method on this object will read data from the client and
+return an C<HTTP::Request> object.  The ClientConn object also provide
+methods to send back various responses.
+
+=end original
+
+accept() メソッドはクライアントからの接続が利用可能になると返ります。
+返された値は C<HTTP::Daemon::ClientConn> クラスのオブジェクトで、
+それはもう一つの C<IO::Socket::INET> のサブクラスです。
+このオブジェクトに get_request() メソッドを呼ぶと、クライアントから
+データを読み込み、C<HTTP::Request> オブジェクトを返します。
+様々なレスポンスを送り返すために ClientConn オブジェクトも提供されます。
+
+=begin original
+
+This HTTP daemon does not fork(2) for you.  Your application, i.e. the
+user of the C<HTTP::Daemon> is responsible for forking if that is
+desirable.  Also note that the user is responsible for generating
+responses that conform to the HTTP/1.1 protocol.
+
+=end original
+
+この HTTP デーモンはあなたの代わりに fork(2) をしません。
+あなたのアプリケーション、つまり C<HTTP::Daemon> のユーザは、必要なら
+フォークすることに責任を持たなければなりません。
+またユーザは HTTP/1.1 プロトコルに従ったレスポンスを作成することに責任を
+持たなければなりません。
+
+=begin original
+
+The following methods of C<HTTP::Daemon> are new (or enhanced) relative
+to the C<IO::Socket::INET> base class:
+
+=end original
+
+以下 の C<HTTP::Daemon> メソッドは C<IO::Socket::INET> 基底クラスとの
+比較で、新しい (もしくは拡張された) ものです:
+
+=over 4
+
+=item $d = HTTP::Daemon->new
+
+=item $d = HTTP::Daemon->new( %opts )
+
+=begin original
+
+The constructor method takes the same arguments as the
+C<IO::Socket::INET> constructor, but unlike its base class it can also
+be called without any arguments.  The daemon will then set up a listen
+queue of 5 connections and allocate some random port number.
+
+=end original
+
+コンストラクタメソッドは C<IO::Socket::INET> コンストラクタと同じ
+引数を取りますが、基底クラスとは違って、
+何も引数を指定せずに呼び出すことも出来ます。
+デーモンは五つの接続の listen キューを設定し、いくつかのランダムな
+ポート番号を占有します。
+
+=begin original
+
+A server that wants to bind to some specific address on the standard
+HTTP port will be constructed like this:
+
+=end original
+
+ある特定のアドレスの標準の HTTP ポートでバインドしたいサーバは
+以下のように組み立てます:
+
+  $d = HTTP::Daemon->new(
+           LocalAddr => 'www.thisplace.com',
+           LocalPort => 80,
+       );
+
+=begin original
+
+See L<IO::Socket::INET> for a description of other arguments that can
+be used configure the daemon during construction.
+
+=end original
+
+コンストラクタでデーモンを設定するために使われるその他の引数の
+説明については L<IO::Socket::INET> を参照してください。
+
+=item $c = $d->accept
+
+=item $c = $d->accept( $pkg )
+
+=item ($c, $peer_addr) = $d->accept
+
+=begin original
+
+This method works the same the one provided by the base class, but it
+returns an C<HTTP::Daemon::ClientConn> reference by default.  If a
+package name is provided as argument, then the returned object will be
+blessed into the given class.  It is probably a good idea to make that
+class a subclass of C<HTTP::Daemon::ClientConn>.
+
+=end original
+
+このメソッドは基底クラスと同様ですが、デフォルトでは
+C<HTTP::Daemon::ClientConn> リファレンスを返します。
+引数としてパッケージ名が渡されると、返されるオブジェクトは与えられた
+クラスで bless されます。
+このクラスを C<HTTP::Daemon::ClientConn> のサブクラスにするのは
+おそらく良い考えでしょう。
+
+=begin original
+
+The accept method will return C<undef> if timeouts have been enabled
+and no connection is made within the given time.  The timeout() method
+is described in L<IO::Socket>.
+
+=end original
+
+accept メソッドは、タイムアウトが有効で、与えられた時間内に接続が
+ない場合は C<undef> が返されます。
+timeout() メソッドは L<IO::Socket> に記述されています。
+
+=begin original
+
+In list context both the client object and the peer address will be
+returned; see the description of the accept method L<IO::Socket> for
+details.
+
+=end original
+
+リストコンテキストでは、クライアントオブジェクトと接続先アドレスの
+両方が返されます; 詳しくは L<IO::Socket> の accept メソッドの
+説明を参照してください。
+
+=item $d->url
+
+=begin original
+
+Returns a URL string that can be used to access the server root.
+
+=end original
+
+サーバルートにアクセスするために使われる URL 文字列を返します。
+
+=item $d->product_tokens
+
+=begin original
+
+Returns the name that this server will use to identify itself.  This
+is the string that is sent with the C<Server> response header.  The
+main reason to have this method is that subclasses can override it if
+they want to use another product name.
+
+=end original
+
+このサーバがそれ自身を識別するために使う名前を返します。
+これは C<Server> レスポンスヘッダで送信される文字列です。
+このメソッドを持っている主な理由は、他のプロダクト名を使いたいとき
+サブクラスがオーバーライドすることができるからです。
+
+=begin original
+
+The default is the string "libwww-perl-daemon/#.##" where "#.##" is
+replaced with the version number of this module.
+
+=end original
+
+デフォルトは "libwww-perl-daemon/#.##" という文字列です; "#.##" は
+このモジュールのバージョン番号で置き換えられます。
+
+=back
+
+=begin original
+
+The C<HTTP::Daemon::ClientConn> is a C<IO::Socket::INET>
+subclass. Instances of this class are returned by the accept() method
+of C<HTTP::Daemon>.  The following methods are provided:
+
+=end original
+
+C<HTTP::Daemon::ClientConn> は C<IO::Socket::INET> のサブクラスです。
+このクラスのインスタンスは C<HTTP::Daemon> の accept() メソッドにより
+返されます。
+以下のメソッドが提供されます:
+
+=over 4
+
+=item $c->get_request
+
+=item $c->get_request( $headers_only )
+
+=begin original
+
+This method read data from the client and turns it into an
+C<HTTP::Request> object which is returned.  It returns C<undef>
+if reading fails.  If it fails, then the C<HTTP::Daemon::ClientConn>
+object ($c) should be discarded, and you should not try call this
+method again on it.  The $c->reason method might give you some
+information about why $c->get_request failed.
+
+=end original
+
+このメソッドはクライアントからデータを読み込み、返される
+C<HTTP::Request> オブジェクトに変換します。
+読み込みに失敗すれば、C<undef> を返します。
+もし失敗すれば、C<HTTP::Daemon::ClientConn> オブジェクト ($c) は
+捨てられます。
+そしてこのメソッドを再び呼びだそうとしてはいけません。
+$c->reason メソッドは、なぜ $c->get_request が失敗したかについての情報を
+与えてくれるかもしれません。
+
+=begin original
+
+The get_request() method will normally not return until the whole
+request has been received from the client.  This might not be what you
+want if the request is an upload of a large file (and with chunked
+transfer encoding HTTP can even support infinite request messages -
+uploading live audio for instance).  If you pass a TRUE value as the
+$headers_only argument, then get_request() will return immediately
+after parsing the request headers and you are responsible for reading
+the rest of the request content.  If you are going to call
+$c->get_request again on the same connection you better read the
+correct number of bytes.
+
+=end original
+
+get_request() メソッドは通常はすべてのリクエストがクライアントから
+受信できるまで戻りません。
+もしリクエストが大きいファイルをアップロードする (そしてチャンクされた
+転送エンコーディングで HTTP が無限のリクエストメッセージをサポートすること
+- 例えばライブな音声のアップロード - が出来たとしても) のであれば、
+これは望ましいことではないかもしれません。
+$headers_only 引数として TRUE を渡すと、get_request() は、
+リクエストヘッダを解析するとすぐに戻ります。
+そしてリクエスト内容の残りを読むかどうかの責任はあなたにあります。
+もし同じ接続に $c->get_request を再び呼び出せば、正しいバイト数を
+読み込みます。
+
+=item $c->read_buffer
+
+=item $c->read_buffer( $new_value )
+
+=begin original
+
+Bytes read by $c->get_request, but not used are placed in the I<read
+buffer>.  The next time $c->get_request is called it will consume the
+bytes in this buffer before reading more data from the network
+connection itself.  The read buffer is invalid after $c->get_request
+has failed.
+
+=end original
+
+$c->get_request により読み込まれたけれども I<read buffer> に置かれたバイト列。
+次に $c->get_request が呼ばれると、ネットワーク接続自身からより多くのデータを
+読み込む前に、このバッファの中のバイト列を消費するでしょう。
+$c->get_requestが失敗した後は、読み込みバッファは不正です。
+
+=begin original
+
+If you handle the reading of the request content yourself you need to
+empty this buffer before you read more and you need to place
+unconsumed bytes here.  You also need this buffer if you implement
+services like I<101 Switching Protocols>.
+
+=end original
+
+あなた自身でリクエストのコンテンツの読み込みを扱うならば、さらに読み込む
+前にはこのバッファを空にする必要があります。
+そして消費されないバイトをここに置く必要があります。
+I<101 Switching Protocols> のようなサービスを実装するのであっても、この
+バッファが必要です。
+
+=begin original
+
+This method always return the old buffer content and can optionally
+replace the buffer content if you pass it an argument.
+
+=end original
+
+このメソッドは常に古いバッファの内容を返します。
+引数を渡せば、オプションでバッファを置きかえることも出来ます。
+
+=item $c->reason
+
+=begin original
+
+When $c->get_request returns C<undef> you can obtain a short string
+describing why it happened by calling $c->reason.
+
+=end original
+
+$c->get_request が C<undef> を返すとき、$c->reason を呼び出すことにより、
+なぜそうなったかを説明する短い文字列を取得できます。
+
+=item $c->proto_ge( $proto )
+
+=begin original
+
+Return TRUE if the client announced a protocol with version number
+greater or equal to the given argument.  The $proto argument can be a
+string like "HTTP/1.1" or just "1.1".
+
+=end original
+
+クライアントがプロトコルのバージョン番号が与えられた引数よりも大きいか
+同じだといっている場合、TRUE を返します。
+$proto 引数は "HTTP/1.1" や単に "1.1" のような文字列にすることが出来ます。
+
+=item $c->antique_client
+
+=begin original
+
+Return TRUE if the client speaks the HTTP/0.9 protocol.  No status
+code and no headers should be returned to such a client.  This should
+be the same as !$c->proto_ge("HTTP/1.0").
+
+=end original
+
+クライアントが HTTP/0.9 プロトコルを話していれば TRUE を返します。
+そのようなクライアントにはステータスコードやヘッダを返しません。
+これは !$c->proto_ge("HTTP/1.0") と同じです。
+
+=item $c->head_request
+
+=begin original
+
+Return TRUE if the last request was a C<HEAD> request.  No content
+body must be generated for these requests.
+
+=end original
+
+最後のリクエストが C<HEAD> だった場合は TRUE を返します。
+これらのリクエストではコンテントボディは生成できません。
+
+=item $c->force_last_request
+
+=begin original
+
+Make sure that $c->get_request will not try to read more requests off
+this connection.  If you generate a response that is not self
+delimiting, then you should signal this fact by calling this method.
+
+=end original
+
+$c->get_request がこの接続にさらにリクエストをしないことを保証します。
+自分自身が分割しないレスポンスをつくると、このメソッドを
+呼び出すことにより、このことを知らせなければいけません。
+
+=begin original
+
+This attribute is turned on automatically if the client announces
+protocol HTTP/1.0 or worse and does not include a "Connection:
+Keep-Alive" header.  It is also turned on automatically when HTTP/1.1
+or better clients send the "Connection: close" request header.
+
+=end original
+
+属性はクライアントプロトコルが HTTP/1.0 またはそれより悪く、
+"Connection;", "Keep-Alive" ヘッダを含まないといっていれば、
+この属性は自動的にオンに切り替わります。
+また HTTP/1.1 またはそれよりもよいクライアントが
+"Connection:close" リクエストヘッダを送信するときにも自動的にオンに
+切り替わります。
+
+=item $c->send_status_line
+
+=item $c->send_status_line( $code )
+
+=item $c->send_status_line( $code, $mess )
+
+=item $c->send_status_line( $code, $mess, $proto )
+
+=begin original
+
+Send the status line back to the client.  If $code is omitted 200 is
+assumed.  If $mess is omitted, then a message corresponding to $code
+is inserted.  If $proto is missing the content of the
+$HTTP::Daemon::PROTO variable is used.
+
+=end original
+
+クライアントにステータス行を送信します。
+$code が省略されると、200 が仮定されます。
+$mess が省略されると、$code に対応するメッセージが挿入されます。
+$proto が省略されると、$HTTP::Daemon::PROTO 変数の内容が使われます。
+
+=item $c->send_crlf
+
+=begin original
+
+Send the CRLF sequence to the client.
+
+=end original
+
+クライアントに CRLF の並びを送信します。
+
+=item $c->send_basic_header
+
+=item $c->send_basic_header( $code )
+
+=item $c->send_basic_header( $code, $mess )
+
+=item $c->send_basic_header( $code, $mess, $proto )
+
+=begin original
+
+Send the status line and the "Date:" and "Server:" headers back to
+the client.  This header is assumed to be continued and does not end
+with an empty CRLF line.
+
+=end original
+
+ステータス行と "Date:" と" Server:" ヘッダをクライアントに送信します。
+このヘッダは続いていて、空の CRLF 行で終わらないことを仮定しています。
+
+=begin original
+
+See the description of send_status_line() for the description of the
+accepted arguments.
+
+=end original
+
+受け付ける引数の説明については send_status_line() を参照してください。
+
+=item $c->send_response( $res )
+
+=begin original
+
+Write a C<HTTP::Response> object to the
+client as a response.  We try hard to make sure that the response is
+self delimiting so that the connection can stay persistent for further
+request/response exchanges.
+
+=end original
+
+クライアントにレスポンスとして C<HTTP::Response> オブジェクトを書きます。
+接続がさらなるリクエスト／レスポンス交換のため永続化できるように、
+レスポンスが自己分割することを保証するようにしています。
+
+=begin original
+
+The content attribute of the C<HTTP::Response> object can be a normal
+string or a subroutine reference.  If it is a subroutine, then
+whatever this callback routine returns is written back to the
+client as the response content.  The routine will be called until it
+return an undefined or empty value.  If the client is HTTP/1.1 aware
+then we will use chunked transfer encoding for the response.
+
+=end original
+
+C<HTTP::Response> オブジェクトの content 属性は通常の文字列または
+サブルーチンリファレンスにすることができます。
+もしサブルーチンであれば、このコールバックルーチンが返すものは何であれ、
+レスポンスコンテンツとしてクライアントに書き戻されます。
+ルーチンはそれが未定義あるいは空の値を返すまで呼ばれます。
+もしクライアントが HTTP/1.1 がわかれば、レスポンスにチャンクされた
+転送エンコーディングを使います。
+
+=item $c->send_redirect( $loc )
+
+=item $c->send_redirect( $loc, $code )
+
+=item $c->send_redirect( $loc, $code, $entity_body )
+
+=begin original
+
+Send a redirect response back to the client.  The location ($loc) can
+be an absolute or relative URL. The $code must be one the redirect
+status codes, and defaults to "301 Moved Permanently"
+
+=end original
+
+クライアントにリダイレクトレスポンスを送信します。
+ロケーション ($loc) は絶対あるいは相対 URL を指定することが出来ます。
+$code はリダイレクトステータスコードの一つでなければなりません。
+そしてデフォルトは "301 Moved Permanently" です。
+
+=item $c->send_error
+
+=item $c->send_error( $code )
+
+=item $c->send_error( $code, $error_message )
+
+=begin original
+
+Send an error response back to the client.  If the $code is missing a
+"Bad Request" error is reported.  The $error_message is a string that
+is incorporated in the body of the HTML entity body.
+
+=end original
+
+クライアントにエラーレスポンスを送信します。
+$code がなければ "Bad Request" エラーが報告されます。
+$error_message は HTML エンティティボディのボディに結合さた文字列です。
+
+=item $c->send_file_response( $filename )
+
+=begin original
+
+Send back a response with the specified $filename as content.  If the
+file is a directory we try to generate an HTML index of it.
+
+=end original
+
+指定された $filename をコンテンツとしたレスポンスを返します。
+もし file がディレクトリであれば、その HTML インデックスを作ろうとします。
+
+=item $c->send_file( $filename )
+
+=item $c->send_file( $fd )
+
+=begin original
+
+Copy the file to the client.  The file can be a string (which
+will be interpreted as a filename) or a reference to an C<IO::Handle>
+or glob.
+
+=end original
+
+クライアントにファイルをコピーします。
+ファイルは文字列 (ファイル名として解釈されます) または C<IO::Handle> への
+リファレンスまたは glob のいずれかを指定することが出来ます。
+
+=item $c->daemon
+
+=begin original
+
+Return a reference to the corresponding C<HTTP::Daemon> object.
+
+=end original
+
+対応する C<HTTP::Daemon> オブジェクトへのリファレンスを返します。
+
+=back
+
+=head1 SEE ALSO
+
+RFC 2616
+
+L<IO::Socket::INET>, L<IO::Socket>
+
+=head1 COPYRIGHT
+
+Copyright 1996-2003, Gisle Aas
+
+This library is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
+
+=begin meta
+
+Translated: Hippo2000 <GCD00051@nifty.ne.jp> (5.48)
+Updated: Kentaro SHIRAKATA <argrath@ub32.org> (5.813)
+
+=end meta
+

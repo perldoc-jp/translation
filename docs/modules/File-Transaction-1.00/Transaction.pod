@@ -1,0 +1,134 @@
+
+=encoding euc-jp
+
+=head1 名前
+
+File::Transaction - ファイルの集合へのトランザクション的な変更
+
+=head1 概要
+
+  #
+  # この例では、私は複数のファイルにある'foo'という単語を'bar'で
+  # 置き換えようとしています。そしていくつかのファイルで置換が
+  # おこなわれ、他のものでは行われないまま終わらせてしまう
+  # 危険性を最小限にしたいと思っています。
+  #
+
+  use File::Transaction;
+
+  my $ft = File::Transaction->new;
+
+  eval {
+      foreach my $file (@list_of_file_names) {
+          $ft->linewise_rewrite($file, sub {
+               s#\bfoo\b#bar#g;
+          });
+      }
+  };
+
+  if ($@) {
+      $ft->revert;
+      die "update aborted: $@";
+  }
+  else {
+      $ft->commit;
+  }
+
+=head1 説明
+
+C<File::Transaction> オブジェクトはファイルの集合への変更を
+カプセル化します。最初にそれぞれのファイルの新しいバージョンを出力し、
+全てを新しいバージョンで置き換えることにより行われます。
+ファイルの集合はもしC<rename>システム・コールが失敗するか、
+Perlプロセスがcommit()の途中で中断された場合にのみ、
+一貫していない状態で終了します。
+
+ファイルはトランザクションに追加された順にコミットされます。
+もしcommit()が途中で失敗ときのダメージを限定するため、
+この順番は注意して選択されなければなりません。もし何も順序がなければ、
+部分的なコミットが容認されます、代わりに
+L<File::Transaction::Atomic>を使うことを考えてください。
+
+=head1 コンストラクタ
+
+=over
+
+=item new ( [TMPEXT] )
+
+新しく空のC<File::Transaction>オブジェクトを作成します。
+
+TMPEXTパラメータは新しいバージョンのためのテンポラリ・ファイル名を
+作るためファイル名に追加される文字列を与えます。デフォルトはC<.tmp>です。
+
+=back
+
+=head1 メソッド
+
+=over
+
+=item linewise_rewrite ( OLDFILE, CALLBACK )
+
+ファイルOLDFILEの新しいバージョンを出力し、トランザクションに追加し、
+ファイルの各行について一回ずつコードリファレンスCALLBACKをC<$_>に
+行を入れて呼び出します。新しいファイルの名前はnew()に渡された
+TMPEXTをOLDFILEに追加することにより生成されます。そしてもしあれば、
+このファイルは上書きされます。
+
+コールバックはそれを呼び出したC<File::Transaction>オブジェクトの
+commit()あるいはrevert()メソッドを呼び出してはいけません。
+
+このメソッドはエラーのさいに最初にトランザクション中にある
+他のファイルを元に戻すことなくdie()を呼び出します。
+
+=item addfile ( OLDFILE, TMPFILE )
+
+トランザクションに1つのファイルへの更新を追加します。OLDFILEは
+そのファイルの古いバージョンの名前です。そしてTMPFILEは、
+それに新しいバージョンが書き込まれる一時ファイルの名前です。
+
+commit()のさい、OLDFILEはTMPFILEで置換されます。そしてTMPFILEは
+revert()のさい、削除されます。OLDFILEは存在する必要がありません。
+
+=item revert ()
+
+addfile()メソッドで、それまでに作成されたファイルの新しいバージョンを
+削除します。エラーのときにはdieします。
+
+=item commit ()
+
+それまでに作成された全ての新しいバージョンを正しい場所に入れ替えます。
+エラーのときにはdieします。
+
+=back
+
+=head1 バグ
+
+=over
+
+=item
+
+もしcommit()メソッドの中でrenameが失敗したり、Perlプロセスが中断されると、
+いくつかのファイルは更新されますが、他のものは更新されません。
+もしそれが問題であれば、L<File::Transaction::Atomic>をご覧ください。
+
+=back
+
+=head1 参考資料
+
+L<File::Transaction::Atomic>
+
+=head1 作者(=AUTHOR)
+
+Nick Cleaton E<lt>nick@cleaton.netE<gt>
+
+=head1 著作権(=COPYRIGHT)
+
+Copyright (C) 2002-2003 Nick Cleaton.  All Rights Reserved.
+
+This module is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
+
+=head1 翻訳者
+
+川合 孝典(GCD00051@nifty.ne.jp)
+

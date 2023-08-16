@@ -1,0 +1,548 @@
+
+=encoding euc-jp
+
+=head1 名前
+
+Msql / Mysql - mSQLとmysqlデータベースへのPerlインターフェース
+
+=head1 概要
+
+  use Msql;
+
+  $dbh = Msql->connect($host);
+  $dbh = Msql->connect($host, $database);
+
+      あるいは
+
+  use Mysql;
+
+  $dbh = Mysql->connect(undef, $database, $user, $password);
+  $dbh = Mysql->connect($host, $database, $user, $password);
+
+      あるいは
+
+  $dbh = Msql1->connect($host);
+  $dbh = Msql1->connect($host, $database);
+
+
+  $dbh->selectdb($database);
+        
+  @arr = $dbh->listdbs;
+  @arr = $dbh->listtables;
+        
+  $quoted_string = $dbh->quote($unquoted_string);
+  $error_message = $dbh->errmsg;
+  $error_number = $dbh->errno;   # MySQL のみ
+
+  $sth = $dbh->listfields($table);
+  $sth = $dbh->query($sql_statement);
+        
+  @arr = $sth->fetchrow;        # 配列コンテキスト
+  $firstcol = $sth->fetchrow;   # スカラー・コンテキスト
+  @arr = $sth->fetchcol($col_number);
+  %hash = $sth->fetchhash;
+        
+  $sth->dataseek($row_number);
+
+  $sth->as_string;
+
+  @indices = $sth->listindices                   # mSQL 2.0のみ
+  @arr = $dbh->listindex($table,$index)          # mSQL 2.0のみ
+  ($step,$value) = $dbh->getsequenceinfo($table) # mSQL 2.0のみ
+
+  $rc = $dbh->shutdown();
+  $rc = $dbh->createdb($database);
+  $rc = $dbh->dropdb($database);
+
+=head1 廃棄準備のソフトウェア
+
+Msql-Mysql-modules 1.19_10 M(y)sqlPerlでは、もはや別のモジュールではありません。
+その代わりにDBIドライバを使ってエミュレートされています。
+これにより新しいコードをDBIで直接実装する気に強くなるでしょう。
+下記のL<互換性についてのメモ>をご覧ください。
+
+=head1 説明
+
+このパッケージは対応するC APIの対応部分に出来るだけ近づけるように
+設計されています。mSQLあるいはMySQLについてくるマニュアルは
+あなたに必要なことのほとんどについて説明しています。
+しかしながら高い需要があるために、StudlyCaps（下記参照）を使わないよう、
+決定されました、
+
+1998年3月には、MsqlとMysqlモジュールは、それぞれDBIとDBD::mSQLと
+DBD::mysqlによって、時代遅れのものとなりました。
+新しいコードをDBIドライバで実装するような気に強くなるでしょう。
+事実、MsqlとMysqlは現在はDBIドライバの上にエミュレーションとして
+実装されています。
+
+内部的には、あなたは2つのクラスC<Msql>とC<Msql::Statement>あるいは
+C<Mysql>とC<Mysql::Statement>をそれぞれ扱っています。
+あなたが後のものを見ることはありません。
+というのも問い合わせやlistfieldsステートメントによって
+返されるステートメント・ハンドルを通して、それにたどり着くからです。
+あなたが明示的に名前をつけるクラスはMsqlあるいはMysqlだけです。
+これらはconnectコマンドを提供します：
+
+  $dbh = Msql->connect($host);
+  $dbh = Msql->connect($host, $database);
+
+    あるいは
+
+  $dbh = Mysql->connect($host, undef, $user, $password);
+  $dbh = Mysql->connect($host, $database, $user, $password);
+
+    あるいは
+
+  $dbh = Msql1->connect($host);
+  $dbh = Msql1->connect($host, $database);
+
+
+これは希望されたホスト/データベースに接続します。引数がないか、
+先頭の引数が空文字列であれば、それはUNIXソケットに接続します。
+これはTCPでの対応するものよりもパフォーマンス的にははるかに優れています。
+第2引数のデータベース名は接続で選ばれたデータベースを選択します。
+戻り値は接続が成功すればデータベース・ハンドルを返します。
+そうでなければ戻り値はundefになります。
+
+データベースへのさらなるアクセスを得るためにはこのハンドルが必要となります。
+
+   $dbh->selectdb($database);
+
+C<connect>コマンドでデータベースを選らんでいなければ、あるいは
+前のC<connect>から取得されたデータベース・ハンドルを使って
+他のデータベースに接続を変更したければ、selectdbを使ってください。
+
+  $sth = $dbh->listfields($table);
+  $sth = $dbh->query($sql_statement);
+
+これら２つはどちらかといえばmSQLやMySQLマニュアルで説明されているように機能します。
+これらはサーバーがあなたに伝えなければならないことを、さらにあなたに調査させる
+ステートメント・ハンドルを返します。エラーの場合には、戻り値はundefになります。
+listfieldsによって返されるオブジェクトはテーブルの大きさについて知りません。
+そのため、それに対するnumrows()は文字列"N/A"を返します；
+
+  @arr = $dbh->listdbs();
+  @arr = $dbh->listtables;
+
+詳しい情報のない要求された名前が入った配列が返されます。
+
+  @arr = $sth->fetchrow;
+
+サーバーから取り出された次の行の値の配列を返します。ここではコンテキストに
+注意してください！スカラー・コンテキストでは、このメソッドは
+予想されているものとは違い、先頭のカラムを返します：
+
+  $firstcol = $sth->fetchrow; # スカラー・コンテキスト!
+
+同様にして
+
+  %hash = $sth->fetchhash;
+
+これは完全なハッシュを返します。このハッシュでのキーは、テーブルの
+カラム名で、値はテーブルの値です。２つの同じカラム名を持つテーブルを
+持っているときには、１つのカラムを捨ててしまうことなく、この
+メソッドを利用することができないことに注意してください。そのような
+場合には、fetchrowメソッドを使わなければなりません。
+
+  @arr = $sth->fetchcol($colnum);
+
+各行のカラム$colnumのための値の配列を返します。これはテーブル全体を
+読み込み、テーブルの末尾に行オフセットを設定したままにします；
+テーブルを再び調査したければ、リセットするために$sth->dataseek()を確実に
+使ってください。
+してください。
+
+  $sth->dataseek($row_number);
+
+これはステートメント・ハンドルに関連付けられたデータのオフセットを
+指定させます。次のfetchrowは適切な行を返します（先頭の行は0になります）
+
+=head2 closeステートメントはありません
+
+データベースあるいはステートメント・ハンドルを持っているスカラーが、
+その値を失うと、Msqlは適切な行動（結果を解放し、データベース接続を
+閉じる）を選択します。そこで結果を解放する、あるいは接続を閉じたければ、
+以下の１つをおこなうことを選択してください：
+
+=over 4
+
+=item ハンドルをundefする
+
+=item そのハンドルを他の目的に利用する
+
+=item ハンドルをスコープからはずさせる
+
+=item プログラムを終了する
+
+=back
+
+=head2 エラーメッセージ
+
+MsqlとMysqlの両方のドライバはメソッド-E<gt>errmsg()を実装しています。
+これはテキスト形式のエラーメッセージを返します。Mysqlはさらに、対応する
+エラー番号を返すメソッド-E<gt>errnoをサポートしています。
+
+通常、エラーメッセージを以下のように取り出します
+
+    $errmsg = $dbh->errmsg();
+
+$dbhが使えない状況では（例えばconnect()が失敗した）、
+代わりに以下のようにすることができます
+
+    $errmsg = Msql->errmsg();
+        または
+    $errmsg = Mysql->errmsg();
+        または
+    $errmsg = Msql1->errmsg();
+
+
+=head2 C<-w> スィッチ
+
+Msql と MysqlではC<-w>スィッチはあなたの友達です!C<-w>スィッチを
+つけてperlプログラムを呼び出すと、-E<gt>errmsgからの警告をSTDERRに
+取得することができます。これはあなたのプログラムにコーディングすることなく
+msqlサーバーからのエラーメッセージを取得するための簡単な方法です。
+
+何が起こっているを良く知りたいのであれば、
+Davidのマニュアルで説明されている環境変数を設定してください。
+Davidのデバッグ補助は素晴らしく、追加されるものはありません。
+
+デフォルトではエラーは警告として出力されます。対応するハンドルの
+PrintError属性を使うことにより、この動きを抑止することが出来ます：
+
+    $dbh->{'dbh'}->{'PrintError'} = 0;
+
+
+=head2 -E<gt>quote($str [, $length])
+
+APIの必要に従って特別な文字がエスケープされたシングルクォート('')で
+囲まれた引数を返します。
+
+mSQLでは、これは文字列の中のシングル・クォートはバックスラッシュで
+エスケープされ、バックスラッシュは二重化されます。現在(msql-1.0.16)では
+APIはテーブルにNUL(ASCII 0)を挿入することはできません。quoteメソッドは
+この欠陥を修正していません。
+
+MySQLは文字列のなかの、NULやあらゆる種類のバイナリデータを許します。
+このためquoteメソッドはさらにNULを\0にエスケープします。
+
+quoteメソッドに未定義値を渡すと、文字列C<NULL>を返します。
+
+二番目のパラメータがC<quote>に渡されると、その結果はその文字数で
+切り捨てられます。
+
+=head2 NULLフィールド
+
+そのテーブルでのNULLフィールドは、未定義値としてperlに返されます。
+
+=head2 メタデータ
+
+それではメタデータの点から上記のメソッドを再び考えて見ましょう。
+
+=head2 データベース・ハンドル
+
+上記のように、connect()メソッドでデータベース・ハンドルを取得します。
+データベース・ハンドルはソケット、ホスト、そしてそれが接続している
+データベースについて知っています。
+
+そのメソッドで3つの値を取得することができます
+
+  $scalar = $dbh->sock;
+  $scalar = $dbh->host;
+  $scalar = $dbh->database;
+
+Mysqlはさらにサポートしています
+
+  $scalar = $dbh->user;
+  $scalar = $dbh->sockfd;
+
+後者はデータベース接続により使われているソケットの
+ファイル・デスクリプタです。これはmSQLでは$dbh->sockと同じです。
+
+=head2 ステートメント・ハンドル
+
+２つのコンストラクタ・メソッドがステートメント・ハンドルを返します：
+
+  $sth = $dbh->listfields($table);
+  $sth = $dbh->query($sql_statement);
+
+$sthはAPIにより提供される、すべてのメタデータについて知っています：
+
+  $scalar = $sth->numrows;    
+  $scalar = $sth->numfields;  
+
+  @arr  = $sth->table;       各カラムのテーブルの名前
+  @arr  = $sth->name;        カラムの名前
+  @arr  = $sth->type;        各カラムのデータ型は、msql.hで定義されています
+                             そしてMsql::CHAR_TYPEを通してアクセスすることができます、
+                             &Msql::INT_TYPE, &Msql::REAL_TYPE あるいは
+                             &Mysql::FIELD_TYPE_STRING,
+                             &Mysql::FIELD_TYPE_LONG, ...
+  @arr  = $sth->isnotnull;   ブール値の配列
+  @arr  = $sth->isprikey;    ブール値の配列
+  @arr  = $sth->isnum;       ブール値の配列
+  @arr  = $sth->length;      各フィールドの可能なバイト数での最大長の
+                             配列
+  @arr  = $sth->maxlength;   各フィールドの実際のバイト数での最大長の
+                             配列。Msqlperlで、この属性を使うときには
+                             注意してください：サーバーは、この属性を提供しません。
+                             そのため全ての行を取り出すことにより、計算されます。
+                             これは長い時間かかるかもしれませんし、そして
+                             $sth->dataseekを呼び出す必要があるかもしれません。
+
+Mysqlはさらに以下のものもサポートします
+
+  $scalar  = $sth->affectedrows  問い合わせにより影響を受けたデータベース内の行数
+  $scalar  = $sth->insertid      auto_incrementフィールドに与えられたユニークなid。
+  $string  = $sth->info()        いくつかの問い合わせ(ALTER TABLE...)からのより多くの情報
+  $arrref  = $sth->isblob;       ブール値の配列
+
+配列メソッド(table, name, type, is_not_null, is_pri_key, length,
+affected_rows, is_num そして blob)は配列コンテキストでは配列を返し、
+スカラー・コンテキストでは配列リファレンス（詳細はL<perlref> と L<perlldsc>を
+ご覧ください)。1つのカラムの名前だけを取得する必要があるのであれば、
+スカラー・コンテキストが便利です。例えば
+
+    $name_of_third_column = $sth->name->[2]
+
+これは以下のものと同じです
+
+    @all_column_names = $sth->name;
+    $name_of_third_column = $all_column_names[2];
+
+=head2 mSQL2.0での新機能
+
+APIのquery() 関数は、問い合わせにより影響を受けた行の数を返します。
+mSQL APIマニュアルから引用すると、これは...
+
+  もしリターン・コードが0より大きければ、それが成功だったことを暗示する
+  というだけでなく、その問い合わせにより"触られた"行の数も示します
+  (つまりSELECTにより返される行の数、updateにより変更された行の数、
+  あるいはdeleteにより削除された行の数)。
+
+selectでのステートメント・ハンドルを返すとき、返される行の数を簡単に
+チェックすることができます。select以外では、mSQL-2とまったく同じように
+行動します。
+
+テーブルに関連付けられた全てのインデックスを見つけるためには、
+ステートメント・ハンドルにC<listindices()>メソッドを呼び出すことが出来ます。
+インデックスに入っているカラムを見つけるためには、
+データベース・ハンドルにC<listindex($table,$index)>メソッドを呼び出すことが
+できます。
+
+mSQL 2ではいくつかの新しいカラム型があります。Msqlパッケージで
+定義されている、これらの関数で、それらの数値にアクセスする
+ことができます：IDENT_TYPE, NULL_TYPE, TEXT_TYPE, DATE_TYPE, 
+UINT_TYPE, MONEY_TYPE, TIME_TYPE, IDX_TYPE, SYSVAR_TYPE.
+
+2.0クライアントでは1.0サーバーと通信することはできません。
+
+1.0ライブラリI<と>2.0ライブラリをI<同時に>リンクすることはできません。
+そこで同時に１つは1.0用、もう１つは2.0用と2つの異なるMsqlモジュールを
+構築し、必要とするいずれかをロードしたいかもしれません。
+PerlでのC<-I>スィッチが何のためのものかをチェックしてください。
+
+そのほかのことは全て、後方互換性を保っているように思われます。
+
+=head2 @EXPORT
+
+歴史的な理由から定数CHAR_TYPE, INT_TYPE,そして とREAL_TYPEは@EXPORT_OKではなく
+@EXPORTに入っています。つまりそれらが常にあなたの名前空間にインポートされると
+いうことを意味します。私はこれを深刻なものではないけれどもバグだと思っています。
+それらをEXPORT_OKに移すことにより古いプログラムを壊してしまうつもりです。
+
+=head2 一度に全てのテーブルを表示する
+
+ステートメント・ハンドルの内容を完全に表示する簡単な方法は、
+as_stringメソッドです。これはいくつかの例外を除けば、msqlモニタと
+同じように機能します：
+
+=over 2
+
+=item カラムの幅
+
+そのカラムへのすべてのエントリの幅を確認することにより自動的に計算されます。
+
+=item 制御文字
+
+バックスラッシュ付きの8進数表現にマップされます。
+
+=item バックスラッシュ
+
+二重化されます (C<\ ではなく\\>)
+
+=item 数値
+
+右揃えになります（整数値、浮動小数点値の両方とも）
+
+=back
+
+違いは以下の表で示されます:
+
+msqlへの入力（本当のキャリッジ・リターンはここでは^Mに置き換えます）：
+
+    CREATE TABLE demo (
+      first_field CHAR(10),
+      second_field INT
+    ) \g
+
+    INSERT INTO demo VALUES ('new
+    line',2)\g
+    INSERT INTO demo VALUES ('back\\slash',1)\g
+    INSERT INTO demo VALUES ('cr^Mcrnl
+    nl',3)\g
+
+msqlの出力:
+
+     +-------------+--------------+
+     | first_field | second_field |
+     +-------------+--------------+
+     | new
+    line    | 2            |
+     | back\slash  | 1            |
+    crnlr
+    nl  | 3            |
+     +-------------+--------------+
+
+pmsqlの出力:
+
+    +----------------+------------+
+    |first_field     |second_field|
+    +----------------+------------+
+    |new\012line     |           2|
+    |back\\slash     |           1|
+    |cr\015crnl\012nl|           3|
+    +----------------+------------+
+
+
+=head2 バージョン情報
+
+Msql と Mysql のバージョンは常にperlの標準であるように$Msql::VERSIONあるいは
+$Mysql::VERSIONに格納されています。
+
+mSQL APIはいくつかの内部的な構成パラメータにアクセスするためのメソッドを
+実装しています：gethostinfo, getserverinfo, そして getprotoinfo。これら
+３つは全てクラス・メソッドあるいはデーアベース・ハンドルを通しての両方で
+利用することができます。しかしそれらはデータベース・ハンドルに関連付け
+られていないという状況はありえません。これら３つは、現在のプログラムでの
+B<最後の>connect()コマンドを反映するすべてグローバル変数を返します。
+つまり、これら3つは最初にconnect()を呼び出すI<前に>空文字列あるいは0を返します。
+
+この状況はMySQLではよりよくなります:データベース・ハンドルで
+接続状態にあるときにだけ適切です。
+
+=head2 管理
+
+shutdown, createdb, dropdb, reloadacls は全てデータベース・ハンドルを通して
+アクセスすることができ、msqladminが行うようなことに対応するメソッドを実装
+しています。
+
+mSQL と MySQL エンジンは、こららのコマンドが適切な権限を持たないユーザによって
+呼び出されることを許しません。そのためそれらのうちの１つを発行したときには
+戻り値とエラーコードをチェックするのを忘れないでください。
+
+    $rc = $dbh->shutdown();
+    $rc = $dbh->createdb($database);
+    $rc = $dbh->dropdb($database);
+
+データベースの削除は、いかなる場合でもI<問い合わせされない>に注意しなければ
+いけません。またPerlからではアンドゥできません。
+
+    B<一度、dropdb()メソッドを発行すると、データベースが逝ってしまいます！>
+
+これらのメソッドはあなた自身の責任で使わなければなりません。
+
+
+=head2 StudlyCaps
+
+Real Perl Programmers (C) は一般にI<ListTables>とタイプすることを好まず、
+I<list_tables>あるいはI<listtables>のほうを好みます。mSQL APIは、どこでも
+StudlyCapsを使い、MsqlPerlの初期バージョンでは、そうしていました。
+$VERSION 1.06から、内部的には全てのメソッドは小文字になりました。しかし
+あなたの好きなように書くことが出来ます。大文字、小文字は無視され、
+読みやすくするためにアンダーラインを使うことが出来ます。
+
+異なるメソッド名を使うことの代償は無視できるほどのものです。あなたが使う
+全てのメソッド名のうち、わかっているものに変換できるものは、プログラムのなかで
+一度だけ定義されることができ、プログラムが終了するまで別名を残します。
+そのため古いプログラムでfetch_row や connecT あるいは ListDBsを使うことを
+気にしないでください。これらは、もちろん機能し続けます。
+
+=head1 必要条件
+
+mSQLはデータベース・サーバーとDavid Hughesによって書かれたAPIライブラリです。
+アダプタを使うためには、間違いなくこれらを先にインストールする必要があります。
+
+MySQLはMichael Wideniusによって書かれたlibmysqlclient.a ライブラリです。
+
+これは元来 MySQL によって引き起こされました。
+
+
+=head1 互換性についてのメモ
+
+M(y)sqlはCで書かれた別のモジュールでした。これはもはやそうではありません。
+古いモジュールに代わって、それらの対応するDBIドライバによってエミュレート
+されます。すべての互換でないことを削除するよう全力で努力しました。しかし
+以下の問題が残っていることがわかっています：
+
+=over 4
+
+=item 静的なメソッド
+
+何らかの理由によって、mSQLは本当に依存しているそれぞれのデータベース接続とは
+独立した、いくつかの関数を実装しています。これは以下のものを
+
+    Msql->errmsg
+
+あるいは
+
+    Msql->getserverinfo
+
+静的なメソッドとして実装することを可能にします。これはもはや当てはまりません。
+MysqlPerlではまったくそうではありません。代わりに以下のようにしてください。
+
+    $dbh->errmsg
+
+あるいは
+
+    $dbh->getserverinfo
+
+=item $M(Y)SQL::QUIET
+
+この変数はエラー・メッセージの出力を止めるために使われます。残念ながら
+DBIはそのためには全く違う仕掛けを使っています：データベースそして/あるいは
+ステートメント・ハンドルのC<PrintError>属性。ハンドルが作成されたとき、
+つまりM(y)sql->connect や $dbh->query() が呼ばれたとき、
+現在のM(Y)SQL::QUIETの値にC<PrintError>属性を設定することにより、
+古い動きをエミュレートしようとしています。
+
+以下のようにすると、これを上書きすることができます
+
+    $dbh->{'dbh'}->{'PrintError'} = 1;
+
+あるいは
+
+    $sth->{'PrintError'} = 0;
+
+=back
+
+
+=head1 作者(=AUTHORS)
+
+Andreas Koenig C<koenig@franz.ww.TU-Berlin.DE> wrote the original
+MsqlPerl. Jochen Wiedmann C<joe@ispsoft.de> wrote the M(y)sqlPerl
+emulation using DBI.
+
+
+=head1 参考資料
+
+Alligator DescartesはTim BunceのDBIのためのデータベース・ドライバを
+書きました。私はこのモジュール(C<DBD::mSQL>)の開発について注意深く
+見るよう勧めました。Msqlは簡単で、安定して、早いモジュールです。
+そしてそれは長い間、サポートされるでしょう。けれどもそれは行き詰っています。
+私は、しばらくたてば、DBIの努力がもっと良いサポートともっと多くの機能的で
+より豊かなモジュールファミリーをもたらすと思っています。
+AlligatorはDBI開発で面白いページを維持しています:
+
+    http://www.symbolstone.org/technology/perl/DBI
+

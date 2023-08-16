@@ -1,0 +1,578 @@
+
+=encoding euc-jp
+
+=pod
+
+=head1 名前
+
+CGI::FastTemplate - テンプレートの管理及び
+変数の穴埋めを実現するPerl拡張機能
+
+=head1 概要
+
+  use CGI::FastTemplate;
+
+  $tpl = new CGI::FastTemplate();
+  $tpl = new CGI::FastTemplate("/path/to/templates");
+
+  CGI::FastTemplate->set_root("/path/to/templates");    ## 全てのインスタンスがこのパスを使用する。
+  $tpl->set_root("/path/to/templates");                 ## このインスタンスがこのパスを使用する。
+
+  $tpl->define( main    => "main.tpl",
+                row     => "table_row.tpl",
+                all     => "table_all.tpl",
+                );
+
+  $tpl->assign(TITLE => "I am the title.");
+
+  my %defaults = (  FONT   => "<font size=+2 face=helvetica>",
+                    EMAIL   => 'jmoore@sober.com',
+                    );   
+  $tpl->assign(\%defaults);
+
+  $tpl->parse(ROWS      => ".row");      ## '.'をつけることでROWSに追加する
+  $tpl->parse(CONTENT   => ["row", "all"]);
+  $tpl->parse(CONTENT   => "main");
+
+  $tpl->print();            ## 最後にパースしたものをデフォルトとする。
+  $tpl->print("CONTENT");   ## 最後にパースされた"CONTENT"をprint()したのと同じである。
+
+  $ref = $tpl->fetch("CONTENT");        
+
+=head1 説明
+
+=head2 テンプレートとは何か？
+
+テンプレートは変数が入ったテキストファイルのことである。
+テンプレートがパースされた際、変数はテキストに置換される。
+(テキストはほんの数バイトや数100キロバイトのものも可能である。)
+これは１変数('$NAME')のみの簡単なテンプレートである。
+
+  Hello $NAME. How are you?
+
+=head2 どんな時にテンプレートは便利か？
+
+テンプレートはCGIプログラムを作る際とても便利である。なぜかと言えば、HTML
+コードをあなたのperlコードに入れ込むことによってperlのコードはぐちゃぐちゃに
+なり、どんなHTMLでも変更を余儀なくされるからである。HTMLを分割されたテンプ
+レートファイルの中に入れることによって、バグを誘発したり、あなたのperlコード
+部分を汚すこと無しにグラフィックデザイナー、あるいはインターフェースデザイナー
+にアプリケーションの見た目を変更させることができるのである。
+
+=head2 CPANには他にもテンプレートを扱うモジュールがあるが、FastTemplateとの相違点はどこか？
+
+ CGI::FastTemplateには次に挙げるような特徴がある。
+
+B<スピード>
+
+FastTemplateではevalを使っておらず、ただ１つの正規表現だけでパースしている。
+正規表現でのパースでは単純な変数の穴埋めしか行われない(言い替えれば、
+テンプレートにロジックを加えることは不可能なのだ。よってあなたはコードの
+ロジックを守ることができる)。これが名前に'Fast'が付く結縁なのだ。
+
+B<効力>
+
+FastTemplateの関数は可能な限りいつでもリファレンスを受け入れ、返すのだが、
+おかげで不要な引数のコピーを行わずに済む。(ハッシュ、スカラーなど)。
+
+B<携帯性>
+
+APIは強力で携帯性があり、あなたがとても複雑なHTMLドキュメント、あるいはHTML
+インターフェースを構築することを可能とするのだ。そして、それは100%perlで
+書かれており、Unix又はNTで動作する。また、HTMLドキュメントを構築するだけに
+限らず、アスキーコードをベースとしたドキュメントならどんなものでも構築する
+nことができるのだ。(例えばpostscriptやXML、emailである)。
+
+CPANにある類似したモジュールは:
+
+  Module          HTML::Template  (S/SA/SAMTREGAR/HTML-Template-0.04.tar.gz)
+  Module          Taco::Template  (KWILLIAMS/Taco-0.04.tar.gz)
+  Module          Text::BasicTemplate (D/DC/DCARRAWAY/Text-BasicTemplate-0.9.8.tar.gz)
+  Module          Text::Template  (MJD/Text-Template-1.20.tar.gz)
+  Module          HTML::Mason     (J/JS/JSWARTZ/HTML-Mason-0.5.1.tar.gz)
+
+=head2  FastTemplateを使うにはどのような手順を踏むべきか？
+
+ 主な手順は:
+
+    1. 定義(define)
+    2. 割り当て(assign)
+    3. パース(parse)
+    4. 出力(print)
+
+これらは以下に述べるコアメソッド詳細のさわりである。
+
+=head1 コアメソッド
+
+=head2 define(HASH)
+
+メソッドdefine()はテンプレートファイル名を
+(大抵の場合、より短い)名前で示す。例えば
+
+    my $tpl = new FastTemplate();
+    $tpl->define(   main   => "main.tpl",
+                    footer   => "footer.tpl",
+                    );
+
+この新しく作った名前はテンプレートを参照するために使うことになる名前である。
+ファイル名はdefine()以外のいかなる場所においても出すべきではない。
+
+(Note:これは必要な手順である！これは上記のようなちょっとした一例を扱う
+ときは、冗長で特別な手順のように思えるが、多数のテンプレートを扱うとき、
+ファイル名と独立した名前でテンプレートを参照する方法はとてもお手軽なのである。)
+
+ TIP: define()で実際にテンプレートがロードされるまでは全てのテンプレートを
+ １度のdefine()の呼び出して定義してしまう方が高速で明解である。
+
+=head2 define_nofile(HASH)   別名: define_raw(HASH)
+
+時にはそれぞれのテンプレートのために分割されたファイルを作るべきでないと
+思うこともあるだろう(長い間稼働させるときは通常そうした方が望ましい)。
+メソッドdefine_nofile()はこのようにすることを可能にするのだ。例えば、
+もしあなたが記事が"新しい"箇所を太字にするニュースツールを書きたい場合、
+次のような方法で実現することができる。:
+
+    my $tpl = new FastTemplate();
+
+    $tpl->define_nofile(    new   => '<b>$ITEM_NAME</b> <BR>',
+                            old   => '$ITEM_NAME <BR>');
+
+    if ($new)
+    {
+        $tpl->parse($ITEM   => "new");
+    }
+    else
+    {
+        $tpl->parse($ITEM   => "old");
+    }
+
+当然、 今あなた、つまりプログラマーがどのくらい新しい記事が表示されて
+いるかを更新しなければならない。だがその一方で、もしテンプレートの中であれば、
+あなたはその作業を誰か他の人にまかせることができるのだ。
+
+=head2 define_nofile(HASH REF)    alias: define_raw(HASH REF)
+
+本物のハッシュを使うより効果的な引数の渡し方である。本物のハッシュを渡す
+代わりにハッシュのリファレンスを渡すだけで良いのだ。
+
+=head2 assign(HASH)
+
+メソッドassign()は値を変数に割り当てる。テンプレート中の穴埋めされる変数は
+割り当てされる必要がある。それにはいくつかの重要な違いを持つ２通りの形式が
+ある。単純な形式ではハッシュを受け取り、キー/値の組合せ全てをFastTemplateの
+ハッシュにコピーする。FastTemplateには１つしかハッシュを持っていないため、
+同じキーを持つ値を上書きしてしまうことだろう。
+
+    例.
+
+    $tpl->assign(TITLE   => "king kong");
+    $tpl->assign(TITLE   => "godzilla");    ## "king kong"を上書きしてしまう。
+
+=head2 assign(HASH REF)
+
+より効果的に値を渡す方法はハッシュのリファレンスを渡す方法である。
+(これはあなたがデータベースのクエリからハッシュとハッシュのリファレンスを
+受け取る場合、まさしく良い方法だと言える。)ハッシュのリファレンスを渡す方法
+ではデータをコピーしない。しかし、単純に配列中のリファレンスは保たれる。
+パース中、もし変数のための値がFastTemplateにおけるメインのハッシュで
+見付からなかった場合、値に対応するハッシュのリファレンスの配列を
+検索し始める。そして、値が見付かればすぐに検索をやめるのだ。
+ちなみに、もはや必要とされなくなったハッシュのリファレンスが
+削除されると言うのは重要なことなので覚えておいて欲しい。
+
+    例
+
+    my %foo = ("TITLE" => "king kong");
+    my %bar = ("TITLE" => "godzilla");
+
+    $tpl->assign(\%foo);   ## TITLEは"king kong"として解決される。
+    $tpl->clear_href(1);   ## 割り当てされた最後のハッシュのリファレンス(\%foo)を削除する
+    $tpl->assign(\%bar);   ## TITLEは"godzilla"として解決される。
+
+    $tpl->clear_href();    ## 割り当てられた全てのハッシュのリファレンスを削除する。
+
+    $tpl->assign(\%foo);   ## TITLEは"king kong"として解決される。
+    $tpl->assign(\%bar);   ## TITLEは_未だに_"king kong"である。
+
+=head2 parse(HASH)
+
+パース関数はFastTemplateのメインとなる関数であり、キーがターゲットで、
+値がソースを示すハッシュを受け取る。以下のように、ハッシュは３通りの形式を
+取り得る:
+
+    $tpl->parse(MAIN => "main");                ## 通常
+
+    $tpl->parse(MAIN => ["table", "main"]);     ## 混合
+
+    $tpl->parse(MAIN => ".row");                ## 追加
+
+通常版では、"main"と名付けられたテンプレートがまだ準備できていない場合は
+ロードされ、全ての変数が穴埋めされ、その次に結果がFastTemplateの値MAINとして
+格納される。もし変数'$MAIN'が後でテンプレートの中に現れたら、"main"テンプレート
+でパースされた値が穴埋めされる。これはネストすることによって、混合スタイルを
+実現することを容易にする。
+
+混合スタイルはネストしたテンプレートを作るためにデザインされている。
+次に挙げる例はそれぞれ等価である:
+
+    $tpl->parse(MAIN => "table");      
+    $tpl->parse(MAIN => "main");
+
+    ## これは以下と同様である:
+
+    $tpl->parse(MAIN => ["table", "main"]);     ## この形式は関数の呼び出しを保存する
+                                                ## (そしてあなたのコードは綺麗になる。)
+
+
+
+=head2 strict()
+
+strict()を呼び出した際の振る舞いは全て(デフォルト時)の変数テンプレートの
+パース中に見付かった未解決の警告をSTDERRに出力する。
+例えば、
+
+   [CGI::FastTemplate] Warning: no value found for variable: SOME_VARIABLE
+
+新しいバージョンである1.04から、見付からなかった変数は穴埋めされず、
+そのままドキュメントに出力される。これには２つの理由がある:
+(つまり)
+
+Note: バージョン1.07では２通りの変数スタイルをサポートするようになった。
+次の通りである。: $VAR とスタイルと ${VAR} とスタイルである。
+しかしながら、strict()を用いた際、ブラケットで囲まれた未解決の変数はそのまま
+の変数名では出力されない。例えば、もし${VAR}に値が割り当てられて居なかったと
+しても、$VARと出力される。これは少しばかり矛盾しているかも知れない−
+やはり理想的なのは、未解決の変数はそのままの名前で出力されることであろう。
+
+Note: webサーバー上ではSTDERRへの出力がログに記憶されるだろう。
+よってtailするだけでログの内容を見ることが可能だ。
+
+    例えば
+
+    tail -f /etc/httpd/logs/error_log
+
+=head2 no_strict()
+
+未解決の変数に関する警告メッセージを出さないようにする。バージョン1.04から
+no_strict()を呼び出すと、見付からなかった変数は空の文字列で置き換えられる。
+デフォルトではFastTemplateのインスタンスはstrict()を呼び出された際と同じふる
+まいをする。no_strict()はインスタンスごとに設定しなければならない。例えば、
+
+
+   CGI::FastTemplate::no_strict;        ## 間違い
+
+   my $tpl = CGI::FastTemplate;
+   $tpl->no_strict;                     ## 正しい
+
+
+=head2 print(SCALAR)
+
+print()メソッドは変数の名前に対応する内容を出力する。もし引数が与えら
+れなかった場合、最後にパースした値が出力される。これは理にかなった
+デフォルトの動作である。
+
+    例えば
+
+    $tpl->parse(MAIN => "main");
+    $tpl->print();         ## MAINの値を出力する
+    $tpl->print("MAIN");   ## 同じ
+
+このメソッドは利便性を提供する。
+
+STDOUT以外(例えばソケットやファイルハンドル)に出力したい場合はfetch()を見て
+欲しい。
+
+=head1 その他のメソッド
+
+=head2 fetch(SCALAR)
+
+パースされたデータへのスカラーのリファレンスを返す。
+
+    $tpl->parse(CONTENT   => "main");
+    my $content = $tpl->fetch("CONTENT");   
+
+    print $$content;        ## STDOUTに出力
+    print FILE $$content;   ## ファイルハンドルやパイプに出力
+
+=head2   clear()
+
+Note: 全ての'消去'関数はmod_perlの下で使用するためのものである
+(あるいはどこまででも起動しっぱなしのスクリプト)。一般的にCGIスクリプトを
+書く場合には必要としない。
+
+assign()及びparse()を呼び出したことによって渡され、保存された内部のハッシュを
+消去する。
+
+大抵clear()はmod_perlの最後に記述される:
+
+    $tpl->print();
+    $tpl->clear();
+
+=head2 clear(ARRAY)
+
+引数が無い場合、割り当て、あるいはパースされた値は消去されるが、もし変数名の
+配列が渡された場合、それらの変数だけが消去される。
+
+  例えば 
+
+  $tpl->assign(TITLE => "Welcome"); 
+  $tpl->clear("TITLE");                 ## 現在titleは空である
+
+変数を消去するのに同じ効果を得るもう一つの方法としては、ただ空の文字列を
+割り当て方法である。
+
+  例えば
+
+  $tpl->assign(TITLE => '');           ## $tpl->clear("TITLE")と同様;
+
+=head2 clear_parse()
+
+参考: clear()
+
+=head2 clear_href(NUMBER)
+
+    $tpl->assign(HASH REF);
+
+を使って構築されたハッシュのリファレンスのリストからハッシュのリファレンスを
+与えられた数字の数だけ消去する。
+
+引数無しで呼び出された場合、全てのハッシュのリファレンスを配列から消去する。
+この方法はデータベースのそれぞれの行がハッシュやハッシュのリファレンスにある
+クエリに対して用いられる。
+
+例えば
+
+    while($hash_row = $sth->fetchrow_hashref)
+    {
+        $tpl->assign($hash_row);
+        $tpl->parse(ROW => ".row");
+        $tpl->clear_href(1);
+    }
+
+
+
+=head2 clear_define()
+
+	$tpl->define();
+
+によって渡され、データを保存している内部のハッシュを消去する。
+
+Note: ロードされたテンプレートを保持しているハッシュはこのメソッドでは
+操作されない。 参考： clear_tpl
+
+=head2 clear_tpl() clear_tpl(NAME)
+
+テンプレートが初めて使われると、ロードされメモリ内のハッシュに保存される。
+clear_tpl()ではメモリに保持されている全てのテンプレートを消去する。
+clear_tpl(NAME)はNAMEに対応するもののみを消去する。これは通常のCGI
+プログラミングで要求されることは無いが、もし長時間スクリプトを稼働させる
+(例えばmod_perl)場合と、そう何度も使わない巨大なテンプレートを扱う場合に、
+メモリ使用量をコントロールすることができる。
+
+=head2 clear_all()
+
+モジュールのROOTディレクトリを除くあらゆるデータを消去する。
+これは以下と同様である:
+
+    $tpl->clear_define();
+    $tpl->clear_href();
+    $tpl->clear_tpl();
+    $tpl->clear_parse();
+
+=head2 変数
+
+変数は次のように定義される:
+
+    $[A-Z0-9][A-Z0-9_]+
+
+
+これは変数が記号'$'で始まらなければならないことを意味する。その２番目の文字は
+アルファベットの大文字でかデジット、つまり'A-Z0-9'でなければならない。
+後に続く文字はアンダースコアを含んでいても構わない。
+
+バージョン1.07の時点で、変数にブラケットで囲まれた形式を用いることも可能で
+ある。
+
+    ${[A-Z0-9][A-Z0-9_]+}
+
+次の例は有効な変数である。:
+
+    $FOO
+    $F123F
+    $TOP_OF_PAGE
+    ${NEW_STYLE}
+
+=head2 変数の穴埋め(テンプレートのパース)
+
+テンプレートの変数が読み取られる際のパターンマッチングは貧欲である。
+(正規表現の"貧欲"に関するより詳しい情報を知りたければperlreを参考にして
+欲しい。)これは重要である。何故ならば、もし変数の後に有効な文字が存在する場合
+FastTemplateは変数の一部としてみなすからである。バージョン1.07の時点では
+区切り記号としてブラケットに囲まれた変数名を用いることが可能である。
+例えば${VARIABLE}である。変数名の直後の文字がアルファベットの大文字や、
+数字、あるいはアンダースコアでなければブラケットで囲む必要は無い。['A-Z0-9_']
+
+もし変数が値として解決できない場合は二つの可能性を取り得る。もしstrict()が呼び
+出されている場合(それがデフォルトである)変数はそのままになり、STDERRに警告が
+出力される。もしno_strict()が呼び出されている場合は空の文字列['']に変換される。
+
+さらに詳しい情報を知りたければL<strict()>とL<no_strict()>を参照して欲しい。
+
+いくつかの実例を挙げることで、分かりやすくなるだろう。
+
+
+    仮定:
+
+    $FOO = "foo";
+    $BAR = "bar";
+    $ONE = "1";
+    $TWO = "2";   
+    $UND = "_";
+
+    Variable        Interpolated/Parsed
+    ------------------------------------------------
+    $FOO            foo   
+    $FOO-$BAR       foo-bar
+    $ONE_$TWO       2             ## $ONE_は定義されていない !
+    $ONE_$TWO       $ONE_2        ## 仮定:strict()
+    $ONE$UND$TWO    1_2           ## なんと不調和な!
+    ${ONE}_$TWO     1_2           ## こちらの方が好ましい
+    $$FOO           $foo
+    $25,000         $25,000
+
+
+
+=head2 全体を通しての実例
+
+この例はtableから成り立つHTMLページを構築する。tableには3つの番号が付けられた
+行がある。最初のステップは我々必要としているテンプレートを決定する
+ことである。異なる行番号に変更するのをより簡単にするため、我々はテーブルの
+行のためのテンプレートを作っておき、もう１つ別に、テーブルのためのテンプ
+レートを作る。３つめにHTMLページのhead/body部分を準備しておく。
+
+下記はテンプレートである。(それぞれ分割されたファイルを表す。)
+
+  <!-- NAME: main.tpl -->
+  <html>
+  <head><title>$TITLE</title>
+  </head>
+  <body>
+  $MAIN
+  </body>
+  </html>
+  <!-- END: main.tpl -->
+
+
+  <!-- NAME: table.tpl -->
+  <table>
+  $ROWS
+  </table>
+  <!-- END: table.tpl -->
+
+
+  <!-- NAME: row.tpl -->
+  <tr>
+  <td>$NUMBER</td>
+  <td>$BIG_NUMBER</td>
+  </tr>
+  <!-- END: row.tpl -->
+
+コーディングはここから始まる
+
+  ## START ##
+
+  use CGI::FastTemplate;
+  my $tpl = new CGI::FastTemplate("/path/to/template/files");
+
+  $tpl->define(     main    => "main.tpl",
+                    table   => "table.tpl",
+                    row     => "row.tpl",
+                    );
+
+  $tpl->assign(TITLE => "FastTemplate Test");
+
+  for $n (1..3) 
+  {
+        $tpl->assign(   NUMBER      => $n,   
+        BIG_NUMBER   => $n*10);
+        $tpl->parse(ROWS   => ".row"); 
+  }
+
+  $tpl->parse(MAIN => ["table", "main"]); 
+  $tpl->print();
+
+  ## END ##
+
+  起動すると以下の出力を返す:
+
+  <!-- NAME: main.tpl -->
+  <html>
+  <head><title>FastTemplate Test</title>
+  </head>
+  <body>
+  <!-- NAME: table.tpl -->
+  <table>
+  <!-- NAME: row.tpl -->
+  <tr>
+  <td>1</td>
+  <td>10</td>
+  </tr>
+  <!-- END: row.tpl -->
+  <!-- NAME: row.tpl -->
+  <tr>
+  <td>2</td>
+  <td>20</td>
+  </tr>
+  <!-- END: row.tpl -->
+  <!-- NAME: row.tpl -->
+  <tr>
+  <td>3</td>
+  <td>30</td>
+  </tr>
+  <!-- END: row.tpl -->
+
+  </table>
+  <!-- END: table.tpl -->
+
+  </body>
+  </html>
+  <!-- END: main.tpl -->
+
+
+もし同じことを数行のperlコードだけでできたと考えることもできるのだが、おそらく
+本当にできただろう。しかし、グラフィックデザイナーがどうやってHTMLを整理する
+と言うのだろうか？どうやってコードの別の部分を編集している間、デザイナーに
+HTMLを編集させると言うのだろうか？どうやって出力をファイルやパイプ、あるいは
+別のアプリケーション(例えばsendmail)への出力を保存すると言うのだろうか？
+他国語対応のアプリケーションをどうやって作るのか？高度なグラフィックを使用
+するか、テキストのみにするかを選択できるアプリケーションをどうやって作るの
+だろうか？FastTemplateは中大規模のウェブアプリケーションを構築する時、
+まさに光を照らし始めるのだ。その単純な理由はアプリケーションの一般的な
+ロジックと特化した実装とを分離するからである。
+
+=head1 著作権(COPYRIGHT)
+
+        Copyright (c) 1998-99 Jason Moore <jmoore@sober.com>.  All rights
+        reserved.
+
+        This program is free software; you can redistribute it and/or
+        modify it under the same terms as Perl itself.
+
+        This program is distributed in the hope that it will be useful,
+        but WITHOUT ANY WARRANTY; without even the implied warranty of
+        MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+        Artistic License for more details.
+
+=head1 作者(AUTHOR)
+
+Jason Moore <jmoore@sober.com>
+
+=head1 参考資料
+
+mod_perl(1).
+
+=head1 翻訳者
+
+三浦真磁 (snj@users.sourceforge.jp)
+
+=cut

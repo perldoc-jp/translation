@@ -1,0 +1,1576 @@
+
+=encoding euc-jp
+
+=head1 名前
+
+DBIx::Class::Manual::Cookbook - レシピいろいろ
+
+=head1 レシピ
+
+=head2 検索
+
+=head3 ページ処理された結果セット
+
+When you expect a large number of results, you can ask L<DBIx::Class> for a
+paged resultset, which will fetch only a small number of records at a time:
+
+結果セットが膨大になりそうなら、ページ処理された結果をL<DBIx::Class>で取得できます。
+一回に、少しのレコードしかとってきません:
+
+   my $rs = $schema->resultset('Artist')->search(
+    undef,
+    {
+      page => 1,  # page to return (defaults to 1)
+      rows => 10, # number of results per page
+    },
+  );
+
+  return $rs->all(); # all records for page 1
+
+The C<page> attribute does not have to be specified in your search:
+
+C<page>属性は検索に指定する必要はありません:
+
+  my $rs = $schema->resultset('Artist')->search(
+    undef,
+    {
+      rows => 10,
+    }
+  );
+
+  return $rs->page(1); # DBIx::Class::ResultSet containing first 10 records
+
+In either of the above cases, you can return a L<Data::Page> object for the
+resultset (suitable for use in e.g. a template) using the C<pager> method:
+
+上のケースのいずれでも、結果セットに、L<Data::Page>オブジェクト(テンプレートに使うのに適した)
+を得ることができます。C<pager>メソッドを使って:
+
+  return $rs->pager();
+
+=head3 複雑な WHERE節
+
+Sometimes you need to formulate a query using specific operators:
+
+特定の演算子を使ったクエリを定式化する必要がある時もあるでしょう:
+
+  my @albums = $schema->resultset('Album')->search({
+    artist => { 'like', '%Lamb%' },
+    title  => { 'like', '%Fear of Fours%' },
+  });
+
+This results in something like the following C<WHERE> clause:
+
+結果は下記のC<WHERE>節のようなものになります:
+
+  WHERE artist LIKE '%Lamb%' AND title LIKE '%Fear of Fours%'
+
+Other queries might require slightly more complex logic:
+
+もうちょっと複雑なロジックが必要な他のクエリもあるでしょう:
+
+  my @albums = $schema->resultset('Album')->search({
+    -or => [
+      -and => [
+        artist => { 'like', '%Smashing Pumpkins%' },
+        title  => 'Siamese Dream',
+      ],
+      artist => 'Starchildren',
+    ],
+  });
+
+This results in the following C<WHERE> clause:
+
+結果は下記のC<WHERE>節になります:
+
+  WHERE ( artist LIKE '%Smashing Pumpkins%' AND title = 'Siamese Dream' )
+    OR artist = 'Starchildren'
+
+For more information on generating complex queries, see
+L<SQL::Abstract/WHERE CLAUSES>.
+
+複雑なクエリをつくるためのより詳しい説明は、L<SQL::Abstract/WHERE CLAUSES>を見てください。
+
+=head3 特定のカラムを使う
+
+When you only want specific columns from a table, you can use
+C<columns> to specify which ones you need. This is useful to avoid
+loading columns with large amounts of data that you aren't about to
+use anyway:
+
+テーブルから特定のカラムが欲しいだけのときには、C<columns>を使って、
+必要なものを指定できます。何にも使わない大量のデータを取り込むのを
+避けることができます。
+
+  my $rs = $schema->resultset('Artist')->search(
+    undef,
+    {
+      columns => [qw/ name /]
+    }
+  );
+
+  # Equivalent SQL:
+  # SELECT artist.name FROM artist
+
+This is a shortcut for C<select> and C<as>, see below. C<columns>
+cannot be used together with C<select> and C<as>.
+
+後でも見ますが、これは、C<select>とC<as>のショートカットです。
+C<columns>はC<select>とC<as>と一緒には使えません。
+
+=head3 データベースの関数やストアドプロシージャを使う
+
+The combination of C<select> and C<as> can be used to return the result of a
+database function or stored procedure as a column value. You use C<select> to
+specify the source for your column value (e.g. a column name, function, or
+stored procedure name). You then use C<as> to set the column name you will use
+to access the returned value:
+
+C<select>とC<as>の組み合わせで、カラムの値としてデータベース関数やストアド
+プロシージャの結果を返すのに使うことが出来ます。C<select>を使って、カラムの
+値のためのソースを指定できます(例えば、カラム名、関数、ストアドプロシージャ名)。
+それから、C<as>を、返された値にアクセスするのに使うカラム名をセットするのに
+使えます:
+
+  my $rs = $schema->resultset('Artist')->search(
+    {},
+    {
+      select => [ 'name', { LENGTH => 'name' } ],
+      as     => [qw/ name name_length /],
+    }
+  );
+
+  # Equivalent SQL:
+  # SELECT name name, LENGTH( name )
+  # FROM artist
+
+Note that the C< as > attribute has absolutely nothing to with the sql
+syntax C< SELECT foo AS bar > (see the documentation in
+L<DBIx::Class::ResultSet/ATTRIBUTES>).  If your alias exists as a
+column in your base class (i.e. it was added with C<add_columns>), you
+just access it as normal. Our C<Artist> class has a C<name> column, so
+we just use the C<name> accessor:
+
+C< as >属性は、SQLのシンタックスC< SELECT foo AS bar>とまったく関係ないことに
+気をつけてください(L<DBIx::Class::ResultSet/ATTRIBUTES>のドキュメントを見てください)。
+ベースクラスにカラムとしてエイリアスがある(すなわち、C<add_columns>で追加されている)のなら、
+普通にそれにアクセスできます。この例で言えば、C<Artist>クラスには、
+C<name>カラムがあるので、C<name>アクセサを使えます:
+
+  my $artist = $rs->first();
+  my $name = $artist->name();
+
+If on the other hand the alias does not correspond to an existing column, you
+have to fetch the value using the C<get_column> accessor:
+
+一方で、エイリアスが既存のカラムに一致しないなら、C<get_column>アクセサを使って、
+値を取得する必要があります:
+
+  my $name_length = $artist->get_column('name_length');
+
+If you don't like using C<get_column>, you can always create an accessor for
+any of your aliases using either of these:
+
+C<get_column>が気に入らなければ、いつでも、下記のいずれかを使ってどんな
+エイリアスにもアクセサを作れます:
+
+  # Define accessor manually:
+  sub name_length { shift->get_column('name_length'); }
+    
+  # Or use DBIx::Class::AccessorGroup:
+  __PACKAGE__->mk_group_accessors('column' => 'name_length');
+
+=head3 SELECT DISTINCT with multiple columns
+
+  my $rs = $schema->resultset('Foo')->search(
+    {},
+    {
+      select => [
+        { distinct => [ $source->columns ] }
+      ],
+      as => [ $source->columns ] # remember 'as' is not the same as SQL AS :-)
+    }
+  );
+
+  my $count = $rs->next->get_column('count');
+
+=head3 SELECT COUNT(DISTINCT colname)
+
+  my $rs = $schema->resultset('Foo')->search(
+    {},
+    {
+      select => [
+        { count => { distinct => 'colname' } }
+      ],
+      as => [ 'count' ]
+    }
+  );
+
+=head3 結果のグルーピング
+
+L<DBIx::Class> supports C<GROUP BY> as follows:
+
+L<DBIx::Class>はC<GROUP BY>をサポートします:
+
+  my $rs = $schema->resultset('Artist')->search(
+    {},
+    {
+      join     => [qw/ cds /],
+      select   => [ 'name', { count => 'cds.cdid' } ],
+      as       => [qw/ name cd_count /],
+      group_by => [qw/ name /]
+    }
+  );
+
+  # Equivalent SQL:
+  # SELECT name, COUNT( cds.cdid ) FROM artist me
+  # LEFT JOIN cd cds ON ( cds.artist = me.artistid )
+  # GROUP BY name
+
+Please see L<DBIx::Class::ResultSet/ATTRIBUTES> documentation if you
+are in any way unsure about the use of the attributes above (C< join
+>, C< select >, C< as > and C< group_by >).
+
+上記の(C< join >、 C< select >、 C< as >、 C< group_by>)属性の使い方がわからなければ、
+L<DBIx::Class::ResultSet/ATTRIBUTES>ドキュメントをみてください。
+
+=head3 定義済み検索
+
+You can write your own L<DBIx::Class::ResultSet> class by inheriting from it
+and define often used searches as methods:
+
+L<DBIx::Class::ResultSet>クラスを継承して、自分自身のクラスを書き、よく使う
+検索をメソッドとして定義できます:
+
+  package My::DBIC::ResultSet::CD;
+  use strict;
+  use warnings;
+  use base 'DBIx::Class::ResultSet';
+
+  sub search_cds_ordered {
+      my ($self) = @_;
+
+      return $self->search(
+          {},
+          { order_by => 'name DESC' },
+      );
+  }
+
+  1;
+
+To use your resultset, first tell DBIx::Class to create an instance of it
+for you, in your My::DBIC::Schema::CD class:
+
+自分の結果セット使うには、最初に、自分のMy::DBIC::Schema::CDクラスの中で、
+DBIx::Classにそのインスタンスを作るように教えます。
+
+  __PACKAGE__->resultset_class('My::DBIC::ResultSet::CD');
+
+Then call your new method in your code:
+
+それから、コードの中で、新しいメソッドを呼びます:
+
+   my $ordered_cds = $schema->resultset('CD')->search_cds_ordered();
+
+
+=head3 ResultSetクラスを書かかない、先に定義された検索
+
+Alternatively you can automatically generate a DBIx::Class::ResultSet
+class by using the ResultSetManager component and tagging your method
+as ResultSet:
+
+別のやりかたとして、ResultSetManagerコンポーネントを使い、ResultSetとして
+自分のメソッドをタギングすることで、DBIx::Class::ResultSetクラスを自動的に作れます。
+
+  __PACKAGE__->load_components(qw/ ResultSetManager Core /);
+
+  sub search_cds_ordered : ResultSet {
+      my ($self) = @_;
+      return $self->search(
+          {},
+          { order_by => 'name DESC' },
+      );
+  } 
+
+Then call your method in the same way from your code:
+
+これで、コードから同じ方法で呼べます:
+
+   my $ordered_cds = $schema->resultset('CD')->search_cds_ordered();
+
+=head2 joins と prefetch を使う
+
+You can use the C<join> attribute to allow searching on, or sorting your
+results by, one or more columns in a related table. To return all CDs matching
+a particular artist name:
+
+C<join>属性を使って、関連するテーブルの1つ以上のカラムを使って、
+検索や、結果のソートができます。特定のアーティスト名の全てのCDを
+返すためには:
+
+  my $rs = $schema->resultset('CD')->search(
+    {
+      'artist.name' => 'Bob Marley'    
+    },
+    {
+      join => [qw/artist/], # join the artist table
+    }
+  );
+
+  # Equivalent SQL:
+  # SELECT cd.* FROM cd
+  # JOIN artist ON cd.artist = artist.id
+  # WHERE artist.name = 'Bob Marley'
+
+If required, you can now sort on any column in the related tables by including
+it in your C<order_by> attribute:
+
+必要なら、C<order_by>属性にそれを含めて、関連するテーブルのいずれかのカラムで
+ソートすることも出来ます。
+
+  my $rs = $schema->resultset('CD')->search(
+    {
+      'artist.name' => 'Bob Marley'
+    },
+    {
+      join     => [qw/ artist /],
+      order_by => [qw/ artist.name /]
+    }
+  };
+
+  # Equivalent SQL:
+  # SELECT cd.* FROM cd
+  # JOIN artist ON cd.artist = artist.id
+  # WHERE artist.name = 'Bob Marley'
+  # ORDER BY artist.name
+
+Note that the C<join> attribute should only be used when you need to search or
+sort using columns in a related table. Joining related tables when you only
+need columns from the main table will make performance worse!
+
+C<join>属性は関連するテーブルのカラムを使って検索やソートをする必要があるときにのみ
+使われるべきだということに注意してください。
+メインのテーブルからカラムが必要なときに、関連するテーブルを結合するのは、
+パフォーマンスが悪いです!
+
+Now let's say you want to display a list of CDs, each with the name of the
+artist. The following will work fine:
+
+で、、CDのリストを、それぞれのアーティストの名前と一緒に表示したいとしましょう。
+下記のやりかたでうまくいきます:
+
+  while (my $cd = $rs->next) {
+    print "CD: " . $cd->title . ", Artist: " . $cd->artist->name;
+  }
+
+There is a problem however. We have searched both the C<cd> and C<artist> tables
+in our main query, but we have only returned data from the C<cd> table. To get
+the artist name for any of the CD objects returned, L<DBIx::Class> will go back
+to the database:
+
+ですが、一つ問題があります。このメインクエリで、C<cd>とC<artist>テーブルの両方を
+検索していますが、C<cd>からのみデータが返されています。返されたCDオブジェクトの一部で、
+アーティスト名を得るために、L<DBIx::Class>は、データベースに戻ります:
+
+  SELECT artist.* FROM artist WHERE artist.id = ?
+
+A statement like the one above will run for each and every CD returned by our
+main query. Five CDs, five extra queries. A hundred CDs, one hundred extra
+queries!
+
+上記のようなステートメントが、メインクエリによって返された、それぞれの、全ての
+CDで走ります。5つのCDであれば、5つの別のクエリです。100のCDであれば、100の別の
+クエリ!
+
+Thankfully, L<DBIx::Class> has a C<prefetch> attribute to solve this problem.
+This allows you to fetch results from related tables in advance:
+
+ありがたいことに、L<DBIx::Class>は、C<prefetch>属性があり、この問題を解決できます。
+この属性を使うと、先に関連するテーブルから結果をとってこれます:
+
+
+  my $rs = $schema->resultset('CD')->search(
+    {
+      'artist.name' => 'Bob Marley'
+    },
+    {
+      join     => [qw/ artist /],
+      order_by => [qw/ artist.name /],
+      prefetch => [qw/ artist /] # return artist data too!
+    }
+  );
+
+  # Equivalent SQL (note SELECT from both "cd" and "artist"):
+  # SELECT cd.*, artist.* FROM cd
+  # JOIN artist ON cd.artist = artist.id
+  # WHERE artist.name = 'Bob Marley'
+  # ORDER BY artist.name
+
+The code to print the CD list remains the same:
+
+CDのリストを表示するコードは同じ物が使えます:
+
+  while (my $cd = $rs->next) {
+    print "CD: " . $cd->title . ", Artist: " . $cd->artist->name;
+  }
+
+L<DBIx::Class> has now prefetched all matching data from the C<artist> table,
+so no additional SQL statements are executed. You now have a much more
+efficient query.
+
+L<DBIx::Class>はC<artist>テーブルからすべてのマッチするデータを先にとってきています。
+そのため、余分なSQLステートメントは実行されません。より効率的なクエリになりました。
+
+Note that as of L<DBIx::Class> 0.05999_01, C<prefetch> I<can> be used with
+C<has_many> relationships.
+
+L<DBIx::Class> 0.05999_01の時点で、 C<has_many>のリレーションシップで、
+C<prefetch>をI<使え>たのに注意してください。
+
+Also note that C<prefetch> should only be used when you know you will
+definitely use data from a related table. Pre-fetching related tables when you
+only need columns from the main table will make performance worse!
+
+
+また、C<prefetch>は、関連するテーブルからデータを必ず使うとわかっているときのみに、
+使うべきです。メインテーブルからのカラムしか必要としないなら、
+関連するテーブルから先に取得するのは、パフォーマンスを悪くします!
+
+=head3 マルチステップの結合(join)
+
+Sometimes you want to join more than one relationship deep. In this example,
+we want to find all C<Artist> objects who have C<CD>s whose C<LinerNotes>
+contain a specific string:
+
+2つ以上の深いリレーションシップでjoinしたいときもあるでしょう。
+この例では、C<LinerNotes>に特定の文字が含まれるC<CD>を持っている、
+C<Artist>オブジェクトを探したいとします:
+
+  # Relationships defined elsewhere:
+  # Artist->has_many('cds' => 'CD', 'artist');
+  # CD->has_one('liner_notes' => 'LinerNotes', 'cd');
+
+  my $rs = $schema->resultset('Artist')->search(
+    {
+      'liner_notes.notes' => { 'like', '%some text%' },
+    },
+    {
+      join => {
+        'cds' => 'liner_notes'
+      }
+    }
+  );
+
+  # Equivalent SQL:
+  # SELECT artist.* FROM artist
+  # JOIN ( cd ON artist.id = cd.artist )
+  # JOIN ( liner_notes ON cd.id = liner_notes.cd )
+  # WHERE liner_notes.notes LIKE '%some text%'
+
+Joins can be nested to an arbitrary level. So if we decide later that we
+want to reduce the number of Artists returned based on who wrote the liner
+notes:
+
+結合は任意のレベルでネストできます。ですので、後から、ライナーノーツを
+誰が書いたかを元に、返されるアーティストの数を減らしたいと決めたとしたら:
+
+  # Relationship defined elsewhere:
+  # LinerNotes->belongs_to('author' => 'Person');
+
+  my $rs = $schema->resultset('Artist')->search(
+    {
+      'liner_notes.notes' => { 'like', '%some text%' },
+      'author.name' => 'A. Writer'
+    },
+    {
+      join => {
+        'cds' => {
+          'liner_notes' => 'author'
+        }
+      }
+    }
+  );
+
+  # Equivalent SQL:
+  # SELECT artist.* FROM artist
+  # JOIN ( cd ON artist.id = cd.artist )
+  # JOIN ( liner_notes ON cd.id = liner_notes.cd )
+  # JOIN ( author ON author.id = liner_notes.author )
+  # WHERE liner_notes.notes LIKE '%some text%'
+  # AND author.name = 'A. Writer'
+
+=head2 マルチステップのprefetch
+
+From 0.04999_05 onwards, C<prefetch> can be nested more than one relationship
+deep using the same syntax as a multi-step join:
+
+0.04999_05から、C<prefetch>は、マルチステップの結合と同じシンタックスで、
+2つ以上の深いリレーションシップでネストできました:
+
+  my $rs = $schema->resultset('Tag')->search(
+    {},
+    {
+      prefetch => {
+        cd => 'artist'
+      }
+    }
+  );
+
+  # Equivalent SQL:
+  # SELECT tag.*, cd.*, artist.* FROM tag
+  # JOIN cd ON tag.cd = cd.cdid
+  # JOIN artist ON cd.artist = artist.artistid
+
+Now accessing our C<cd> and C<artist> relationships does not need additional
+SQL statements:
+
+
+これで、C<cd>とC<artist>のリレーションシップにアクセスするのに、
+追加のSQLステートメントは必要ありません:
+
+  my $tag = $rs->first;
+  print $tag->cd->artist->name;
+
+=head2 Columns of data
+
+If you want to find the sum of a particular column there are several
+ways, the obvious one is to use search:
+
+特定のカラムの合計を探したければ、いくつもの方法があります。自明のものとしては、
+searchを使うものです:
+
+  my $rs = $schema->resultset('Items')->search(
+    {},
+    { 
+       select => [ { sum => 'Cost' } ],
+       as     => [ 'total_cost' ], # remember this 'as' is for DBIx::Class::ResultSet not SQL
+    }
+  );
+  my $tc = $rs->first->get_column('total_cost');
+
+Or, you can use the L<DBIx::Class::ResultSetColumn>, which gets
+returned when you ask the C<ResultSet> for a column using
+C<get_column>:
+
+もしくは、L<DBIx::Class::ResultSetColumn>を使うことも出来ます。
+これは、C<ResultSet>でC<get_column>を使ってカラムを取るときに
+返されるものが取れます。
+
+  my $cost = $schema->resultset('Items')->get_column('Cost');
+  my $tc = $cost->sum;
+
+With this you can also do:
+
+これを、次のようにできます:
+
+  my $minvalue = $cost->min;
+  my $maxvalue = $cost->max;
+
+Or just iterate through the values of this column only:
+
+または、このカラムの値のみを通してイテレートします:
+
+  while ( my $c = $cost->next ) {
+    print $c;
+  }
+
+  foreach my $c ($cost->all) {
+    print $c;
+  }
+
+C<ResultSetColumn> only has a limited number of built-in functions, if
+you need one that it doesn't have, then you can use the C<func> method
+instead:
+
+C<ResultSetColumn>は少しだけビルトインの関数があります。
+これにないものが必要なら、C<func>メソッドを代わりに使うことができます:
+
+  my $avg = $cost->func('AVERAGE');
+
+This will cause the following SQL statement to be run:
+
+こうすると、下記のSQLステートメントが走ります:
+
+  SELECT AVERAGE(Cost) FROM Items me
+
+Which will of course only work if your database supports this function.
+See L<DBIx::Class::ResultSetColumn> for more documentation.
+
+もちろん、使っているデータベースがこの関数をサポートしていなければいけません。
+より詳しくは、L<DBIx::Class::ResultSetColumn>をみてください。
+
+=head2 リレーションシップを使う
+
+=head3 関連するテーブルに新しい列を作る
+
+  my $book->create_related('author', { name => 'Fred'});
+
+=head3 関連するテーブルを検索する
+
+Only searches for books named 'Titanic' by the author in $author.
+
+$autorの著者で、'Titanic'という名前の本だけを検索したい。
+
+  my $author->search_related('books', { name => 'Titanic' });
+
+=head3 関連するテーブルのデータを削除する
+
+Deletes only the book named Titanic by the author in $author.
+
+$autorの著者で、Titanicという名前の本だけを削除したい。
+
+  my $author->delete_related('books', { name => 'Titanic' });
+
+=head3 関係する結果セットの順序付け
+
+If you always want a relation to be ordered, you can specify this when you 
+create the relationship.
+
+順序付けられた関係が常にほしいなら、リレーションシップを作るときに、次の指定をできます。
+
+To order C<< $book->pages >> by descending page_number.
+
+page_numberを降順で、C<< $book->pages >>を並び変えたいなら。
+
+  Book->has_many('pages' => 'Page', 'book', { order_by => \'page_number DESC'} );
+
+=head2 トランザクション
+
+As of version 0.04001, there is improved transaction support in
+L<DBIx::Class::Storage::DBI> and L<DBIx::Class::Schema>.  Here is an
+example of the recommended way to use it:
+
+0.04001以降に、 L<DBIx::Class::Storage::DBI>とL<DBIx::Class::Schema>に、改良された
+トランザクションサポートがあります。これを使う推奨される方法の一例です:
+
+  my $genus = $schema->resultset('Genus')->find(12);
+
+  my $coderef2 = sub {
+    $genus->extinct(1);
+    $genus->update;
+  };
+
+  my $coderef1 = sub {
+    $genus->add_to_species({ name => 'troglodyte' });
+    $genus->wings(2);
+    $genus->update;
+    $schema->txn_do($coderef2); # Can have a nested transaction
+    return $genus->species;
+  };
+
+  my $rs;
+  eval {
+    $rs = $schema->txn_do($coderef1);
+  };
+
+  if ($@) {                             # Transaction failed
+    die "the sky is falling!"           #
+      if ($@ =~ /Rollback failed/);     # Rollback failed
+
+    deal_with_failed_transaction();
+  }
+
+Nested transactions will work as expected. That is, only the outermost
+transaction will actually issue a commit to the $dbh, and a rollback
+at any level of any transaction will cause the entire nested
+transaction to fail. Support for savepoints and for true nested
+transactions (for databases that support them) will hopefully be added
+in the future.
+
+ネストされたトランザクションは期待どおりに動きます。
+一番外側のトランザクションだけが実際に$dbhにコミットを発行します。
+どのレベルのどのトランザクションでも、ロールバックしたら、
+ネストされたトランザクション全てが失敗します。
+セーブポイントと、本当にネストされたトランザクション
+(それをサポートしているデータベース用に)は、将来、うまくいけば、追加されるでしょう。
+
+=head2 Many-to-many のリレーションシップ
+
+This is straightforward using L<ManyToMany|DBIx::Class::Relationship/many_to_many>:
+これは、単純にL<ManyToMany|DBIx::Class::Relationship/many_to_many>を使います:
+
+  package My::DB;
+  # ... set up connection ...
+
+  package My::User;
+  use base 'My::DB';
+  __PACKAGE__->table('user');
+  __PACKAGE__->add_columns(qw/id name/);
+  __PACKAGE__->set_primary_key('id');
+  __PACKAGE__->has_many('user_address' => 'My::UserAddress', 'user');
+  __PACKAGE__->many_to_many('addresses' => 'user_address', 'address');
+
+  package My::UserAddress;
+  use base 'My::DB';
+  __PACKAGE__->table('user_address');
+  __PACKAGE__->add_columns(qw/user address/);
+  __PACKAGE__->set_primary_key(qw/user address/);
+  __PACKAGE__->belongs_to('user' => 'My::User');
+  __PACKAGE__->belongs_to('address' => 'My::Address');
+
+  package My::Address;
+  use base 'My::DB';
+  __PACKAGE__->table('address');
+  __PACKAGE__->add_columns(qw/id street town area_code country/);
+  __PACKAGE__->set_primary_key('id');
+  __PACKAGE__->has_many('user_address' => 'My::UserAddress', 'address');
+  __PACKAGE__->many_to_many('users' => 'user_address', 'user');
+
+  $rs = $user->addresses(); # get all addresses for a user
+  $rs = $address->users(); # get all users for an address
+
+=head2 列のデフォルトの値を用意する
+
+It's as simple as overriding the C<new> method.  Note the use of
+C<next::method>.
+
+単純に、C<new>メソッドをオーバーライドします。
+C<next::method>の使いかたに注意してください。
+
+  sub new {
+    my ( $self, $attrs ) = @_;
+
+    $attrs->{foo} = 'bar' unless defined $attrs->{foo};
+
+    $self->next::method($attrs);
+
+    return $self;
+  }
+
+For more information about C<next::method>, look in the L<Class::C3> 
+documentation. See also L<DBIx::Class::Manual::Component> for more
+ways to write your own base classes to do this.
+
+C<next::method>についてより詳しくは、L<Class::C3>のドキュメントを参照してください。
+これをするための、自分自身のベースクラスを書くための、より多くの方法については、
+L<DBIx::CLass::Manual::Component>を見てください。
+
+People looking for ways to do "triggers" with DBIx::Class are probably
+just looking for this.
+
+DBIx::Classで"triggers"をする方法を探している人も、これを探しているでしょう。
+
+=head2 Stringification
+
+Employ the standard stringification technique by using the C<overload>
+module.
+
+C<overload> モジュールで標準的な文字列化のテクニックを使えます。
+
+To make an object stringify itself as a single column, use something
+like this (replace C<foo> with the column/method of your choice):
+
+ひとつのカラムについて、オブジェクト自身を文字列化するには、
+次のようにします。(カラム/メソッドでC<foo>を置き換えてください)
+
+  use overload '""' => sub { shift->name}, fallback => 1;
+
+For more complex stringification, you can use an anonymous subroutine:
+
+より複雑な文字列化では、無名サブルーチンを使えます:
+
+  use overload '""' => sub { $_[0]->name . ", " .
+                             $_[0]->address }, fallback => 1;
+
+=head3 文字列化の例
+
+Suppose we have two tables: C<Product> and C<Category>. The table
+specifications are:
+
+二つのテーブルがあるとします:C<Product>とC<Cateogry>。
+テーブルの定義は次の通り:
+
+  Product(id, Description, category)
+  Category(id, Description)
+
+C<category> is a foreign key into the Category table.
+
+C<category>はCategoryテーブルの外部キーです。
+
+If you have a Product object C<$obj> and write something like
+
+ProductオブジェクトC<$obj>があり、次のように書いたとすると、
+
+  print $obj->category
+
+things will not work as expected.
+
+期待どおりには動きません。
+
+To obtain, for example, the category description, you should add this
+method to the class defining the Category table:
+
+カテゴリの内容を得たいなら、例えば、Categoryテーブルのクラス定義に次の
+メソッドを追加すべきです:
+
+  use overload "" => sub {
+      my $self = shift;
+
+      return $self->Description;
+  }, fallback => 1;
+
+=head2 きれいに切断
+
+If you find yourself quitting an app with Control-C a lot during
+development, you might like to put the following signal handler in
+your main database class to make sure it disconnects cleanly:
+
+開発中に、Cotrol-Cを多用して、アプリケーションを終了させることが
+多いなら、下記のようなシグナルハンドラーをデータベースクラスに置いて、
+確実にきれいに切断したいかもしれません:
+
+  $SIG{INT} = sub {
+    __PACKAGE__->storage->disconnect;
+  };
+
+=head2 スキーマのインポート/エクスポート
+
+This functionality requires you to have L<SQL::Translator> (also known as
+"SQL Fairy") installed.
+
+この機能を使うには、L<SQL::Translator>("SQL Fairy"とも知られる)を
+インストールする必要があります。
+
+To create a DBIx::Class schema from an existing database:
+
+DBIx::Classスキーマを既存のデータベースから作ります:
+
+ sqlt --from DBI
+      --to DBIx::Class::File
+      --prefix "MySchema" > MySchema.pm
+
+To create a MySQL database from an existing L<DBIx::Class> schema, convert the
+schema to MySQL's dialect of SQL:
+
+MySQLデータベースを既存のL<DBIx::Class>スキーマから作ります。
+スキーマをMySQLのSQL方言に変換します:
+
+  sqlt --from SQL::Translator::Parser::DBIx::Class 
+       --to MySQL 
+       --DBIx::Class "MySchema.pm" > Schema1.sql
+  
+And import using the mysql client:
+
+mysqlクライアントでimportします:
+
+  mysql -h "host" -D "database" -u "user" -p < Schema1.sql
+
+=head2 クラスベースからスキーマベースセットアップへの簡単な移行
+
+You want to start using the schema-based approach to L<DBIx::Class>
+(see L<SchemaIntro.pod>), but have an established class-based setup with lots
+of existing classes that you don't want to move by hand. Try this nifty script
+instead:
+
+L<DBIx::Class>へのスキーマベースのアプローチを使いたい(L<SchemaIntro.pod>をみてください)、
+でも、既存の大量のクラスで、従来のクラスベースのセットアップがあり、
+手でそれらを動かしたくはないとします。手で動かす変わりに、下記の気の利いたスクリプトを
+試してみて下さい:
+
+
+  use MyDB;
+  use SQL::Translator;
+  
+  my $schema = MyDB->schema_instance;
+  
+  my $translator           =  SQL::Translator->new( 
+      debug                => $debug          ||  0,
+      trace                => $trace          ||  0,
+      no_comments          => $no_comments    ||  0,
+      show_warnings        => $show_warnings  ||  0,
+      add_drop_table       => $add_drop_table ||  0,
+      validate             => $validate       ||  0,
+      parser_args          => {
+         'DBIx::Schema'    => $schema,
+                              },
+      producer_args   => {
+          'prefix'         => 'My::Schema',
+                         },
+  );
+  
+  $translator->parser('SQL::Translator::Parser::DBIx::Class');
+  $translator->producer('SQL::Translator::Producer::DBIx::Class::File');
+  
+  my $output = $translator->translate(@args) or die
+          "Error: " . $translator->error;
+  
+  print $output;
+
+You could use L<Module::Find> to search for all subclasses in the MyDB::*
+namespace, which is currently left as an exercise for the reader.
+
+L<Module::Find>を使って、MyDB::*名前空間にある全てのサブクラスを探すことが出来ますが、
+これは、今のところ、読者への課題としておきます。
+
+
+=head2 スキーマのバージョニング
+
+The following example shows simplistically how you might use DBIx::Class to
+deploy versioned schemas to your customers. The basic process is as follows:
+
+下記の例では、DBIx::Classを使って、顧客向けにバージョン付きのスキーマをどうやって
+デプロイするかをお見せします。基本的なプロセスは下記のようになります:
+
+=over 4
+
+=item 1.
+
+Create a DBIx::Class schema
+
+DBIx::Classスキーマを作ります
+
+=item 2.
+
+Save the schema
+
+スキーマを保存します
+
+=item 3.
+
+Deploy to customers
+
+顧客にデプロイします
+
+=item 4.
+
+Modify schema to change functionality
+
+スキーマを変更して、 functionality を変更します
+
+=item 5.
+
+Deploy update to customers
+
+顧客に更新をデプロイします
+
+=back
+
+=head3 DBIx::Calssスキーマを作る
+
+This can either be done manually, or generated from an existing database as
+described under C<Schema import/export>.
+
+これは、手で行うことも、C<Schema import/export>で説明しますが、
+既存のデータベースから生成することもできます。
+
+=head3 スキーマを保存する
+
+Use C<sqlt> to transform your schema into an SQL script suitable for your
+customer's database. E.g. for MySQL:
+
+C<sqlt>を使って、スキーマを変換して、顧客のデータベース(例えば、MySQL)に合った、
+SQLスクリプトにします。
+
+  sqlt --from SQL::Translator::Parser::DBIx::Class
+       --to MySQL
+       --DBIx::Class "MySchema.pm" > Schema1.mysql.sql
+
+If you need to target databases from multiple vendors, just generate an SQL
+script suitable for each. To support PostgreSQL too:
+
+複数のベンダからデーベースをターゲットにしなければならないなら、
+それぞれに合ったSQLスクリプトを生成するだけです。PostgreSQLもサポートしています:
+
+  sqlt --from SQL::Translator::DBIx::Class
+       --to PostgreSQL
+       --DBIx::Class "MySchema.pm" > Schema1.pgsql.sql
+
+=head3 顧客にデプロイする
+
+There are several ways you could deploy your schema. These are probably
+beyond the scope of this recipe, but might include:
+
+スキーマをデプロイするのには複数の方法があります。
+このレシピの範疇を越えそうですが、含めておきます:
+
+=over 4
+
+=item 1.
+
+Require customer to apply manually using their RDBMS.
+
+顧客にRDBMSを使って、手で適用するように求める
+
+=item 2.
+
+Package along with your app, making database dump/schema update/tests
+all part of your install.
+
+アプリケーションと一緒に、データベースのダンプ、スキーマのアップデート、
+インストールの全パートのテストを作るように、パッケージする
+
+=back
+
+=head3 機能性を変更するために、スキーマを変更する
+
+As your application evolves, it may be necessary to modify your schema to
+change functionality. Once the changes are made to your schema in DBIx::Class,
+export the modified schema as before, taking care not to overwrite the original:
+
+アプリケーションが進化するにつれ、機能性を変更するために、スキーマを修正する必要があるでしょう。
+DBIx::Classでスキーマを変更したら、以前のように修正されたスキーマをエクスポートします。
+オリジナルのスキーマを上書きしないように気を付けましょう:
+
+  sqlt --from SQL::Translator::DBIx::Class
+       --to MySQL
+       --DBIx::Class "Anything.pm" > Schema2.mysql.sql
+
+Next, use sqlt-diff to create an SQL script that will update the customer's
+database schema:
+
+次に、sqlt-diffを使って、顧客のデータベーススキーマを更新するSQLスクリプトを作ります:
+
+  sqlt-diff --to MySQL Schema1=MySQL Schema2=MySQL > SchemaUpdate.mysql.sql
+
+=head3 顧客に更新をデプロイします
+
+The schema update can be deployed to customers using the same method as before.
+
+スキーマの更新は以前と同じようにして、顧客にデプロイされます。
+
+=head2 SQL::Abstract::Limit のために、リミットの方言を設定する
+
+In some cases, SQL::Abstract::Limit cannot determine the dialect of
+the remote SQL server by looking at the database handle. This is a
+common problem when using the DBD::JDBC, since the DBD-driver only
+know that in has a Java-driver available, not which JDBC driver the
+Java component has loaded.  This specifically sets the limit_dialect
+to Microsoft SQL-server (See more names in SQL::Abstract::Limit
+-documentation.
+
+時には、SQL::Abstract::Limit はデータベースハンドルで見ていることで、
+リモートのSQLサーバの方言を決めれられない場合があります。
+これは、DBD::JDBCを使っているときの、よく知られた問題です。
+DBD-driver は Java-driver が利用できることを知っているだけで、
+どのJDBCドライバをJavaコンポーネントがロードしているかを知らないからです。
+具体的に、Microsoft SQL-server のlimitの方言をセットします
+(SQL::Abstract::Limitのドキュメントには、より多くの名前があります)。
+
+  __PACKAGE__->storage->sql_maker->limit_dialect('mssql');
+
+The JDBC bridge is one way of getting access to a MSSQL server from a platform
+that Microsoft doesn't deliver native client libraries for. (e.g. Linux)
+
+JDBCブリッジはMicrosoftがネイティブのクライアントライブラリを配布していない
+プラットフォーム(例えば、Linux)からMSSQLサーバへアクセスする1つの方法です。
+
+=head2 生成されたSQLをクォートする
+
+If the database contains column names with spaces and/or reserved words, they
+need to be quoted in the SQL queries. This is done using:
+
+データベースにスペースおよび/または予約語のついたカラム名がある場合、
+SQLクエリ内で、クォートされる必要があります。次のようにします:
+
+  __PACKAGE__->storage->sql_maker->quote_char([ qw/[ ]/] );
+  __PACKAGE__->storage->sql_maker->name_sep('.');
+
+The first sets the quote characters. Either a pair of matching
+brackets, or a C<"> or C<'>:
+
+1行目は、クォート文字をセットしています。ブラケットのペアか、C<">, C<'>です。
+
+  __PACKAGE__->storage->sql_maker->quote_char('"');
+
+Check the documentation of your database for the correct quote
+characters to use. C<name_sep> needs to be set to allow the SQL
+generator to put the quotes the correct place.
+
+正しいクォート文字を使うために、データベースのドキュメントをチェックしてください。
+C<name_sep>は、SQLジェネレーターが正しい場所にクォートを置くために、
+セットしなければいけません。
+
+=head2 メソッドのオーバーロード
+
+L<DBIx::Class> uses the L<Class::C3> package, which provides for redispatch of 
+method calls.  You have to use calls to C<next::method> to overload methods.  
+More information on using L<Class::C3> with L<DBIx::Class> can be found in 
+L<DBIx::Class::Manual::Component>.
+
+L<DBIx::Class>はL<Class::C3>パッケージを使っています。L<Class::C3>はメソッドコールを
+再分岐させるために使われています。メソッドをオーバーロードするために、
+C<next::method>の呼び出しを使わなければいけません。
+L<DBIx::Class>とL<Class::C3>の利用に関する詳しい情報は、
+L<DBIx::Class::Manual::Component>を見てください。
+
+=head3 他が変更されたらいつでもあるフィールドを変更する
+
+For example, say that you have three columns, C<id>, C<number>, and 
+C<squared>.  You would like to make changes to C<number> and have
+C<squared> be automagically set to the value of C<number> squared.
+You can accomplish this by overriding C<store_column>:
+
+例えば、3つのカラムがあったとします。C<id>、C<number>、C<squared>。
+C<number>に変更を加え、C<squared>は自動的に、C<number>の二乗の値を
+セットしたいとします。C<store_column>をオーバーロードすることで、
+これができます:
+
+  sub store_column {
+    my ( $self, $name, $value ) = @_;
+    if ($name eq 'number') {
+      $self->squared($value * $value);
+    }
+    $self->next::method($name, $value);
+  }
+
+Note that the hard work is done by the call to C<next::method>, which
+redispatches your call to store_column in the superclass(es).
+
+C<next::method>を呼び出すことで、大変な仕事がされていることに注意しましょう。
+呼び出しが、(複数の)スーパークラスのstore_columnに再分岐されてます:
+
+=head3 関連するオブジェクトを自動的に作る
+
+You might have a class C<Artist> which has many C<CD>s.  Further, if you
+want to create a C<CD> object every time you insert an C<Artist> object.
+You can accomplish this by overriding C<insert> on your objects:
+
+多くのC<CD>を持ったC<Artist>クラスがあるとします。
+さらに、C<Artist>オブジェクトをインサートする度毎にC<CD>オブジェクトを
+作りたいとします。これは、オブジェクトのC<insert>をオーバロードすればできます:
+
+  sub insert {
+    my ( $self, @args ) = @_;
+    $self->next::method(@args);
+    $self->cds->new({})->fill_from_artist($self)->insert;
+    return $self;
+  }
+
+where C<fill_from_artist> is a method you specify in C<CD> which sets
+values in C<CD> based on the data in the C<Artist> object you pass in.
+
+C<fill_from_artist>はC<CD>で指定しているメソッドで、
+渡したC<Artist>オブジェクトのデータに基づいた値をCDにセットします。
+
+=head2 Data::Dumperを使って、DBIx::Classをデバッグする
+
+L<Data::Dumper> can be a very useful tool for debugging, but sometimes it can
+be hard to find the pertinent data in all the data it can generate.
+Specifically, if one naively tries to use it like so,
+
+L<Data::Dumper> はデバッグにとても便利なツールです。ですが、
+生成された全てのデータの中の、該当のデータを見付けるのが難しい時があります。
+次のように単純に使おうとしたら、
+
+  use Data::Dumper;
+
+  my $cd = $schema->resultset('CD')->find(1);
+  print Dumper($cd);
+
+several pages worth of data from the CD object's schema and result source will
+be dumped to the screen. Since usually one is only interested in a few column
+values of the object, this is not very helpful.
+
+複数ページにわたり、CDオブジェクトのスキーマと結果のソースが、複数
+ページにわたるデータとなってスクリーンにダンプされます。ですが、
+普通はオブジェクトの数カラムの値の1つのみに興味があるので、これでは、
+あまり便利ではありません。
+
+Luckily, it is possible to modify the data before L<Data::Dumper> outputs
+it. Simply define a hook that L<Data::Dumper> will call on the object before
+dumping it. For example,
+
+幸運にも、L<Data::Dumper>が出力する前にデータを加工することが出来ます。
+簡単にフックを定義すると、L<Data::Dumper>がダンプする前に、オブジェクトで
+それを呼び出します。
+
+  package My::DB::CD;
+
+  sub _dumper_hook {
+    $_[0] = bless {
+      %{ $_[0] },
+      result_source => undef,
+    }, ref($_[0]);
+  }
+
+  [...]
+
+  use Data::Dumper;
+
+  local $Data::Dumper::Freezer = '_dumper_hook';
+
+  my $cd = $schema->resultset('CD')->find(1);
+  print Dumper($cd);
+         # dumps $cd without its ResultSource
+
+If the structure of your schema is such that there is a common base class for
+all your table classes, simply put a method similar to C<_dumper_hook> in the
+base class and set C<$Data::Dumper::Freezer> to its name and L<Data::Dumper>
+will automagically clean up your data before printing it. See
+L<Data::Dumper/EXAMPLES> for more information.
+
+スキーマの構造が、全てのテーブルクラスのための共通のベースクラスがあるような
+ものであれば、単純に、ベースクラスに、C<_dumper_hook>と同じようなメソッドを作り、
+C<$Data::Dumper::Freezer>にその名前をセットします。
+L<Data::Dumper>は、自動的に、データを出力する前に、きれいにします。
+L<Data::Dumper/EXAMPLES>により詳しい情報ががあります。
+
+=head2 列オブジェクトのスキーマを得る
+
+It is possible to get a Schema object from a row object like so:
+
+次のようにして、列のオブジェクトからスキーマを得ることができます:
+
+  my $schema = $cd->result_source->schema;
+  # use the schema as normal:
+  my $artist_rs = $schema->resultset('Artist'); 
+
+This can be useful when you don't want to pass around a Schema object to every
+method.
+
+全てのメソッドで、スキーマオブジェクトを順に回したくなければ、便利でしょう。
+
+=head2 プロファイリング
+
+When you enable L<DBIx::Class::Storage::DBI>'s debugging it prints the SQL
+executed as well as notifications of query completion and transaction
+begin/commit.  If you'd like to profile the SQL you can subclass the
+L<DBIx::Class::Storage::Statistics> class and write your own profiling
+mechanism:
+
+L<DBIx::Class::Storage::DBI>のデバッギングを有効にすれば、
+実行されたSQLだけでなく、クエリの完了や、トランザクションの開始/コミット
+も、出力します。SQLを分析したければ、 L<DBIx::Class::Storage::Statistics>
+クラスのサブクラスを作り、自分自身のプロファイリングメカニズムを書けます:
+
+  package My::Profiler;
+  use strict;
+
+  use base 'DBIx::Class::Storage::Statistics';
+
+  use Time::HiRes qw(time);
+
+  my $start;
+
+  sub query_start {
+    my $self = shift();
+    my $sql = shift();
+    my $params = @_;
+
+    print "Executing $sql: ".join(', ', @params)."\n";
+    $start = time();
+  }
+
+  sub query_end {
+    my $self = shift();
+    my $sql = shift();
+    my @params = @_;
+
+    printf("Execution took %0.4f seconds.\n", time() - $start);
+    $start = undef;
+  }
+
+  1;
+
+You can then install that class as the debugging object:
+
+それから、このクラスを、デバッギングオブジェクトにインストールします:
+
+  __PACKAGE__->storage()->debugobj(new My::Profiler());
+  __PACKAGE__->storage()->debug(1);
+
+A more complicated example might involve storing each execution of SQL in an
+array:
+
+より複雑な例としては、配列に実行する各SQLを貯めておくようなものを含むでしょう:
+
+  sub query_end {
+    my $self = shift();
+    my $sql = shift();
+    my @params = @_;
+
+    my $elapsed = time() - $start;
+    push(@{ $calls{$sql} }, {
+        params => \@params,
+        elapsed => $elapsed
+    });
+  }
+
+You could then create average, high and low execution times for an SQL
+statement and dig down to see if certain parameters cause aberrant behavior.
+
+それから、SQLステートメントの平均、最長、最短実行時間を取れますし、ある
+パラメータが異常な振る舞いを引き起こしていれば、掘り下げることも出来るでしょう。
+
+=head2 最後にデータベースにインサートしたプライマリキーの値を取りたい
+
+last_insert_id を取るともいいます。
+
+If you are using PK::Auto, this is straightforward:
+
+PK::Autoを使っているのなら、直接:
+
+  my $foo = $rs->create(\%blah);
+  # do more stuff
+  my $id = $foo->id; # foo->my_primary_key_field will also work.
+
+If you are not using autoincrementing primary keys, this will probably
+not work, but then you already know the value of the last primary key anyway.
+
+オートインクリメントのプライマリキーを使っていないのなら、おそらく動きません。
+ですが、すでに、プライマリキーの値を知っていることでしょう。
+
+=head2 DBIx::Classのプロキシクラスを動的にサブクラス化する
+(AKA multi-class object inflation from one table) 
+
+(AKA 1つのテーブルからマルチクラスのオブジェクトに展開する) 
+ 
+L<DBIx::Class> classes are proxy classes, therefore some different
+techniques need to be employed for more than basic subclassing.  In
+this example we have a single user table that carries a boolean bit
+for admin.  We would like like to give the admin users
+objects(L<DBIx::Class::Row>) the same methods as a regular user but
+also special admin only methods.  It doesn't make sense to create two
+seperate proxy-class files for this.  We would be copying all the user
+methods into the Admin class.  There is a cleaner way to accomplish
+this.
+
+L<DBIx::Class>クラスはプロキシクラスです。そのため、基本的なサブクラス化以上に、
+いくつかの違ったテクニックが必要とされます。
+この例では、管理者用に真偽値を持っているユーザーテーブルがあります。
+管理者ユーザーには、オブジェクト(L<DBIx::Class::Row>)のメソッドを、
+普通のユーザーと同じようにあたえますが、管理者のみの特別なメソッドも、
+あたえたいとします。このために2つのプロキシクラスファイルに分割するのは
+理にかないません。Adminクラスに全てのユーザークラスのメソッドをコピー
+することになります。これをするために、よりすっきりした方法があります。
+
+Overriding the C<inflate_result> method within the User proxy-class
+gives us the effect we want.  This method is called by
+L<DBIx::Class::ResultSet> when inflating a result from storage.  So we
+grab the object being returned, inspect the values we are looking for,
+bless it if it's an admin object, and then return it.  See the example
+below:
+
+ユーザーのプロキシクラス内でC<inflate_result>メソッドをオーバーライドすることで、
+望んでいる効果が得られます。このメソッドは、ストレージから結果が展開されるときに、
+L<DBIx::Class::ResultSet>によって呼ばれます。
+返されたオブジェクトを掴んだら、探している値を調べ、管理者オブジェクトであれば、
+それをblessします。下の例を見てください:
+
+B<Schema Definition> 
+
+    package DB::Schema; 
+     
+    use base qw/DBIx::Class::Schema/; 
+ 
+    __PACKAGE__->load_classes(qw/User/); 
+ 
+ 
+B<Proxy-Class definitions> 
+
+    package DB::Schema::User; 
+     
+    use strict; 
+    use warnings; 
+    use base qw/DBIx::Class/; 
+     
+    ### Defined what our admin class is for ensure_class_loaded 
+    my $admin_class = __PACKAGE__ . '::Admin'; 
+     
+    __PACKAGE__->load_components(qw/Core/); 
+     
+    __PACKAGE__->table('users'); 
+     
+    __PACKAGE__->add_columns(qw/user_id   email    password  
+                                firstname lastname active 
+                                admin/); 
+     
+    __PACKAGE__->set_primary_key('user_id'); 
+     
+    sub inflate_result { 
+        my $self = shift;  
+        my $ret = $self->next::method(@_); 
+        if( $ret->admin ) {### If this is an admin rebless for extra functions  
+            $self->ensure_class_loaded( $admin_class ); 
+            bless $ret, $admin_class; 
+        } 
+        return $ret; 
+    } 
+     
+    sub hello { 
+        print "I am a regular user.\n"; 
+        return ; 
+    } 
+     
+     
+    package DB::Schema::User::Admin; 
+     
+    use strict; 
+    use warnings; 
+    use base qw/DB::Schema::User/; 
+     
+    sub hello 
+    { 
+        print "I am an admin.\n"; 
+        return; 
+    } 
+     
+    sub do_admin_stuff 
+    { 
+        print "I am doing admin stuff\n"; 
+        return ; 
+    } 
+ 
+B<Test File> test.pl 
+
+    use warnings; 
+    use strict; 
+    use DB::Schema; 
+     
+    my $user_data = { email    => 'someguy@place.com',  
+                      password => 'pass1',  
+                      admin    => 0 }; 
+                           
+    my $admin_data = { email    => 'someadmin@adminplace.com',  
+                       password => 'pass2',  
+                       admin    => 1 }; 
+                           
+    my $schema = DB::Schema->connection('dbi:Pg:dbname=test'); 
+     
+    $schema->resultset('User')->create( $user_data ); 
+    $schema->resultset('User')->create( $admin_data ); 
+     
+    ### Now we search for them 
+    my $user = $schema->resultset('User')->single( $user_data ); 
+    my $admin = $schema->resultset('User')->single( $admin_data ); 
+     
+    print ref $user, "\n"; 
+    print ref $admin, "\n"; 
+     
+    print $user->password , "\n"; # pass1 
+    print $admin->password , "\n";# pass2; inherited from User 
+    print $user->hello , "\n";# I am a regular user. 
+    print $admin->hello, "\n";# I am an admin. 
+ 
+    ### The statement below will NOT print 
+    print "I can do admin stuff\n" if $user->can('do_admin_stuff'); 
+    ### The statement below will print 
+    print "I can do admin stuff\n" if $admin->can('do_admin_stuff'); 
+
+=head2 高速に結果を得るために、オブジェクトの作成をスキップしたい
+
+DBIx::Class is not built for speed, it's built for convenience and
+ease of use, but sometimes you just need to get the data, and skip the
+fancy objects. Luckily this is also fairly easy using
+C<inflate_result>:
+
+DBIx::Class はスピードのためには作られておらず、DBIx::Classは、
+利便性と使い易さのために作られました。ですが、時には、データをただ
+取得しなければいけないだけの時があり、素敵なオブジェクトはスキップ
+したい場合もあるでしょう。幸運なことに、この用途には、C<inflate_result>
+が、実に簡単に使えます。
+
+  # Define a class which just returns the results as a hashref:
+  package My::HashRefInflator;
+
+  ## $me is the hashref of cols/data from the immediate resultsource
+  ## $prefetch is a deep hashref of all the data from the prefetched
+  ##   related sources.
+
+  sub mk_hash {
+     my ($me, $rest) = @_;
+
+     return { %$me, 
+        map { ($_ => mk_hash(@{$rest->{$_}})) } keys %$rest
+     };
+  }
+
+  sub inflate_result {
+     my ($self, $source, $me, $prefetch) = @_;
+     return mk_hash($me, $prefetch); 
+  }
+
+  # Change the object inflation to a hashref for just this resultset:
+  $rs->result_class('My::HashRefInflator');
+
+  my $datahashref = $rs->next;
+  foreach my $col (keys %$datahashref) {
+     if(!ref($datahashref->{$col})) {
+        # It's a plain value
+     }
+     elsif(ref($datahashref->{$col} eq 'HASH')) {
+        # It's a related value in a hashref
+     }
+  }
+
+=head2 find_or_create が見付けたのか、列を作ったのかを知りたい？
+
+Just use C<find_or_new> instead, then check C<in_storage>:
+
+C<find_or_new>を代わりに使ってください。それから、C<in_storage>をチェックします:
+
+  my $obj = $rs->find_or_new({ blah => 'blarg' });
+  unless ($obj->in_storage) {
+    $obj->insert;
+    # do whatever else you wanted if it was a new row
+  }
+
+=head3 カラムのアクセサをラッピング/オーバーロードする
+
+Problem: Say you have a table "Camera" and want to associate a description
+with each camera. For most cameras, you'll be able to generate the description from
+the other columns. However, in a few special cases you may want to associate a
+custom description with a camera.
+
+問題: "Camera"テーブルがあったとして、それぞれのカメラについて、
+説明を関連付けたいとします。ほとんどのカメラでは、他のカラムから説明を生成できるでしょう。
+しかし、特別な数ケースでは、カメラのカスタムの説明を関連付けたいとします。
+
+Solution:
+
+解:
+
+In your database schema, define a description field in the "Camera" table that
+can contain text and null values.
+
+データベーススキーマで、"Camera"にdescriptionフィールドが定義し、
+textとnullの値を含むことをできるようにします。
+
+In DBIC, we'll overload the column accessor to provide a sane default if no
+custom description is defined. The accessor will either return or generate the
+description, depending on whether the field is null or not.
+
+DBICは、カスタムの description が定義されていなければ、
+提供されているまともなデフォルトのカラムアクセサをオーバーロードできます。
+フィールドがnullかnullでないかに依存して、アクセサはdescriptionを返すか生成します。
+
+First, in your "Camera" schema class, define the description field as follows:
+
+まず、"Camera"スキーマクラスで、下記のようにdescriptionフィールドを定義します:
+
+  __PACKAGE__->add_columns(description => { accessor => '_description' });
+
+Next, we'll define the accessor-wrapper subroutine:
+
+次に、アクセサラッパーサブルーチンを定義します:
+
+  sub description {
+      my $self = shift;
+
+      # If there is an update to the column, we'll let the original accessor
+      # deal with it.
+      return $self->_description(@_) if @_;
+
+      # Fetch the column value.
+      my $description = $self->_description;
+
+      # If there's something in the description field, then just return that.
+      return $description if defined $description && length $descripton;
+
+      # Otherwise, generate a description.
+      return $self->generate_description;
+  }
+
+=head1 翻訳について
+
+翻訳者：加藤敦 (ktat.is at gmail.com)
+
+Perlドキュメント日本語訳 Project にて、
+Perlモジュール、ドキュメントの翻訳を行っております。
+
+ http://perldocjp.sourceforge.jp/
+ http://sourceforge.jp/projects/perldocjp/
+ http://www.freeml.com/perldocjp/
+ http://www.perldoc.jp
+
+=cut

@@ -1,0 +1,484 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+Net::Server::Multiplex - Multiplex several connections within one process
+
+=end original
+
+Net::Server::Multiplex - 一つのプロセス内の多重化接続
+
+=head1 概要
+
+  package MyPlexer;
+
+  use base 'Net::Server::Multiplex';
+
+  sub mux_input {
+     #...コード...
+  }
+
+  __PACKAGE__->run();
+
+=head1 説明
+
+=begin original
+
+This personality is designed to handle multiple connections
+all within one process.  It should only be used with protocols
+that are guaranteed to be able to respond quickly on a packet
+by packet basis.  If determining a response could take a while
+or an unknown period of time, all other connections established
+will block until the response completes.  If this condition
+might ever occur, this personality should probably not be used.
+
+=end original
+
+このパーソナリティは、一つのプロセスで複数接続全てを処理する
+ように設計されている。パケットベースで素早い応答が可能である
+ことを保証しているプロトコルを伴う場合にのみ、このモジュールを
+使用するべきである。あるレスポンスを決定するのにしばらく
+かかる、あるいはどのくらいかかるのかわからない場合、既に確立
+された全ての接続は、そのレスポンスが完了するまでブロックする。
+この状況が発生するようなら、このパーソナリティは恐らく使うべき
+ではない。
+
+=begin original
+
+This takes some nice features of Net::Server (like the server
+listen socket setup, configuration file processing, safe signal
+handling, convenient inet style STDIN/STDOUT handling, logging
+features, deamonization and pid tracking, and restartability
+-SIGHUP) and some nice features of IO::Multiplex (automatic
+buffered IO and per-file-handle objects) and combines them for
+an easy-to-use interace.
+
+=end original
+
+このモジュールはNet::Serverの優れた特徴（ソケット立ち上げ、
+設定ファイルの処理、安全なシグナル処理、便利なinetスタイルの
+STDIN/STDOUT処理、ログの記録、デーモン化とpidの追跡、
+そして再起動可能 - SIGHUP）と、IO::Multiplexの優れた特徴（
+自動的にバッファされるIOとファイルハンドル毎のオブジェクト）を
+持ち、簡単に使えるインターフェースとしてそれらを結合している。
+
+=begin original
+
+See examples/samplechat.pl distributed with Net::Server for a
+simple chat server that uses several of these features.
+
+=end original
+
+Net::Serverと一緒に配布されるexamples/samplechat.plを参照。
+そこにはこれらの機能のいくつかを利用した簡単なチャットサーバの
+例がある。
+
+=head1 処理の流れ
+
+=begin original
+
+The process flow is written in an open, easy to
+override, easy to hook, fashion.  The basic flow is
+shown below.
+
+=end original
+
+処理の流れは、オープンでオーバーライドしやすく、hookが
+簡単なように書かれている。基本的な流れは次のようになる。
+
+
+  $self->configure_hook;
+
+  $self->configure(@_);
+
+  $self->post_configure;
+
+  $self->post_configure_hook;
+
+  $self->pre_bind;
+
+  $self->bind;
+
+  if( Restarting server ){
+     $self->restart_open_hook();
+  }
+
+  $self->post_bind_hook;
+
+  $self->post_bind;
+
+  $self->pre_loop_hook;
+
+  $self->loop; # 基本的にIO::Multiplex::loopを実行しているだけ
+  # ルーチンは$self->loop内部
+  # 下のクライアント処理(CLIENT PROCESSING)を参照
+
+  $self->pre_server_close_hook;
+
+  $self->post_child_cleanup_hook;
+
+  $self->server_close;
+
+  if( Restarting server ){
+     $self->restart_close_hook();
+     $self->hup_server;
+     # Redo process again starting with configure_hook
+     # configure_hookを開始して、再び処理を繰り返す
+  }
+
+=begin original
+
+The server then exits.
+
+=end original
+
+それからサーバは終了する。
+
+=head1 クライアント処理
+
+=begin original
+
+The following represents the client processing program flow:
+
+=end original
+
+以下は、クライアント処理プログラムの流れを示している：
+
+  $self->{server}->{client} = Net::Server::Proto::TCP->accept();  # 注意：下のmux_input()で多重化されている
+
+  if (check_for_dequeue seconds have passed) {
+    $self->run_dequeue();
+  }
+
+  $self->get_client_info;
+
+  $self->post_accept_hook; # Net::Server型
+
+  if( $self->allow_deny
+
+      && $self->allow_deny_hook ){
+
+    # (Net::Serverの$self->process_request()は決して呼ばれない)
+
+    # この時点で、全てのmux_*メソッド用に
+    # 一意なクライアントを指定するオブジェクトが生成される
+    $self = __PACKAGE__->new($self, client);
+
+    $self->mux_connection; # IO::Multiplex型
+
+    for (every packet received) {
+      $self->mux_input;  # 注意：上のaccept()で多重化
+    }
+
+  }else{
+
+    $self->request_denied_hook;
+
+
+    # allow_denyかallow_deny_hookのどちらかが失敗した場合、
+    # new(), mux_connection(), とmux_input() は決して呼ばれない
+    # mux_eof() と mux_close() はまだ呼ばれる。しかしユニークな
+    # クライアント指定オブジェクトの代わりに、共通のlistenソケット
+    # コールバックオブジェクトが利用される。
+  }
+
+  $self->mux_eof;
+
+  $self->post_process_request_hook;
+
+  $self->mux_close;
+
+
+=begin original
+
+This process then loops multiplexing between the accept()
+for the next connection and mux_input() when input arrives
+to avoid blocking either one.
+
+=end original
+
+このプロセスはそれから、次の接続用のaccept()と、入力が届いた
+時にブロックするのを回避するためのmux_input()との間をループ
+する。
+
+=head1 HOOKS
+
+=begin original
+
+The *_hook methods mentioned above are meant to be overridden
+with your own subroutines if you desire to provide additional
+functionality.
+
+=end original
+
+上で述べられた*_hookメソッドは、もしあなたが追加の機能を
+提供したいなら、あなたのサブルーチンでオーバーライドされる。
+
+=begin original
+
+The loop() method of Net::Server has been overridden to run the
+loop routine of IO::Multiplex instead.  The Net::Server methods
+may access the IO::Multiplex object at C<$self-E<gt>{mux}> if
+desired.  The IO::Multiplex methods may access the Net::Server
+object at C<$self-E<gt>{net_server}> if desired.
+
+=end original
+
+Net::Serverのloop()メソッドはオーバーライドされて、代わりに
+IO::Multiplexのループルーチンが実行される。Net::Serverの
+メソッドは、もし必要なら、C<$self-E<gt>{mux}>を使って
+IO::Multipleオブジェクトにアクセスするかもしれない。
+IO::Multipleメソッドは、必要なら、C<$self-E<gt>{net_server}>を
+使ってNet::Serverオブジェクトにアクセスするかもしれない。
+
+=begin original
+
+The process_request() method is never used with this personality.
+
+=end original
+
+process_request()メソッドはこのパーソナリティでは決して使わない。
+
+=begin original
+
+The other Net::Server hooks and methods should work the same.
+
+=end original
+
+その他のNet::Serverのhookとメソッドは同じように働く。
+
+=over 4
+
+=item C<$self-E<gt>run_dequeue()>
+
+=begin original
+
+This hook only gets called in conjuction with the check_for_dequeue
+setting.  It will run every check_for_dequeue seconds.  Since no
+forking is done, this hook should run fast in order to prevent
+blocking the rest of the processing.
+
+=end original
+
+このhookは、check_for_dequeueのセッティングと共に呼び出されるだけ
+である。check_for_dequeue秒毎に実行される。forkは実行されないので、
+このhookは処理の残りがブロックされるのを避けるよう、素早く実行
+するべきである。
+
+=back
+
+=head1 タイムアウト
+
+=head2 set_timeout
+
+=begin original
+
+To utilize the optional timeout feature of IO::Multiplex,
+you need to specify a timeout by using the set_timeout
+method.
+
+=end original
+
+IO::Multiplexのオプションであるタイムアウト機能を利用するために
+set_timeoutメソッドを使ってタイムアウトを指定する必要がある。
+
+$self->{net_server}->{mux}->set_timeout($fh, $seconds_from_now);
+
+=begin original
+
+$fh may be either a client socket or a listen socket file descriptor
+within the mux.  $seconds_from_now may be fractional to achieve
+more precise timeouts.  This is used in conjuction with mux_timeout,
+which you should define yourself.
+
+=end original
+
+$fhはクライアントソケットか、mux内のlisten socketファイルの記述子
+のどちらかになる。$seconds_from_nowはより正確なタイムアウトに達する
+分数。mux_timeoutと共に使う。mux_timeoutは自ら定義する必要がある。
+
+=head2 mux_timeout
+
+=begin original
+
+The main loop() routine will call $obj->mux_timeout($mux, $fh)
+when the timeout specified in set_timeout is reached where
+$fh is the same as the one specified in set_timeout() and
+$obj is its corresponding object (either the unique client
+specific object or the main listen callback object) and
+$mux is the main IO::Multiplex object itself.
+
+=end original
+
+メインのloop()ルーチンはset_timeoutで指定されたタイムアウト時間に
+達したとき、$obj->mux_timeout($mux, $fh)を呼び出す。そこでの
+$fhはset_timeout()で指定されたものと同じである。そして、
+$objは対応するオブジェクトである（ユニークなクライアント指定の
+オブジェクトか、メインとなるlistenコールバックオブジェクトの
+どちらか）。そして、$muxはメインのIO::Multiplexオブジェクトそのもの
+である。
+
+=head1 コールバックインターフェース
+
+=begin original
+
+Callback objects should support the following interface.  You do not have
+to provide all of these methods, just provide the ones you are interested in.
+These are just like the IO::Multiplex hooks except that STDOUT is tied to
+the corresponding client socket handle for your convenience and to more
+closely emulate the Net::Server model.  However, unlike some other
+Net::Server personalities, you should never read directly from STDIN
+yourself.   You should define one or more of the following methods:
+
+=end original
+
+コールバックオブジェクト次のにインターフェースをサポートしている。
+あなたはこれら全てのメソッドを提供する必要はない。興味のあるもの
+だけでいい。これらは正にIO::Multiplexのhookのようなものだ。ただし、
+STDOUTが対応するクライアントソケットハンドルにtieされているのを
+除いてだが。これにより便利に、また、よりNet::Serverモデルをエミュレート
+するようになる。しかし、他のNet::Serverパーソナリティとは違って、
+直接STDINから読み込むことはできない。次のメソッドを一つ以上定義する
+べきだ。
+
+=head2 mux_connection ($mux,$fh)
+
+=begin original
+
+(OPTIONAL)
+Run once when the client first connects if the allow_deny passes.
+Note that the C<$self-E<gt>{net_server}-E<gt>{server}> property hash
+may be modified by future connections through Net::Server.  Any values
+within it that this object may need to use later should be copied within
+its own object at this point.
+
+=end original
+
+（オプション）
+allow_denyをパスして、最初にクライアント接続がなされたときに一度だけ
+実行される。C<$self-E<gt>{net_server}-E<gt>{server}>プロパティハッシュは、
+Net::Serverを通じて将来の接続により修正されるかもしれないことに注意。
+後でオブジェクトが使うも知れないこの中の値は、その時点のオブジェクト自身
+の中でコピーされる必要がある。
+
+Example:
+  $self->{peerport} = $self->{net_server}->{server}->{peerport};
+
+=head2 mux_input ($mux,$fh,\$data)
+
+=begin original
+
+(REQUIRED)
+Run each time a packet is read.  It should consume $data starting
+at the left and leave unconsumed data in the scalar for future
+calls to mux_input.
+
+=end original
+
+（必須）
+パケットが読まれるたびに実行される。$dataの文字列は左側から消費され、
+消費されなかったデータは将来mux_inputを呼び出すためにスカラーに残る。
+
+=head2 mux_eof ($mux,$fh,\$data)
+
+=begin original
+
+(OPTIONAL)
+Run once when the client is done writing.  It should consume
+the rest of $data since mux_input() will never be run again.
+
+=end original
+
+（オプション）
+クライアントが書き出した時に一度だけ実行される。$dataの
+残りを消費するべきだ。というのも、mux_input()は決して再実行
+されないだろうからだ。
+
+=head2 mux_close ($mux,$fh)
+
+=begin original
+
+(OPTIONAL)
+Run after the entire client socket has been closed.  No more
+attempts should be made to read or write to the client or to
+STDOUT.
+
+=end original
+
+（オプション）
+完全にクライアント接続が閉じた後に実行される。そのクライアント
+やSTDOUTに対しては読み書きを試みてはいけない。
+
+=head2 mux_timeout ($mux,$fh)
+
+=begin original
+
+(OPTIONAL)
+Run once when the set_timeout setting expires as
+explained above.
+
+=end original
+
+（オプション）
+先に説明したset_timeoutの有効期限が切れたときに一度だけ
+実行される。
+
+=head1 バグ
+
+=begin original
+
+This is only known to work with TCP servers.
+
+=end original
+
+これはTCPサーバとして動作することが知られているだけだ。
+
+=begin original
+
+If you need to use the IO::Multiplex style set_timeout / mux_timeout
+interface, you cannot use the Net::Server style check_for_dequeue
+/ run_dequeue interface.  It will not work if the check_for_dequeue
+option is specified.  The run_dequeue method is just a compatibility
+interface to comply with the Net::Server::Fork style run_dequeue but
+is implemented in terms of the IO::Multiplex style set_timeout and
+mux_timeout methods.
+
+=end original
+
+もしもIO::Multiplexのset_timeout / mux_timeoutインタフェースを
+利用したいなら、Net:Serverのcheck_for_dequeue / run_dequeue 
+インターフェースを使うことは出来ない。もしcheck_for_dequeue
+オプションが指定されていても動作しない。run_dequeueメソッドは、
+Net::Server::Forkのrun_dequeueに対応する互換用インタフェースである。
+だがこのrun_dequeueメソッドは、IO::Multiplexのset_timeoutと
+mux_timeoutメソッドの観点で実装されている。
+
+=begin original
+
+Please notify me, the author, of any other problems or issues
+you find.
+
+=end original
+
+あなたが見つけたその他の問題や課題を、作者である私にお知らせ願いたい。
+
+=head1 作者
+
+Copyright (C) 2001-2003, Rob Brown <bbb@cpan.org>
+
+This package may be distributed under the terms of either the
+GNU General Public License
+   or the
+Perl Artistic License
+
+All rights reserved.
+
+=head1 参考
+
+L<Net::Server> by Paul Seamons <paul@seamons.com>,
+
+L<IO::Multiplex> by Bruce Keeler <bruce@gridpoint.com>.
+

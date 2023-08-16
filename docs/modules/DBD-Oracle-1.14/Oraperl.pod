@@ -1,0 +1,617 @@
+
+=encoding euc-jp
+
+=head1 名前
+
+Oraperl - 古いoraperlスクリプトに代わるPerlからOracleデータベースへのアクセス
+
+=head1 概要
+
+  eval 'use Oraperl; 1;' || die $@ if $] >= 5;  # 古いスクリプトには、この行を追加してください
+
+  $lda = &ora_login($system_id, $name, $password)
+  $csr = &ora_open($lda, $stmt [, $cache])
+  &ora_bind($csr, $var, ...)
+  &ora_fetch($csr [, $trunc])
+  &ora_close($csr)
+  &ora_logoff($lda)
+
+  &ora_do($lda, $stmt)
+
+  &ora_titles($csr)
+  &ora_lengths($csr)
+  &ora_types($csr)
+  &ora_commit($lda)
+  &ora_rollback($lda)
+  &ora_autocommit($lda, $on_off)
+  &ora_version()
+
+  $ora_cache
+  $ora_long
+  $ora_trunc
+  $ora_errno
+  $ora_errstr
+  $ora_verno
+
+  $ora_debug
+
+=head1 説明
+
+Oraperl はOracleデータベースへのアクセスを可能にする拡張機能です。
+
+オリジナルのoraperlはOracle OCIと一緒にコンパイルされたPerl 4 バイナリです。
+ここで説明されるPerl 5 Oraperlモジュールは、(L<DBI>の中で働くデータベース・ドライバ)
+L<DBD::Oracle>と一緒に配布され、L<DBI>メソッド呼び出しの上に特別なレイヤを
+追加します。
+Oraperlモジュールは既存のPerl 4 oraperlスクリプトを最低限の変更で走らせるられる
+ようにだけ使われるべきです;新しい開発はすべて、L<DBI>を直接使うべきです。
+
+この拡張機能を実現する関数群については、以下のセクションで説明します。
+すべての関数は、失敗するとfalseまたは（Perlでの）未定義値(undef)を
+返します。これらの説明の中のOCIのリファレンスについて理解する必要は
+ありません。ルーチンを拡張したり、新しいマシンに移植したいという人の
+ために書いてあります。
+
+この文書は、Kevin Stok<kstock@auspex.fr>により書かれた元のPerl4 oraperl
+マニュアルから大きく変更されていません。DBD::Oracle、Oraperlエミュレーションに
+特有のコメントについては、頭にB<DBD:>をつけています。より詳しい情報については、
+DBD::OracleとDBIマニュアルをご覧下さい。
+
+B<DBD:> oraperlの関数定義をPerl5で使えるようにするには、それを使用する
+ファイルまたはパッケージでOraperl.pmモジュールをuseする必要があります。
+これは各ファイルまたはパッケージにS<C<user Oraperl;>>という行を単に
+加えるだけでできます。perl4 oraperlとperl5の両方でスクリプトが動くようにする
+必要があれば、代わりに以下のテキストを加えて下さい: 
+
+  eval 'use Oraperl; 1;' || die $@ if $] >= 5;
+
+=head2 基本的な関数
+
+データベースにアクセスするための主要な関数は&ora_login(), &ora_open(),
+&ora_bind(), &ora_fetch(), &ora_close(), &ora_do() そして &ora_logoff()です。
+
+=over 2
+
+=item * ora_login
+
+  $lda = &ora_login($system_id, $username, $password)
+
+Oracleデータベースに入っている情報にアクセスするためには、プログラムは
+まず&ora_login()を呼び出すことにより、ログインしなければいけません。
+この関数は３つの引数で呼び出されます。使用するOracleデータベースの
+システムID（下記参照）、Oracleのユーザ名、そのパスワードです。
+返される値はログイン識別子（実際にはOracle Login Data Area＝
+オラクル・データ領域)です。以降は$ldaで表します。
+
+同時に複数のログインが可能です。これによりデータベース間のデータの
+関連づけや転送のための簡単な仕組みを可能にします。
+
+多くのOracleプログラム(例えばSQL*PlusやSQL*Forms) は、どのデータベースに
+接続するかを決めるため環境変数ORACLE_SIDやTWO_TASKをチェックします。
+たくさんの異なるデータベースを使っている環境では、間違いやすく、別の
+データベースに対して実行しかねません。また複数のデータベースに対して
+同じように動くプログラムを作るのは大変です。このためOraperlはシステムIDを
+引数として渡すようになっています。しかし、システムIDが空文字列であれば、
+Oracleは通常のやり方で、ORACLE_SIDやはTWO_TASKに設定されている値を使います。
+
+例:
+
+  $lda = &ora_login('personnel', 'scott', 'tiger') || die $ora_errstr;
+
+この関数はOCIのolon とorlonと同等です。
+
+B<DBD:> nameが、/etc/oratabや/var/opt/oracle/oratabにあるSIDの名前では
+ないように見える場合、TNSエイリアスであると想定されます。データベース名の
+取り扱いについては、Oracle.pmのコードをご覧下さい。
+
+B<DBD:> 返される$ldaはPerl5のリファレンスなので、ログイン識別子は$ldaが
+上書きされるか、スコープからはずれると、自動的に解放されます。
+
+=item * ora_open
+
+  $csr = &ora_open($lda, $statement [, $cache])
+
+実行するSQL文を指定するためには、プログラムは&ora_open()関数を呼び
+出さなければなりません。この関数は、少なくとも２つのパラメータを取ります:
+（&ora_login()により取得される）ログイン識別子と実行するSQL文です。
+オプションで第3引数にSELECT文のために使われる行キャッシュの大きさを
+指定します。&ora_open()から返される値はステートメント識別子（実際には
+ORACLEカーソル）です。以降は$csrで表します。
+
+行キャッシュの大きさが指定されなければ、デフォルトの大きさが
+使われます。配布時点でのデフォルトは5行です。しかしインストール
+時点で変更されているかもしれません。（下記の&ora_version()関数と
+$ora_cache変数をご覧下さい）。
+
+例:
+
+ $csr = &ora_open($lda, 'select ename, sal from emp order by ename', 10);
+
+ $csr = &ora_open($lda, 'insert into dept values(:1, :2, :3)');
+
+この関数はOCIのoopenとoparse関数と同等です。SQL文に置換変数（下記の
+置換変数のセクションをご覧下さい）が入っていない場合には、同時にoexec関数も
+使います。SELECT文については、データベースから返される変数のための
+メモリを確保するためにodescrとodefin関数も使います。
+
+=item * ora_bind
+
+  &ora_bind($csr, $var, ...)
+
+SQL文に置換変数（下記の置換変数のセクションをご覧下さい）が入っている
+場合には、&ora_bind()を使ってそれらに実際の値を代入しなければなりません。
+この関数には（&ora_open()により取得される）ステートメント識別子を
+第１引数に、以後にSQLが必要としている数だけパラメータを指定します。
+
+例:
+
+ &ora_bind($csr, 50, 'management', 'Paris');
+
+この関数はOCIのobndrnとoexec文と同じです。
+
+OCIのobndrn関数は空文字列の結び付けを許していません。このため配布時点では
+$ora_bind 空文字列を１つの空白に置き換えるようにしています。しかし
+コンパイルオプションで、この置換を抑止することを許していると、&ora_bind()が
+失敗します。&ora_version()関数からの出力によってインストール時点で、
+どちらであったかがわかります。
+
+=item * ora_fetch
+
+ $nfields = &ora_fetch($csr)
+
+ @data = &ora_fetch($csr [, $trunc])
+
+&ora_fetch()関数は、データベースから情報を取り出すためのSQLのSELECT文
+のためのプログラムの流れの中で使われます。この関数は必須のパラメータ
+として（&ora_open()で取得される）ステートメント識別子を取ります。
+
+スカラー・コンテキストでは、この関数は問い合わせによって返されるフィールド数を
+返しますが、実際にはデータは取り出されません。これはユーザに対話的に
+SQL文を入力できるようにするプログラムでは便利でしょう。
+
+例:
+
+ $nfields = &ora_fetch($csr);
+
+配列コンテキストでは、データが入った配列が返されます。各フィールドに
+１つの要素が対応します。以下のプログラムは期待通りには動かないことに注意して下さい：
+
+ @data = &ora_fetch($csr) || die "...";    # 間違い
+
+|| はスカラー・コンテキストを強要します。このためora_fetchはフィールドの数を返します。
+
+オプションの第２パラメータは、LONGやLONG RAWのフィールドの切り捨てる
+か(非0)、エラーとするか（0)、どちらにするかを示します。このパラメータが
+指定されないと、代わりにグローバル変数の$ora_truncが使われます。
+他のデータ型の切り捨ては常にエラーと考えられます。
+
+B<DBD:> ora_fetchへのオプションの第２パラメータはサポートされて
+いません。第２パラメータを指定すると、「DBIの使い方エラー(=DBI usage error)」が
+発生します。代わりに$ora_trunc変数をお使い下さい。また実験的な
+DBI blob_readメソッドがLONG型の取り出しに使えることにも注意して下さい：
+
+  $csr->blob_read($field, $offset, $len [, \$dest, $destoffset]);
+
+切り捨てが発生すると、$ora_errno には1406が設定されます。切り捨てが
+許可されていれば、&ora_fetch() は正常終了し、そうでなければ
+失敗します。
+
+&ora_fetch() はデータの終わりかエラーが発生すると失敗します。
+$ora_errno変数の値をチェックすることにより、どちらの状態かを区別する
+ことが出来ます。これはデータの終わりであれば0、エラーが発生すれば0以外
+の値になります。
+
+例:
+
+ while (($deptno, $dname, $loc) = &ora_fetch($csr))
+ {
+   warn "Truncated!!!" if $ora_errno == 1406;
+   # データで何かします
+ }
+ warn $ora_errstr if $ora_errno;
+
+この関数はOCIのofetch関数と同等です。
+
+=item * ora_close
+
+ &ora_close($csr)
+
+もはやSQL文が必要なくなった（例えばSELECTされた全てのデータが処理された、
+挿入すべき行がなくなった）ならば、ステートメンド識別子は解放されなければ
+なりません。これはステートメント識別子を唯一の引数として&ora_close()を
+呼び出すことにより行われます。
+
+この関数はOCIのoclose関数と同等です。
+
+B<DBD:> $csr はPerl5のリファレンスなので、上書きされるかスコープから
+はずれるとステートメント／カーソルは自動的にクローズされます。
+
+
+=item * ora_do
+
+  &ora_do($lda, $statement)
+
+すべてのSQL文がデータを返したり、置換変数を含んでいるわけでは
+ありません。これらの場合には、&ora_open()と&ora_close()の代わり
+に&ora_do() 関数を使うことができます。この関数はログイン識別子と
+実行されるSQL文の２つの引数を取ります。
+
+例:
+
+ &ora_do($lda, 'drop table employee');
+
+この関数は概ね以下のものと同等です
+
+ &ora_close( &ora_open($lda, $statement) )
+
+B<DBD:> oraperl v2 は、数値の0で正常終了したことを示すため
+文字列'OK'を返していました。Oraperlエミュレーションでは、
+文字列'0E0'を同じ効果をあげるために使っています。これは
+数値コンテキストであっても、-wの警告を起こさないからです。
+
+=item * ora_logoff
+
+  &ora_logoff($lda)
+
+プログラムがもはや指定されたデータベースにアクセスする必要が
+なくなったとき、ログイン識別子は&ora_logoff()関数により解放
+されなければなりません。
+
+この関数はOCIのologoff関数と同等です。
+
+B<DBD:> $lda はPerl5のリファレンスなので、データベース・ログイン
+識別子は、今では$ldaが上書きされたり、スコープからはずれると
+自動的に解放されます。
+
+=back
+
+=head2 補助的な関数
+
+以下の追加の関数を使うことが出来ます: &ora_titles(),
+&ora_lengths(), &ora_types(), &ora_autocommit(),
+&ora_commit(), &ora_rollback() そして &ora_version()。
+
+前の３つは主にSQL文が対話的に入力されることを可能と
+しているプログラムのなかで使われます。Oraperlと
+一緒に提供され、あなたのサイトにインストールされて
+いるはずのプログラム例をご覧下さい。
+
+=over 2
+
+=item * ora_titles
+
+  @titles = &ora_titles($csr)
+
+プログラムは&ora_titles()を呼び出すことにより実行された
+問い合わせのフィールド・タイトルを判定することができます。
+この関数は１つのパラメータ、(&ora_open()により取得される）
+ステートメント識別子を取り、それはタイトルを必要としている
+問い合わせを表しています。タイトルは各カラム毎の文字列の
+配列で返されます。
+
+タイトルは&ora_length()関数によって報告される長さで
+切り捨てられます。 
+
+B<DBD:> oraperl v2.2 で実際には、タイトルはオプションの第２引数が
+trueでなければ切り捨てられないように動きを変えていました。これは
+oraperlマニュアルには反映されていません。Oraperlエミュレーションは
+切り捨てしない動きを採用しています。切り捨ての引数はサポート
+していません。 
+
+=item * ora_lengths
+
+  @lengths = &ora_lengths($csr)
+
+プログラムは&ora_lengths()関数を呼び出すことにより問い合わせに
+よって返される各フィールドの長さを判定することが出来ます。
+この関数は１つのパラメータ、(&ora_open()により取得される）
+ステートメント識別子を取り、それは長さを必要としている問い合わせを
+表しています。長さは各カラム毎の整数の配列で返されます。
+
+
+=item * ora_types
+
+  @types = &ora_types($csr)
+
+プログラムは&ora_types()関数を呼び出すことにより問い合わせによって
+返される各フィールドのデータ型を判定することが出来ます。この関数は
+１つのパラメータ、(&ora_open()により取得される）ステートメント識別子を
+取り、それはデータ型を必要としている問い合わせを表しています。
+データ型各カラム毎の整数の配列で返されます。
+
+これらのデータ型はOCIドキュメントで定義されています。Oracle v6の
+ための正しい置き換えはファイルoraperl.phで提供されています。
+
+
+=item * ora_autocommit
+
+  &ora_autocommit($lda, $on_or_off)
+
+&ora_autocommit()を使うことにより、自動コミットモード（明示的なコミットを
+待つことなく、各トランザクションが即時にコミットされます）にしたり、
+やめたりすることができます。この関数は２つのパラメータを取ります。
+（&ora_login()により取得される）ログイン識別子と自動コミットを
+有効にする(非0）あるいは、無効にする（0)を表すtrue/falseの値です。
+デフォルトでは自動コミットはオフになっています。
+
+自動コミットはステートメント毎ではなく、ログイン毎にだけ設定できることに
+注意して下さい。ステートメント毎に自動コミットを制御したければ（例えば、
+削除にはロールバックを許すけれども、挿入はすぐにコミットしたい）、
+&ora_login()を複数回行い、各ステートメント毎に別のログイン識別子を
+使って下さい。
+
+
+=item * ora_commit, ora_rollback
+
+  &ora_commit($lda)
+  &ora_rollback($lda)
+
+&ora_commit()と&ora_rollback()関数を使うことにより、データベースへの
+変更をコミットまたはロールバックすることができます。これらの関数は
+１つのパラメータ、ログイン識別子をとります。これは&ora_login()から
+取得することが出来ます。
+
+コミットされたトランザクションは（&ora_commit()を明示的に呼び出した場合
+であれ、&ora_autocommit()を使うことにより暗黙のうちにおこなわれた場合で
+あれ）後からロールバックすることはできません。
+
+コミットとロールバックはステートメント毎ではなく、ログイン毎にしか
+使えないことに注意して下さい。ステートメントによってコミットまたは
+ロールバックする必要があれば、&ora_login()を複数回おこない、ステートメント毎に
+別のログイン識別子を使って下さい。
+
+
+=item * ora_version
+
+  &ora_version()
+
+&ora_version() 関数はOraperlに関連するバージョン番号と著作権情報を
+表示します。さまざまなコンパイル時オプションの値も表示します。これは
+何も値を返しませんし、通常プログラムで使ってはいけません。
+
+例:
+
+  perl -MOraperl -e 'ora_version()'
+
+  This is Oraperl, version 2, patch level 0.
+
+  Debugging is available, including the -D flag.
+  Default fetch row cache size is 5.
+  Empty bind values are replaced by a space.
+
+  Perl is copyright by Larry Wall; type oraperl -v for details.
+  Additions for oraperl: Copyright 1991, 1992, Kevin Stock.
+
+  Oraperl may be distributed under the same conditions as Perl.
+
+この関数はPerlのC<-v>フラグと同等です。
+
+B<DBD:> Oraperl エミュレーションの出力は似ていますが、まったく同じではありません。
+
+=back
+
+=head1 変数
+
+以下の６つの特殊な変数$ora_cache, $ora_long, $ora_trunc, $ora_errno, 
+$ora_errstr ,$ora_vernoが提供されています。
+
+=head2 カスタマイズのための変数
+
+これらの変数はある状況でのOraperlの動きを指令するために
+使われます。
+
+=over 2
+
+=item * $ora_cache
+
+$ora_cache変数は、明示的にキャッシュの大きさが指定されなかったときに、
+SELECT文のために&ora_open()関数によって使われるデフォルトのキャッシュの
+大きさを決めます。
+
+&ora_version()によって報告されるデフォルト値に初期化されます。しかし、
+その後の&ora_open()を呼び出しに適合するようプログラムの中で設定する
+こともできます。すでにオープンされているカーソルには影響ありません。
+インストール時点でのデフォルト値は5です。しかしインストール時点で変更
+しているかもしれません。
+
+特殊な場合として、$ora_cacheに0を設定するとデフォルト値にリセット
+されます。$ora_cacheに負の値を入れると警告が出されます。
+
+=item * $ora_long
+
+通常、Oraperlは各フィールドの長さを判定し、それに対応してバッファ空間を
+占有するため、データベースへ問い合わせを行います。これはLONGやLONG RAW型の
+フィールドには不可能です。最大長（65535バイト）に対応する空間を占有するのは、
+あまりにも大きなメモリの浪費になります。
+
+このため&ora_open() は、そのフィールドがLONG型であると判定したとき、
+$ora_long変数によって示される大きさの空間を占有します。これは最初は80に
+設定されます (Oracle製品との互換性のため）。しかし、必要に応じて大きさを
+プログラムの中で設定することが出来ます。
+
+$ora_long はデータの取り出しにのみ使われ、挿入の時には使われません。
+
+
+=item * $ora_trunc
+
+Oraperlは正確にLONGフィールドの最大長を判定できないため、$ora_longに
+よって指定された長さでは取り出されたデータを格納するには不十分である
+かもしれません。そのような場合、&ora_fetchのオプションの第２パラメータが、
+切り捨てを許すか、エラーを引き起こすかを決めます。
+
+この第２パラーメータが指定されていなければ、$ora_trunc の値がデフォルト
+として使われます。これはLONGまたはLONG RAWデータ型にのみ適用されます。
+他のフィールドの切り捨ては常にエラーと見なされます。(基本的にOraperlの
+バグであることを示しているためです）
+
+=back
+
+=head2 状態を表す変数
+
+これらの変数はエラー状態またはOraperlそのものの情報を示します。
+これらは読込のみが許されるかもしれません；プログラムが変更しようとすると
+致命的なエラーが発生します。
+
+=over 2
+
+=item * $ora_errno
+
+$ora_errno には、最後の関数呼び出しによって引き起こされたOracleエラーコードが
+入ります。 
+
+&ora_fetch()に関連しては特に関心すべき２つのケースがあります。LONGやLONG RAW
+フィールドが切り捨てられると(さらに切り捨てが許されていれば）、&ora_fetch() は
+正常に完了します。しかし $ora_errno は切り捨てを表す1406に設定されます。
+また&ora_fetch() が失敗したときでも、もしデータが終わりであれば $ora_errno は0に
+設定されます。実際にエラーであれば、エラーコードが設定されます。
+
+=item * $ora_errstr
+
+$ora_errstr 変数には$ora_errnoの値に対応するOracle
+エラーメッセージが入ります。
+
+
+=item * $ora_verno
+
+$ora_verno 変数にはOraperlのバージョン番号がv.pppの形式で入ります。
+vはメジャーバージョン、pppはパッチレベルです。例えばOraperlバージョン3、
+パッチレベル142であれば、$ora_vernoは3.142になるでしょう。
+（多少の浮動小数点エラーを許しています。）
+
+=back
+
+
+=head1 置換変数
+
+OraperlではSQL文に置換変数を入れることができます。これらは先頭に
+コロン（：）が付いた数字です。例えば、電話番号リストにレコードを
+追加するプログラムは以下のように&ora_open()を呼び出すことが出来ます：
+
+  $csr = &ora_open($lda, "insert into telno values(:1, :2)");
+
+（訳者注： 原文では「&ora_open($csr」となっていますが、間違いでしょう。）
+２つの名前 :1 と :2 は置換変数と呼ばれます。&ora_bind() 関数は、これらの
+変数に値を代入するために使われます。例えば、以下の文は新しい２人を
+リストに追加します：
+
+  &ora_bind($csr, "Annette", "472-8836");
+  &ora_bind($csr, "Brian", "937-1823");
+
+&ora_bind()がその引数を順番に代入するため、置換変数は、各SQL文で
+１から始まって連続して代入されることに注意して下さい。
+名前付きの置換変数（例えば :NAME, :TELNO) は許されていません。
+
+B<DBD:> 置換変数は現在、デフォルトでは、type 1(VARCHAR2)あるいは
+type 5(STRING)として結びつけられます。これは、charフィールドと
+置換変数を比較するSQLコードの動きを変えてしまうこともあります。
+詳細についてはOracle OCIマニュアルの「データ型(=Datatypes)」の章の
+文字列比較(String Comparison)のセクションをご覧下さい。
+
+フィールド毎に使われるOracle型を指定するというDBD::Oracleの機能を
+使って、これを回避することが出来ます：
+
+  $char_attrib = { ora_type => 5 }; # 5 = STRING (oraperl2.4と同等)
+  $csr = ora_open($dbh, "select foo from bar where x=:1 and y=:2");
+  $csr->bind_param(1, $value_x, $char_attrib);
+  $csr->bind_param(2, $value_y, $char_attrib);
+  ora_bind($csr);  # bind_param()をしてあるので、パラメータなしでbind
+
+
+=head1 デバッグ方法
+
+B<DBD:> Oraperl $ora_debug 変数はサポートされていません。
+しかし以下のようにすることで、いつでもデバッグが可能になります
+
+  $h->debug(2);
+
+$hには$lda または$csrのどちらも設定できます。$ldaに対してデバッグが
+可能になると、&ora_open()によって返されたすべてのカーソルに対しても
+自動的に渡されます。
+
+=head1 例
+
+  format STDOUT_TOP =
+  Name Phone
+  ==== =====
+  .
+
+  format STDOUT =
+  @<<<<<<<<<< @>>>>>>>>>>
+  $name, $phone
+  .
+
+  die "You should use oraperl, not perl\n" unless defined &ora_login;
+  $ora_debug = shift if $ARGV[0] =~ /^\-#/;
+
+  $lda = &ora_login('t', 'kstock', 'kstock')
+            || die $ora_errstr;
+  $csr = &ora_open($lda, 'select * from telno order by name')
+            || die $ora_errstr;
+
+  $nfields = &ora_fetch($csr);
+  print "Query will return $nfields fields\n\n";
+
+  while (($name, $phone) = &ora_fetch($csr)) { write; }
+  warn $ora_errstr if $ora_errno;
+
+  die "fetch error: $ora_errstr" if $ora_errno;
+
+  do ora_close($csr) || die "can't close cursor";
+  do ora_logoff($lda) || die "can't log off Oracle";
+
+
+=head1 注意
+
+Perlの考え方を保つため、同時ログインやアクティブにできるSQL文の数、
+あるいは問い合わせにより返されるデータ・フィールドの数に、上限は
+あらかじめ設けていません。強制される制限は利用できるメモリの量に
+よるもの、あるいはOracleによるものだけです。
+
+=head1 警告
+
+Oraperlエミュレーション・ソフトウェアは元のoraperlとコードを何ら
+共用していません。それは新しいPerl5 DBIとDBD::Oracleモジュールの
+上に構築されています。これらのモジュールはまだ開発中です
+（Oraperlエミュレーション・ソフトウェアの目標の１つに、
+インターフェイスの変更を続けながらユーザーからはそれを切り離し、
+DBIとODB::Oracleモジュールによって有効な作業を実現することがあります）
+
+いくつか動きに違いがある可能性が高く、まず間違いありません。
+これらはおそらくエラーの取り扱いに限られます。
+
+この文書に記述されていないB<全ての>動き違いは、dbi-users@perl.orgに
+報告してください。
+
+
+=head1 参考資料
+
+=over 2
+
+=item Oracleのドキュメント
+
+SQL言語リファレンス・マニュアル、
+Oracle Calling Interfaceプログラマーズカイド。
+
+=item 書籍
+
+プログラミングPerl　by Larry Wall and Randal Schwartz.
+ラーニングPerl　by Randal Schwartz。
+
+=item マニュアル・ページ
+
+perl(1)
+
+=back
+
+=head1 作者
+
+Perl by Larry Wall <lwall@netlabs.com>.
+
+ORACLE by Oracle Corporation, California.
+
+Original Oraperl 2.4 code and documentation
+by Kevin Stock <kstock@auspex.fr>.
+
+DBI and Oraperl emulation using DBD::Oracle
+by <Tim.Bunce@ig.co.uk>
+

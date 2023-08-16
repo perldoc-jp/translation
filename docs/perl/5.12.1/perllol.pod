@@ -1,0 +1,661 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+perllol - Manipulating Arrays of Arrays in Perl
+
+=end original
+
+perllol - Perl で配列の配列を操作する
+
+=head1 DESCRIPTION
+
+=head2 Declaration and Access of Arrays of Arrays
+
+(配列の配列の定義とアクセス)
+
+=begin original
+
+The simplest thing to build is an array of arrays (sometimes imprecisely
+called a list of lists).  It's reasonably easy to understand, and
+almost everything that applies here will also be applicable later
+on with the fancier data structures.
+
+=end original
+
+組み立てるのが最も単純なことは、配列の配列(不正確にリストのリストとも
+呼ばれることがあります)です。
+これは理解しやすく、そしてより複雑なデータ構造に対しても
+適用することのできるものです。
+
+=begin original
+
+An array of an array is just a regular old array @AoA that you can
+get at with two subscripts, like C<$AoA[3][2]>.  Here's a declaration
+of the array:
+
+=end original
+
+配列の配列は、あなたが望めば通常の古い配列 @AoA のようなものです。
+これは C<$AoA[3][2]> のように、二つの添え字で要素を取得することができます。
+配列の宣言の例を挙げましょう。
+
+=begin original
+
+    # assign to our array, an array of array references
+    @AoA = (
+	   [ "fred", "barney" ],
+	   [ "george", "jane", "elroy" ],
+	   [ "homer", "marge", "bart" ],
+    );
+
+=end original
+
+    # 配列に配列へのリファレンスの配列を代入する
+    @AoA = (
+	   [ "fred", "barney" ],
+	   [ "george", "jane", "elroy" ],
+	   [ "homer", "marge", "bart" ],
+    );
+
+    print $AoA[2][2];
+  bart
+
+=begin original
+
+Now you should be very careful that the outer bracket type
+is a round one, that is, a parenthesis.  That's because you're assigning to
+an @array, so you need parentheses.  If you wanted there I<not> to be an @AoA,
+but rather just a reference to it, you could do something more like this:
+
+=end original
+
+このとき、外側の括弧が丸括弧であったことに注意すべきです。
+これは、上の例では@配列に代入するので丸括弧を使う必要があったためなのです。
+もし @AoA ではなくて、単にリファレンスを代入したかったというのであれば、
+次のように書くことができます:
+
+=begin original
+
+    # assign a reference to array of array references
+    $ref_to_AoA = [
+	[ "fred", "barney", "pebbles", "bambam", "dino", ],
+	[ "homer", "bart", "marge", "maggie", ],
+	[ "george", "jane", "elroy", "judy", ],
+    ];
+
+=end original
+
+    # 配列へのリファレンスの配列へのリファレンスを代入する
+    $ref_to_AoA = [
+	[ "fred", "barney", "pebbles", "bambam", "dino", ],
+	[ "homer", "bart", "marge", "maggie", ],
+	[ "george", "jane", "elroy", "judy", ],
+    ];
+
+    print $ref_to_AoA->[2][2];
+
+=begin original
+
+Notice that the outer bracket type has changed, and so our access syntax
+has also changed.  That's because unlike C, in perl you can't freely
+interchange arrays and references thereto.  $ref_to_AoA is a reference to an
+array, whereas @AoA is an array proper.  Likewise, C<$AoA[2]> is not an
+array, but an array ref.  So how come you can write these:
+
+=end original
+
+外側の括弧が変わったことと、アクセスの構文が変わっているということに
+注目してください。
+これは C とは違って、Perl では配列と参照とを自由に交換できないからです。
+$ref_to_AoA は配列への参照です。
+その配列は @AoA で、これがまた配列です。
+同様に、C<$AoA[2]> は配列ではなく配列への参照です。
+ですから:
+
+    $AoA[2][2]
+    $ref_to_AoA->[2][2]
+
+=begin original
+
+instead of having to write these:
+
+=end original
+
+これは、以下のような書き方でも同じことになります:
+
+    $AoA[2]->[2]
+    $ref_to_AoA->[2]->[2]
+
+=begin original
+
+Well, that's because the rule is that on adjacent brackets only (whether
+square or curly), you are free to omit the pointer dereferencing arrow.
+But you cannot do so for the very first one if it's a scalar containing
+a reference, which means that $ref_to_AoA always needs it.
+
+=end original
+
+この規則は隣り合ったかっこ(それが大かっこだろうが中かっこだろうが)
+だけのものなので、参照外しをする矢印を自由に省略できます。
+けれども一番最初にある矢印だけは、それがリファレンスを保持する
+スカラであるために省略することはできません。
+これは $ref_to_AoA が常に必要とするものです。
+
+=head2 Growing Your Own
+
+(大きくする)
+
+=begin original
+
+That's all well and good for declaration of a fixed data structure,
+but what if you wanted to add new elements on the fly, or build
+it up entirely from scratch?
+
+=end original
+
+固定的なデータ構造の宣言は良いのですが、その場で新しい要素を
+追加したいとき、あるいは完全に 0 から作り上げたいときにはどうするのでしょう?
+
+=begin original
+
+First, let's look at reading it in from a file.  This is something like
+adding a row at a time.  We'll assume that there's a flat file in which
+each line is a row and each word an element.  If you're trying to develop an
+@AoA array containing all these, here's the right way to do that:
+
+=end original
+
+まず最初に、ファイルから読み込むことを見てみましょう。
+これは一度に一つの行を追加していくようなものです。
+私たちはここで、読み込んでいるファイルが、一行(line)が一つの行(row)に
+対応し、各単語が要素に対応しているようなフラットなファイルであると
+仮定しています。
+もし配列 @AoA にそういった物を設定しようとするのであれば、
+それは以下のようなやり方になります:
+
+    while (<>) {
+	@tmp = split;
+	push @AoA, [ @tmp ];
+    }
+
+=begin original
+
+You might also have loaded that from a function:
+
+=end original
+
+関数を使って読み込むこともできます:
+
+    for $i ( 1 .. 10 ) {
+	$AoA[$i] = [ somefunc($i) ];
+    }
+
+=begin original
+
+Or you might have had a temporary variable sitting around with the
+array in it.
+
+=end original
+
+あるいは、配列に設定するために使う一時変数を使うこともできます。
+
+    for $i ( 1 .. 10 ) {
+	@tmp = somefunc($i);
+	$AoA[$i] = [ @tmp ];
+    }
+
+=begin original
+
+It's very important that you make sure to use the C<[]> array reference
+constructor.  That's because this will be very wrong:
+
+=end original
+
+配列への参照のコンストラクターである C<[]> を使うことが非常に重要です。
+次のように書いてしまうのはとてもまずいやりかたです:
+
+    $AoA[$i] = @tmp;
+
+=begin original
+
+You see, assigning a named array like that to a scalar just counts the
+number of elements in @tmp, which probably isn't what you want.
+
+=end original
+
+このようなスカラに対する名前付き配列の代入では、@tmp にある要素の数を
+数えてその数を代入します。
+そしてこれはおそらくはあなたの望んだことではないでしょう。
+
+=begin original
+
+If you are running under C<use strict>, you'll have to add some
+declarations to make it happy:
+
+=end original
+
+C<use strict> の元で実行するのであれば、以下の様にちょっと宣言を
+付け加えるとよいでしょう:
+
+    use strict;
+    my(@AoA, @tmp);
+    while (<>) {
+	@tmp = split;
+	push @AoA, [ @tmp ];
+    }
+
+=begin original
+
+Of course, you don't need the temporary array to have a name at all:
+
+=end original
+
+もちろん、一時的な配列もなければならないというものではありません:
+
+    while (<>) {
+	push @AoA, [ split ];
+    }
+
+=begin original
+
+You also don't have to use push().  You could just make a direct assignment
+if you knew where you wanted to put it:
+
+=end original
+
+また、push() を使わなくてもできます。
+どこに押し込めたいかと言うことがわかっているのなら、直接
+代入させることもできます:
+
+    my (@AoA, $i, $line);
+    for $i ( 0 .. 10 ) {
+	$line = <>;
+	$AoA[$i] = [ split ' ', $line ];
+    }
+
+=begin original
+
+or even just
+
+=end original
+
+あるいはこういう風にもできます:
+
+    my (@AoA, $i);
+    for $i ( 0 .. 10 ) {
+	$AoA[$i] = [ split ' ', <> ];
+    }
+
+=begin original
+
+You should in general be leery of using functions that could
+potentially return lists in scalar context without explicitly stating
+such.  This would be clearer to the casual reader:
+
+=end original
+
+本当にそうしたいときを除き、スカラコンテキストでリストを返すかもしれない
+関数を使ってしまう可能性に気をつけるべきです。
+これは普通の読み手には明らかでしょう:
+
+    my (@AoA, $i);
+    for $i ( 0 .. 10 ) {
+	$AoA[$i] = [ split ' ', scalar(<>) ];
+    }
+
+=begin original
+
+If you wanted to have a $ref_to_AoA variable as a reference to an array,
+you'd have to do something like this:
+
+=end original
+
+配列へのリファレンスとして変数 $ref_to_AoA を使いたいというのであれば、
+以下の様にする必要があるでしょう:
+
+    while (<>) {
+	push @$ref_to_AoA, [ split ];
+    }
+
+=begin original
+
+Now you can add new rows.  What about adding new columns?  If you're
+dealing with just matrices, it's often easiest to use simple assignment:
+
+=end original
+
+これで新しい行を追加することができます。
+新しいカラムを追加するのは?
+あなたがまさに行列を扱っているのなら、大概は単純な代入となります:
+
+    for $x (1 .. 10) {
+	for $y (1 .. 10) {
+	    $AoA[$x][$y] = func($x, $y);
+	}
+    }
+
+    for $x ( 3, 7, 9 ) {
+	$AoA[$x][20] += func2($x);
+    }
+
+=begin original
+
+It doesn't matter whether those elements are already
+there or not: it'll gladly create them for you, setting
+intervening elements to C<undef> as need be.
+
+=end original
+
+これは対象となる要素が既に存在しているかどうかには影響されません:
+(ない場合でも)喜んであなたのためにその要素を作り出し、必要に応じて
+間にある要素に C<undef> をセットします。
+
+=begin original
+
+If you wanted just to append to a row, you'd have
+to do something a bit funnier looking:
+
+=end original
+
+あなたは、単に行に追加したいだけという場合であっても、
+ちょっと妙に見えることをしなければならないでしょう:
+
+    # add new columns to an existing row
+    push @{ $AoA[0] }, "wilma", "betty";
+
+=begin original
+
+Notice that I I<couldn't> say just:
+
+=end original
+
+次のようには I<書けない> ことに注意してください。
+
+=begin original
+
+    push $AoA[0], "wilma", "betty";  # WRONG!
+
+=end original
+
+    push $AoA[0], "wilma", "betty";  # 間違い!
+
+=begin original
+
+In fact, that wouldn't even compile.  How come?  Because the argument
+to push() must be a real array, not just a reference to such.
+
+=end original
+
+事実、これはコンパイルすらできません。
+なぜでしょうか?
+それは push() の引数は参照ではなく、実際の配列でなければならないからです。
+
+=head2 Access and Printing
+
+(アクセスと表示)
+
+=begin original
+
+Now it's time to print your data structure out.  How
+are you going to do that?  Well, if you want only one
+of the elements, it's trivial:
+
+=end original
+
+こんどはこのデータ構造を出力する番です。
+あなたはどうやろうと考えてますか?
+そうですね、簡単に要素を一つだけ出力したいとするとこうなります:
+
+    print $AoA[0][0];
+
+=begin original
+
+If you want to print the whole thing, though, you can't
+say
+
+=end original
+
+配列の内容全部を出力したいとき、次のようには書けません。
+
+=begin original
+
+    print @AoA;		# WRONG
+
+=end original
+
+    print @AoA;		# 間違い
+
+=begin original
+
+because you'll get just references listed, and perl will never
+automatically dereference things for you.  Instead, you have to
+roll yourself a loop or two.  This prints the whole structure,
+using the shell-style for() construct to loop across the outer
+set of subscripts.
+
+=end original
+
+なぜなら、これでは単にリストへのリファレンスが取れるだけで、
+perl はそれを自動的に参照外しするようなことはしないからです。
+このため、あなたは自分自身でループしなければなりません。
+これは外側の添え字に対するループでシェルスタイルの for() を使って
+構造全体を出力します。
+
+    for $aref ( @AoA ) {
+	print "\t [ @$aref ],\n";
+    }
+
+=begin original
+
+If you wanted to keep track of subscripts, you might do this:
+
+=end original
+
+添え字を記録したいのなら、このようにできます:
+
+    for $i ( 0 .. $#AoA ) {
+	print "\t elt $i is [ @{$AoA[$i]} ],\n";
+    }
+
+=begin original
+
+or maybe even this.  Notice the inner loop.
+
+=end original
+
+あるいはこのようなやり方もあります。
+内側のループに注目してください。
+
+    for $i ( 0 .. $#AoA ) {
+	for $j ( 0 .. $#{$AoA[$i]} ) {
+	    print "elt $i $j is $AoA[$i][$j]\n";
+	}
+    }
+
+=begin original
+
+As you can see, it's getting a bit complicated.  That's why
+sometimes is easier to take a temporary on your way through:
+
+=end original
+
+見て判るようにこれは少々複雑です。
+しかし、途中で一時変数を使えば簡単にできます:
+
+    for $i ( 0 .. $#AoA ) {
+	$aref = $AoA[$i];
+	for $j ( 0 .. $#{$aref} ) {
+	    print "elt $i $j is $AoA[$i][$j]\n";
+	}
+    }
+
+=begin original
+
+Hmm... that's still a bit ugly.  How about this:
+
+=end original
+
+うーんまだちょっと見にくいですね。
+これでどうでしょう:
+
+    for $i ( 0 .. $#AoA ) {
+	$aref = $AoA[$i];
+	$n = @$aref - 1;
+	for $j ( 0 .. $n ) {
+	    print "elt $i $j is $AoA[$i][$j]\n";
+	}
+    }
+
+=head2 Slices
+
+(スライス)
+
+=begin original
+
+If you want to get at a slice (part of a row) in a multidimensional
+array, you're going to have to do some fancy subscripting.  That's
+because while we have a nice synonym for single elements via the
+pointer arrow for dereferencing, no such convenience exists for slices.
+(Remember, of course, that you can always write a loop to do a slice
+operation.)
+
+=end original
+
+多次元配列のスライス(行部分)を取りたいのであれば、ややおかしな添え字付けを
+する必要があるでしょう。
+これは参照外しのための参照の矢印を使った単一の要素に対するものは
+あるのですが、それに対応するスライス用の便利なものはないのです。
+(もちろん、スライス操作をするためにループを書くことは常に
+可能だと言うことを忘れないで下さい。)
+
+=begin original
+
+Here's how to do one operation using a loop.  We'll assume an @AoA
+variable as before.
+
+=end original
+
+以下は、ループを使った一つの操作をどのように行うかの例です。
+変数 @AoA が前のものと同じであると仮定しています。
+
+    @part = ();
+    $x = 4;
+    for ($y = 7; $y < 13; $y++) {
+	push @part, $AoA[$x][$y];
+    }
+
+=begin original
+
+That same loop could be replaced with a slice operation:
+
+=end original
+
+このループをスライス演算に置き換えることができます:
+
+    @part = @{ $AoA[4] } [ 7..12 ];
+
+=begin original
+
+but as you might well imagine, this is pretty rough on the reader.
+
+=end original
+
+あなたも見て感じるかもしれませんが、これは読み手にはちょっと不親切です。
+
+=begin original
+
+Ah, but what if you wanted a I<two-dimensional slice>, such as having
+$x run from 4..8 and $y run from 7 to 12?  Hmm... here's the simple way:
+
+=end original
+
+あー、でも、$x を 4..8、$y を 7 から 12 とするような I<二次元のスライス> を
+必要とするときには?
+うーん、単純なやり方はこうでしょう。
+
+    @newAoA = ();
+    for ($startx = $x = 4; $x <= 8; $x++) {
+	for ($starty = $y = 7; $y <= 12; $y++) {
+	    $newAoA[$x - $startx][$y - $starty] = $AoA[$x][$y];
+	}
+    }
+
+=begin original
+
+We can reduce some of the looping through slices
+
+=end original
+
+スライスを使ってループを簡単にできます:
+
+    for ($x = 4; $x <= 8; $x++) {
+	push @newAoA, [ @{ $AoA[$x] } [ 7..12 ] ];
+    }
+
+=begin original
+
+If you were into Schwartzian Transforms, you would probably
+have selected map for that
+
+=end original
+
+あなたがシュワルツ変換に興味を持っているのなら、map を使って次のように
+することを選ぶかもしれません:
+
+    @newAoA = map { [ @{ $AoA[$_] } [ 7..12 ] ] } 4 .. 8;
+
+=begin original
+
+Although if your manager accused you of seeking job security (or rapid
+insecurity) through inscrutable code, it would be hard to argue. :-)
+If I were you, I'd put that in a function:
+
+=end original
+
+あなたの上司が不可解なコードによるジョブセキュリティ(もしくは急激な不安)の
+追求を非難していたとしても、説得するのは難しいでしょうね :-)
+もし私があなたの立場だったら、こういった操作は関数に押し込めるでしょう。
+
+=begin original
+
+    @newAoA = splice_2D( \@AoA, 4 => 8, 7 => 12 );
+    sub splice_2D {
+	my $lrr = shift; 	# ref to array of array refs!
+	my ($x_lo, $x_hi,
+	    $y_lo, $y_hi) = @_;
+
+=end original
+
+    @newAoA = splice_2D( \@AoA, 4 => 8, 7 => 12 );
+    sub splice_2D {
+	my $lrr = shift; 	# リファレンスのリストのリストへのリファレンス!
+	my ($x_lo, $x_hi,
+	    $y_lo, $y_hi) = @_;
+
+	return map {
+	    [ @{ $lrr->[$_] } [ $y_lo .. $y_hi ] ]
+	} $x_lo .. $x_hi;
+    }
+
+=head1 SEE ALSO
+
+L<perldata>, L<perlref>, L<perldsc>
+
+=head1 AUTHOR
+
+Tom Christiansen <F<tchrist@perl.com>>
+
+Last update: Thu Jun  4 16:16:23 MDT 1998
+
+=begin meta
+
+Translate: KIMURA Koichi (5.005_03)
+Update: SHIRAKATA Kentaro <argrath@ub32.org> (5.6.1-)
+Status: completed
+
+=end meta
+

@@ -1,0 +1,2012 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+perl581delta - what is new for perl v5.8.1
+
+=end original
+
+perl581delta - perl v5.8.1 での変更点
+
+=head1 DESCRIPTION
+
+This document describes differences between the 5.8.0 release and
+the 5.8.1 release.
+
+このドキュメントでは 5.8.0 リリースと 5.8.1 リリースの変更点を
+記述しています.
+
+If you are upgrading from an earlier release such as 5.6.1, first read
+the L<perl58delta>, which describes differences between 5.6.0 and
+5.8.0.
+
+もしそれよりも前のリリース, 例えば 5.6.1 等からアップデートするのなら, 
+5.6.0 と 5.8.0 との違いが書かれている L<perl58delta> を読んでおいた方が
+よいでしょう.
+
+In case you are wondering about 5.6.1, it was bug-fix-wise rather
+identical to the development release 5.7.1.  Confused?  This timeline
+hopefully helps a bit: it lists the new major releases, their maintenance
+releases, and the development releases.
+
+5.6.1 は驚くものではありません. これは開発リリースの 5.7.1 とは異なり
+バグ修正版です. 混乱しますか？ 時間のグラフで説明するとわかりやすい
+かもしれません: ここにあげるのは新しいメジャーリリース及び
+メンテナンスリリース, 開発リリースです.
+
+          New     Maintenance  Development
+
+          5.6.0                             2000-Mar-22
+                               5.7.0        2000-Sep-02
+                  5.6.1                     2001-Apr-08
+                               5.7.1        2001-Apr-09
+                               5.7.2        2001-Jul-13
+                               5.7.3        2002-Mar-05
+          5.8.0                             2002-Jul-18
+                  5.8.1                     2003-Sep-25
+
+=head1 Incompatible Changes
+
+非互換となる変更点
+
+=head2 Hash Randomisation
+
+ハッシュのランダム化
+
+Mainly due to security reasons, the "random ordering" of hashes
+has been made even more random.  Previously while the order of hash
+elements from keys(), values(), and each() was essentially random,
+it was still repeatable.  Now, however, the order varies between
+different runs of Perl.
+
+主にセキュリティ上の理由から, ハッシュの"ランダム順序"がよりランダムに
+なりました. これまでは keys(), values(), each() から得られるハッシュ要素の
+順序はランダムではありましたが, 繰り返しても安定でした. しかし今後は
+この順序は Perl の実行毎に変化します.
+
+B<Perl has never guaranteed any ordering of the hash keys>, and the
+ordering has already changed several times during the lifetime of
+Perl 5.  Also, the ordering of hash keys has always been, and
+continues to be, affected by the insertion order.
+
+B<Perl はハッシュキーの順序について保証しません>.
+そしてその順序は Perl 5 においても数回変化しています. 
+また, ハッシュキーの順序も挿入の順番によって常に変化していますし, 
+変化していくでしょう.
+
+The added randomness may affect applications.
+
+新しいランダム性はアプリケーションに影響を与えるでしょう.
+
+One possible scenario is when output of an application has included
+hash data.  For example, if you have used the Data::Dumper module to
+dump data into different files, and then compared the files to see
+whether the data has changed, now you will have false positives since
+the order in which hashes are dumped will vary.  In general the cure
+is to sort the keys (or the values); in particular for Data::Dumper to
+use the C<Sortkeys> option.  If some particular order is really
+important, use tied hashes: for example the Tie::IxHash module
+which by default preserves the order in which the hash elements
+were added.
+
+考えられるシナリオとしてはハッシュデータを含むアプリケーションからの出力
+です. たとえばデータを Data::Dumper を用いて異なるファイルに出力し, 
+そのファイルを比較してデータの変化を調べていたのなら, ダンプされたハッシュの
+順序は様々であるため同一と判断されることはないでしょう. 
+一般的な回避策としてはキー(もしくは値で)ソートすることです. 
+Data::Dumper においては C<Sortkeys> オプションを使えるでしょう. 
+特定の順序が本当に重要であるならタイされたハッシュを使うべきでしょう. 
+例えば Tie::IxHash モジュールはハッシュ要素が追加された順番を保存します.
+
+More subtle problem is reliance on the order of "global destruction".
+That is what happens at the end of execution: Perl destroys all data
+structures, including user data.  If your destructors (the DESTROY
+subroutines) have assumed any particular ordering to the global
+destruction, there might be problems ahead.  For example, in a
+destructor of one object you cannot assume that objects of any other
+class are still available, unless you hold a reference to them.
+If the environment variable PERL_DESTRUCT_LEVEL is set to a non-zero
+value, or if Perl is exiting a spawned thread, it will also destruct
+the ordinary references and the symbol tables that are no longer in use.
+You can't call a class method or an ordinary function on a class that
+has been collected that way.
+
+より微妙な問題は "グローバルデストラクション" における信頼性です. 
+それは Perl の実行の終了時に起こります. 
+Perl はユーザのデータを含めて全てのデータを破棄します. 
+もしデストラクタ(DESTROY 関数)が特定の順序でグローバルデストラクションが
+行われることを考えていたのならこれは頭の痛い問題でしょう. 
+例えばあるオブジェクトのデストラクタにおいて他のクラスのオブジェクトが
+まだ有効であるのかはそれへの参照をもっていないのであれば推測できません. 
+もし環境変数 PERL_DESTRUST_LEVEL が非ゼロ値に設定されているか, 
+生成されたスレッドを終了しているのなら通常のリファレンスやシンボルテーブルも
+既に破棄されているでしょう. クラスメソッドやクラスの通常の関数を
+呼ぶこともできません.
+
+The hash randomisation is certain to reveal hidden assumptions about
+some particular ordering of hash elements, and outright bugs: it
+revealed a few bugs in the Perl core and core modules.
+
+ハッシュのランダム性はハッシュ要素が特定の順序であるという
+隠れていた仮定や, 率直に言ってしまえばバグを暴くのは確かでしょう. 
+Perl コアやコアモジュールにも少数ではありますが見つかりました.
+
+To disable the hash randomisation in runtime, set the environment
+variable PERL_HASH_SEED to 0 (zero) before running Perl (for more
+information see L<perlrun/PERL_HASH_SEED>), or to disable the feature
+completely in compile time, compile with C<-DNO_HASH_SEED> (see F<INSTALL>).
+
+実行時にハッシュのランダム化を無効化するのなら Perl の実行前に 
+環境変数 PERL_HASH_SEED に 0 を設定する(詳細は 
+L<perlrun/PERL_HASH_SEED> 参照)か, もしくはコンパイル時に 
+この機能を完全に無効化するために. C<-DNO_HASH_SEED> (F<INSTALL> 参照) 
+を設定してコンパイルするかです.
+
+See L<perlsec/"Algorithmic Complexity Attacks"> for the original
+rationale behind this change.
+
+この変更の背景となった根拠の原文は 
+L<perlsec/"Algorithmic Complexity Attacks"> を参照してください.
+
+=head2 UTF-8 On Filehandles No Longer Activated By Locale
+
+ファイルハンドルの utf-8 フラグは locale 設定から直接影響を受けなくなりました
+
+In Perl 5.8.0 all filehandles, including the standard filehandles,
+were implicitly set to be in Unicode UTF-8 if the locale settings
+indicated the use of UTF-8.  This feature caused too many problems,
+so the feature was turned off and redesigned: see L</"Core Enhancements">.
+
+Perl 5.8.0 では, 標準ファイルハンドルを含めた全てのファイルハンドルは, 
+utf-8 を使うロケールが設定されているときには Unicode UTF-8 フラグを暗黙のうちに
+設定していました. この機能は多くの問題を引き起こしたため廃止され, また
+再設計されました: L<< /"Core Enhancements" >> を
+参照してください.
+
+=head2 Single-number v-strings are no longer v-strings before "=E<gt>"
+
+"=E<gt>" の前において１つの数字部分からなる v-string は文字列として扱われます
+
+The version strings or v-strings (see L<perldata/"Version Strings">)
+feature introduced in Perl 5.6.0 has been a source of some confusion--
+especially when the user did not want to use it, but Perl thought it
+knew better.  Especially troublesome has been the feature that before
+a "=>" a version string (a "v" followed by digits) has been interpreted
+as a v-string instead of a string literal.  In other words:
+
+Perl 5.6.0 から使えるバージョン文字列(v-string)機能 
+(L<perldata/"Version Strings"> 参照)は幾分
+混乱を招きました. 主にそれを使うことを意図していなかったのにもかかわらず
+Perl が v-string であると認識してしまうコトが要因です. 
+特に厄介なのは "=>" の前においてバージョン文字列 ("v" とそれに続く
+数字からなります) が文字列リテラルではなく v-string として
+処理されてしまうというものです. 例をあげると,
+
+	%h = ( v65 => 42 );
+
+has meant since Perl 5.6.0
+
+というコードは, Perl 5.6.0 以降では
+
+	%h = ( 'A' => 42 );
+
+(at least in platforms of ASCII progeny)  Perl 5.8.1 restores the
+more natural interpretation
+
+(少なくとも ASCII 系のプラットフォームにおいては) この様に認識されて
+しまいます. Perl 5.8.1 ではこれをより自然に, 次の形に認識します.
+
+	%h = ( 'v65' => 42 );
+
+The multi-number v-strings like v65.66 and 65.66.67 still continue to
+be v-strings in Perl 5.8.
+
+複数の数字を持つ v-string, たとえば v65.66 や 65.66.67 は
+Perl 5.8 でも v-string として処理され続けるでしょう.
+
+=head2 (Win32) The -C Switch Has Been Repurposed
+
+(Win32) -C スイッチが再利用されました
+
+The -C switch has changed in an incompatible way.  The old semantics
+of this switch only made sense in Win32 and only in the "use utf8"
+universe in 5.6.x releases, and do not make sense for the Unicode
+implementation in 5.8.0.  Since this switch could not have been used
+by anyone, it has been repurposed.  The behavior that this switch
+enabled in 5.6.x releases may be supported in a transparent,
+data-dependent fashion in a future release.
+
+-C スイッチが互換性のない形で変更されました. 
+このスイッチは以前は Win32 においてかつ 5.6.x リリースでの 
+"use utf8" において意味を持ちましたが, 5.8.0 におけるユニコード実装の
+課程で意味をなさなくなりました. このスイッチを使う人はいなくなったために
+これは再利用されました. 5.6.x リリースでこのスイッチを有効にした時の
+振る舞いは透過的に, データに依存した形で今後のリリースでもサポートされる
+でしょう.
+
+For the new life of this switch, see L<"UTF-8 no longer default under
+UTF-8 locales">, and L<perlrun/-C>.
+
+このスイッチの新しい効果については L<< "UTF-8 no longer default under
+UTF-8 locales" >> 及び L<perlrun/-C> を
+参照してください.
+
+=head2 (Win32) The /d Switch Of cmd.exe
+
+(Win32) cmd.exe の /d スイッチ
+
+Perl 5.8.1 uses the /d switch when running the cmd.exe shell
+internally for system(), backticks, and when opening pipes to external
+programs.  The extra switch disables the execution of AutoRun commands
+from the registry, which is generally considered undesirable when
+running external programs.  If you wish to retain compatibility with
+the older behavior, set PERL5SHELL in your environment to C<cmd /x/c>.
+
+Perl 5.8.1 では system(), バッククオート, 及び, 外部プログラムへのパイプ
+等で内部で使用する cmd.exe シェルの実行時に /d スイッチを使います. 
+その他のスイッチは, 外部プログラムを実行するときに通常望まれていないと
+考えられるレジストリからの AutoRun コマンドの実行を無効化します.
+もし以前の振る舞いを維持したいのなら PERL5SHELL 環境変数に C<cmd /x/c> と
+設定して下さい.
+
+=head1 Core Enhancements
+
+コア機能の強化
+
+=head2 UTF-8 no longer default under UTF-8 locales
+
+UTF-8 ロケールでも UTF-8 は初期状態で有効になることはありません
+
+In Perl 5.8.0 many Unicode features were introduced.   One of them
+was found to be of more nuisance than benefit: the automagic
+(and silent) "UTF-8-ification" of filehandles, including the
+standard filehandles, if the user's locale settings indicated
+use of UTF-8.
+
+Perl 5.8.0 から多くの Unicode 機能が展開されました. その中には便利という
+より厄介なものも見られました. ユーザのロケールに UTF-8 の使用が
+記されていたときの, 自動的に(そして水面下で)行われるファイル
+ハンドルの "UTF-8-疑惑" です. 標準ファイルハンドルもその対象です.
+
+For example, if you had C<en_US.UTF-8> as your locale, your STDIN and
+STDOUT were automatically "UTF-8", in other words an implicit
+binmode(..., ":utf8") was made.  This meant that trying to print, say,
+chr(0xff), ended up printing the bytes 0xc3 0xbf.  Hardly what
+you had in mind unless you were aware of this feature of Perl 5.8.0.
+The problem is that the vast majority of people weren't: for example
+in RedHat releases 8 and 9 the B<default> locale setting is UTF-8, so
+all RedHat users got UTF-8 filehandles, whether they wanted it or not.
+The pain was intensified by the Unicode implementation of Perl 5.8.0
+(still) having nasty bugs, especially related to the use of s/// and
+tr///.  (Bugs that have been fixed in 5.8.1)
+
+例えば, もしロケールに C<en_US.UTF-8> を指定していたのなら, STDIN 及び 
+STDOUT は暗黙のうちに binmode(..., ":utf8") を行ったかのように自動的に
+"UTF-8" になります. これは出力時に, chr(0xff) を書き出したのに最終的には 
+0xc3 0xbf という２バイトが出力されることになります. 
+Perl 5.8.0 のこの機能に気付いていなければ何が起こったのか理解するのは
+難しいでしょう. この問題はかなり大多数の人々が気付きませんでした. 
+例えば RedHat リリース 8 及び 9 の B<デフォルトの> ロケール設定は UTF-8 
+でした. このためそのユーザは望まなくても UTF-8 ファイルハンドルを
+扱うことになりました. この痛みは Perl 5.8.0 のバグのある Unicode 実装, 
+特に s/// 及び tr/// に関連する辺り(このバグは 5.8.1 では修正されて
+います)で激化しました.
+
+Therefore a decision was made to backtrack the feature and change it
+from implicit silent default to explicit conscious option.  The new
+Perl command line option C<-C> and its counterpart environment
+variable PERL_UNICODE can now be used to control how Perl and Unicode
+interact at interfaces like I/O and for example the command line
+arguments.  See L<perlrun/-C> and L<perlrun/PERL_UNICODE> for more
+information.
+
+この結果, この機能は撤回され, 静かに暗黙のうちにおこなうのではなく
+意識して明示的におこなう様に修正されました. 
+新しい Perl のコマンドラインオプション C<-C> 及びこれに対応する環境変数
+PERL_UNICODE によって I/O の様に Perl で Unicode をどのように扱うかの
+インターフェースとして使うことができるようになりました. 
+詳細については L<perlrun/-C> と L<perlrun/PERL_UNICODE> を参照して
+ください.
+
+=head2 Unsafe signals again available
+
+安全ではないシグナルを再び利用できるようになりました
+
+In Perl 5.8.0 the so-called "safe signals" were introduced.  This
+means that Perl no longer handles signals immediately but instead
+"between opcodes", when it is safe to do so.  The earlier immediate
+handling easily could corrupt the internal state of Perl, resulting
+in mysterious crashes.
+
+Perl 5.8.0 において "安全なシグナル" と呼ばれる機能が実装されました. 
+これはシグナルをすぐに処理するのではなく, 安全性を向上させるために 
+"opcode の間で" 処理するようにしたものです. 
+それまでのシグナルハンドラのその場での処理は Perl の内部状態を破壊し, 
+深刻なクラッシュを引き起こすことがありました.
+
+However, the new safer model has its problems too.  Because now an
+opcode, a basic unit of Perl execution, is never interrupted but
+instead let to run to completion, certain operations that can take a
+long time now really do take a long time.  For example, certain
+network operations have their own blocking and timeout mechanisms, and
+being able to interrupt them immediately would be nice.
+
+しかし新しい安全なモデルにもそれ故の問題がありました. 
+Perl 内部命令の基本単位である opcode がその完了まで割り込まれなくなったために
+時間のかかるいくつかの処理は本当に長時間にわたって実行し続けてしまいます. 
+例えばいくつかのネットワーク操作はそれ自身でブロッキングやタイムアウトの
+メカニズムを持っていますし, 状況がそろえばすぐに割り込むことができます.
+
+Therefore perl 5.8.1 introduces a "backdoor" to restore the pre-5.8.0
+(pre-5.7.3, really) signal behaviour.  Just set the environment variable
+PERL_SIGNALS to C<unsafe>, and the old immediate (and unsafe)
+signal handling behaviour returns.  See L<perlrun/PERL_SIGNALS>
+and L<perlipc/"Deferred Signals (Safe Signals)">.
+
+これらのことから 5.8.0 より前 (正確には 5.7.3 より前) での方法で
+シグナルを処理するための "バックドア" を設けました. 
+環境変数 PERL_SIGNALS に C<unsafe> を設定することでいままでの
+すぐに割り込む(しかし安全ではない)シグナル処理に戻ることができます. 
+L<perlrun/PERL_SIGNALS> 及び 
+L<perlipc/"Deferred Signals (Safe Signals)"> を参照してください.
+
+=begin original
+
+In completely unrelated news, you can now use safe signals with
+POSIX::SigAction.  See L<POSIX/POSIX::SigAction>.
+
+=end original
+
+全く関係ないニュースとしては, POSIX::SigAction を使って安全なシグナルを
+使うことができます. 
+L<POSIX/POSIX::SigAction> を参照してください.
+
+=head2 Tied Arrays with Negative Array Indices
+
+配列のタイと負のインデックス
+
+Formerly, the indices passed to C<FETCH>, C<STORE>, C<EXISTS>, and
+C<DELETE> methods in tied array class were always non-negative.  If
+the actual argument was negative, Perl would call FETCHSIZE implicitly
+and add the result to the index before passing the result to the tied
+array method.  This behaviour is now optional.  If the tied array class
+contains a package variable named C<$NEGATIVE_INDICES> which is set to
+a true value, negative values will be passed to C<FETCH>, C<STORE>,
+C<EXISTS>, and C<DELETE> unchanged.
+
+これまでタイを処理する配列クラスの C<FETCH> 及び, C<STORE>, C<EXISTS>, 
+C<DELETE> メソッドに渡されるインデックスは常に非負でした. 
+負のインデックスが用いられたときには Perl が FETCHSIZE を暗黙のうちに
+呼び出してその結果をこれらのメソッドに渡す前にインデックス値に加算して
+いました. この振る舞いは今後は選択できるようになりました. 
+タイを処理する配列クラスに C<$NEGATIVE_INDICES> というパッケージ変数があり
+その値が真であったときには, 負のインデックス値は変更されることなく
+C<FETCH>, C<STORE>, C<EXISTS>, C<DELETE> に渡されます.
+
+=head2 local ${$x}
+
+The syntaxes
+
+以下の構文
+
+	local ${$x}
+	local @{$x}
+	local %{$x}
+
+now do localise variables, given that the $x is a valid variable name.
+
+によって変数のローカライズを行えるようになりました. 
+$x には有効な変数の名前を与えてください.
+
+=head2 Unicode Character Database 4.0.0
+
+ユニコード文字データベース 4.0.0
+
+The copy of the Unicode Character Database included in Perl 5.8 has
+been updated to 4.0.0 from 3.2.0.  This means for example that the
+Unicode character properties are as in Unicode 4.0.0.
+
+Perl 5.8 に含まれる Unicode 文字データベースのコピーは 3.2.0 から
+4.0.0 に更新されました. これは例えば Unicode 文字プロパティが
+Unicode 4.0.0 のものになったことを意味します.
+
+=head2 Deprecation Warnings
+
+廃止機能に対する警告
+
+There is one new feature deprecation.  Perl 5.8.0 forgot to add
+some deprecation warnings, these warnings have now been added.
+Finally, a reminder of an impending feature removal.
+
+新しい廃止が１つあります. 
+Perl 5.8.0 ではいくつか廃止の警告を失念していたのでここで追加しておきます. 
+後は将来削除される実装についての再掲です.
+
+=head3 (Reminder) Pseudo-hashes are deprecated (really)
+
+(再掲) 仮想ハッシュは本当に廃止されます
+
+Pseudo-hashes were deprecated in Perl 5.8.0 and will be removed in
+Perl 5.10.0, see L<perl58delta> for details.  Each attempt to access
+pseudo-hashes will trigger the warning C<Pseudo-hashes are deprecated>.
+If you really want to continue using pseudo-hashes but not to see the
+deprecation warnings, use:
+
+仮想ハッシュは Perl 5.8.0 において廃止され, Perl 5.10.0 において
+削除されるでしょう. 詳細は L<perl58delta> を参照してください. 
+仮想ハッシュへのアクセスは警告 C<Pseudo-hashse are deprecated> を発します. 
+もし仮想ハッシュを警告なしに本当に使い続けたいのなら次のプラグマを
+使ってください:
+
+    no warnings 'deprecated';
+
+Or you can continue to use the L<fields> pragma, but please don't
+expect the data structures to be pseudohashes any more.
+
+もしくは L<fields> プラグマを使うことができますが, 
+ハッシュ仮想化におけるデータ構造については手を触れないでください.
+
+=head3 (Reminder) 5.005-style threads are deprecated (really)
+
+(再掲) 5.005 形式のスレッドは本当に廃止されます
+
+5.005-style threads (activated by C<use Thread;>) were deprecated in
+Perl 5.8.0 and will be removed after Perl 5.8, see L<perl58delta> for
+details.  Each 5.005-style thread creation will trigger the warning
+C<5.005 threads are deprecated>.  If you really want to continue
+using the 5.005 threads but not to see the deprecation warnings, use:
+
+5.005 形式のスレッド (C<use Thread;> によって使われるもの) は
+Perl 5.8.0 において廃止され, Perl 5.8 より後には削除されるでしょう. 
+詳細は L<perl58delta> を参照してください. 
+5.005 形式のスレッドの生成は警告 C<5.005 threads are deprecated> を発します. 
+もし 5.005 スレッドを警告なしに本当に使い続けたいのなら次のプラグマを
+使ってください:
+
+    no warnings 'deprecated';
+
+=head3 (Reminder) The $* variable is deprecated (really)
+
+(再掲) $* 変数は本当に廃止されます
+
+The C<$*> variable controlling multi-line matching has been deprecated
+and will be removed after 5.8.  The variable has been deprecated for a
+long time, and a deprecation warning C<Use of $* is deprecated> is given,
+now the variable will just finally be removed.  The functionality has
+been supplanted by the C</s> and C</m> modifiers on pattern matching.
+If you really want to continue using the C<$*>-variable but not to see
+the deprecation warnings, use:
+
+複数行のマッチを制御する C<$*> 変数は
+Perl 5.8.0 において廃止され, Perl 5.8 より後には削除されるでしょう. 
+この変数は長いこと前に廃止され, C<Use of $* is deprecated> という警告を
+発してきましたがついに削除されます. この機能はパターンマッチ時の 
+C</s> 及び C</m> 修飾子に引き継がれています. 
+5.005 形式のスレッドの生成は警告 C<5.005 threads are deprecated> を発します. 
+もし C<$*>変数 を警告なしに本当に使い続けたいのなら次のプラグマを
+使ってください:
+
+    no warnings 'deprecated';
+
+=head2 Miscellaneous Enhancements
+
+その他の機能
+
+C<map> in void context is no longer expensive. C<map> is now context
+aware, and will not construct a list if called in void context.
+
+void コンテキストでの C<map> は高価ではなくなりました. 
+C<map> は現在ではそのコンテキストを理解し, void コンテキストで
+呼ばれたときにはリストを構築しません.
+
+If a socket gets closed by the server while printing to it, the client
+now gets a SIGPIPE.  While this new feature was not planned, it fell
+naturally out of PerlIO changes, and is to be considered an accidental
+feature.
+
+ソケットに出力中にサーバから閉じられたときに, クライアントに SIGPIPE 
+を受信するようになりました. この機能は予定されていませんでしたが 
+PerlIO の変更ではなくて自然な動作からです. また不慮の自体を考慮する
+為です.
+
+PerlIO::get_layers(FH) returns the names of the PerlIO layers
+active on a filehandle.
+
+PerlIO::get_layers(FH) はそのファイルハンドルでアクティブな PerlIO レイヤ
+の名前を返します.
+
+PerlIO::via layers can now have an optional UTF8 method to
+indicate whether the layer wants to "auto-:utf8" the stream.
+
+PerlIO::via レイヤはそのレイヤが "auto-:utf8" をストリームに
+対して必要とするかを示す UTF8 メソッドを任意で持つことが出来ます.
+
+utf8::is_utf8() has been added as a quick way to test whether
+a scalar is encoded internally in UTF-8 (Unicode).
+
+utf8::is_utf8() がスカラーが内部で UTF-8 (Unicode) であるかを素早く
+調べるために加えられました.
+
+=head1 Modules and Pragmata
+
+モジュールとプラグマ
+
+=head2 Updated Modules And Pragmata
+
+更新されたモジュールとプラグマ
+
+The following modules and pragmata have been updated since Perl 5.8.0:
+
+以下のモジュールとプラグマが Perl 5.8.0 から更新されています.
+
+=over 4
+
+=item base
+
+=item B::Bytecode
+
+In much better shape than it used to be.  Still far from perfect, but
+maybe worth a try.
+
+より使いやすい形になりました. まだ完全には遠いですが, トライしてみる
+価値はあるでしょう.
+
+=item B::Concise
+
+=item B::Deparse
+
+=item Benchmark
+
+An optional feature, C<:hireswallclock>, now allows for high
+resolution wall clock times (uses Time::HiRes).
+
+任意の機能, C<:hireswallclock>, 高分解能ウォールクロックタイム
+(Time::HiRes の使用)を許可します.
+
+=item ByteLoader
+
+See B::Bytecode.
+
+B::Bytecode 参照.
+
+=item bytes
+
+Now has bytes::substr.
+
+bytes::substr を持つようになりました.
+
+=item CGI
+
+=item charnames
+
+One can now have custom character name aliases.
+
+独自の文字名の別名を持つことができます.
+
+=item CPAN
+
+There is now a simple command line frontend to the CPAN.pm
+module called F<cpan>.
+
+CPAN.pm モジュールへの簡単なコマンドラインフロントエンド F<cpan> 
+が追加されました.
+
+=item Data::Dumper
+
+A new option, Pair, allows choosing the separator between hash keys
+and values.
+
+新オプション, Pair, ハッシュのキーと値のセパレータを
+選択できます.
+
+=item DB_File
+
+=item Devel::PPPort
+
+=item Digest::MD5
+
+=item Encode
+
+Significant updates on the encoding pragma functionality
+(tr/// and the DATA filehandle, formats).
+
+encoding プラグマ機能(tr/// 及び DATA ファイルハンドル, format)
+における重要な更新.
+
+If a filehandle has been marked as to have an encoding, unmappable
+characters are detected already during input, not later (when the
+corrupted data is being used).
+
+ファイルハンドルがあるエンコーディングと関連づけられているのなら
+マッピングできない文字は入力後(壊れたデータを使った時)ではなく入力時に
+検出されます.
+
+The ISO 8859-6 conversion table has been corrected (the 0x30..0x39
+erroneously mapped to U+0660..U+0669, instead of U+0030..U+0039).  The
+GSM 03.38 conversion did not handle escape sequences correctly.  The
+UTF-7 encoding has been added (making Encode feature-complete with
+Unicode::String).
+
+ISO 8859-6 変換テーブルの修正(0x30..0x39 を 
+U+0030..U+0039 ではなく U+0660..U+0669 に間違ってマッピングしていた).
+GSM 03.38 変換がエスケープシーケンスを正しく扱っていなかった. 
+UTF7 エンコーディングの追加(Unicode::Stringと機能の互換).
+
+=item fields
+
+=item libnet
+
+=item Math::BigInt
+
+A lot of bugs have been fixed since v1.60, the version included in Perl
+v5.8.0. Especially noteworthy are the bug in Calc that caused div and mod to
+fail for some large values, and the fixes to the handling of bad inputs.
+
+Perl v5.8.0 に添付されていた v1.60 以来多くのバグが修正されました. 
+特に注目するべき点としていくつかの大きな値で除算や剰余の計算に
+失敗するバグや良くない入力の処理の修正があります.
+
+Some new features were added, e.g. the broot() method, you can now pass
+parameters to config() to change some settings at runtime, and it is now
+possible to trap the creation of NaN and infinity.
+
+いくつかの新しい機能, 例えば broot() メソッドなど, 
+config() にパラメータを渡すことによる実行時の設定変更, NaN 及び無限大の
+生成のトラップなどが追加されました.
+
+As usual, some optimizations took place and made the math overall a tad
+faster. In some cases, quite a lot faster, actually. Especially alternative
+libraries like Math::BigInt::GMP benefit from this. In addition, a lot of the
+quite clunky routines like fsqrt() and flog() are now much much faster.
+
+通常いくつかの最適化が行われ, math 全体をいくらか速めます. 
+いくつかの状態では実際とても速くなります. とくに Math::BigInt::GMP の様な
+代替ライブラリはこの恩恵を受けます. 加えて fsqrt() や flog() の様な
+とても冗長な処理はとってもすごく速くなります.
+
+=item MIME::Base64
+
+=item NEXT
+
+Diamond inheritance now works.
+
+ダイヤモンド状継承を扱えます
+
+=item Net::Ping
+
+=item PerlIO::scalar
+
+Reading from non-string scalars (like the special variables, see
+L<perlvar>) now works.
+
+文字列ではないスカラーからの読み込み (特殊な変数など, 
+L<perlvar> 参照) が機能するようになりました.
+
+=item podlators
+
+=item Pod::LaTeX
+
+=item PodParsers
+
+=item Pod::Perldoc
+
+Complete rewrite.  As a side-effect, no longer refuses to startup when
+run by root.
+
+完全に書き直されました. その副産物として root での起動が拒否されなく
+なりました.
+
+=item Scalar::Util
+
+New utilities: refaddr, isvstring, looks_like_number, set_prototype.
+
+新しいユーティリティ: refaddr, isvstring, looks_like_number,
+set_prototype.
+
+=item Storable
+
+Can now store code references (via B::Deparse, so not foolproof).
+
+コードリファレンスの格納 (B::Deparse 経由, foolproof でなく).
+
+=item strict
+
+Earlier versions of the strict pragma did not check the parameters
+implicitly passed to its "import" (use) and "unimport" (no) routine.
+This caused the false idiom such as:
+
+strict プラグマのこれまでのバージョンでは "import" (use) 及び 
+"unimport" (no) ルーティンに暗黙に渡されたパラメータを調べていません
+でした. これは次のような間違った使用方法を招きました:
+
+        use strict qw(@ISA);
+        @ISA = qw(Foo);
+
+This however (probably) raised the false expectation that the strict
+refs, vars and subs were being enforced (and that @ISA was somehow
+"declared").  But the strict refs, vars, and subs are B<not> enforced
+when using this false idiom.
+
+これはしかしながら (おそらく) refs, vars, そして subs は強制されている
+(そして @ISA はどうにかして "宣言されている"という)間違った例外を
+発生させたでしょう. しかしこの間違った使用方法では refs, vars, subs の
+強制はB<されません>.
+
+Starting from Perl 5.8.1, the above B<will> cause an error to be
+raised.  This may cause programs which used to execute seemingly
+correctly without warnings and errors to fail when run under 5.8.1.
+This happens because
+
+Perl 5.8.1 からは前述の例はエラーを発生させることにB<なります>. 
+これはうわべは警告もエラーもなく実行されていたプログラムが
+5.8.1 ではエラーとするでしょう. これは次のような文で
+
+        use strict qw(@ISA);
+
+will now fail with the error:
+
+以下のエラーを発生させるようになります:
+
+        Unknown 'strict' tag(s) '@ISA'
+
+The remedy to this problem is to replace this code with the correct idiom:
+
+これを治療するには以下のような正しい使用方法に直すことです.
+
+        use strict;
+        use vars qw(@ISA);
+        @ISA = qw(Foo);
+
+=item Term::ANSIcolor
+
+=item Test::Harness
+
+Now much more picky about extra or missing output from test scripts.
+
+テストスクリプトの余計な及び足りない出力をよりピックアップ.
+
+=item Test::More
+
+=item Test::Simple
+
+=item Text::Balanced
+
+=item Time::HiRes
+
+Use of nanosleep(), if available, allows mixing subsecond sleeps with
+alarms.
+
+可能であれば nanosleep() の使用. alarm 群の subsecond 
+sleeps のミックス.
+
+=item threads
+
+Several fixes, for example for join() problems and memory
+leaks.  In some platforms (like Linux) that use glibc the minimum memory
+footprint of one ithread has been reduced by several hundred kilobytes.
+
+いくつかの修正, 例えば join() 問題やメモリリーク. 
+glibc を使ういくつかのプラットフォーム(Linuxも含まれます)における
+１つの ithread に使われる最小メモリ量を数百キロバイト単位で減少.
+
+=item threads::shared
+
+Many memory leaks have been fixed.
+
+いくつかのメモリリークを修正.
+
+=item Unicode::Collate
+
+=item Unicode::Normalize
+
+=item Win32::GetFolderPath
+
+=item Win32::GetOSVersion
+
+Now returns extra information.
+
+より多くの情報を返すようになりました.
+
+=back
+
+=head1 Utility Changes
+
+ユーティリティの変更点
+
+The C<h2xs> utility now produces a more modern layout:
+F<Foo-Bar/lib/Foo/Bar.pm> instead of F<Foo/Bar/Bar.pm>.
+Also, the boilerplate test is now called F<t/Foo-Bar.t>
+instead of F<t/1.t>.
+
+C<h2xs> ユーティリティは F<Foo/Bar/Bar.pm> ではなく
+今風のレイアウト F<Foo-Bar/lib/Foo/Bar.pm> を生成します. 
+ボイラープレートテスト（？）は F<t/1.t> ではなく
+F<t/Foo-Bar.t> で呼び出すようになります.
+
+The Perl debugger (F<lib/perl5db.pl>) has now been extensively
+documented and bugs found while documenting have been fixed.
+
+Perl デバッガ (F<lib/perl5db.pl>) の広範囲なドキュメント化及び
+ドキュメント記述中に見つかったバグの修正.
+
+=begin original
+
+C<perldoc> has been rewritten from scratch to be more robust and
+feature rich.
+
+=end original
+
+C<perldoc> はより強健に機能的にするために新しく作り直されました.
+
+C<perlcc -B> works now at least somewhat better, while C<perlcc -c>
+is rather more broken.  (The Perl compiler suite as a whole continues
+to be experimental.)
+
+C<perlcc -c> は壊れ気味ですが C<perlcc -B> はいくらかましに機能
+します. (Perl コンパイラ群はその全体が依然 experimental です.)
+
+=head1 New Documentation
+
+新しいドキュメント
+
+perl573delta has been added to list the differences between the
+(now quite obsolete) development releases 5.7.2 and 5.7.3.
+
+perl573delta が追加されました. 
+(いまではとても廃れている) 開発リリース 5.7.2 と 5.7.3 の相違点です.
+
+perl58delta has been added: it is the perldelta of 5.8.0, detailing
+the differences between 5.6.0 and 5.8.0.
+
+perl58delta が追加されました: 
+perl 5.8.0 での perldelta です. 
+5.6.0 と 5.8.0 の詳細な相違点です.
+
+perlartistic has been added: it is the Artistic License in pod format,
+making it easier for modules to refer to it.
+
+perlartistic が追加されました:
+pod format になっている Artistic License です. 
+より簡単に参照を行えます.
+
+perlcheat has been added: it is a Perl cheat sheet.
+
+perlcheat が追加されました: Perl の cheat sheet です.
+(ごまかしシート？？内容はハンディリファレンスみたいです.)
+
+perlgpl has been added: it is the GNU General Public License in pod
+format, making it easier for modules to refer to it.
+
+perlgpl が追加されました:
+pod format になっている GNU General Public License です. 
+より簡単に参照を行えます.
+
+perlmacosx has been added to tell about the installation and use
+of Perl in Mac OS X.
+
+perlmacosx が追加されました. 
+Mac OS X での Perl のインストール方法と使用方法です.
+
+perlos400 has been added to tell about the installation and use
+of Perl in OS/400 PASE.
+
+perlos400 が追加されました. 
+OS/400 PASE での Perl のインストール方法と使用方法です.
+
+perlreref has been added: it is a regular expressions quick reference.
+
+perlreref が追加されました: 
+正規表現のクイックリファレンスです.
+
+=head1 Installation and Configuration Improvements
+
+インストールと設定の改善
+
+The UNIX standard Perl location, F</usr/bin/perl>, is no longer
+overwritten by default if it exists.  This change was very prudent
+because so many UNIX vendors already provide a F</usr/bin/perl>,
+but simultaneously many system utilities may depend on that
+exact version of Perl, so better not to overwrite it.
+
+UNIX における標準的な Perl の位置, F</usr/bin/perl> は, 
+既にそれが存在するのなら上書きしないようになりました. 
+この変化は身をわきまえたものです. おおくの UNIX ベンダーは
+初めから F</usr/bin/perl> を提供していて, 同時に多くの
+システムユーティリティが Perl の実際のバージョンに依存しているでしょう. 
+このため上書きしない方が望ましいと判断されました.
+
+One can now specify installation directories for site and vendor man
+and HTML pages, and site and vendor scripts.  See F<INSTALL>.
+
+site 及びベンダーの, マニュアル及びHTML ページ, スクリプトの
+インストールディレクトリを指定できるようになりました. 
+F<INSTALL> を参照してください.
+
+One can now specify a destination directory for Perl installation
+by specifying the DESTDIR variable for C<make install>.  (This feature
+is slightly different from the previous C<Configure -Dinstallprefix=...>.)
+See F<INSTALL>.
+
+C<make install> 時に DESTDIR 変数に Perl のインストール先にしたい
+ディレクトリを指定することができるようになりました. (この機能は
+これまでの C<Configure -Dinstallprefix=...> とは少し違います.) 
+F<INSTALL> を参照してください.
+
+gcc versions 3.x introduced a new warning that caused a lot of noise
+during Perl compilation: C<gcc -Ialreadyknowndirectory (warning:
+changing search order)>.  This warning has now been avoided by
+Configure weeding out such directories before the compilation.
+
+gcc バージョン 3.x は Perl のコンパイル時に多くのノイズとなる新しい警告を
+発するようになりました: C<gcc -I既知のディレクトリ (警告:
+検索順序に変更がありました)>. この警告は Configure がコンパイル前に
+その様なディレクトリを取り除くことで回避しています.
+
+One can now build subsets of Perl core modules by using the
+Configure flags C<-Dnoextensions=...> and C<-Donlyextensions=...>,
+see F<INSTALL>.
+
+Configure フラグ C<-Dnoextensions=...> 及び C<-Donlyextensions=...> を
+使うことで Perl コアモジュールのサブセットをビルドすることが
+できるようになりました. F<INSTALL> を参照してください.
+
+=head2 Platform-specific enhancements
+
+プラットフォーム固有の機能
+
+In Cygwin Perl can now be built with threads (C<Configure -Duseithreads>).
+This works with both Cygwin 1.3.22 and Cygwin 1.5.3.
+
+Cygwin において threads で Perl をビルドできるようになりました
+(C<Configure -Duseithreads>). 
+Cygwin 1.3.22 及び Cygwin 1.5.3 両方で動作します.
+
+In newer FreeBSD releases Perl 5.8.0 compilation failed because of
+trying to use F<malloc.h>, which in FreeBSD is just a dummy file, and
+a fatal error to even try to use.  Now F<malloc.h> is not used.
+
+新しい FreeBSD において, F<malloc.h> を使うために Perl 5.8.0 の
+コンパイルに失敗していました. FreeBSD においてこれはダミーであり, 
+使おうとすると致命的なエラーとなります. 現在は F<malloc.h> を
+使用しないようになりました.
+
+Perl is now known to build also in Hitachi HI-UXMPP.
+
+日立 HI_UXMPP でビルドできます.
+
+Perl is now known to build again in LynxOS.
+
+LynxOS で再びビルドできます.
+
+Mac OS X now installs with Perl version number embedded in
+installation directory names for easier upgrading of user-compiled
+Perl, and the installation directories in general are more standard.
+In other words, the default installation no longer breaks the
+Apple-provided Perl.  On the other hand, with C<Configure -Dprefix=/usr>
+you can now really replace the Apple-supplied Perl (B<please be careful>).
+
+Mac OS X はインストールディレクトリ名にバージョン番号を
+埋め込んでインストールします.
+これはユーザがコンパイルした Perl のアップグレードを簡単にするため, そして
+一般的なインストールディレクトリをより標準にするためです. 
+言い換えると, デフォルトのままインストールでも Apple が提供している Perl を
+破壊してしまうことはありません. 
+その一方で, C<Configure -Dprefix=/usr> の指定をすることで
+Apple 提供の Perl を本当に置き換えることもできます(B<十分注意してください>).
+  
+
+Mac OS X now builds Perl statically by default.  This change was done
+mainly for faster startup times.  The Apple-provided Perl is still
+dynamically linked and shared, and you can enable the sharedness for
+your own Perl builds by C<Configure -Duseshrplib>.
+
+Mac OS X ではデフォルトでスタティックにリンクされた Perl が
+ビルドされるようになりました. この変更は主に起動の高速化の為です. 
+Apple が提供している Perl はまだ共有, ダイナミックリンクされる
+ものです. 自分で Perl をビルドするときには 
+C<Configure -Duseshrplib> を指定することで共有を無効にできます.
+
+Perl has been ported to IBM's OS/400 PASE environment.  The best way
+to build a Perl for PASE is to use an AIX host as a cross-compilation
+environment.  See README.os400.
+
+IBM の OS/400 PASE 環境で Perl を使えるようになりました. 
+PASE 用の Perl を構築する最良の方法は, クロスコンパイル環境として AIX を
+使うことです. README.os400 を参照してください.
+
+Yet another cross-compilation option has been added: now Perl builds
+on OpenZaurus, an Linux distribution based on Mandrake + Embedix for
+the Sharp Zaurus PDA.  See the Cross/README file.
+
+別のクロスコンパイルオプションが追加されました: OpenZaurus, Sharp 
+Zaurus PDA 用の Mandrake + Embedix な Linux ディストリビューション向けの
+の Perl を作成できます.
+Cross サブディレクトリを参照してください.
+
+Tru64 when using gcc 3 drops the optimisation for F<toke.c> to C<-O2>
+because of gigantic memory use with the default C<-O3>.
+
+Tru64 で gcc 3 を使用してるときに F<toke.c> の最適化を C<-O2> に
+落としました. これはデフォルトの C<-O3> では巨大なメモリ消費を
+引き起こすためです.
+
+Tru64 can now build Perl with the newer Berkeley DBs.
+
+Tru64 において新しい Berkeley DB で Perl をビルドできます.
+
+Building Perl on WinCE has been much enhanced, see F<README.ce>
+and F<README.perlce>.
+
+WinCE 上での Perl のビルドが高まりました. 
+F<README.ce> 及び F<README.perlce> を参照してください.
+
+=head1 Selected Bug Fixes
+
+バグ修正の抜粋
+
+=head2 Closures, eval and lexicals
+
+クロージャ, eval, レキシカル
+
+There have been many fixes in the area of anonymous subs, lexicals and
+closures.  Although this means that Perl is now more "correct", it is
+possible that some existing code will break that happens to rely on
+the faulty behaviour.  In practice this is unlikely unless your code
+contains a very complex nesting of anonymous subs, evals and lexicals.
+
+無名関数, レキシカル, クロージャに対して多くの修正が施されています. 
+Perl はより "精緻" になったといえますが欠点のあった振る舞いを信頼していた
+既存のコードが動かなくなる可能性もあります. 
+とはいえ実際にはこれはとても複雑にネストしている無名関数, eval, レキシカル
+がなければありそうもないことです.
+
+=head2 Generic fixes
+
+一般的な修正
+
+If an input filehandle is marked C<:utf8> and Perl sees illegal UTF-8
+coming in when doing C<< <FH> >>, if warnings are enabled a warning is
+immediately given - instead of being silent about it and Perl being
+unhappy about the broken data later.  (The C<:encoding(utf8)> layer
+also works the same way.)
+
+もし入力ファイルハンドルが C<:utf8> と設定されていて C<< <FH> >> 
+からの入力中に UTF-8 を見つけると, 警告が有効になっていれば - 
+それを見送って後で不幸にも壊れたデータを受け取ることになって
+しまうかわりに - すぐに警告を発します. (C<:encoding(utf8)> レイヤを
+この目的に使うことも出来ます.)
+
+binmode(SOCKET, ":utf8") only worked on the input side, not on the
+output side of the socket.  Now it works both ways.
+
+binmode(SOCKET, ":utf8") はソケットの入力側のみで出力側には
+機能していませんでした. これは両方向で機能するように修正されました.
+
+For threaded Perls certain system database functions like getpwent()
+and getgrent() now grow their result buffer dynamically, instead of
+failing.  This means that at sites with lots of users and groups the
+functions no longer fail by returning only partial results.
+
+スレッド Perl において getpwent() や getgrent() の様ないくつかの
+システムデータベース関数 は失敗の代わりにその結果格納バッファを動的に
+拡大します. これは多くのユーザやグループを抱えるサイトでこれらの関数が
+一部の結果だけを返して失敗することを回避します.
+
+Perl 5.8.0 had accidentally broken the capability for users
+to define their own uppercase<->lowercase Unicode mappings
+(as advertised by the Camel).  This feature has been fixed and
+is also documented better.
+
+Perl 5.8.0 はユーザが独自の大文字<->小文字 Unicode マッピング(Camel が
+広告しているように)を定義する互換性を偶発的に破壊していました. 
+この機能は修正され, ドキュメント化もされました.
+
+In 5.8.0 this
+
+5.8.0 において次のコード
+
+	$some_unicode .= <FH>;
+
+didn't work correctly but instead corrupted the data.  This has now
+been fixed.
+
+は正しく機能せずデータを破壊してしまいました. 
+これは現在では修正されています.
+
+Tied methods like FETCH etc. may now safely access tied values, i.e.
+resulting in a recursive call to FETCH etc.  Remember to break the
+recursion, though.
+
+FETCH 等の様なタイされたメソッドでより安全にタイされた値に
+アクセスできるでしょう, すなわち FETCH 等が安全に再帰できます. 
+とはいっても再帰を収束させるのはお忘れなき様.
+
+At startup Perl blocks the SIGFPE signal away since there isn't much
+Perl can do about it.  Previously this blocking was in effect also for
+programs executed from within Perl.  Now Perl restores the original
+SIGFPE handling routine, whatever it was, before running external
+programs.
+
+起動時に Perl は それを処理できるまで SIGFPE シグナルをブロックします. 
+これまでこのブロックは実際のところ Perl の中から実行されるプログラムのため
+でした. 現在では外部プログラムを実行する前に Perl は
+もとの SIGFPE ハンドラを復元します.
+
+Linenumbers in Perl scripts may now be greater than 65536, or 2**16.
+(Perl scripts have always been able to be larger than that, it's just
+that the linenumber for reported errors and warnings have "wrapped
+around".)  While scripts that large usually indicate a need to rethink
+your code a bit, such Perl scripts do exist, for example as results
+from generated code.  Now linenumbers can go all the way to
+4294967296, or 2**32.
+
+Perl スクリプトにおいて行番号は 65535 若しくは 2**16 より大きく
+なれるでしょう. (Perl スクリプトは いつでもこれより大きな値を
+とることができます. これは単にエラーや警告時の行番号の持っている
+"ラップされた動作"です.)
+それほど大きなスクリプトはコードをちょっと考え直した方がいいコトを
+示している一方で, その様なコードはスクリプトに生成されたコードなど
+として存在します. 
+現在では 4294967296 若しくは 2**32 まで到達できます.
+
+=head2 Platform-specific fixes
+
+プラットフォーム固有の修正
+
+Linux
+
+=over 4
+
+=item *
+
+Setting $0 works again (with certain limitations that
+Perl cannot do much about: see L<perlvar/$0>)
+
+$0 が再び設定されます (Perl が行えない制限はあります: L<perlvar/$0> 参照).
+
+=back
+
+HP-UX
+
+=over 4
+
+=item *
+
+Setting $0 now works.
+
+$0 の設定が機能するようになりました.
+
+=back
+
+VMS
+
+=over 4
+
+=item *
+
+Configuration now tests for the presence of C<poll()>, and IO::Poll
+now uses the vendor-supplied function if detected.
+
+Configuration 時に C<poll()> が提供されているかを調べ, 
+確認できれば IO::Poll は提供されている関数を使用します.
+
+=item *
+
+A rare access violation at Perl start-up could occur if the Perl image was
+installed with privileges or if there was an identifier with the
+subsystem attribute set in the process's rightslist.  Either of these
+circumstances triggered tainting code that contained a pointer bug. 
+The faulty pointer arithmetic has been fixed.
+
+特権モードで Perl イメージをインストールしたとき, もしくは
+プロセスの権限リストに設定されているサブシステムの属性を持った識別子が
+存在したときに, Perl 起動時に稀にアクセス違反が発生します. 
+これらの状況はポインタのバグを含んだ taint コードを起動しました. 
+この誤ったポインタ演算は修正されています.
+
+=item *
+
+The length limit on values (not keys) in the %ENV hash has been raised
+from 255 bytes to 32640 bytes (except when the PERL_ENV_TABLES setting
+overrides the default use of logical names for %ENV).  If it is
+necessary to access these long values from outside Perl, be aware that
+they are implemented using search list logical names that store the
+value in pieces, each 255-byte piece (up to 128 of them) being an
+element in the search list. When doing a lookup in %ENV from within
+Perl, the elements are combined into a single value.  The existing
+VMS-specific ability to access individual elements of a search list
+logical name via the $ENV{'foo;N'} syntax (where N is the search list
+index) is unimpaired.
+
+%ENV ハッシュでの(キーではなく)値に対する長さの制限は, 255 バイトから
+32640 バイトに緩められました. (ただし PERL_ENV_TABLES 設定が
+%ENV の論理名に対するデフォルトの使用を上書きしている時を除きます.) 
+Perl の外からこれらの長い値にアクセスする必要があるのなら, 
+この機能がサーチリストを使って実装されていることを知っておかなければ
+なりません. 値は 255 バイトずつ (最大128個) の欠片として格納されます. 
+Perl から %ENV を使うときには, 各要素が１つの値に結合されます. 
+$ENV{'foo;N'} 構文 (N はサーチリストのインデックス) を使った
+サーチリストの論理名の個々の要素にアクセスするための VMS 由来の制限は
+ゆるめられてはいません.
+
+=item *
+
+The piping implementation now uses local rather than global DCL
+symbols for inter-process communication.
+
+パイプの実装はプロセス間通信においてグローバルな DCL ではなく
+ローカルなものを使うようになりました.
+
+=item *
+
+File::Find could become confused when navigating to a relative
+directory whose name collided with a logical name.  This problem has
+been corrected by adding directory syntax to relative path names, thus
+preventing logical name translation.
+
+論理名と衝突する名前を持つ相対位置のディレクトリにナビゲートするときに
+File::Find は混乱することがありました. この問題はディレクトリ構文に
+相対パス名を追加することで修正されました. これにより論理名変換を
+予防します.
+
+=back
+
+Win32
+
+=over 4
+
+=item *
+
+A memory leak in the fork() emulation has been fixed.
+
+fork() エミュレーション時のメモリーリークが修正されました.
+
+=item *
+
+The return value of the ioctl() built-in function was accidentally
+broken in 5.8.0.  This has been corrected.
+
+5.8.0 で破損していた ioctl() 組み込み関数の復帰値が修正されました.
+
+=item *
+
+The internal message loop executed by perl during blocking operations
+sometimes interfered with messages that were external to Perl.
+This often resulted in blocking operations terminating prematurely or
+returning incorrect results, when Perl was executing under environments
+that could generate Windows messages.  This has been corrected.
+
+perl がブロッキング処理中に実行していた内部メッセージループが
+Perl の外へのメッセージと時々衝突しました. 
+これはしばしば Perl が Windows メッセージを生成する環境下で実行しているときに
+ブロッキング動作に早すぎる終了や正しくない結果を返すことになりました. 
+これは修正されています.
+
+=item *
+
+Pipes and sockets are now automatically in binary mode.
+
+pipe と socket が自動的にバイナリモードになるようになりました.
+
+=item *
+
+The four-argument form of select() did not preserve $! (errno) properly
+when there were errors in the underlying call.  This is now fixed.
+
+４引数の select() が呼び出し中にエラーが発生したときに $! (errono) を
+適切に維持していなかったものが修正されました.
+
+=item *
+
+The "CR CR LF" problem of has been fixed, binmode(FH, ":crlf")
+is now effectively a no-op.
+
+4 引数の select() が呼び出し中にエラーとなったときに $! (errno) を
+適切に保存していなかったのが修正されました.
+
+=back
+
+=head1 New or Changed Diagnostics
+
+追加された及び変更された診断メッセージ
+
+All the warnings related to pack() and unpack() were made more
+informative and consistent.
+
+pack() 及び unpack() に関連する全ての警告はより有益なものに, 矛盾のないものに
+修正されました.
+
+=head2 Changed "A thread exited while %d threads were running"
+
+変更 "%d 個のスレッドが実行中であるのにあるスレッドで exit が実行されました"
+
+The old version
+
+以前のメッセージ
+
+    A thread exited while %d other threads were still running
+
+    %d 個の他のスレッドがまだ実行中であるのにあるスレッドで exit が
+    実行されました
+
+was misleading because the "other" included also the thread giving
+the warning.
+
+は "他の" とあるのに警告となったスレッド自身も含まれていたために
+誤解を生じていました.
+
+=head2 Removed "Attempt to clear a restricted hash"
+
+削除 "固定されているハッシュをクリアしようとしています"
+
+It is not illegal to clear a restricted hash, so the warning
+was removed.
+
+固定されているハッシュのクリアは不正ではありません. 
+そのためこの警告は削除されました.
+
+=head2 New "Illegal declaration of anonymous subroutine"
+
+追加 "無名関数が不正に宣言されました"
+
+You must specify the block of code for C<sub>.
+
+C<sub> にはコードブロックを指定しなければなりません.
+
+=head2 Changed "Invalid range "%s" in transliteration operator"
+
+変更 "文字置換(tr)操作において無効な範囲 "%s" が指定されました"
+
+The old version
+
+以前のメッセージ
+
+    Invalid [] range "%s" in transliteration operator
+
+    文字置換(tr)操作において無効な [] 範囲 "%s" が指定されました
+
+was simply wrong because there are no "[] ranges" in tr///.
+
+tr/// には "[] 範囲" がないという点で単純に間違っていました.
+
+=head2 New "Missing control char name in \c"
+
+追加 "\c の制御文字名がありません"
+
+Self-explanatory.
+
+それ自身が説明しています.
+
+=head2 New "Newline in left-justified string for %s"
+
+追加 "左詰の文字列 %s に改行があります"
+
+The padding spaces would appear after the newline, which is
+probably not what you had in mind.
+
+追加の空白が改行の後にあらわれました. 
+これはおそらく予期したものではないでしょう.
+
+=head2 New "Possible precedence problem on bitwise %c operator"
+
+追加 "ビット演算 %c の優先順位が意図しない可能性があります"
+
+If you think this
+
+次の条件
+
+    $x & $y == 0
+
+tests whether the bitwise AND of $x and $y is zero,
+you will like this warning.
+
+が $x と $y  のビット論理積が 0 であるとテストしたいのなら
+この警告は好ましいものでしょう.
+
+=head2 New "Pseudo-hashes are deprecated"
+
+追加 "仮想ハッシュは廃止されます"
+
+This warning should have been already in 5.8.0, since they are.
+
+この警告は 5.8.0 からあります.
+
+=head2 New "read() on %s filehandle %s"
+
+追加 "%s 状態のファイルハンドル %s から read() を行いました"
+
+You cannot read() (or sysread()) from a closed or unopened filehandle.
+
+閉じられたもしくは開いていないファイルハンドルから read() (もしくは sysread())
+は行えません.
+
+=head2 New "5.005 threads are deprecated"
+
+追加 "5.005 スレッドは廃止されます"
+
+This warning should have been already in 5.8.0, since they are.
+
+この警告は 5.8.0 からあります.
+
+=head2 New "Tied variable freed while still in use"
+
+追加 "使用中のタイ変数が解放(free)されました"
+
+Something pulled the plug on a live tied variable, Perl plays
+safe by bailing out.
+
+生存中に栓を抜かれた何かが変数を解放します, Perl は安全のために保釈します.
+
+=head2 New "To%s: illegal mapping '%s'"
+
+追加 "To%s: 不正なマッピング '%s'"
+
+An illegal user-defined Unicode casemapping was specified.
+
+不正なユーザ定義の Unicode case マッピングが指定されました.
+
+=head2 New "Use of freed value in iteration"
+
+追加 "イテレーション中に解放された値を使用しました"
+
+Something modified the values being iterated over.  This is not good.
+
+何かがイテレートしている値を変更しました. 
+これはよいことではありません.
+
+=head1 Changed Internals
+
+内部動作の変更点
+
+These news matter to you only if you either write XS code or like to
+know about or hack Perl internals (using Devel::Peek or any of the
+C<B::> modules counts), or like to run Perl with the C<-D> option.
+
+これらのニュースは XS コードを書いているか Perl 内部を知りたかいもしくは
+ハックしている(Devel::Peek や C<B::> を使っている), 
+もしくは C<-D> オプションで Perl を実行する人にのみ重要です.
+
+The embedding examples of L<perlembed> have been reviewed to be
+uptodate and consistent: for example, the correct use of
+PERL_SYS_INIT3() and PERL_SYS_TERM().
+
+L<perlembed> にある埋め込みの例は最新に対応するため, そして矛盾をなくすために
+書く改められました: 例えば PERL_SYS_INIT3() や PERL_SYS_TERM() の正しい
+使用方法等です.
+
+Extensive reworking of the pad code (the code responsible
+for lexical variables) has been conducted by Dave Mitchell.
+
+Dave Mitchell によって pad コード(レキシカル変数に対して
+責任を負っているコード)の広範囲の再活動がなされました.
+
+Extensive work on the v-strings by John Peacock.
+Extensive work on the v-strings by John Peacock.
+
+John Peacock による v-string の広範囲の動作.
+
+UTF-8 length and position cache: to speed up the handling of Unicode
+(UTF-8) scalars, a cache was introduced.  Potential problems exist if
+an extension bypasses the official APIs and directly modifies the PV
+of an SV: the UTF-8 cache does not get cleared as it should.
+
+UTF-8 の長さと位置のキャッシュ: Unicode (UTF-8) スカラーの速度向上のために
+キャッシュが実装されました. 公式の API を経由しないで直接 SV の PV を
+書き換えるエクステンションでは潜在的に問題となるでしょう: 
+このときクリアされるべき UTF-8 キャッシュがクリアされないためです.
+
+APIs obsoleted in Perl 5.8.0, like sv_2pv, sv_catpvn, sv_catsv,
+sv_setsv, are again available.
+
+Perl 5.8.0 で廃止された sv_2pv, sv_catpvn, sv_catsv, sv_setsv が
+再び使えるようになりました.
+
+Certain Perl core C APIs like cxinc and regatom are no longer
+available at all to code outside the Perl core of the Perl core
+extensions.  This is intentional.  They never should have been
+available with the shorter names, and if you application depends on
+them, you should (be ashamed and) contact perl5-porters to discuss
+what are the proper APIs.
+
+cxinc や regatom といった特定の Perl コアの C API が有効でなくなりました. 
+これは故意に行われました. 今後短い名前で有効になるべきではありません. 
+またアプリケーションでこれらに依存しているのなら(そのことを恥じるべきであり, 
+そして) perl5-porters においてでなぜそれが適切であるのか説明して
+議論してください.
+
+Certain Perl core C APIs like C<Perl_list> are no longer available
+without their C<Perl_> prefix.  If your XS module stops working
+because some functions cannot be found, in many cases a simple fix is
+to add the C<Perl_> prefix to the function and the thread context
+C<aTHX_> as the first argument of the function call.  This is also how
+it should always have been done: letting the Perl_-less forms to leak
+from the core was an accident.  For cleaner embedding you can also
+force this for all APIs by defining at compile time the cpp define
+PERL_NO_SHORT_NAMES.
+
+C<Perl_list> といったいくつかの API が Perl_ プレフィックスなしでは
+有効でなくなりました. もしいくつかの関数が見つからなくて XS モジュールが
+とまったら, いくつかのケースでは関数に C<Perl_> プレフィックスをつけて
+関数呼び出しの最初の引数にスレッドコンテキスト C<aTHX_> が加わることで
+簡単になおるでしょう. これは常にそうされるべきでした: 
+Perl_ の無い形式がコアから偶然漏れたのでしょう. 
+よりきれいに埋め込むためにも, コンパイル時に cpp で PERL_NO_SHORT_NAMES を
+定義して全ての API にこれを強制するべきでしょう.
+
+Perl_save_bool() has been added.
+
+Perl_save_bool() が追加されました.
+
+Regexp objects (those created with C<qr>) now have S-magic rather than
+R-magic.  This fixed regexps of the form /...(??{...;$x})/ to no
+longer ignore changes made to $x.  The S-magic avoids dropping
+the caching optimization and making (??{...}) constructs obscenely
+slow (and consequently useless).  See also L<perlguts/"Magic Variables">.
+Regexp::Copy was affected by this change.
+
+(C<qr> で生成される) 正規表現オブジェクトは R-magic ではなく S-magic を
+持つようになりました. これは /...(??{...;$x})/ 形式において $x に
+施された修正を無視してしまわないように修正します. S-magic は最適化や
+マーキング (??{...})か構築した汚れのある低速度な(従って使われない)
+キャッシュを解除します. L<perlguts/"Magic Variables"> も参照してください. 
+Regexp::Copy がこの影響を受けます.
+
+The Perl internal debugging macros DEBUG() and DEB() have been renamed
+to PERL_DEBUG() and PERL_DEB() to avoid namespace conflicts.
+
+Perl の内部でバック用マクロ DEBUG() 及び DEB() が名前の衝突を
+避けるために PERL_DEBUG() 及び PERL_DEB() に変更されました.
+
+C<-DL> removed (the leaktest had been broken and unsupported for years,
+use alternative debugging mallocs or tools like valgrind and Purify).
+
+C<-DL> が削除されました. (リークテストは破損していて長いこと
+サポートされていません. 代わりにデバッグ malloc を使うか valgrind や Purify 
+といったツールを使ってください.)
+
+Verbose modifier C<v> added for C<-DXv> and C<-Dsv>, see L<perlrun>.
+
+冗長修飾子 C<v> が C<-DXv> 及び C<-Dsv> に追加されました. 
+L<perlrun> を参照してください.
+
+=head1 New Tests
+
+新しいテスト
+
+In Perl 5.8.0 there were about 69000 separate tests in about 700 test files,
+in Perl 5.8.1 there are about 77000 separate tests in about 780 test files.
+The exact numbers depend on the Perl configuration and on the operating
+system platform.
+
+Perl 5.8.0 では約 700 のテストファイルに およそ 69,000 のテストがありました. 
+Perl 5.8.1 では約 750 のテストファイルに およそ 75,000 のテストがあります. 
+正確な数は Perl の設定やOSプラットフォームに依存して変化します.
+
+=head1 Known Problems
+
+既知の問題点
+
+The hash randomisation mentioned in L</Incompatible Changes> is definitely
+problematic: it will wake dormant bugs and shake out bad assumptions.
+
+L</Incompatible Changes> に記述されている
+ハッシュのランダム性は明らかに未決定事項です: これは休眠しているバグを
+目覚めさせ, 間違っていた仮定を揺り動かすでしょう.
+
+If you want to use mod_perl 2.x with Perl 5.8.1, you will need
+mod_perl-1.99_10 or higher.  Earlier versions of mod_perl 2.x
+do not work with the randomised hashes.  (mod_perl 1.x works fine.)
+You will also need Apache::Test 1.04 or higher.
+
+mod_perl 2.x を Perl 5.8.1 で使おうとしているのなら, mod_perl-1.99_10 
+以降を使う必要があるでしょう. mod_perl 2.x のそれ以前のバージョンでは
+ランダムなハッシュでは機能しません. (mod_perl 1.x では大丈夫です.) 
+Apache::Test 1.04 以降も必要になるでしょう.
+
+Many of the rarer platforms that worked 100% or pretty close to it
+with perl 5.8.0 have been left a little bit untended since their
+maintainers have been otherwise busy lately, and therefore there will
+be more failures on those platforms.  Such platforms include Mac OS
+Classic, IBM z/OS (and other EBCDIC platforms), and NetWare.  The most
+common Perl platforms (Unix and Unix-like, Microsoft platforms, and
+VMS) have large enough testing and expert population that they are
+doing well.
+
+稀なプラットフォームの Perl 5.8.0 が 100% もしくはほぼ 100% 近く動作する
+箇所の多くで, そのメンテナが多忙であったために幾分世話が遠くなっていました. 
+その様なプラットフォームでは他のプラットフォームより失敗が多くなるでしょう. 
+Max OS Classic, IBM z/OS (及び他のEBCDIC プラットフォーム), NetWare などが
+当たります. 多くの共通の Perl プラットフォーム (Unix 及び Unixライクな
+プラットフォーム, Microsoft プラットフォーム, VMS) は良く行う十分の多くの
+テストとエキスパート人口があります.
+
+=head2 Tied hashes in scalar context
+
+スカラーコンテキストでのタイされたハッシュの評価
+
+Tied hashes do not currently return anything useful in scalar context,
+for example when used as boolean tests:
+
+これまでタイされたハッシュはスカラーコンテキストでは有用な値を
+返していませんでした. 例えば真偽テストを次のようにしても:
+
+	if (%tied_hash) { ... }
+
+The current nonsensical behaviour is always to return false,
+regardless of whether the hash is empty or has elements.
+
+これまでのばかげた振る舞いではハッシュが空か要素を持っているかに
+かかわらず常に偽となっていました.
+
+The root cause is that there is no interface for the implementors of
+tied hashes to implement the behaviour of a hash in scalar context.
+
+この根本的な原因はハッシュのスカラーコンテキストでの振る舞いを
+実装するためのインターフェースが無かったことでした.
+
+=head2 Net::Ping 450_service and 510_ping_udp failures
+
+Net::Ping 450_service 及び 510_ping_udp の失敗
+
+The subtests 9 and 18 of lib/Net/Ping/t/450_service.t, and the
+subtest 2 of lib/Net/Ping/t/510_ping_udp.t might fail if you have
+an unusual networking setup.  For example in the latter case the
+test is trying to send a UDP ping to the IP address 127.0.0.1.
+
+lib/Net/Ping/t/450_service.t のサブテスト 9, 18, 
+lib/Net/Ping/t/510_ping_udp.t のサブテスト 2 はあまりないネットワーク
+設定を行っていると失敗します. 例えば後者は UDP ping を IP アドレス 
+127.0.0.1 に送ろうとします.
+
+=head2 B::C
+
+The C-generating compiler backend B::C (the frontend being
+C<perlcc -c>) is even more broken than it used to be because of
+the extensive lexical variable changes.  (The good news is that
+B::Bytecode and ByteLoader are better than they used to be.)
+
+C言語を生成するコンパイラのバックエンドである B::C (フロントエンド
+は C<perlcc -c> になります)がいくらかこわれぎみです. 広範囲の
+レキシカル変数の変更によるものです. (朗報もあります. B::Bytecode 
+及び ByteLoader は改善されています. )
+
+=head1 Platform Specific Problems
+
+プラットフォーム固有の問題点
+
+=head2 EBCDIC Platforms
+
+EBCDIC プラットフォーム
+
+IBM z/OS and other EBCDIC platforms continue to be problematic
+regarding Unicode support.  Many Unicode tests are skipped when
+they really should be fixed.
+
+IBM z/OS 及び他の EBCDIC プラットフォームは Unicode サポートに関して
+不明確なままです. 多くのユニコードテストは修正すべき箇所をスキップ
+します.
+
+=head2 Cygwin 1.5 problems
+
+Cygwin 1.5 における問題
+
+In Cygwin 1.5 the F<io/tell> and F<op/sysio> tests have failures for
+some yet unknown reason.  In 1.5.5 the threads tests stress_cv,
+stress_re, and stress_string are failing unless the environment
+variable PERLIO is set to "perlio" (which makes also the io/tell
+failure go away).
+
+Cygwin 1.5 において F<io/tell> 及び F<op/sysio> テストがいくつかの
+未知の原因で失敗します. 1.5.5 ではスレッドテスト stress_cv, 
+stress_re, stress_string が環境変数 PERLIO に "perlio" を設定
+している時以外は失敗します(この時 io/tell も失敗します).
+が
+
+Perl 5.8.1 does build and work well with Cygwin 1.3: with (uname -a)
+C<CYGWIN_NT-5.0 ... 1.3.22(0.78/3/2) 2003-03-18 09:20 i686 ...>
+a 100% "make test"  was achieved with C<Configure -des -Duseithreads>.
+
+Perl 5.8.1 は Cygwin 1.3: (uname -a) 
+C<CYGWIN_NT-5.0 ... 1.3.22(0.78/3/2) 2003-03-18 09:20 i686 ...>
+ではビルドでき, ちゃんと動作します. "make test" は C<Configure -des 
+-Duseithreads> で 100% 成功します.
+
+=head2 HP-UX: HP cc warnings about sendfile and sendpath
+
+HP-UX: HP cc は sendfile 及び sendpath  について警告を発します
+
+With certain HP C compiler releases (e.g. B.11.11.02) you will
+get many warnings like this (lines wrapped for easier reading):
+
+いくつかの HP C コンパイラリリース (例えば B.11.11.02) では
+次のような警告をだします(見やすいように改行しています):
+
+  cc: "/usr/include/sys/socket.h", line 504: warning 562:
+    Redeclaration of "sendfile" with a different storage class specifier:
+      "sendfile" will have internal linkage.
+  cc: "/usr/include/sys/socket.h", line 505: warning 562:
+    Redeclaration of "sendpath" with a different storage class specifier:
+      "sendpath" will have internal linkage.
+
+  cc: "/usr/include/sys/socket.h", line 504: warning 562:
+     異なるストレージクラス指示子による "sendfile" の再宣言:
+      "sendfile" は内部リンケージになります.
+  cc: "/usr/include/sys/socket.h", line 505: warning 562:
+     異なるストレージクラス指示子による "sendpath" の再宣言:
+      "sendpath" は内部リンケージになります.
+
+The warnings show up both during the build of Perl and during certain
+lib/ExtUtils tests that invoke the C compiler.  The warning, however,
+is not serious and can be ignored.
+
+この警告は Perl のビルド中や C コンパイラを呼び出す lib/ExtUtils の
+テストで発生します. しかしこれは重大なものではなく無視することができます.
+
+=head2 IRIX: t/uni/tr_7jis.t falsely failing
+
+IRIX: t/uni/tr_7jis.t 誤った失敗
+
+The test t/uni/tr_7jis.t is known to report failure under 'make test'
+or the test harness with certain releases of IRIX (at least IRIX 6.5
+and MIPSpro Compilers Version 7.3.1.1m), but if run manually the test
+fully passes.
+
+いくつかの IRIX リリース (少なくとも IRIX 6.5 及び MIPSpro Compiler 
+Version 7.3.1.1m) での 'make test' もしくは test harness において 
+t/uni/tr_7jis.t が失敗と報告することが知られています. 
+しかしこれは手動でテストしたときには完全にパスできます.
+
+=head2 Mac OS X: no usemymalloc
+
+Mac OS X: usemymalloc がありません
+
+The Perl malloc (C<-Dusemymalloc>) does not work at all in Mac OS X.
+This is not that serious, though, since the native malloc works just
+fine.
+
+すべての Mac OS X において Perl malloc (C<-Dusemymalloc>) は
+機能しません. これはネイティブの malloc がきちんと動作してるので
+大きな問題ではありません.
+
+=head2 Tru64: No threaded builds with GNU cc (gcc)
+
+Tru64: GNU cc (gcc) でスレッドをビルドできません
+
+In the latest Tru64 releases (e.g. v5.1B or later) gcc cannot be used
+to compile a threaded Perl (-Duseithreads) because the system
+C<< <pthread.h> >> file doesn't know about gcc.
+
+最近の Tru64 リリース (例えば v5.1B) において gcc (3.3) をスレッド Perl 
+をビルドするために使えません(-Duseithreads). 
+システムの C<< <pthread.h> >> ファイルを gcc が見つけられないためです.
+
+=head2 Win32: sysopen, sysread, syswrite
+
+As of the 5.8.0 release, sysopen()/sysread()/syswrite() do not behave
+like they used to in 5.6.1 and earlier with respect to "text" mode.
+These built-ins now always operate in "binary" mode (even if sysopen()
+was passed the O_TEXT flag, or if binmode() was used on the file
+handle).  Note that this issue should only make a difference for disk
+files, as sockets and pipes have always been in "binary" mode in the
+Windows port.  As this behavior is currently considered a bug,
+compatible behavior may be re-introduced in a future release.  Until
+then, the use of sysopen(), sysread() and syswrite() is not supported
+for "text" mode operations.
+
+Perl 5.8.0 リリース現在で sysopen()/sysread()/syswrite() "テキスト" モード
+において 5.6.1 やそれ以前で使われていたような振る舞いをとりません. 
+これらのビルトイン関数は (sysopen() に O_TEXT フラグを指定したり, binmode() 
+をファイルハンドルに使ったとしても) "バイナリ" モードとして処理されます. 
+このことはディスク上のファイルにのみ関係することで, Windows 版においては
+ソケットやパイプは常に "バイナリ" モードとなります. 
+この振る舞いは現在はバグとして考えられ, 今後互換のある振る舞いが提供される
+でしょう. それまでは sysopen()/sysread()/syswrite() の使用時における
+"テキスト" モード操作はサポートされません.
+
+=head1 Future Directions
+
+今後の展開
+
+The following things B<might> happen in future.  The first publicly
+available releases having these characteristics will be the developer
+releases Perl 5.9.x, culminating in the Perl 5.10.0 release.  These
+are our best guesses at the moment: we reserve the right to rethink.
+
+以下のことが今後おこるB<でしょう>. 
+これらの特徴を持つ最初の公的なリリースは開発者リリース Perl 5.9.x になり, 
+Perl 5.10.0 になるでしょう. これらは当時の最良となる推測です: 
+私たちは考え直す権利を持っています.
+
+=over 4
+
+=item *
+
+PerlIO will become The Default.  Currently (in Perl 5.8.x) the stdio
+library is still used if Perl thinks it can use certain tricks to
+make stdio go B<really> fast.  For future releases our goal is to
+make PerlIO go even faster.
+
+PerlIO はデフォルトになるでしょう. 現在 (Perl 5.8.x) でも
+stdio をB<本当に>高速化する技術を使っているのなら 
+stdio ライブラリを今でも使うコトができます. 今後のリリースでの目標は
+PerlIO を同じくらい高速にすることです.
+
+=item *
+
+A new feature called I<assertions> will be available.  This means that
+one can have code called assertions sprinkled in the code: usually
+they are optimised away, but they can be enabled with the C<-A> option.
+
+I<assertions> という新しい機能ができるでしょう. これは
+コードに散らされたアサーションと呼ばれるコードを持つことができるように
+なります: 通常これらは最適化で除去されますが, C<-A> オプションにより
+実行することができます.
+
+=item *
+
+A new operator C<//> (defined-or) will be available.  This means that
+one will be able to say
+
+新しい演算子 C<//> (defined-or) が追加されるでしょう. 
+導入される式
+ 
+    $a // $b
+
+instead of
+
+は次の式の代わりになり,
+
+   defined $a ? $a : $b
+
+and
+
+そして以下の式
+
+   $c //= $d;
+
+instead of
+
+は, 以下の意味を持ちます.
+
+   $c = $d unless defined $c;
+
+The operator will have the same precedence and associativity as C<||>.
+A source code patch against the Perl 5.8.1 sources will be available
+in CPAN as F<authors/id/H/HM/HMBRAND/dor-5.8.1.diff>.
+
+この演算子は C<||> と同じ優先度及び結合性を持っています. 
+Perl 5.8.1 ソースに対するパッチは CPAN の 
+F<authors/id/H/HM/HMBRAND/dor-5.8.1.diff> にあります.
+
+=item *
+
+C<unpack()> will default to unpacking the C<$_>.
+
+C<unpack()> がデフォルトで C<$_> を unpack するようになります.
+
+=item *
+
+Various Copy-On-Write techniques will be investigated in hopes
+of speeding up Perl.
+
+速度向上の為に様々な書き込み時コピーが調査されています.
+
+=item *
+
+CPANPLUS, Inline, and Module::Build will become core modules.
+
+CPANPLUS 及び, Inline, Module::Build がコアモジュールになるでしょう.
+
+=item *
+
+The ability to write true lexically scoped pragmas will be introduced.
+
+本当にレキシカルスコープなプラグマの記述が導入されるでしょう.
+
+=item *
+
+Work will continue on the bytecompiler and byteloader.
+
+バイトコンパイラ及びバイトローダの開発は継続するでしょう.
+
+=item *
+
+v-strings as they currently exist are scheduled to be deprecated.  The
+v-less form (1.2.3) will become a "version object" when used with C<use>,
+C<require>, and C<$VERSION>.  $^V will also be a "version object" so the
+printf("%vd",...) construct will no longer be needed.  The v-ful version
+(v1.2.3) will become obsolete.  The equivalence of strings and v-strings (e.g.
+that currently 5.8.0 is equal to "\5\8\0") will go away.  B<There may be no
+deprecation warning for v-strings>, though: it is quite hard to detect when
+v-strings are being used safely, and when they are not.
+
+現在のバージョン文字列は廃止が予定されています. 
+C<use>, C<require>, そして C<$VERSION> に使うときには v のつかない
+形式 (1.2.3) が "バージョンオブジェクト" になるでしょう. $^V もまた 
+"バージョンオブジェクト" になり, printf("%vd",...) 構造は必要なくなる
+でしょう. v 付きのバージョン (v1.2.3) は廃止されます. 文字列と
+バージョン文字列が同じ意味を持っていた状態 (例えば現在は 5.8.0 は
+"\5\8\0" と等価です) はなくなるでしょう. B<バージョン文字列の
+廃止の警告はないでしょう>. バージョン文字列が安全に使用されているのか
+安全ではないのかを認識するのはとても難しいことです.
+
+=item *
+
+5.005 Threads Will Be Removed
+
+5.005 スレッドは削除されます.
+
+=item *
+
+The C<$*> Variable Will Be Removed
+(it was deprecated a long time ago)
+
+C<$*> 変数は削除されます.
+(これはだいぶ前から廃止を言われています)
+
+=item *
+
+Pseudohashes Will Be Removed
+
+仮想ハッシュは削除されます.
+
+=back
+
+=head1 Reporting Bugs
+
+バグレポート
+
+If you find what you think is a bug, you might check the articles
+recently posted to the comp.lang.perl.misc newsgroup and the perl
+bug database at http://bugs.perl.org/ .  There may also be
+information at http://www.perl.com/ , the Perl Home Page.
+
+もしバグと思われるものが見つかったら, comp.lang.perl.misc ニュース
+グループに最近投稿された記事や http://bugs.perl.org/ にある perl 
+バグデータベースを確認してください. 
+Perl ホームページ, http://www.perl.com/ 情報はにもあります.
+
+If you believe you have an unreported bug, please run the B<perlbug>
+program included with your release.  Be sure to trim your bug down
+to a tiny but sufficient test case.  Your bug report, along with the
+output of C<perl -V>, will be sent off to perlbug@perl.org to be
+analysed by the Perl porting team.  You can browse and search
+the Perl 5 bugs at http://bugs.perl.org/
+
+もしまだ報告されていないバグだと確信したら, そのリリースに含まれている
+B<perlbug> プログラムをを実行してください. バグの再現スクリプトを十分小さく, 
+しかし有効なコードに切りつめることを意識してください. 
+バグレポートは C<perl -V> の出力と一緒に perlbug@perl.org に送られ 
+Perl porting チームによって解析されるます. Perl 5 のバグについては 
+http://bugs.perl.org/ で閲覧及び検索することができます.
+
+=head1 SEE ALSO
+
+The F<Changes> file for exhaustive details on what changed.
+
+F<Changes> ファイルに変更点の完全な詳細があります.
+
+The F<INSTALL> file for how to build Perl.
+
+F<INSTALL> ファイルに Perl のビルド方法があります.
+
+The F<README> file for general stuff.
+
+F<README> ファイルに一般的なことがあります.
+
+The F<Artistic> and F<Copying> files for copyright information.
+
+F<Artistic> 及び F<Copying> ファイルに著作権情報があります.
+
+=begin meta
+
+Translate: YAMASHINA Hio <hio@hio.jp>
+Update Kentaro Shirakata <argrath@ub32.org>
+
+=end meta
+
+=cut
+

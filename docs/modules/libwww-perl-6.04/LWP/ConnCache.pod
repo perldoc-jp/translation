@@ -1,0 +1,318 @@
+
+=encoding utf-8
+
+=head1 NAME
+
+=begin original
+
+LWP::ConnCache - Connection cache manager
+
+=end original
+
+LWP::ConnCache - 接続キャッシュマネージャ
+
+=head1 NOTE
+
+=begin original
+
+This module is experimental.  Details of its interface is likely to
+change in the future.
+
+=end original
+
+このモジュールは実験的なものです。
+インターフェースの詳細は、将来変更される可能性があります。
+
+=head1 SYNOPSIS
+
+ use LWP::ConnCache;
+ my $cache = LWP::ConnCache->new;
+ $cache->deposit($type, $key, $sock);
+ $sock = $cache->withdraw($type, $key);
+
+=head1 DESCRIPTION
+
+=begin original
+
+The C<LWP::ConnCache> class is the standard connection cache manager
+for LWP::UserAgent.
+
+=end original
+
+C<LWP::ConnCache> クラスは、LWP::UserAgent 用の
+標準接続キャッシュマネージャーです。
+
+=begin original
+
+The following basic methods are provided:
+
+=end original
+
+次の基本的なメソッドが提供されています:
+
+=over
+
+=item $cache = LWP::ConnCache->new( %options )
+
+=begin original
+
+This method constructs a new C<LWP::ConnCache> object.  The only
+option currently accepted is 'total_capacity'.  If specified it
+initialize the total_capacity option.  It defaults to the value 1.
+
+=end original
+
+このメソッドは、新しい C<LWP::ConnCache> オブジェクトを構築します。
+現在使用できるオプションは 'total_capacity' のみです。
+指定した場合、total_capacity オプションが初期化されます。
+デフォルト値は 1 です。
+
+=item $cache->total_capacity( [$num_connections] )
+
+=begin original
+
+Get/sets the number of connection that will be cached.  Connections
+will start to be dropped when this limit is reached.  If set to C<0>,
+then all connections are immediately dropped.  If set to C<undef>,
+then there is no limit.
+
+=end original
+
+キャッシュされる接続の数を取得/設定します。
+この制限に達すると、接続の破棄が始まります。
+C<0> に設定すると、すべての接続がすぐに破棄されます。
+C<undef> に設定すると、制限はありません。
+
+=item $cache->capacity($type, [$num_connections] )
+
+=begin original
+
+Get/set a limit for the number of connections of the specified type
+that can be cached.  The $type will typically be a short string like
+"http" or "ftp".
+
+=end original
+
+指定された型のキャッシュ可能な接続数の制限を取得/設定します。
+$type は通常、「http」や「ftp」などの短い文字列です。
+
+=item $cache->drop( [$checker, [$reason]] )
+
+=begin original
+
+Drop connections by some criteria.  The $checker argument is a
+subroutine that is called for each connection.  If the routine returns
+a TRUE value then the connection is dropped.  The routine is called
+with ($conn, $type, $key, $deposit_time) as arguments.
+
+=end original
+
+何らかの基準で接続を切断します。
+$checker 引数は、接続ごとに呼び出されるサブルーチンです。
+このルーチンが真の値を返すと、接続が切断されます。
+このルーチンは、($conn, $type, $key, $deposit_time) を引数として
+呼び出されます。
+
+=begin original
+
+Shortcuts: If the $checker argument is absent (or C<undef>) all cached
+connections are dropped.  If the $checker is a number then all
+connections untouched that the given number of seconds or more are
+dropped.  If $checker is a string then all connections of the given
+type are dropped.
+
+=end original
+
+ショートカット: $checker 引数がない(または C<undef>)場合は、
+キャッシュされた全ての接続が破棄されます。
+$checker が数値の場合は、指定された秒数以上触れられていない全ての接続が
+破棄されます。
+$checker が文字列の場合は、指定された型の全ての接続が破棄されます。
+
+=begin original
+
+The $reason argument is passed on to the dropped() method.
+
+=end original
+
+$reason 引数は、dropped() メソッドに渡されます。
+
+=item $cache->prune
+
+=begin original
+
+Calling this method will drop all connections that are dead.  This is
+tested by calling the ping() method on the connections.  If the ping()
+method exists and returns a FALSE value, then the connection is
+dropped.
+
+=end original
+
+このメソッドを呼び出すと、停止している全ての接続が破棄されます。
+これは、接続に対して ping() メソッドを呼び出すことによってテストされます。
+ping() メソッドが存在し、偽の値を戻す場合、接続は破棄されます。
+
+=item $cache->get_types
+
+=begin original
+
+This returns all the 'type' fields used for the currently cached
+connections.
+
+=end original
+
+現在キャッシュされている接続に使われている全ての「type」フィールドを返します。
+
+=item $cache->get_connections( [$type] )
+
+=begin original
+
+This returns all connection objects of the specified type.  If no type
+is specified then all connections are returned.  In scalar context the
+number of cached connections of the specified type is returned.
+
+=end original
+
+指定された型の全ての接続オブジェクトを返します。
+型が指定されていない場合は、全ての接続が戻されます。
+スカラコンテキストでは、指定された型のキャッシュされた接続の数が返されます。
+
+=back
+
+=begin original
+
+The following methods are called by low-level protocol modules to
+try to save away connections and to get them back.
+
+=end original
+
+次のメソッドは、低レベルのプロトコルモジュールによって呼び出され、
+接続を保存して元に戻そうとします。
+
+=over
+
+=item $cache->deposit($type, $key, $conn)
+
+=begin original
+
+This method adds a new connection to the cache.  As a result other
+already cached connections might be dropped.  Multiple connections with
+the same $type/$key might added.
+
+=end original
+
+このメソッドは、新しい接続をキャッシュに追加します。
+その結果、すでにキャッシュされている他の接続が削除される可能性があります。
+同じ $type/$key を持つ複数の接続が追加される可能性があります。
+
+=item $conn = $cache->withdraw($type, $key)
+
+=begin original
+
+This method tries to fetch back a connection that was previously
+deposited.  If no cached connection with the specified $type/$key is
+found, then C<undef> is returned.  There is not guarantee that a
+deposited connection can be withdrawn, as the cache manger is free to
+drop connections at any time.
+
+=end original
+
+このメソッドは、以前に追加された接続を取得しようとします。
+指定された $type/$key を持つキャッシュされた接続が見つからない場合は、
+C<undef> が返されます。
+キャッシュマネージャはいつでも自由に接続を破棄できるため、
+追加された接続が取得できる保証はありません。
+
+=back
+
+=begin original
+
+The following methods are called internally.  Subclasses might want to
+override them.
+
+=end original
+
+次のメソッドは内部で呼び出されます。
+サブクラスはこれらのメソッドをオーバーライドする必要があるかもしれません。
+
+=over
+
+=item $conn->enforce_limits([$type])
+
+=begin original
+
+This method is called with after a new connection is added (deposited)
+in the cache or capacity limits are adjusted.  The default
+implementation drops connections until the specified capacity limits
+are not exceeded.
+
+=end original
+
+このメソッドは、新しい接続がキャッシュに追加(配置)された後、
+または容量制限が調整された後に呼び出されます。
+デフォルトの実装では、指定された容量制限を超えなくなるまで、
+接続が破棄されます。
+
+=item $conn->dropping($conn_record, $reason)
+
+=begin original
+
+This method is called when a connection is dropped.  The record
+belonging to the dropped connection is passed as the first argument
+and a string describing the reason for the drop is passed as the
+second argument.  The default implementation makes some noise if the
+$LWP::ConnCache::DEBUG variable is set and nothing more.
+
+=end original
+
+このメソッドは、接続が破棄されたときに呼び出されます。
+破棄された接続に属するレコードが最初の引数として渡され、
+破棄の理由を説明する文字列が 2 番目の引数として渡されます。
+デフォルトの実装では、$LWP::ConnCache::DEBUG 変数が設定されている場合に
+ノイズが発生します。
+それ以上のものはありません。
+
+=back
+
+=head1 SUBCLASSING
+
+=begin original
+
+For specialized cache policy it makes sense to subclass
+C<LWP::ConnCache> and perhaps override the deposit(), enforce_limits()
+and dropping() methods.
+
+=end original
+
+特殊なキャッシュポリシーでは、C<LWP::ConnCache> をサブクラス化し、
+おそらく deposit(), enforce_limits(), dropping() メソッドを
+オーバーライドすることは理にかなっています。
+
+=begin original
+
+The object itself is a hash.  Keys prefixed with C<cc_> are reserved
+for the base class.
+
+=end original
+
+オブジェクト自体はハッシュです。
+C<cc_> で始まるキーは基底クラス用に予約されています。
+
+=head1 SEE ALSO
+
+L<LWP::UserAgent>
+
+=head1 COPYRIGHT
+
+Copyright 2001 Gisle Aas.
+
+This library is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
+
+=begin meta
+
+Translate: SHIRAKATA Kentaro <argrath@ub32.org>
+Status: completed
+
+=end meta
+

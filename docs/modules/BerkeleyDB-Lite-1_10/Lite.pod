@@ -1,0 +1,284 @@
+
+=encoding euc-jp
+
+=head1 名前
+
+BerkeleyDB::Lite - 簡潔になったBerkeleyDBへのインターフェース
+
+=head1 概要
+
+  use BerkeleyDB::Lite;
+
+=head2 ## 例1
+
+  ## Create a Hashed database
+  my $db = new BerkeleyDB::Lite::Hash
+		home => 'zoo',
+		filename => 'residents' ;
+
+  $db->{Samson} = new Primate ;
+  $db->{Cornelius} = new Primate ;
+  $db->{Kaa} = new Reptile ;
+
+
+=head2 ## 例2
+
+  ## Create a Btree database allowing duplicates and scalar values
+  my $types = scalars BerkeleyDB::Lite::Btree
+		home => 'zoo',
+		filename => 'types',
+		&duplicatekeys ;
+
+  $types->{primate} = 'Samson' ;
+  $types->{primate} = 'Cornelius' ;
+  $types->{reptile} = 'Kaa' ;
+
+  printf "%s\n", join ' ', $types->recordset{primate} ;
+  ## prints: Samson Cornelius
+
+  $types->delete( primate => 'Samson' ) ;
+  printf "%s\n", join ' ', $types->recordset{primate} ;
+  ## prints: Cornelius
+
+=head2 ## 例3
+
+  ## Create a database of visitors
+  ## Use a table with arbitrary keys
+  ## Track visitors by date/timestamp
+
+  $tickets = new BerkeleyDB::Lite::Btree
+		home => 'zoo',
+		filename => 'tickets',
+		&incrementkeys ;
+
+  ## Lexical Alternative
+  # $tickets = lexical BerkeleyDB::Lite::Btree
+  #		home => 'zoo',
+  #		filename => 'tickets' ;
+
+  $bytime = scalars BerkeleyDB::Lite::Btree
+		home => 'zoo',
+		filename => 'ticketsbytime',
+		&duplicatekeys ;
+
+  ## Process a new visitor in real time
+  sub newvisitor {
+	my $serial = $tickets->nextrecord() ;
+        my $date = getdate() ;	## not part of BerkeleyDB::Lite
+	my $time = gettime() ;	## not part of BerkeleyDB::Lite
+
+	$tickets->{$serial} = { @_ } ;
+	$bytime->{ "$date $time" } = $serial ;
+	return $serial ;
+	}
+
+  ## Get a list of visitors on a certain date
+  sub showvisitorsbydate {
+	my $date = shift ;
+	return $bytime->matchingvalues( $date ) ;
+	}
+
+=head1 説明
+
+BerkeleyDB::LiteはPaul MarquessのBerkeleyDBにおける簡潔になった
+コンストラクタ、データへのtieされたアクセス、および複数レコードの
+集合を返す為のメソッドを提供します。
+
+=head2 例1
+
+BerkeleyDB::Liteは引数B<home>と言うキーに
+関連付けられたパッケージ変数のハッシュを参照する
+BerkeleyDB環境変数を調整します。
+基本的なBerkeleyDB::Liteのコンストラクタの引数は
+BerkeleyDBの環境変数およびデータベースを定義します。
+コンストラクタが呼び出される時、以前にオープンされた
+環境変数が有効であれば使い回されます。一方、新しい
+新しい環境変数が生成され、以後のコンストラクタの
+要求のために有効となります。
+
+BerkeleyDB::Liteの本バージョンでは全ての環境変数オブジェクトは
+１点集中するデータストアとして生成されます。
+トランザクション可能なストレージは現在統合されていません。
+
+デフォルトでは、BerkeleyDB::LiteはB<Storable>モジュールを
+用いるデータベースとなるマーシャルオブジェクトとして
+設計されています。
+
+例1ではこれらの両方の特徴を意味する単純なアプリケーションを
+示しています。コンストラクタは環境変数およびデータベースを
+識別するための最小の引数によって呼び出されています。
+
+これら数行のコードでアプリケーションをサポートするための
+persistentなオブジェクトを追加するのに十分です。
+
+=head2 例2
+
+Berkeleyでもっとも良く見られる特等の一つが重複キーの
+サポートです。この特徴はマーシャリングすることなしに、
+要素がアクセスできて、追加可能で、削除できるような
+persistentな配列を用いる用いることで可能にします。
+
+例2ではレコードアクセスの自動シリアライズを無効にした
+B<scalars>コンストラクタを用いています。一方で、どうやって
+保存したかに関わらず、B<new>コンストラクタが
+用いられた場合、スカラーはスカラーのリファレンスとして返るでしょう。
+
+B<&duplicatekeys>はショートカットとしての定数のペアを
+返すサブルーチンです。これらの定数はBerkeleyDBモジュールの
+中で定義されています。
+
+B<recordset>メソッドはデータベースから保存されたリストを
+返します。このメソッドはBerkeleyDB::Lite::Btreeおよび
+BerkeleyDB::Lite::Hash両クラスで有効となっています。
+
+B<delete>メソッドはリストから要素を削除するために使われます。
+BerkeleyDB::LiteにB<tie>インターフェースが付属して以来、
+B<delete関数>は通常保存されたオブジェクトを削除するために
+用いることが出来ます。B<deleteメソッド>はデータベース上で
+重複キーを伴う曖昧な結果を避けるために使用されるべきです。
+
+BerkeleyDBは削除操作の状態を返します。
+この形式では次のイディオムを用いることでリスト全体を削除することが
+できます:
+
+  while ( ! delete $types->{primate} ) {}
+
+
+重複キーの設定をされたBerkeleyDBデータベースでは
+重複したkey/valueペアも許容されます。ほとんど大部分の
+データセットでは、key/valueペアは重複してはなりません。
+この問題は完全には解決されていません。最近ではその事前策として
+取得したリストをハッシュ構造にインポートします:
+
+
+  %unique = map { $_ => 1 } $types->recordset('primate') ;
+  keys %unique ;
+
+しかしながら、要素を削除するときに注意すべきです。
+重複キーを削除するためにはほぼ常に上記に似通ったイディオムを
+用いてdeleteメソッドが実行されます:
+
+  while ( ! $types->delete( primate => 'samson' ) ) {}
+
+ソースにおけるもう一つの問題はB<delete>メソッドをオブジェクトを含む
+データベース上で用いた際に発生します。この場合では、
+2つ目の引数は保存された値と正しくマッチしないオブジェクトを
+参照しているかも知れません。次のコードではこの難しさを示します:
+
+  my $cats = new BerkeleyDB::Lite::Btree(
+		home => 'zoo',
+		filename => 'cats',
+		&duplicatekeys,
+		) ;
+
+  my $Felix = new BigCat dinner => 'antelope' ;
+  $cats->{lion} = $Felix ;
+  $Felix->{dinner} = 'gazelle' ;
+  $cats->delete( lion => $Felix ) ;		## fails
+
+この問題はマーシャリング操作による結果と
+整数、小数、さもなくば文字列として解釈された数値が異なると
+言う場合でも起きます。したがって、オブジェクトの値は
+全くの文脈の結果として変更されるかもしれないかもしれない
+可能性を孕んでいるのです:
+
+  $weight = '300 lbs.' ;
+  $weight =~ s/\D//g ;
+  my $Felix = new BigCat( weight => $weight ) ;	## member as string
+  $cats->{lion} = $Felix ;
+  $cats->delete( lion => $Felix )		## operation fails
+		if $Felix->{weight} > 200 ;	## member as integer 
+
+=head2 例3
+
+例3では開発者の助けとなるおなじみのリレーショナルデータベースの
+追加の特徴を2,3紹介します。これらの形式はB<Btree>データベースの
+能力にアドバンテージをもたらしますが、BerkeleyDB::Lite::Hashオブジェクト
+では有効ではありません。
+
+BerkeleyDB::Lite::BtreeのB<nextrecord>メソッドは
+新しいユニークなキーを返します。B<nextrecord>を
+それぞれ呼び出すことで競合状態を回避するために新しい空白レコード
+を作りだ際、新たなキーを返します。このメソッドでは
+最終レコードに1を追加することでキーを作成します。
+最高値のキーを含む最終レコードを確保するためには、
+B<&incrementkeys>引数をBerkeleyDB::Lite::Btreeコンストラクタに
+対して用いて下さい。B<&incrementkeys>関数は数値のBtreeソートを
+強制するCODE定数を返すショートカットです。
+
+B<&incrementkeys>引数を用いてデータベースを構築することによる
+重大な損害もあります。そのことによって、データベースはB<db_dump>および
+B<db_verify>のようなSleepyCatユーティリティと互換性を失うことになるのです。
+その代わりB<nextrecord>はBerkeleyDB::Lite::Btree::Lexicalサブクラスから
+メソッドとして呼び出すことが可能です。このサブクラスは同様に
+機能しますが、その数値のキーは0をパディングされた文字列として
+ソートされたものです。しかしながら、B<Lexical>サブクラスにおける
+制約により、データベースにおけるキーは10,000,000,000以下の数値で
+なければなりません。
+
+BerkeleyDB::Lite::BtreeクラスへのB<lexical>コンストラクタは
+BerkeleyDB::Lite::Btree::LexicalサブクラスのB<new>コンストラクタ
+と同意です。
+
+BerkeleyDB::LiteではBerkeleyにおけるもう一つの良い特徴を
+実装しています: 文字列の部分マッチング。
+メソッドB<matchingkeys>、B<matchingvalues>、および
+B<searchset>では全て共通の部分文字列で始まるキーの
+レコードの集合を返します。
+
+例えば、もしキーが次のフォーマットで定義されたら: 
+S<"2002 Jul 14 15:30">、以下のデータを返すことが可能です:
+
+  ## All records for the year
+  @annually = $bytime->matchingkeys('2002 ') ;
+
+  ## All records for the month
+  @monthly = $bytime->matchingvalues('2002 Jul ') ;
+
+  ## All records for the day
+  %daily = $bytime->searchset('2002 Jul 14 ') ;	
+
+B<matchingkeys>ではマッチしたレコードのキーの配列を返します。
+B<matchingvalues>ではマッチしたレコードの値の配列を返します。
+意外な混乱としてB<matchingvalues>というメソッドにおける結果-
+返されるレコードはマッチしているキーを保有していますが、
+実際に返って来るのはレコードの値です。
+
+B<searchset>では示されたような連想配列に変換可能な
+key/valueペアとしてマッチしたレコードを返します。しかしながら、
+連想配列を使うことはデータベースが重複キーを含んでいた場合
+無意味となります。以下のコードではこの手の探索における
+結果を取得するための効果的なテクニックです:
+
+    foreach ( $bytime->matchingkeys( '2002 Jul 14', &uniquekeys ) ) {
+	$daily{ $_ } = [ $bytime->recordset( $_ ) ] ;
+	}
+
+B<&uniqukeys>ではデータベースからの重複結果をフィルターするために
+B<matchingkeys>メソッドに対する引数として第一に使用される定数を
+返します。この引数がB<&searchset>メソッドに渡された時、key/valueペア
+における値はレコードカウントを示します。B<&uniquekeys>では
+B<matchingvalues>メソッドと共に用いることができません。
+
+=head2 エクスポート
+
+&duplicatekeys
+&incrementkeys
+&uniquepairs
+&uniquekeys
+
+
+=head1 作者
+
+Jim Schueler, E<lt>jschueler@tqis.comE<gt>
+
+=head1 翻訳者
+
+三浦真磁 <snj@users.sourceforge.jp>
+
+=head1 参考文献
+
+L<Storable>
+L<BerkeleyDB>
+F<http://www.sleepycat.com>
+

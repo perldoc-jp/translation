@@ -1,0 +1,168 @@
+
+=encoding euc-jp
+
+=head1 名前
+
+Tie::LogFile - 簡単なログの自動フォーマッティング
+
+=head1 概要
+
+  use Tie::LogFile;
+  my $logfile = '/var/log/foo';
+  
+  tie(*LOG, 'Tie::LogFile', $logfile,
+        format  => '%c (%p) [%d] %m',
+        tformat => '%X %x')           or die $!;
+        
+  print LOG "Starting Run";
+  # 何かします ...
+  print LOG "Did @stuff";
+  # きれいにします
+  print LOG "Exiting";
+  
+  close(LOG) or die "Couldn't close $logfile\n";
+  
+=head1 説明
+
+このモジュールはログファイルをrepetativeなフォーマットで出力する
+手早く簡単な方法を提供します。多くのプロジェクトで、私は以下のようなものを
+持っていました:
+
+ sub logit {
+        print $LOG scalar localtime, @_;
+ }
+ 
+
+これは柔軟性に欠け、ログの行がログのフォーマットに従わないようになりがちです。
+Tie::LogFileモジュールはフォーマットを基本とし、
+最初にファイルハンドルにtieした(本当に作成した)とき、
+あなたはログの行が従って欲しいフォーマットを与えることができます。
+そのフォーマットはprintfと同じフォーマットです。更なる情報については
+フォーマットのセクションをご覧ください。
+
+=head1 ハンドルの結びつけ
+
+C<tie>呼び出しの基本的な形は以下の通りです:
+
+ tie *HANDLE, 'Tie::LogFile', '/path/to/log';
+
+もしこれになじみがないのであれば、perltieマニュアルページを見たほうがいいかも
+しれません。必要とされる引数の後に各種のオプションを渡すことができます:
+
+=over 
+
+=item * format
+
+
+formatオプションは、ログファイルに汎用的なフォーマットを設定することを可能にします。
+このオプションの書き方はC<sprintf>と同じやりかたです。しかし独自のタグのセットも持っています。
+これらのタグで最も基本的なものは時刻/日付スタンプのための%d、そしてログメッセージのための%mです。
+タグは大文字/小文字が区別されます。デフォルトのフォーマットは"[%d] %m"です。
+最小限、%mタグが指定されます。
+
+=item * tformat
+
+C<%d>トップレベルタグのために出力される時刻フォーマットを設定します。もしDate::Formatが
+インストールされていると、このフォーマットは直接C<Date::Format::time2str()>に渡されます。
+そうでなければC<POSIX::strftime()>に渡されます。何もフォーマットが設定されなければ、
+どちらのモジュールも使われず、C<%d> タグはC<scalar localtime>の出力で埋められます。
+
+=item * mode
+
+デフォルトではTie::LogFileはログファイルをC<E<gt>E<gt>>モードでオープンします。
+modeオプションで変更することができます。しかし少なくと現在はTie::LogFileはC<E<gt>>と
+C<E<gt>E<gt>>だけをサポートしています。
+
+=item * force_newline
+
+デフォルトではTie::LogFileは各出力の最後に確実に改行があるようにします。
+この動きはC<force_newline>オプションで変更することができます。
+
+=item * autoflush
+
+デフォルトではTie::LogFileはファイルハンドルを自動フラッシュ(autoflush)しません。
+自動フラッシュは、このオプションで有効にすることができます。
+
+=back
+
+=head1 ログのフォーマッティング
+
+最初のリリースでは、Tie::LogFileは5つのフォーマッティング・タグをサポートしています。
+タグについてのいい考えのある人は実際に試してみて、作者に教えてください。素晴らしい
+タグは将来の改訂で入ります。
+
+入っているタグには以下のものがあります:
+
+=over
+
+=item * %m
+
+ログメッセージ。これはprintあるいはprintfに渡したものそのものです。このタグが唯一
+必須のタグです。
+
+=item * %d
+
+日付/時刻スタンプ。C<tformat>オプションを使うことにより、このフォーマットを変更することができます。
+
+=item * %p
+
+プロセスID(C<$$>)。
+
+=item * %c
+
+Tie::LogFileは、それが出力した行数を管理しています。%cを使うとそのカウントが
+ログファイルに入ります。
+
+=item * %%
+
+リテラルの'%'。
+
+=back
+
+=head2 独自のタグを入れる。
+
+formatオプションに独自のタグを定義するための簡単なインターフェースがあります。
+C<%Tie::LogFile::formats>ハッシュには各タグのコード・リファレンスが入っています。
+例えばC<%p>のデフォルトの定義は以下のようなものです:
+
+ $Tie::LogFile::formats{'p'} = sub { $$ };
+ 
+入っているタグを、以下のような非常に混乱させるタグで上書きすることができます:
+
+ $Tie::LogFile::formats{'d'} = sub { scalar localtime(rand(1000000000)) };
+
+あるいは新しいタグを以下のように定義することができます:
+
+ $Tie::LogFile::formats{'u'} = sub { POSIX::uname() };
+ 
+formatsハッシュのなかのsubには2つのものが渡されます。$_[0]にはtieされたtypeglob、
+$_[1]には出力されるログの行です。例えば:
+
+ $Tie::LogFile::formats{'l'} = sub { length $_[1] };
+
+=head1 バグ
+
+わかっているバグはありません。しかし常にバグの可能性があります。
+
+=head1 TODO
+
+=over 
+
+=item * ハンドルからの読みこみ
+
+=item * より速くする
+
+=back
+
+=head1 作者(AUTHOR)
+
+Chris Reinhardt, E<lt>ctriv@dyndns.orgE<gt>
+
+=head1 参考資料
+
+L<Date::Format>, L<POSIX>, L<perltie>, L<perl>.
+
+=head1 翻訳者
+
+川合孝典(GCD00051@nifty.ne.jp)
+=cut

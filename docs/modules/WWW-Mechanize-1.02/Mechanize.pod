@@ -1,0 +1,910 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+WWW::Mechanize - Perlオブジェクト中のハンディWebブラウザ
+
+=head1 VERSION
+
+Version 1.02
+
+    $Header$
+
+=head1 SYNOPSIS
+
+C<WWW::Mechanize>、あるいは縮めてMechはWebサイトとのやりとりの自動化を
+助けます。これはリンク先やフォームデータの送信を含む、複数のページの取得を
+サポートします。取得したページはそれぞれ解析され、そのリンクやフォームが
+抽出されます。リンクやフォームを選択し、フォームを埋め、次のページを取得
+することが可能です。Mechは訪れたURLの履歴を保持しますので、これを問い
+あわせたり再訪することも可能です。
+
+    use WWW::Mechanize;
+    my $mech = WWW::Mechanize->new();
+
+    $mech->get( $url );
+
+    $mech->follow_link( n => 3 );
+    $mech->follow_link( text_regex => qr/download this/i );
+    $mech->follow_link( url => 'http://host.com/index.html' );
+
+    $mech->submit_form(
+        form_number => 3,
+        fields      => {
+            username    => 'yourname',
+            password    => 'dummy',
+        }
+    );
+
+    $mech->submit_form(
+        form_name => 'search',
+        fields    => { query  => 'pot of gold', },
+        button    => 'Search Now'
+    );
+
+
+MechはWebアプリケーションのテストにも良くあいます。L<Test::HTML::Lint>
+モジュールなど、Test::*の内の一つを使えば、取得したコンテンツを
+チェックし、testコールへの入力に使うことができます。
+
+    use Test::More;
+    like( $mech->content(), qr/$expected/, "Got expected content" );
+
+ページ取得を行う度にそのURLはスタックに保持され、これを前後に移動
+することができます。
+
+    $mech->back();
+
+ページ取得の過程をよりうまくコントロールしようと思ったら、以下の
+メソッドを使うことができます。C<follow_link>とC<submit_form>は、
+つまるところこれらの高レベルのラッパーです。
+
+    $mech->follow( $link );
+    $mech->find_link( n => $number );
+    $mech->form_number( $number );
+    $mech->form_name( $name );
+    $mech->field( $name, $value );
+    $mech->set_fields( %field_values );
+    $mech->set_visible( @criteria );
+    $mech->click( $button );
+
+L<WWW::Mechanize>はまさしくL<LWP::UserAgent>のサブクラスであり、
+L<LWP::UserAgent>のどのメソッドも利用可能です。
+
+    $mech->add_header($name => $value);
+
+=head1 重要なリンク
+
+=over 4
+
+=item * L<http://search.cpan.org/dist/WWW-Mechanize/>
+
+CPANのMechanizeのドキュメントページ。
+
+=item * L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=WWW-Mechanize>
+
+Mechanizeにはバグと機能向上のRTキューがあります。もしあなたの抱えて
+いるバグが未報告のものであれば"Report bug"をクリックしてください。
+
+=back
+
+=head1 コンストラクタと開始
+
+=head2 new()
+
+WWW::Mechanizeの新規オブジェクトを生成し、返します。
+以下ではこのオブジェクトを'agent'と呼びます。
+
+    my $mech = WWW::Mechanize->new()
+
+WWW::Mechanizeのコンストラクタは、LWP::UserAgentのコンストラクタへの
+パラメータのうち2つを上書きします。
+
+    agent => "WWW-Mechanize/#.##"
+    cookie_jar => {}    # an empty, memory-only HTTP::Cookies object
+
+コンストラクタにパラメータを渡すことで、この上書き値を変更することが
+できます。以下のようになります:
+
+    my $mech = WWW::Mechanize->new( agent=>"wonderbot 1.01" );
+
+cookie jarでのオーバーヘッドを避けたい時や、botにcookieを受け入れ
+させたくない時は、明示的にこれを禁止します。こんな感じです:
+
+    my $mech = WWW::Mechanize->new( cookie_jar => undef );
+
+以下はWWW::Mechanizeが認識できるパラメータです。
+これらはL<LWP::UserAgent>が認識するパラメータには含まれていません。
+
+=over 4
+
+=item * C<< autocheck => [0|1] >>
+
+ここのリクエストについてそれが成功していそうか否かをチェックします。
+これはあなたが自分でマニュアルでチェックすることによるトラブルを防ぎ
+ます。エラーが見つかれば、それはワーニングではなくエラーになります。
+デフォルトはオフです。
+
+=item * C<< onwarn => \&func() >>
+
+C<< L<Carp>::carp >>のようなC<warn>互換の、ワーニングを表示する必要が
+あるときに呼び出される関数へのリファレンスです。
+
+ここにC<undef>が設定されると、ワーニングはまったく表示されなくなります。
+とはいえ、その振る舞いを制御するのにC<quiet>を使うよりは良いでしょう。
+
+この値が渡されなければ、MechはL<Carp>がインストールされていれば
+C<Carp::carp>を、そうでなければC<CORE::warn>を使用します。
+
+=item * C<< onerror => \&func() >>
+
+C<< L<Carp>::croak >>のようなC<die>互換の、知恵意的なエラーが発生した
+際に呼び出される関数へのリファレンスです。
+
+ここにC<undef>が設定されると、エラーはまったく表示されなくなります。
+
+この値が渡されなければ、MechはL<Carp>がインストールされていれば
+C<Carp::croak>を、そうでなければC<CORE::die>を使用します。
+
+=item * C<< quiet => [0|1] >>
+
+ワーニングを出しません。C<< quiet => 1 >>に設定するのと、
+C<< $agent->quiet(1) >>を呼び出すのは同じです。デフォルトではオフです。
+
+=back
+
+=head2 $mech->agent_alias( $alias )
+
+実際にユーザーが渡した文字列からバージョンなどを拡張したものをuser 
+agentに設定します。I<$alias>には以下のうち一つを使用できます。
+
+=over 4
+
+=item * Windows IE 6
+
+=item * Windows Mozilla
+
+=item * Mac Safari
+
+=item * Mac Mozilla
+
+=item * Linux Mozilla
+
+=item * Linux Konqueror
+
+=back
+
+すると、最も関連深いものの一つに置き換えられます。例えば、
+
+    $mech->agent_alias( 'Windows IE 6' );
+
+ではUser-Agentは以下に設定されます。
+
+    Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)
+
+適切な別名の一覧はC<known_agent_aliases()>から返されます。
+
+=head2 C<known_agent_aliases()>
+
+Mechが知っている全てのエージェントの別名のリストを返します。
+
+=head1 ページ取得メソッド
+
+=head2 $mech->get($url)
+
+URL/URIを与えられると、それを取得します。L<HTTP::Response>
+オブジェクトが帰り値です。I<$url>は適切に整形されたURL文字列か、
+L<URI>オブジェクトです。
+
+この結果はagentオブジェクトに内部的に保持されますが、それを知っている
+必要はありません。以下にリストされているアクセッサを使うだけです。
+内部の詮索はしないように祈りますし、サブジェクトは将来変更されます。
+
+C<get()>はL<LWP::UserAgent>のメソッドをよりよい振る舞いをするように
+オーバーライドしたバージョンです。これは
+
+    $mech->get( $url, ":content_file"=>$tempfile );
+
+のようなことを可能にしますし、このパラメータが適当にフィルタされて
+取得されることとみなして構いません。
+
+=head2 $mech->reload()
+
+ブラウザのリロードボタンのように振舞います: 現在のリクエストを
+再実行します。
+
+リロードによるL<HTTP::Response>オブジェクトか、まだリクエストが実行
+されていない時は現在のリクエストがない時にはC<undef>を返します。
+
+=head2 $mech->back()
+
+ブラウザの"back"ボタンを叩くのと等価です。前のページに戻ります。
+過去の最初のページに戻りたくはありませんか？（実際、それが可能だと
+したらそうするでしょう？）
+
+=head1 リンク追跡メソッド
+
+=head2 $mech->follow_link(...)
+
+そのページの指定されたリンクをたどります。C<L<find_link()>>で使うのと
+同じパラメータを使い、それにマッチするものを指定します。
+
+以下がその例です:
+
+=over 4
+
+=item * "download"と名づけられた3番目のリンク
+
+    $mech->follow_link( text => "download", n => 3 );
+
+=item * 大文字小文字を区別せず、"download"をURL中に含む最初のリンク:
+
+    $mech->follow_link( url_regex => qr/download/i );
+
+または
+
+    $mech->follow_link( url_regex => qr/(?i:download)/ );
+
+=item * ページ内の3番目のリンク
+
+    $mech->follow_link( n => 3 );
+
+=back
+
+リンクが見つかれば、GETメソッドの実行結果（HTTP::Response
+オブジェクト）が返されます。ページ内にリンクがないか、または指定された
+リンクが見つからなかった時は、undefを返します。
+
+このメソッドは、将来の開発では使用されないC<< $mech->follow() >>の置き
+換えにあたります。
+
+=head1 フォームフィールド入力メソッド
+
+=head2 $mech->form_number($number)
+
+ページ中のI<number>番目のフォームを副手順でC<L<field()>>や
+C<L<click()>>で呼び出す際のターゲットとして選択します。返り値も選択
+されたフォームです。選択されたものが存在しない場合には、ワーニングを
+出し、undefを返します。フォームは1番からインデックスが付けられるので
+最初のフォームは0ではなく、1です。
+
+=head2 $mech->form_name($name)
+
+フォームを名前で選択します。ページ上にその名前のフォームが複数ある
+時は、そのうち最初のものが選択され、ワーニングが生成されます。
+通常はフォームそれ自体を、見つからなかった時にはundefを返します。
+
+この機能はlibwww-perl 5.69以降を必要としますのでご注意ください。
+
+=head2 $mech->field( $name, $value, $number )
+
+=head2 $mech->field( $name, \@values, $number )
+
+フィールド名を受け取り、指定された値をそこにセットします。これは
+現在のフォーム（C<L<form()>>で設定されたものか、デフォルトである
+ページ内の最初のフォーム）に適用されます。
+
+オプションのI<$number>パラメータは、2つ以上の同じ名前のフィールドが
+ある時に、それらを区別するのに使われます。フィールドは1から番号が
+ふられます。
+
+=head2 $mech->set_fields( $name => $value ... )
+
+このメソッドはフォームの複数のフィールドを設定します。これはフィールド
+名と値のペアのリストを引数に取ります。もし同じ名前のフィールドが複数
+あれば、そのうち最初に見つかったものに値がセットされます。この複製
+されたフィールドのいずれかを選択したいときは、値として、値と番号の
+2つの要素をもつ無名配列を使用します。
+
+        # set the second foo field
+        $mech->set_fields( $name => [ 'foo', 2 ] ) ;
+
+フィールドは1から番号がふられます。
+
+これは現在のフォーム（C<L<form()>>で設定されたものか、デフォルトである
+ページ内の最初のフォーム）に適用されます。
+
+=head2 $mech->set_visible( @criteria )
+
+このメソッドはフォームフィールドを、そのフィールド名を知る必要なく
+セットします。したがって、もしユーザー名とパスワードを要求するログイン
+画面があるなら、そのフィールド名を知るためにフォームを取得してソース
+から調査する（あるいはWWW::Mechanizeといっしょにインストールされる
+F<mech-dump>を使う）必要はありません; こう命じるだけで
+
+    $mech->set_visible( $username, $password ) ;
+
+これにしたがって、1番目と2番目のフィールドがセットされます。この
+メソッドは、可視（visible）フィールドのみに働くので、set_I<visible>と
+呼ばれます; 不可視（hidden）のフォームインプットは無視されます。
+フィールドの順番はHTMLソース中に出てくる順番と同じで、多くの場合は
+ページ上で見える順番と同じですが、テーブルを使ったクリエイティブな
+デザインでは異なることがあることは警告しておきます。
+
+C<@criteria>の個々の要素はフィールド値またはフィールド指定値です。
+フィールド値はスカラです。フィールド指定値では値をセットしたい
+フィールドのI<タイプ>を指定でき、二つの要素をもつ配列リファレンスで
+表わされます。したがって、最初のラジオボタンを次のように指定できます
+
+    $mech->set_visible( [ radio => "KCRW" ] ) ;
+
+フィールド値とフィールド指定値は混在させることができ、したがって
+
+    $mech->set_visible( "fred", "secret", [ option => "Checking" ] ) ;
+
+は1、2番目のフィールドを"fred"と"secret"に、そしてI<次の>C<OPTION>
+メニューフィールドを"Checking"にセットします。
+
+フィールド指定値のタイプには以下を使用できます: "text"や"password"、
+"hidden","textarea"、"file"、"image"、"submit"、"radio"、"checkbox"、
+"option"。
+
+=head2 $mech->tick( $name, $value [, $set] )
+
+現在のフォーム中の、その名前と値を持つ最初のチェックボックスに '印を
+付け(Ticks)' ます。その値を持つ名前月のチェックボックスがない時は
+dieします。オプションの三番目の引数でFalseの値を渡すと、チェック
+ボックスは印がはずされます。
+
+=head2 $mech->untick($name, $value)
+
+チェックボックスの印をはずします。C<tick($name,$value,undef)>の短い
+書き方です。
+
+=head1 フォーム送信メソッド
+
+=head2 $mech->click( $button [, $x, $y] )
+
+ボタンをクリックする効果を持ちます。最初の引数は、クリックするボタンの
+名前です。2番目と3番目の（オプションの）引数ではクリックする(x,y)
+座標を指定できます。
+
+フォーム上にボタンが一つしかなければ、引数なしでC<< $mech->click() >>と
+するだけで、そのボタンをクリックしたことになります。
+
+L<HTTP::Response>オブジェクトを返します。
+
+=head2 $mech->click_button( ... ) 
+
+フォーム上の名前、値、またはインデックスで指定されたボタンをクリック
+する効果をもちます。引数はキーと値のペアです。一つの名前、番号、または
+値だけを指定しなければいけません。
+
+TODO: この関数はテストされていません。
+
+=over 4
+
+=item * name => name
+
+I<name>という名前のボタンをクリックします。
+
+=item * number => n
+
+フォームのI<n>番目のボタンをクリックします。
+
+=item * value => value
+
+値がI<value>のボタンをクリックします。
+
+=item * x => x
+=item * y => y
+
+この（オプションの）引数でクリックする(x,y)座標を指定できます。
+
+=back
+
+=head2 $mech->select($name, $value) 
+
+=head2 $mech->select($name, \@values) 
+
+C<select>フィールド名を与えると、その値を指定された値にセットします。
+フィールドがE<lt>複数選択E<gt>ではなく、C<$value>が配列の時は、その
+最後の値がセットされます。これは現在のフォーム（C<L<form()>>メソッドで
+セットされたものか、デフォルトではページの最初のフォーム）に適用され
+ます。
+
+=head2 $mech->submit()
+
+ボタンをクリックしないまま、そのページをsubmitします。実際には、どの
+ボタンもクリックされなかったことになります。
+
+これはC<< $mech->click("submit") >>の別名として使用されてきましたが、
+今後、いずれかのバージョンでなくなるでしょう。
+
+=head2 $mech->submit_form( ... )
+
+このメソッドは、直前に取得したページのフォームを選択し、フィールドを
+埋め、それをsubmitするためのものです。これはform_number/form_name、
+set_fields、clickメソッドを一つの高レベルの呼び出しに結合したものです。
+これの引数はkey/valueの組み合わせのリストで、そのいずれもオプション
+です。
+
+=over 4
+
+=item * form_number => n
+
+I<n>番目のフォームを選択します（C<L<form_number()>>を呼びます）。この
+パラメータが指定されなかった場合、現在選択されているフォームが使用
+されます。
+
+=item * form_name => name
+
+I<name>と名づけられたフォームを使用します（C<L<form_name()>>を呼び
+ます）。
+
+=item * fields => fields
+
+I<fields>ハッシュリファレンスの値でフィールド値をセットします
+（C<L<set_fields()>>を呼びます）。
+
+=item * button => button
+
+I<button>ボタンをクリックします（C<L<click()>>を呼びます）。
+
+=item * x => x, y => y
+
+C<L<click()>>にxおよびyの値をセットします。
+
+=back
+
+フォームが選択されていない時は、最初に見つかったフォームが使用
+されます。
+
+I<button>が渡されなかった時は、代わりにC<L<submit()>>メソッドが使われ
+ます。
+
+L<HTTP::Response>オブジェクトを返します。
+
+=head1 ステータスメソッド
+
+=head2 $mech->success()
+
+最後のリクエストが成功したか否かをtrue(1)かfalse(0)で返します。まだ
+リクエストを実行していなければ、falseを返します。
+
+これはC<< $mech->res->is_success >>をラップする便利な関数です。
+
+=head2 $mech->uri()
+
+現在のURIを返します。
+
+=head2 $mech->response() / $mech->res()
+
+現在のレスポンスをL<HTTP::Response>オブジェクトとして返します。
+
+C<< $mech->response() >>の短縮形です。
+
+=head2 $mech->status()
+
+レスポンス中のHTTPステータスコードを返します。
+
+=head2 $mech->ct()
+
+レスポンスのコンテントタイプを返します。
+
+=head2 $mech->base()
+
+現在のレスポンスのベースURIを返します。
+
+=head2 $mech->content()
+
+レスポンスのコンテントを返します。
+
+=head2 $mech->forms()
+
+リストコンテキストで呼ばれたときは、最後に取得したページ内で見つかった
+フォームのリストを返します。スカラーコンテキストのときは、これらの
+フォームの配列リファレンスを返します。これで返されるフォームはいずれも
+L<HTML::Form>オブジェクトです。
+
+=head2 $mech->current_form()
+
+現在のフォームをL<HTML::Form>オブジェクトとして返します。私は
+C<L<form()>>が既に存在してcurrent_formがセットされている場合を除いては
+こちらのC<form()>を呼んでいます。
+
+=head2 $mech->links()
+
+リストコンテキストで呼ばれたときは、最後に取得したページ内で見つかった
+リンクのリストを返します。スカラーコンテキストのときは、これらの
+リンクの配列リファレンスを返します。これで返されるリンクはいずれも
+L<WWW::Mechanize::Link>オブジェクトです。
+
+=head2 $mech->is_html()
+
+現在のコンテントがHTMLか否かをHTTPヘッダーを元に判断して、trueまたは
+falseを返します。
+
+=head2 $mech->title()
+
+L<HTML::HeadParser>の解析結果を元に、C<< <TITLE> >>タグの内容を返します。
+コンテントがHTMLではない場合はundefを返します。
+
+=head1 コンテントハンドリングメソッド
+
+=head2 $mech->find_link()
+
+このメソッドは現在取得されているページ内のリンクを検索します。これは
+そのリンクについて記述しているL<WWW::Mechanize::Link>オブジェクトを
+返します。（きっとURLの記述より、こちらに魅力を覚えるでしょう。）
+リンクが見つからなかったときにはundefを返します。
+
+URL部分を取り出し、C<L<get()>>メソッドに渡すことができます。もしこれを
+したいのであれば、直接C<L<follow_link()>>メソッドを呼ぶのも良い
+でしょう。これは、自動的にC<L<get()>>を実行します。
+
+C<< <FRAME SRC="..."> >>タグはHTMLとして解析され、リンクとして扱われ
+ますので、このメソッドを使えることを覚えておいてください。
+
+以下のkey/valueの組み合わせを一つまたは複数渡すことで、リンクを選択
+することができます:
+
+=over 4
+
+=item * C<< text => string >> および C<< text_regex => regex >>
+
+C<text>は、I<string>と一致するテキストのリンクにマッチします。正確に
+"download"というテキストを持つリンクを選択するには、以下のようにします
+
+    $mech->find_link( text => "download" );
+
+C<text_regex>は、I<regex>に該当するテキストのリンクにマッチします。
+大文字小文字を問わず、"download"というテキストが含まれるリンクを選択
+するには、以下のようにします
+
+    $mech->find_link( text_regex => qr/download/i );
+
+ページのリンクから抽出されたテキストはトリムされることに注意して
+ください。C<< <a> foo </a> >>は'foo'として保持され、先頭および末尾の
+空白の検索は失敗します。
+
+=item * C<< url => string >> および C<< url_regex => regex >>
+
+I<string>またはI<regex>に該当するURLのリンクにマッチします。
+このURLは、そのページのコードによっては、F<foo/bar.html>のような相対
+URLかも知れません。
+
+=item * C<< url_abs => string >> および C<< url_abs_regex => regex >>
+
+リンクの絶対URLを、I<string>またはI<regex>に対して代わりにマッチング
+します。このURLは、ページ中では相対URLであるとしても、絶対URLになり
+ます。
+
+=item * C<< name => string >> および C<< name_regex => regex >>
+
+I<string>またはI<regex>に該当する名前のリンクにマッチします。
+
+=item * C<< tag => string >> および C<< tag_regex => regex >>
+
+I<string>またはI<regex>に該当するタグのリンクにマッチします。
+C<tag_regex>はおそらく、以下のように複数のタグをチェックするのに最も
+便利でしょう:
+
+    $mech->find_link( tag_regex => qr/^(a|img)$/;
+
+=item * C<< n => number >>
+
+I<n>番目のリンクにマッチします。
+
+C<n>パラメータは、上述の他のパラメータと番号を指定するために組み
+合わせることができます。たとえば、C<< text => "download", n => 3 >>
+では"download"というテキストに一致する3番目のリンクが検索されます。
+
+=back
+
+C<n>が指定されなかった場合、デフォルトは1です。したがって、もし一切
+パラメータを指定しなかった場合には、このメソッドはデフォルトで
+ページ中の最初のリンクを検索します。
+
+複数のテキストまたはURLパラメータを指定でき、これらはすべてand条件
+として扱われることを覚えておいてください。例えば、テキストが"News"で、
+URLに"cnn.com"を含む最初のリンクを探すには、以下のようにします:
+
+    $mech->find_link( text => "News", url_regex => qr/cnn\.com/ );
+
+=head2 $mech->find_link() : link format
+
+C<< $self->content >>中のリンクに対応するL<WWW::Mechanize::Link>
+オブジェクトをすべて含んだ配列リファレンスが返り値です。
+
+リンクは、以下から取得されます:
+
+=over 4
+
+=item C<< <A HREF=...> >>
+
+=item C<< <AREA HREF=...> >>
+
+=item C<< <FRAME SRC=...> >>
+
+=item C<< <IFRAME SRC=...> >>
+
+=back
+
+=head2 $mech->find_all_links( ... )
+
+判定基準にマッチするすべてのリンクを返します。このメソッドへのリンク
+の判定基準の指定方法は、C<L<find_link()>>と同じです。すべてのリンクは
+L<WWW::Mechanize::Link>として返されます。
+
+リストコンテキストでは、C<find_all_links()>はリンクのリストを返します。
+そうでなければ、リンクのリストへのリファレンスを返します。
+
+C<find_all_links()>をパラメータなしで呼ぶと、ページ中のすべての
+リンクが返されます。
+
+=head1 その他のメソッド
+
+=head2 $mech->add_header( name => $value [, name => $value... ] )
+
+エージェントにHTTPリクエスト時に追加または削除するhttpヘッダーを設定し
+ます。
+
+    $mech->add_header( Encoding => 'text/klingon' );
+
+もしI<value>がC<undef>であれば、そのヘッダーは以降のリクエストでは削除
+されます。例えば、Refererヘッダーをもう送らないようにするには:
+
+    $mech->add_header( Referer => undef );
+
+もしヘッダーを削除したいのであれば、C<delete_header>を使います。
+
+追加された名前/値の組み合わせの個数を返します。
+
+B<NOTE>: このメソッドは1.00以前のWWW::Mechanizeとは異なります。
+以前は、ヘッダーはオブジェクトインスタンスのメンバーではなく、パッケー
+ジのハッシュに保持されました。C<add_header()>の呼出しは、仮にそのオブ
+ジェクトがすぐになくなる場合でも、全てのWWW::Mechanizeオブジェクトの
+ヘッダーを変更しました。
+
+=head2 $mech->delete_header( name [, name ... ] )
+
+Removes HTTP headers from the agent's list of special headers.  For instance, you might need to do something like:
+
+    # Don't send a Referer for this URL
+    $mech->add_header( Referer => undef );
+
+    # Get the URL
+    $mech->get( $url );
+
+    # Back to the default behavior
+    $mech->delete_header( 'Referer' );
+
+=head2 $mech->quiet(true/false)
+
+画面へのワーニングを抑制することができます。
+
+    $mech->quiet(0); # ワーニングを有効にします (デフォルト)
+    $mech->quiet(1); # ワーニングを無効にします
+    $mech->quiet();  # 現在のquiet設定状態を返します
+
+=head1 L<LWP::UserAgent>メソッドのオーバーライド
+
+=head2 $mech->redirect_ok()
+
+L<LWP::UserAgent>のC<redirect_ok()>をオーバーライドしたバージョンです。
+このメソッドはリダイレクションを追跡すべきか否かを判定するために
+使われます。
+
+=head2 $mech->request( $request [, $arg [, $size]])
+
+L<LWP::UserAgent>のC<request()>をオーバーライドしたバージョンです。
+現在のリクエストを実行します。通常は、WWW::Mechanizeを使っていれば、
+このようなレベルで作業し様とはまったく思わないでしょうから、こう
+すべきでしょう
+
+C<$request>が修正されていることは覚えておいてください。
+
+L<HTTP::Response>オブジェクトを返します。
+
+=head2 $mech->update_html( $html )
+
+mechが見つけたHTMLを置き換えることができます。リンクやフォームを更新
+します。
+
+もし不恰好な出力をされたページを持っており、更新する気があるというので
+あればリンクは正しい形で出てくるでしょう:
+
+    my $html = $mech->content;
+    $html =~ s[</option>.?.?.?</td>][</option></select></td>]isg;
+    $mech->update_html( $html );
+
+=head2 $mech->_parse_html()
+
+HTMLドキュメントから得られるフォームとリンクを初期化する内部メソッド
+です。もしサブクラスでこれをオーバーライドしたり、複数回これを呼び出し
+たくなったら、どうぞそうしてください。
+
+=head2 $mech->_modify_request( $req )
+
+ずたずたに切り裂かれた内部ヘッダによってリクエストを編集します。
+
+=head2 $mech->_make_request()
+
+L<WWW::Mechanize::Cached>のように、サブクラスでリクエストを中断させる
+のに便利なメソッドです。
+
+=head1 使用が推奨されないメソッド
+
+このメソッドはより正しく柔軟なメソッドで置き換えられています。そちら
+代わりにお使いください。
+
+=head2 $mech->follow($string|$num)
+
+B<非推奨になっており>、より柔軟なC<L<follow_link()>>を使うことが
+勧められます。
+
+リンクを追跡します。文字列を与えれば、そのテキストがこの文字列にマッチ
+する最初のリンクが追跡されます。番号を与えれば、ページ中の
+I<$num>番目のリンクになります。リンクは0から始まることに注意して
+ください。
+
+ページ中にリンクが見つかればtrueを、そうでなければundefを返します。
+
+=head2 $mech->form($number|$name)
+
+B<非推奨になっており>、C<L<form_name()>>またはC<L<form_number()>>を
+使うことが勧められます。
+
+渡されたのが数字だけの文字列か否かによって、フォームを番号または名前で
+選択します。これは、もし数字だけの名前をもつフォームがあった場合に、
+このメソッドは正しく動かないかも知れないことを意味しています。
+
+=head1 内部使用限定のメソッド
+
+これらのメソッドは内部でのみ使われます。これらについて知る必要は多分
+ないでしょう。
+
+=head2 $mech->_reset_page()
+
+ページを解析した際のガラクタのような内部フィールドをリセットします。
+
+=head2 $mech->_extract_links()
+
+Webページの今テントからリンクを抽出するもので、L<WWW::Mechanize::Link>
+のC<{links}>プロパティを一般化します。
+
+=head2 $mech->_push_page_stack() / $mech->_pop_page_stack()
+
+エージェントは訪れたページをスタックしており、BACKの際など必要になった
+時にはこれで取り出します。
+
+現在のページは新しいページを取得する前にスタックに追加されなければ
+いけませんし、BACKが発生した際にはスタックから取り出されなければ
+いけません。
+
+どちらも引数を与えられても、$mechオブジェクトを操作します。
+
+=head2 warn( @messages )
+
+Fatalでない問題と診断用のための、中心となるワーニングメソッドです。
+デフォルトではC<CORE::warn>を呼びますが、コンストラクタでC<onwarn>を
+セットすることで上書きできます。
+
+=head2 die( @messages )
+
+中心となるエラーメソッドです。デフォルトではC<CORE::die>を呼びますが、
+コンストラクタでC<onerror>をセットすることで上書きできます。
+
+=head1 この他のドキュメント
+
+=head2 I<Spidering Hacks>, by Kevin Hemenway and Tara Calishain
+
+O'Reilly(L<http://www.oreilly.com/catalog/spiderhks/>)刊の
+I<Spidering Hacks>はscreen-scrapingとspideringについてもっと知りたい
+人にとってすばらしい本です。
+
+この本には6つのMechハックおよびMechの派生物があります:
+
+=over 4
+
+=item #21 WWW::Mechanize 101
+
+=item #22 Scraping with WWW::Mechanize
+
+=item #36 Downloading Images from Webshots
+
+=item #44 Archiving Yahoo! Groups Messages with WWW::Yahoo::Groups
+
+=item #64 Super Author Searching
+
+=item #73 Scraping TV Listings
+
+=back
+
+この本はSlashdotで積極的にレビューされています:
+L<http://books.slashdot.org/article.pl?sid=03/12/11/2126256>
+
+=head2 Web上のリソース
+
+=over 4
+
+=item * WWW::Mechanize Development mailing list
+
+Sourceforgeによって配信されており、Mechへの貢献者たちが様々なことを
+話し合う場になっています。 L<http://sourceforge.net/mail/?group_id=83309>
+
+=item * LWP mailing list
+
+LWPメーリングリストはL<http://lists.perl.org/showlist.cgi?name=libwww>に
+あり、WWW::Mechanize開発リストよりも一般的でユーザー主導になっています。
+LWPはMechの基盤ですから、これはMechユーザーにとって良いリストです。
+
+=item * L<WWW::Mechanize::Examples>
+
+手当たり次第にユーザから投稿されたサンプル群で、Mechanizeディストリ
+ビューションに含まれています。
+
+=item * L<http://www.perl.com/pub/a/2003/01/22/mechanize.html>
+
+テレビ番組表をWWW::Mechanizeを使ってスクラップすることについての
+Chris Ballの記事です。
+
+=item * L<http://www.stonehenge.com/merlyn/LinuxMag/col47.html>
+
+Yahoo Newsの画像のスクラップについてのRandal Schwartzの記事です。
+これは既に古くなっています: 彼はマッチするリンクを探すのにリンクリストを
+歩きまわりましたが、これの発行時にC<find_link()>メソッドがあれば
+その必要はなかったでしょう。
+
+=item * L<http://www.perladvent.org/2002/16th/>
+
+Mark FowlerによるPerl Advent Calendar上のWWW::Mechanizeページ。
+
+=item * L<http://www.linux-magazin.de/Artikel/ausgabe/2004/03/perl/perl.html>
+
+ドイツ誌I<Linux Magazin>のMichael SchilliによるMechおよび
+L<WWW::Mechanize::Shell>の記事。
+
+=back
+
+=head2 その他のMechanizeを使用するモジュール
+
+以下はMechanizeを使用しているかサブクラスになっているモジュールです。
+他にあれば教えてください:
+
+=over 4
+
+=item * L<WWW::Bugzilla>
+
+=item * L<WWW::Google::Groups>
+
+=item * L<WWW::Mechanize::Cached>
+
+=item * L<WWW::Mechanize::FormFiller>
+
+=item * L<WWW::Mechanize::Shell>
+
+=item * L<WWW::Mechanize::Sleepy>
+
+=item * L<WWW::Mechanize::SpamCop>
+
+=item * L<WWW::Mechanize::Timed>
+
+=item * L<WWW::SourceForge>
+
+=item * L<WWW::Yahoo::Groups>
+
+=back
+
+=head1 要望とバグ
+
+要望や示唆、バグ（ヤバッ！）は http://rt.cpan.org/ のRTバグ
+トラッキングシステムか、 bug-WWW-Mechanize@rt.cpan.org へのemailで
+報告してください。これは私が追跡するのを簡単にしてくれます。
+
+
+L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=WWW-Mechanize> はMechanize
+へのRTキューです。あなたのバグが既に報告されていないか見るにはこちらを
+チェックしてください。
+
+=head1 Author
+
+Copyright 2004 Andy Lester <andy@petdance.com>
+
+Artistic Licenseに基づきリリースされています。
+Kirrily RobertのすばらしいL<WWW::Automate>パッケージをベースにしました。
+
+=cut
+

@@ -1,0 +1,1346 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+perlmod - Perl modules (packages and symbol tables)
+
+=end original
+
+perlmod - Perl のモジュール (パッケージとシンボルテーブル)
+
+=head1 DESCRIPTION
+
+=head2 Packages
+X<package> X<namespace> X<variable, global> X<global variable> X<global>
+
+(パッケージ)
+
+=begin original
+
+Perl provides a mechanism for alternative namespaces to protect
+packages from stomping on each other's variables.  In fact, there's
+really no such thing as a global variable in Perl.  The package
+statement declares the compilation unit as being in the given
+namespace.  The scope of the package declaration is from the
+declaration itself through the end of the enclosing block, C<eval>,
+or file, whichever comes first (the same scope as the my() and
+local() operators).  Unqualified dynamic identifiers will be in
+this namespace, except for those few identifiers that if unqualified,
+default to the main package instead of the current one as described
+below.  A package statement affects only dynamic variables--including
+those you've used local() on--but I<not> lexical variables created
+with my().  Typically it would be the first declaration in a file
+included by the C<do>, C<require>, or C<use> operators.  You can
+switch into a package in more than one place; it merely influences
+which symbol table is used by the compiler for the rest of that
+block.  You can refer to variables and filehandles in other packages
+by prefixing the identifier with the package name and a double
+colon: C<$Package::Variable>.  If the package name is null, the
+C<main> package is assumed.  That is, C<$::sail> is equivalent to
+C<$main::sail>.
+
+=end original
+
+Perlは、他のパッケージの変数によってあるパッケージが壊されるのを
+防ぐために、選択的名前空間(alternative namespace)の機構を提供しています。
+実際のところ、グローバル変数は Perl にはないのです。
+package 文は、コンパイル単位を与えられた名前空間にあるように宣言します。
+そのパッケージ宣言のスコープは宣言それ自身から、宣言を囲むブロック、
+または C<eval>、ファイルの最初に現れたものまでです
+(my() や locla() 演算子のスコープと同じ)。
+修飾されていない動的識別子(dynamic identifiers)はその名前空間に
+存在するようになりますが、例外として以下に述べるように、いくつかの識別子は
+修飾されないと現在のパッケージではなく main パッケージに存在します。
+パッケージ文は(local() を使った)動的変数にのみ効果を持ちますが、
+my() によって生成されたレキシカル変数には影響 I<しません>。
+典型的には、これは C<do>, C<require>, C<use> 演算子を使ってインクルードされた
+ファイルの先頭の宣言となります。
+二ヶ所以上でパッケージを切り替えることができます。
+それによって、ブロックの残りの部分に対してコンパイラが
+使うシンボルテーブルに影響を及ぼすにすぎません。
+他のパッケージから識別子にそのパッケージ名とダブルコロンを前置して
+C<$Package::Variable> のようにすることで、変数やファイルハンドルを
+参照することができます。
+パッケージ名が空であれば、C<main> が仮定されます。
+つまり、C<$::sail> と C<$main::sail> は等価になります。
+
+=begin original
+
+The old package delimiter was a single quote, but double colon is now the
+preferred delimiter, in part because it's more readable to humans, and
+in part because it's more readable to B<emacs> macros.  It also makes C++
+programmers feel like they know what's going on--as opposed to using the
+single quote as separator, which was there to make Ada programmers feel
+like they knew what was going on.  Because the old-fashioned syntax is still
+supported for backwards compatibility, if you try to use a string like
+C<"This is $owner's house">, you'll be accessing C<$owner::s>; that is,
+the $s variable in package C<owner>, which is probably not what you meant.
+Use braces to disambiguate, as in C<"This is ${owner}'s house">.
+X<::> X<'>
+
+=end original
+
+古いパッケージ区切り子はシングルクォートでしたが、現在はダブルコロンを
+使うのが推奨されています。
+なぜなら、この方が人間が読みやすいということと、B<emacs> マクロで
+読みやすいからです。
+これはまた、C++ プログラマに自分が知っていることのように
+思わせるようにもします。
+それは以前のシングルクォートが Ada プログラマに馴染みのもので
+あったことと同じです。
+古い構文も互換性のためにまだサポートされているので、
+C<"This is $owner's house"> のようにすると、これは C<$owner::s> を
+アクセスします;
+つまり、パッケージ C<owner> にある $s という変数をアクセスするのですが、
+これはあなたの望んだ動作ではないでしょう。
+C<"This is ${owner}'s house"> のようにブレースを使うことによって
+曖昧さを除去します。
+X<::> X<'>
+
+=begin original
+
+Packages may themselves contain package separators, as in
+C<$OUTER::INNER::var>.  This implies nothing about the order of
+name lookups, however.  There are no relative packages: all symbols
+are either local to the current package, or must be fully qualified
+from the outer package name down.  For instance, there is nowhere
+within package C<OUTER> that C<$INNER::var> refers to
+C<$OUTER::INNER::var>.  C<INNER> refers to a totally
+separate global package.
+
+=end original
+
+パッケージは C<$OUTER::INNER::var> のように、パッケージセパレータを
+含むことができます。
+しかしながらこれは、名前の検索に関してなんの仮定も行いません。
+相対パッケージはありません: 全てのシンボルはカレントのパッケージに
+ローカルであるか外側のパッケージから完全に修飾されていなければなりません。
+たとえば、パッケージ C<OUTER> から C<$INNER::var> を
+参照するには C<$OUTER::INNER::var> とします。
+C<INNER> はグローバルパッケージから完全に分離されたものとして
+参照します。
+
+=begin original
+
+Only identifiers starting with letters (or underscore) are stored
+in a package's symbol table.  All other symbols are kept in package
+C<main>, including all punctuation variables, like $_.  In addition,
+when unqualified, the identifiers STDIN, STDOUT, STDERR, ARGV,
+ARGVOUT, ENV, INC, and SIG are forced to be in package C<main>,
+even when used for other purposes than their built-in ones.  If you
+have a package called C<m>, C<s>, or C<y>, then you can't use the
+qualified form of an identifier because it would be instead interpreted
+as a pattern match, a substitution, or a transliteration.
+X<variable, punctuation> 
+
+=end original
+
+文字(もしくはアンダースコア)で始まる識別子だけがパッケージの
+シンボルテーブルに格納されます。
+その他のシンボルは、$_ のような句読点変数の全てを含め、全て
+パッケージ C<main> にとどめられます。
+それに加え、STDIN, STDOUT, STDERR, ARGV, ARGVOUT, ENV, INC, SIG といった
+識別子は、たとえ組み込みでない他の目的のために使っていた場合でも
+強制的にパッケージ C<main> に置かれます。
+また、C<m>、C<s>, C<y> といった名前のパッケージを使っている場合、
+修飾形式の識別子を使うことができません。
+なぜなら、そういったものはパターンマッチ、置換、変換として
+解釈されてしまうからです。
+X<variable, punctuation> 
+
+=begin original
+
+Variables beginning with underscore used to be forced into package
+main, but we decided it was more useful for package writers to be able
+to use leading underscore to indicate private variables and method names.
+However, variables and functions named with a single C<_>, such as
+$_ and C<sub _>, are still forced into the package C<main>.  See also
+L<perlvar/"Technical Note on the Syntax of Variable Names">.
+
+=end original
+
+アンダースコアで始まる名前を持った変数は強制的にパッケージ main に
+置かれるように使われていましたが、アンダーススコアで始めることを、
+パッケージの作者が変数やメソッド名がパッケージにプライベートな
+ものであることを示すことに使えるようにするのがより便利だろうと
+考えてこれを決めました。
+しかし、$_ や C<sub _> のように、単一の C<_> で始まる名前の変数や関数は
+未だに強制的にパッケージ C<main> となります。
+L<perlvar/"Technical Note on the Syntax of Variable Names"> も
+参照してください。
+
+=begin original
+
+C<eval>ed strings are compiled in the package in which the eval() was
+compiled.  (Assignments to C<$SIG{}>, however, assume the signal
+handler specified is in the C<main> package.  Qualify the signal handler
+name if you wish to have a signal handler in a package.)  For an
+example, examine F<perldb.pl> in the Perl library.  It initially switches
+to the C<DB> package so that the debugger doesn't interfere with variables
+in the program you are trying to debug.  At various points, however, it
+temporarily switches back to the C<main> package to evaluate various
+expressions in the context of the C<main> package (or wherever you came
+from).  See L<perldebug>.
+
+=end original
+
+C<eval> された文字列は、eval() がコンパイルされたパッケージで
+コンパイルされます。
+(しかし、C<$SIG{}> への代入は、指定したシグナルハンドラが、
+パッケージ main にあるものとして扱います。
+シグナルハンドラを別のパッケージにおきたい場合には、そのシグナルハンドラ名に
+パッケージ名を付けてください。)
+たとえば、Perl ライブラリの F<perldb.pl> を参照してください。
+最初に、デバッグしようとするプログラムの変数を、デバッガーが壊さないように、
+パッケージ C<DB> に切り替えます。
+しかし、多くのポイントで、さまざまな式をパッケージ C<main> (あるいは
+もともと指定してたパッケージ) で評価するために、一時的に
+パッケージ C<main> に戻るようにしています。
+L<perldebug> を参照してください。
+
+=begin original
+
+The special symbol C<__PACKAGE__> contains the current package, but cannot
+(easily) be used to construct variable names.
+
+=end original
+
+特殊シンボル C<__PACKAGE__> はカレントパッケージを保持していますが、
+変数名を構築するために使うことは(簡単には)できません。
+
+=begin original
+
+See L<perlsub> for other scoping issues related to my() and local(),
+and L<perlref> regarding closures.
+
+=end original
+
+my() と local() に関連したスコープについては L<perlsub> を、クロージャに
+ついては L<perlref> 参照してください。
+
+=head2 Symbol Tables
+X<symbol table> X<stash> X<%::> X<%main::> X<typeglob> X<glob> X<alias>
+
+(シンボルテーブル)
+
+=begin original
+
+The symbol table for a package happens to be stored in the hash of that
+name with two colons appended.  The main symbol table's name is thus
+C<%main::>, or C<%::> for short.  Likewise the symbol table for the nested
+package mentioned earlier is named C<%OUTER::INNER::>.
+
+=end original
+
+パッケージのシンボルテーブルは、パッケージ名に二つのコロンを付けた名前の
+ハッシュに蓄えられます。
+つまり、main のシンボルテーブルは C<%main::>、または短く C<%::> となります。
+同様に、先に述べたネストしたパッケージは C<%OUTER::INNER::> となります。
+
+=begin original
+
+The value in each entry of the hash is what you are referring to when you
+use the C<*name> typeglob notation.
+
+=end original
+
+ハッシュの個々のエントリの値は、C<*name> 記法を使ったときに参照するものです。
+
+    local *main::foo    = *main::bar;
+
+=begin original
+
+You can use this to print out all the variables in a package, for
+instance.  The standard but antiquated F<dumpvar.pl> library and
+the CPAN module Devel::Symdump make use of this.
+
+=end original
+
+たとえばこれを、パッケージ内のすべての変数を出力するために使うことができます。
+標準ですが古風な F<dumpvar.pl> ライブラリと
+CPAN モジュール Devel::Symdump で実際に行えます。
+
+=begin original
+
+Assignment to a typeglob performs an aliasing operation, i.e.,
+
+=end original
+
+型グロブに対する代入は、エイリアス操作を行います;
+例えば:
+
+    *dick = *richard;
+
+=begin original
+
+causes variables, subroutines, formats, and file and directory handles
+accessible via the identifier C<richard> also to be accessible via the
+identifier C<dick>.  If you want to alias only a particular variable or
+subroutine, assign a reference instead:
+
+=end original
+
+は、richard という識別子でアクセスできる変数、サブルーチン、
+ファイルハンドルをC<dick> という識別子でもアクセスできるようにします。
+リファレンスを使えば、特定の変数だけとかサブルーチンだけ、と
+いうように個別に別名を付けることができます:
+
+    *dick = \$richard;
+
+=begin original
+
+Which makes $richard and $dick the same variable, but leaves
+@richard and @dick as separate arrays.  Tricky, eh?
+
+=end original
+
+これは、$richard と $dick を同じ変数にしますが、@richard と @dick は
+別の配列のままです。
+解りづらいですか?
+
+=begin original
+
+There is one subtle difference between the following statements:
+
+=end original
+
+以下の 2 つの文には、微妙な違いがあります:
+
+    *foo = *bar;
+    *foo = \$bar;
+
+=begin original
+
+C<*foo = *bar> makes the typeglobs themselves synonymous while
+C<*foo = \$bar> makes the SCALAR portions of two distinct typeglobs
+refer to the same scalar value. This means that the following code:
+
+=end original
+
+C<*foo = *bar> は型グロブそのものを同期させますが、一方
+C<*foo = \$bar> 同じスカラ値を示す二つの区別した型グロブの SCALAR 部を
+作ります。
+これが意味するのは、以下のコードは:
+
+    $bar = 1;
+    *foo = \$bar;       # Make $foo an alias for $bar
+
+    {
+        local $bar = 2; # Restrict changes to block
+        print $foo;     # Prints '1'!
+    }
+
+=begin original
+
+Would print '1', because C<$foo> holds a reference to the I<original>
+C<$bar> -- the one that was stuffed away by C<local()> and which will be
+restored when the block ends. Because variables are accessed through the
+typeglob, you can use C<*foo = *bar> to create an alias which can be
+localized. (But be aware that this means you can't have a separate
+C<@foo> and C<@bar>, etc.)
+
+=end original
+
+C<$foo> は I<元の> C<$bar> -- C<local()> によって追いやられ、ブロックが
+終わる時に復元されるもの -- へのリファレンスを保持しているので '1' が
+表示されます。
+変数は型グロブを通してアクセスされるので、ローカル化できるエイリアスを
+作るために C<*foo = *bar> とすることができます。
+(しかし、これは C<@foo> と C<@bar> などを別々に保持することが
+できないということに注意してください。)
+
+=begin original
+
+What makes all of this important is that the Exporter module uses glob
+aliasing as the import/export mechanism. Whether or not you can properly
+localize a variable that has been exported from a module depends on how
+it was exported:
+
+=end original
+
+これらのことが重要である理由は、Exporter モジュールはインポート/エクスポート
+機構としてグロブによるエイリアスを使うからです。
+モジュールからエクスポートされた変数を適切にローカル化できるかどうかは
+どのようにエクスポートされたかに依存します:
+
+=begin original
+
+    @EXPORT = qw($FOO); # Usual form, can't be localized
+    @EXPORT = qw(*FOO); # Can be localized
+
+=end original
+
+    @EXPORT = qw($FOO); # 通常の形式、ローカル化できない
+    @EXPORT = qw(*FOO); # ローカル化できる
+
+=begin original
+
+You can work around the first case by using the fully qualified name
+(C<$Package::FOO>) where you need a local value, or by overriding it
+by saying C<*FOO = *Package::FOO> in your script.
+
+=end original
+
+1 つ目の場合は、ローカルな値が必要なところで完全修飾名
+(C<$Package::FOO>) を使うか、プログラム中で C<*FOO = *Package::FOO> として
+上書きすることで回避できます。
+
+=begin original
+
+The C<*x = \$y> mechanism may be used to pass and return cheap references
+into or from subroutines if you don't want to copy the whole
+thing.  It only works when assigning to dynamic variables, not
+lexicals.
+
+=end original
+
+C<*x = \$y> 機構は、全てをコピーすることを望まないときに、低コストな
+リファレンスをサブルーチンに渡したりサブルーチンから返すために
+使うことができます。
+これは動的変数に対する代入のときにのみ働き、レキシカル変数では
+働きません。
+
+=begin original
+
+    %some_hash = ();			# can't be my()
+    *some_hash = fn( \%another_hash );
+    sub fn {
+	local *hashsym = shift;
+	# now use %hashsym normally, and you
+	# will affect the caller's %another_hash
+	my %nhash = (); # do what you want
+	return \%nhash;
+    }
+
+=end original
+
+    %some_hash = ();			# my() にできない
+    *some_hash = fn( \%another_hash );
+    sub fn {
+	local *hashsym = shift;
+	# ここで %hashsym を普通に使うと、
+	# 呼び出し元の %another_hash に影響を与える
+	my %nhash = (); # したいことをする
+	return \%nhash;
+    }
+
+=begin original
+
+On return, the reference will overwrite the hash slot in the
+symbol table specified by the *some_hash typeglob.  This
+is a somewhat tricky way of passing around references cheaply
+when you don't want to have to remember to dereference variables
+explicitly.
+
+=end original
+
+リターンのときに、このリファレンスは *some_hash 型グロブによって
+指定されるシンボルテーブル中にあるハッシュスロットを上書きします。
+これは、変数のデリファレンスを明示的に行うことを考えたくないようなときに、
+簡単にリファレンスに関するものを渡すトリッキーなやり方です。
+
+=begin original
+
+Another use of symbol tables is for making "constant" scalars.
+X<constant> X<scalar, constant>
+
+=end original
+
+シンボルテーブルの別の使い方は、「定数」スカラを生成するためのものです。
+X<constant> X<scalar, constant>
+
+    *PI = \3.14159265358979;
+
+=begin original
+
+Now you cannot alter C<$PI>, which is probably a good thing all in all.
+This isn't the same as a constant subroutine, which is subject to
+optimization at compile-time.  A constant subroutine is one prototyped
+to take no arguments and to return a constant expression.  See
+L<perlsub> for details on these.  The C<use constant> pragma is a
+convenient shorthand for these.
+
+=end original
+
+この後、C<$PI> を変更することはできません。
+これはコンパイル時に最適化が行われる定数サブルーチンとは異なっていて、
+最適化は行われません。
+定数サブルーチンは引数を取らず定数式を返すようになってプロトタイプが
+なされているサブルーチンです。
+これに関する詳細は L<perlsub> を参照してください。
+C<use constant> プラグマは定数サブルーチンを使いやすくします。
+
+=begin original
+
+You can say C<*foo{PACKAGE}> and C<*foo{NAME}> to find out what name and
+package the *foo symbol table entry comes from.  This may be useful
+in a subroutine that gets passed typeglobs as arguments:
+
+=end original
+
+*foo シンボルテーブルにある名前やパッケージを探し出すために、
+C<*foo{PACKAGE}> や C<*foo{NAME}> とすることができます。
+これは引数として型グロブを渡されるサブルーチン内で便利です。
+
+    sub identify_typeglob {
+        my $glob = shift;
+        print 'You gave me ', *{$glob}{PACKAGE}, '::', *{$glob}{NAME}, "\n";
+    }
+    identify_typeglob *foo;
+    identify_typeglob *bar::baz;
+
+=begin original
+
+This prints
+
+=end original
+
+これは以下のものを出力します:
+
+    You gave me main::foo
+    You gave me bar::baz
+
+=begin original
+
+The C<*foo{THING}> notation can also be used to obtain references to the
+individual elements of *foo.  See L<perlref>.
+
+=end original
+
+C<*foo{THING}> 記法は、*foo に属する個々の要素に対するリファレンスを
+得るためにも使うことができます。
+L<perlref> を参照してください。
+
+=begin original
+
+Subroutine definitions (and declarations, for that matter) need
+not necessarily be situated in the package whose symbol table they
+occupy.  You can define a subroutine outside its package by
+explicitly qualifying the name of the subroutine:
+
+=end original
+
+サブルーチン定義(およびついでに言えば宣言) は、それらがいるシンボル
+テーブルのパッケージ内にいる必要はありません。
+サブルーチン名を明示的に修飾することで、パッケージ外のサブルーチンを
+定義できます:
+
+    package main;
+    sub Some_package::foo { ... }   # &foo defined in Some_package
+
+=begin original
+
+This is just a shorthand for a typeglob assignment at compile time:
+
+=end original
+
+これはコンパイル時の型グロブへの代入の簡単な表現であり:
+
+    BEGIN { *Some_package::foo = sub { ... } }
+
+=begin original
+
+and is I<not> the same as writing:
+
+=end original
+
+以下のように書くのは同じ I<ではありません>:
+
+    {
+	package Some_package;
+	sub foo { ... }
+    }
+
+=begin original
+
+In the first two versions, the body of the subroutine is
+lexically in the main package, I<not> in Some_package. So
+something like this:
+
+=end original
+
+最初の 2 つは、サブルーチンの本体は Some_package I<ではなく>
+main パッケージになります。
+それで、以下のようにすると:
+
+    package main;
+
+    $Some_package::name = "fred";
+    $main::name = "barney";
+
+    sub Some_package::foo {
+	print "in ", __PACKAGE__, ": \$name is '$name'\n";
+    }
+
+    Some_package::foo();
+
+=begin original
+
+prints:
+
+=end original
+
+以下のように表示され:
+
+    in main: $name is 'barney'
+
+=begin original
+
+rather than:
+
+=end original
+
+以下のようにはなりません:
+
+    in Some_package: $name is 'fred'
+
+=begin original
+
+This also has implications for the use of the SUPER:: qualifier
+(see L<perlobj>).
+
+=end original
+
+SUPER:: 限定子の使用についても影響があります(L<perlobj> を参照して下さい)。
+
+=head2 BEGIN, UNITCHECK, CHECK, INIT and END
+X<BEGIN> X<UNITCHECK> X<CHECK> X<INIT> X<END>
+
+(BEGIN, UNITCHECK, CHECK, INIT, END)
+
+=begin original
+
+Five specially named code blocks are executed at the beginning and at
+the end of a running Perl program.  These are the C<BEGIN>,
+C<UNITCHECK>, C<CHECK>, C<INIT>, and C<END> blocks.
+
+=end original
+
+5 つの特殊な名前のついたコードブロックは、Perl プログラムの開始時および
+終了時に実行されます。
+それは C<BEGIN>, C<UNITCHECK>, C<CHECK>, C<INIT>, C<END> ブロックです。
+
+=begin original
+
+These code blocks can be prefixed with C<sub> to give the appearance of a
+subroutine (although this is not considered good style).  One should note
+that these code blocks don't really exist as named subroutines (despite
+their appearance). The thing that gives this away is the fact that you can
+have B<more than one> of these code blocks in a program, and they will get
+B<all> executed at the appropriate moment.  So you can't execute any of
+these code blocks by name.
+
+=end original
+
+これらのコードブロックは、サブルーチンのような見た目を与えるために
+C<sub> を前置できます(しかしこれはよいスタイルとは考えられていません)。
+これらのコードブロックは実際には(その見た目に反して)名前付きサブルーチンの
+ようには存在していないということは注意するべきでしょう。
+これで明かされることは、これらのコードブロックはプログラム中に B<複数>
+持つことができ、B<全て> が適切な瞬間に実行されるということです。
+従って、これらのコードブロックはどれも名前で実行できません。
+
+=begin original
+
+A C<BEGIN> code block is executed as soon as possible, that is, the moment
+it is completely defined, even before the rest of the containing file (or
+string) is parsed.  You may have multiple C<BEGIN> blocks within a file (or
+eval'ed string) -- they will execute in order of definition.  Because a C<BEGIN>
+code block executes immediately, it can pull in definitions of subroutines
+and such from other files in time to be visible to the rest of the compile
+and run time.  Once a C<BEGIN> has run, it is immediately undefined and any
+code it used is returned to Perl's memory pool.
+
+=end original
+
+C<BEGIN> コードブロックは、できるだけ早く、つまり、たとえファイル
+(または文字列)の残りが解析されていなくても、定義された瞬間に実行されます。
+ファイル(または eval された文字列)内に複数の C<BEGIN> ブロックを
+置くこともでき、それらは定義された順番に実行されます。
+C<BEGIN> ブロックは即座に実行されるので、サブルーチンなどの定義を
+他のファイルから読み込んでコンパイル時と実行時の残りの部分から見えるように
+することができます。
+C<BEGIN> が実行されれば、それは即座に未定義になり、使われたコードの
+全ては Perl のメモリープールに返されます。
+
+=begin original
+
+An C<END> code block is executed as late as possible, that is, after
+perl has finished running the program and just before the interpreter
+is being exited, even if it is exiting as a result of a die() function.
+(But not if it's morphing into another program via C<exec>, or
+being blown out of the water by a signal--you have to trap that yourself
+(if you can).)  You may have multiple C<END> blocks within a file--they
+will execute in reverse order of definition; that is: last in, first
+out (LIFO).  C<END> blocks are not executed when you run perl with the
+C<-c> switch, or if compilation fails.
+
+=end original
+
+C<END> コードブロックは、できるだけ遅く、つまり、たとえ die() 関数の
+結果であっても、perl がプログラムの実行を終えた後、
+インタプリタが終了する直前に実行されます
+(しかし、C<exec> を使って別のプログラムになったりとか、シグナルによって
+撃沈されるときはそうではありません。
+(できるものなら) 自分でトラップしなければなりません)。
+ファイル内に複数の END ブロックを置くこともでき、定義とは
+逆の順序で実行されます。
+つまり、最後に入ったものが最初に出る(LIFO) ということです。
+C<END> ブロックは C<-c> オプション付きで起動されたり、コンパイルに
+失敗した場合は実行されません。
+
+=begin original
+
+Note that C<END> code blocks are B<not> executed at the end of a string
+C<eval()>: if any C<END> code blocks are created in a string C<eval()>,
+they will be executed just as any other C<END> code block of that package
+in LIFO order just before the interpreter is being exited.
+
+=end original
+
+文字列の C<eval()> の最後では C<END> コードブロックは実行 B<されない> ことに
+注意してください: 文字列 C<eval()> の中で C<END> コードブロックが
+作成されると、これらはこのパッケージのその他の C<END> コードブロックと
+同様に、インタプリタが終了する直前に LIFO 順で実行されます。
+
+=begin original
+
+Inside an C<END> code block, C<$?> contains the value that the program is
+going to pass to C<exit()>.  You can modify C<$?> to change the exit
+value of the program.  Beware of changing C<$?> by accident (e.g. by
+running something via C<system>).
+X<$?>
+
+=end original
+
+C<END> コードブロックの内側では、C<$?> はそのプログラムが C<exit()> に
+渡した値が入っています。
+プログラムの返す終了コードを変更するために、この変数の値を
+変更することができます。
+間違って C<$?> を変えてしまうことに注意してください(たとえば C<system> を
+使って何かを実行するなど)。
+
+=begin original
+
+C<UNITCHECK>, C<CHECK> and C<INIT> code blocks are useful to catch the
+transition between the compilation phase and the execution phase of
+the main program.
+
+=end original
+
+C<UNITCHECK>, C<CHECK>, C<INIT> コードブロックは、メインプログラムの
+コンパイルフェーズと実行フェーズの遷移を捕捉したい場合に便利です。
+
+=begin original
+
+C<UNITCHECK> blocks are run just after the unit which defined them has
+been compiled.  The main program file and each module it loads are
+compilation units, as are string C<eval>s, code compiled using the
+C<(?{ })> construct in a regex, calls to C<do FILE>, C<require FILE>,
+and code after the C<-e> switch on the command line.
+
+=end original
+
+C<UNITCHECK> ブロックは、定義されたコンパイル単位がコンパイルされた直後に
+実行されます。
+メインプログラムファイルと、それが読み込んだそれぞれのモジュール、
+文字列 C<eval>、正規表現内で C<(?{ })> 構文を使ってコンパイルされたコード、
+C<do FILE> への呼び出し、C<require FILE>、コマンドラインの
+C<-e> オプションの後に書かれているコードがコンパイル単位です。
+
+=begin original
+
+C<CHECK> code blocks are run just after the B<initial> Perl compile phase ends
+and before the run time begins, in LIFO order.  C<CHECK> code blocks are used
+in the Perl compiler suite to save the compiled state of the program.
+
+=end original
+
+C<CHECK> コードブロックは、B<最初の> Perl コンパイルフェーズ終了直後、
+実行時が開始する直前に、LIFO 順で実行されます。
+C<CHECK> コードブロックは Perl コンパイラスイートがプログラムのコンパイル
+状態を保存するために使われます。
+
+=begin original
+
+C<INIT> blocks are run just before the Perl runtime begins execution, in
+"first in, first out" (FIFO) order.
+
+=end original
+
+C<INIT> ブロックは Perl ランタイムが実行を開始する直前に、「先入れ先出し」
+(FIFO) 順で実行されます。
+
+=begin original
+
+The C<CHECK> and C<INIT> code blocks will not be executed inside a string
+eval(), if that eval() happens after the end of the main compilation
+phase; that can be a problem in mod_perl and other persistent environments
+which use C<eval STRING> to load code at runtime.
+
+=end original
+
+C<CHECK> と C<INIT> のコードブロックは、eval() がメインコンパイルフェーズの
+終わりの後に起こると、文字列 eval() の内側では実行されません:
+これは mod_perl やその他の実行時にコードを読み込むのに C<eval STRING> を
+使う永続環境では問題になることがあります。
+
+=begin original
+
+When you use the B<-n> and B<-p> switches to Perl, C<BEGIN> and
+C<END> work just as they do in B<awk>, as a degenerate case.
+Both C<BEGIN> and C<CHECK> blocks are run when you use the B<-c>
+switch for a compile-only syntax check, although your main code
+is not.
+
+=end original
+
+Perlに対するスイッチ B<-n> と B<-p> を使った場合、C<BEGIN> と C<END> は
+(退化して) B<awk> のそれと同じように、動作します。
+B<-c> スイッチによって構文チェックのみ行われる場合、メインのコードが
+実行されないのとは対照的に C<BEGIN> と C<CHECK> の両方のブロックは
+実行されます。
+
+=begin original
+
+The B<begincheck> program makes it all clear, eventually:
+
+=end original
+
+B<begincheck> プログラムは、最終的にこれら全てをはっきりさせます:
+
+  #!/usr/bin/perl
+
+  # begincheck
+
+  print         "10. Ordinary code runs at runtime.\n";
+
+  END { print   "16.   So this is the end of the tale.\n" }
+  INIT { print  " 7. INIT blocks run FIFO just before runtime.\n" }
+  UNITCHECK {
+    print       " 4.   And therefore before any CHECK blocks.\n"
+  }
+  CHECK { print " 6.   So this is the sixth line.\n" }
+
+  print         "11.   It runs in order, of course.\n";
+
+  BEGIN { print " 1. BEGIN blocks run FIFO during compilation.\n" }
+  END { print   "15.   Read perlmod for the rest of the story.\n" }
+  CHECK { print " 5. CHECK blocks run LIFO after all compilation.\n" }
+  INIT { print  " 8.   Run this again, using Perl's -c switch.\n" }
+
+  print         "12.   This is anti-obfuscated code.\n";
+
+  END { print   "14. END blocks run LIFO at quitting time.\n" }
+  BEGIN { print " 2.   So this line comes out second.\n" }
+  UNITCHECK {
+   print " 3. UNITCHECK blocks run LIFO after each file is compiled.\n"
+  }
+  INIT { print  " 9.   You'll see the difference right away.\n" }
+
+  print         "13.   It merely _looks_ like it should be confusing.\n";
+
+  __END__
+
+=head2 Perl Classes
+X<class> X<@ISA>
+
+(Perl のクラス)
+
+=begin original
+
+There is no special class syntax in Perl, but a package may act
+as a class if it provides subroutines to act as methods.  Such a
+package may also derive some of its methods from another class (package)
+by listing the other package name(s) in its global @ISA array (which
+must be a package global, not a lexical).
+
+=end original
+
+Perl 5 にはクラスのための特別な構文はありませんが、メソッドとして
+機能するサブルーチンを提供するパッケージはクラスとして機能できます。
+そのようなパッケージでは、他のクラス(パッケージ)の名前を配列 @ISA
+(パッケージグローバルでなければならず、レキシカルにはできません)に
+並べることで、そのクラスからメソッドのいくつかを
+引き込んでくることができます。
+
+=begin original
+
+For more on this, see L<perltoot> and L<perlobj>.
+
+=end original
+
+詳しくは、L<perltoot> と L<perlobj> を参照してください。
+
+=head2 Perl Modules
+X<module>
+
+(Perl のモジュール)
+
+=begin original
+
+A module is just a set of related functions in a library file, i.e.,
+a Perl package with the same name as the file.  It is specifically
+designed to be reusable by other modules or programs.  It may do this
+by providing a mechanism for exporting some of its symbols into the
+symbol table of any package using it, or it may function as a class
+definition and make its semantics available implicitly through
+method calls on the class and its objects, without explicitly
+exporting anything.  Or it can do a little of both.
+
+=end original
+
+モジュールは、ライブラリファイル、つまりファイルとして同じ名前を持つ
+Perl のパッケージにある関係している関数の集合です。
+他のモジュールやプログラムから再利用が可能なように特に設計されています。
+そのモジュールを使用する任意のパッケージのシンボルテーブルで、
+自分のシンボルの一部をエクスポートする機能を用意することでこれを
+行なっているとも言え、あるいは、モジュールはクラス定義として
+機能することもでき、明示的にシンボルをエクスポートしなくても、
+クラスやそのオブジェクトに対するメソッド呼び出しを通して暗黙のうちに
+意味が通じるようにすることができます。
+両方を少しずつ、同時に使うことも可能です。
+
+=begin original
+
+For example, to start a traditional, non-OO module called Some::Module,
+create a file called F<Some/Module.pm> and start with this template:
+
+=end original
+
+たとえば Some::Module と呼ばれる伝統的な、非 OO モジュールを始めるには、
+以下のテンプレートを使って F<Some/Module.pm> というファイルを作成します:
+
+    package Some::Module;  # assumes Some/Module.pm
+
+    use strict;
+    use warnings;
+
+    BEGIN {
+        use Exporter   ();
+        our ($VERSION, @ISA, @EXPORT, @EXPORT_OK, %EXPORT_TAGS);
+
+        # set the version for version checking
+        $VERSION     = 1.00;
+        # if using RCS/CVS, this may be preferred
+        $VERSION = sprintf "%d.%03d", q$Revision$ =~ /(\d+)/g;
+
+        @ISA         = qw(Exporter);
+        @EXPORT      = qw(&func1 &func2 &func4);
+        %EXPORT_TAGS = ( );     # eg: TAG => [ qw!name1 name2! ],
+
+        # your exported package globals go here,
+        # as well as any optionally exported functions
+        @EXPORT_OK   = qw($Var1 %Hashit &func3);
+    }
+    our @EXPORT_OK;
+
+    # exported package globals go here
+    our $Var1;
+    our %Hashit;
+
+    # non-exported package globals go here
+    our @more;
+    our $stuff;
+
+    # initialize package globals, first exported ones
+    $Var1   = '';
+    %Hashit = ();
+
+    # then the others (which are still accessible as $Some::Module::stuff)
+    $stuff  = '';
+    @more   = ();
+
+    # all file-scoped lexicals must be created before
+    # the functions below that use them.
+
+    # file-private lexicals go here
+    my $priv_var    = '';
+    my %secret_hash = ();
+
+    # here's a file-private function as a closure,
+    # callable as &$priv_func;  it cannot be prototyped.
+    my $priv_func = sub {
+        # stuff goes here.
+    };
+
+    # make all your functions, whether exported or not;
+    # remember to put something interesting in the {} stubs
+    sub func1      {}    # no prototype
+    sub func2()    {}    # proto'd void
+    sub func3($$)  {}    # proto'd to 2 scalars
+
+    # this one isn't exported, but could be called!
+    sub func4(\%)  {}    # proto'd to 1 hash ref
+
+    END { }       # module clean-up code here (global destructor)
+
+    ## YOUR CODE GOES HERE
+
+    1;  # don't forget to return a true value from the file
+
+=begin original
+
+Then go on to declare and use your variables in functions without
+any qualifications.  See L<Exporter> and the L<perlmodlib> for
+details on mechanics and style issues in module creation.
+
+=end original
+
+こうしてから宣言に移れば、関数の中で変数を修飾しないでも使うことができます。
+モジュールの作成に関する仕組みやスタイルに関する詳細は
+L<Exporter> と L<perlmodlib> を参照してください。
+
+=begin original
+
+Perl modules are included into your program by saying
+
+=end original
+
+Perl のモジュールは以下のようにして、プログラムに取り込まれます:
+
+    use Module;
+
+=begin original
+
+or
+
+=end original
+
+または:
+
+    use Module LIST;
+
+=begin original
+
+This is exactly equivalent to
+
+=end original
+
+これは以下のものと全く等価です:
+
+    BEGIN { require Module; import Module; }
+
+=begin original
+
+or
+
+=end original
+
+または:
+
+    BEGIN { require Module; import Module LIST; }
+
+=begin original
+
+As a special case
+
+=end original
+
+特殊な場合として
+
+    use Module ();
+
+=begin original
+
+is exactly equivalent to
+
+=end original
+
+というのは、以下のものと全く等価です:
+
+    BEGIN { require Module; }
+
+=begin original
+
+All Perl module files have the extension F<.pm>.  The C<use> operator
+assumes this so you don't have to spell out "F<Module.pm>" in quotes.
+This also helps to differentiate new modules from old F<.pl> and
+F<.ph> files.  Module names are also capitalized unless they're
+functioning as pragmas; pragmas are in effect compiler directives,
+and are sometimes called "pragmatic modules" (or even "pragmata"
+if you're a classicist).
+
+=end original
+
+すべての Perl のモジュールは F<.pm> という拡張子を持っていて、
+C<use> 演算子はこれをデフォルトにしていますから、クォートで括って、
+"F<Module.pm>" と書く必要はありません。
+これはまた、新しいモジュールと古いF<.pl> ファイルや F<.ph> ファイルとに
+差をつけるのにも役立っています。
+モジュール名はプラグマとして働くもの以外は、先頭を大文字にします;
+プラグマは、コンパイラ指示子であり、「プラグマ的モジュール」
+(pragmatic module、あるいは古典学者であれば「プラグマタ」(pagmata)) と
+呼ぶ人もあります。
+
+=begin original
+
+The two statements:
+
+=end original
+
+以下の二つの文は:
+
+    require SomeModule;
+    require "SomeModule.pm";
+
+=begin original
+
+differ from each other in two ways.  In the first case, any double
+colons in the module name, such as C<Some::Module>, are translated
+into your system's directory separator, usually "/".   The second
+case does not, and would have to be specified literally.  The other
+difference is that seeing the first C<require> clues in the compiler
+that uses of indirect object notation involving "SomeModule", as
+in C<$ob = purge SomeModule>, are method calls, not function calls.
+(Yes, this really can make a difference.)
+
+=end original
+
+それぞれ異なったものです。
+最初のものは C<Some::Module> のような名前にあるダブルコロンはすべて
+使っているシステムのディレクトリセパレータに変換されます(通常は "/")。
+二番目のものではそうではなく、そういった文字そのものとして扱われます。
+そのほかの違いは最初の C<require> ではコンパイラが
+"SomeModule" に関して間接的オブジェクト記法を使用し、
+C<$ob = purge SomeModule> は関数呼び出しではなくメソッド呼び出しと
+みなします(そう、これが決定的な違いですね)。
+
+=begin original
+
+Because the C<use> statement implies a C<BEGIN> block, the importing
+of semantics happens as soon as the C<use> statement is compiled,
+before the rest of the file is compiled.  This is how it is able
+to function as a pragma mechanism, and also how modules are able to
+declare subroutines that are then visible as list or unary operators for
+the rest of the current file.  This will not work if you use C<require>
+instead of C<use>.  With C<require> you can get into this problem:
+
+=end original
+
+C<use> 文は C<BEGIN> ブロックを使っていますから、内容のインポートは、
+C<use> 文がコンパイルされるとすぐに、ファイルの残りがコンパイルされる前に
+行なわれます。
+それによってモジュールがプラグマとして機能することができ、また、
+カレントのファイルの残りの部分でリストか単項の演算子として
+参照することのできるサブルーチンの宣言ができるのです。
+これは、C<use> の代わりに C<require> を使ったのでは、うまく動きません:
+
+    require Cwd;		# make Cwd:: accessible
+    $here = Cwd::getcwd();
+
+    use Cwd;			# import names from Cwd::
+    $here = getcwd();
+
+    require Cwd;	    	# make Cwd:: accessible
+    $here = getcwd(); 		# oops! no main::getcwd()
+
+=begin original
+
+In general, C<use Module ()> is recommended over C<require Module>,
+because it determines module availability at compile time, not in the
+middle of your program's execution.  An exception would be if two modules
+each tried to C<use> each other, and each also called a function from
+that other module.  In that case, it's easy to use C<require> instead.
+
+=end original
+
+一般的に言って、C<use Module ()> の方が C<require Module> よりも
+推奨されます。
+なぜなら、そうすることによってプログラムの実行時ではなく、
+コンパイル時にモジュールのチェックができるからです。
+二つのモジュールが互いに C<use> しようとしているときは例外で、
+それぞれ他のモジュールから関数を呼び出されます。
+この場合、C<require> してしまう方が簡単です。
+
+=begin original
+
+Perl packages may be nested inside other package names, so we can have
+package names containing C<::>.  But if we used that package name
+directly as a filename it would make for unwieldy or impossible
+filenames on some systems.  Therefore, if a module's name is, say,
+C<Text::Soundex>, then its definition is actually found in the library
+file F<Text/Soundex.pm>.
+
+=end original
+
+Perlのパッケージは、他のパッケージ名の内側にネストすることができるので、
+C<::> を含めたパッケージ名を使うことができます。
+しかし、そういったパッケージ名をファイル名として直接使ってしまえば、
+一部のシステムでは手に負えなかったり、使うことのできないファイル名と
+なってしまうでしょう。
+したがって、モジュールの名前が C<Text::Soundex> というものであったとすると、
+そのライブラリファイルは実際には F<Text/Soundex.pm> として定義されます。
+
+=begin original
+
+Perl modules always have a F<.pm> file, but there may also be
+dynamically linked executables (often ending in F<.so>) or autoloaded
+subroutine definitions (often ending in F<.al>) associated with the
+module.  If so, these will be entirely transparent to the user of
+the module.  It is the responsibility of the F<.pm> file to load
+(or arrange to autoload) any additional functionality.  For example,
+although the POSIX module happens to do both dynamic loading and
+autoloading, the user can say just C<use POSIX> to get it all.
+
+=end original
+
+Perl のモジュールは F<.pm> ファイルを常に持っていますが、そのモジュールに
+対応して動的にリンクされる実行ファイル(しばしば F<.so> で終わります)や、
+自動ロードサブルーチン定義(しばしば F<.al> で終わります)が
+存在する場合があります。
+そういった場合、それらはモジュールのユーザーからも完全に透過的に見えます。
+追加機能をロードする (あるいは、自動ロードの準備をする) のは
+F<.pm> ファイルの責任となります。
+例えば、POSIX モジュールは、たまたま、動的ロードも自動ロードも
+行ないますが、使う側は、すべてを使えるようにするために 
+C<use POSIX> と書くことができるだけです。
+
+=head2 Making your module threadsafe
+X<threadsafe> X<thread safe>
+X<module, threadsafe> X<module, thread safe>
+X<CLONE> X<CLONE_SKIP> X<thread> X<threads> X<ithread>
+
+(モジュールをスレッドセーフにする)
+
+=begin original
+
+Since 5.6.0, Perl has had support for a new type of threads called
+interpreter threads (ithreads). These threads can be used explicitly
+and implicitly.
+
+=end original
+
+5.6.0 から、Perl はインタプリタスレッド (iスレッド) と呼ばれる新しいタイプの
+スレッドに対応しています。
+これらのスレッドは明示的または暗示的に使われます。
+
+=begin original
+
+Ithreads work by cloning the data tree so that no data is shared
+between different threads. These threads can be used by using the C<threads>
+module or by doing fork() on win32 (fake fork() support). When a
+thread is cloned all Perl data is cloned, however non-Perl data cannot
+be cloned automatically.  Perl after 5.7.2 has support for the C<CLONE>
+special subroutine.  In C<CLONE> you can do whatever
+you need to do,
+like for example handle the cloning of non-Perl data, if necessary.
+C<CLONE> will be called once as a class method for every package that has it
+defined (or inherits it).  It will be called in the context of the new thread,
+so all modifications are made in the new area.  Currently CLONE is called with
+no parameters other than the invocant package name, but code should not assume
+that this will remain unchanged, as it is likely that in future extra parameters
+will be passed in to give more information about the state of cloning.
+
+=end original
+
+iスレッドはデータツリーをクローン化することで動作するので、スレッド間では
+何のデータも共有されません。
+これらのスレッドは、C<threads> を使うか、win32 で fork() を行う
+(偽の fork() 対応)ことで使われます。
+スレッドがクローン化されると、全ての Perl のデータはクローン化されますが、
+非 Perl データは自動的にはクローン化できません。
+5.7.2 以降の Perl は C<CLONE> 特殊サブルーチンに対応しています。
+C<CLONE> 内部では、例えば(もし必要なら)非 perl データのクローン化の
+処理といった、必要なことはなんでもできます。
+C<CLONE> は定義(または継承)されたパッケージ毎に一度、クラスメソッドとして
+呼び出されます。
+これは新しいスレッドのコンテキストで呼び出されるので、全ての変更は
+新しいスレッドで行われます。
+現在のところ CLONE は呼び出し元のパッケージ名以外の引数なしで
+呼び出されますが、コード側はこれがずっと続くと仮定するべきではありません;
+将来、クローン化の状態についてさらなる情報を与えるために追加の引数が
+渡されるかもしれないからです。
+
+=begin original
+
+If you want to CLONE all objects you will need to keep track of them per
+package. This is simply done using a hash and Scalar::Util::weaken().
+
+=end original
+
+全てのオブジェクトを CLONE したい場合は、それらをパッケージ毎に記録しておく
+必要があります。
+これは単純にハッシュと Scalar::Util::weaken() を使うことで実現できます。
+
+=begin original
+
+Perl after 5.8.7 has support for the C<CLONE_SKIP> special subroutine.
+Like C<CLONE>, C<CLONE_SKIP> is called once per package; however, it is
+called just before cloning starts, and in the context of the parent
+thread. If it returns a true value, then no objects of that class will
+be cloned; or rather, they will be copied as unblessed, undef values.
+For example: if in the parent there are two references to a single blessed
+hash, then in the child there will be two references to a single undefined
+scalar value instead.
+This provides a simple mechanism for making a module threadsafe; just add
+C<sub CLONE_SKIP { 1 }> at the top of the class, and C<DESTROY()> will be
+now only be called once per object. Of course, if the child thread needs
+to make use of the objects, then a more sophisticated approach is
+needed.
+
+=end original
+
+5.8.7 以降の Perl は C<CLONE_SKIP> 特殊サブルーチンに対応しています。
+C<CLONE> と同様、C<CLONE_SKIP> はパッケージ毎に 1 回呼び出されます;
+しかし、これはクローン化が開始する直前に、親スレッドのコンテキストで
+呼び出されます。
+これが真の値を返すと、このクラスのオブジェクトはクローン化されません;
+厳密に言うと、bless されていない undef 値としてコピーされます。
+例えば: もし、1 つの bless されたハッシュを示す 2 つのリファレンスが親に
+ある場合、子では代わりに 1 つの未定義のスカラ値を示す 2 つのリファレンスが
+あることになります。
+これはモジュールをスレッドセーフにする単純な機構を提供します;
+単にクラスの先頭に C<sub CLONE_SKIP { 1 }> を追加することで、
+C<DESTROY()> はオブジェクト毎に 1 度だけ呼び出されるようになります。
+もちろん、もし子スレッドがこのオブジェクトを使う必要があるなら、より
+洗練された手法が必要です。
+
+=begin original
+
+Like C<CLONE>, C<CLONE_SKIP> is currently called with no parameters other
+than the invocant package name, although that may change. Similarly, to
+allow for future expansion, the return value should be a single C<0> or
+C<1> value.
+
+=end original
+
+C<CLONE> と同様に、C<CLONE_SKIP> は現在のところ呼び出し元のパッケージ名
+以外の引数なしで呼び出されますが、これは変更されるかもしれません。
+同様に、将来の拡張のために、返り値は単一の C<0> か C<1> であるべきです。
+
+=head1 SEE ALSO
+
+=begin original
+
+See L<perlmodlib> for general style issues related to building Perl
+modules and classes, as well as descriptions of the standard library
+and CPAN, L<Exporter> for how Perl's standard import/export mechanism
+works, L<perltoot> and L<perltooc> for an in-depth tutorial on
+creating classes, L<perlobj> for a hard-core reference document on
+objects, L<perlsub> for an explanation of functions and scoping,
+and L<perlxstut> and L<perlguts> for more information on writing
+extension modules.
+
+=end original
+
+標準ライブラリや CPAN と同じくらい説明されている Perl のモジュールと
+クラスに関する一般的なスタイルについては L<perlmodlib> を参照してください。
+Perl の標準インポート/エクスポート機構がどのように動作しているのかは
+L<Exporter> を、クラスの作成に関する詳細なチュートリアルは
+L<perltoot> と L<perltooc> を、オブジェクトに関するハードコアな
+リファレンスのドキュメントは L<perlobj> を、関数とスコーピングの説明は
+L<perlsub> を、エクステンションモジュールの記述に関する詳細は
+L<perlxstut> と L<perlguts> を参照してください。
+
+=begin meta
+
+Translate: KIMURA Koichi
+Update: SHIRAKATA Kentaro <argrath@ub32.org> (5.8.8-)
+Status: completed
+
+=end meta
+

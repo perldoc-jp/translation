@@ -1,0 +1,437 @@
+
+=encoding euc-jp
+
+=head1 名前
+
+Pg - PostgreSQLのためのPerl5拡張
+
+
+=head1 概要
+
+    use Pg;
+    $conn = Pg::connectdb("dbname=template1");
+    $res  = $conn->exec("SELECT * from pg_user");
+    while (@row = $res->fetchrow) {
+        print = join(" ", @row);
+    }
+
+(訳者注：print = join(" ", @row);　の = は不要でしょう）
+
+=head1 説明
+
+Pg モジュールはPostgreSQLのLibpqインタフェースのすべての関数への
+アクセスを可能にします。LibpqはPostgreSQLへの
+プログラマーズ・インターフェースです。このモジュールの使い方の例に
+ついてはファイルtest.plをご覧ください。
+
+=head1 ガイドライン
+
+このPerlインタフェースはオブジェクトとしてblessされたリファレンスを
+使っています。新しいconnectionやresultオブジェクトを作成すると、
+関連するLibpq関数が仮想メソッドとしてサービスします。接続、そして
+結果構造体を解放することについて注意する必要はありません。
+オブジェクトへの最後のリファレンスがなくなったときにはいつでも、
+Perlがデストラクタを呼びます。
+
+メソッドfetchrowはサーバーから次の行を取り出すために使うことが
+できます: while (@row = $result->fetchrow)。
+値としてNULLを持っているカラムはC<undef>に設定されます。
+
+Pg.pm は１つの簡便な関数を持っています：doQuery。　これは
+二次元配列に問い合わせの結果を詰めます。使い方：
+
+    Pg::doQuery($conn, "select attr1, attr2 from tbl", \@ary);
+
+    for $i ( 0 .. $#ary ) {
+        for $j ( 0 .. $#{$ary[$i]} ) {
+            print "$ary[$i][$j]\t";
+        }
+        print "\n";
+    }
+
+内側のループに気をつけてください！
+
+
+=head1 関数
+
+関数は接続、結果、ラージオブジェクトの３つのセクションに分けられます。
+詳細についてはL<ibpq>をご覧ください。
+
+
+=head2 1. 接続
+
+これらの関数でデータベースへの接続を確立し、クローズすることができます。
+Libpqでは接続はPGconnと呼ばれる構造体で表されます。
+
+接続が開かれるとき、ダブルクォートで囲まなければ、与えられたデータベース名は
+常に小文字に変換されます。指定されないパラメータは全て環境変数または
+ハードコーディングされたデフォルトによって置き換えられます：
+
+    パラメータ 環境変数              ハードコーディング
+    --------------------------------------------------
+    host       PGHOST                localhost
+    port       PGPORT                5432
+    options    PGOPTIONS             ""
+    tty        PGTTY                 ""
+    dbname     PGDATABASE            current userid
+    user       PGUSER                current userid
+    password   PGPASSWORD            ""
+
+適切なメソッドを使って、PGconn構造体のほとんど全てのフィールドに
+アクセスすることができます。
+
+    $conn = Pg::setdbLogin($pghost, $pgport, $pgoptions, $pgtty, $dbname, $login, $pwd)
+
+これはバックエンドへの新しい接続を開きます。接続識別子$conn(PGconn構造体
+へのポインタ）はユニークな識別子として後のコマンドで使われます。$connを使う前に
+接続が適切に作成されたかを確かめるため$conn->statusを呼ぶべきです。
+接続を閉じるのは接続ハンドルを削除することにより行えます。例えば'undef $conn;'。
+
+    $conn = Pg::setdb($pghost, $pgport, $pgoptions, $pgtty, $dbname)
+
+メソッドsetdb は、ユーザ名／パスワード認証が必要でないときに使われます。
+
+    $conn = Pg::connectdb("option1=value option2=value ...")
+
+これは文字列の中の接続情報を使ってバックエンドへの新しい接続を開きます。
+利用できるオプションはhost、port、options、tty、dbname、user、passwordです。
+接続識別子$conn(PGconn構造体へのポインタ）はユニークな識別子として
+後のコマンドで使われます。$connを使う前に接続が適切に作成されたかを
+確かめるために$conn->statusを呼ぶべきです。
+
+    $Option_ref = Pg::conndefaults()
+
+    while(($key, $val) = each %$Option_ref) {
+        print "$key, $val\n";
+
+これはconnect_db()のために利用可能なすべてのオプションをキーとして持つ
+ハッシュへのリファレンスを返します。値は現在のデフォルトです。
+この関数はCでの対応するものとは異なっています。そちらは完全な
+conninfoOption構造体を返します。
+
+    $conn->reset
+
+バックエンドとの通信ポートをリセットし、新しい接続を確立しようとします。
+
+    $ret = $conn->requestCancel
+
+現在の問い合わせの処理を中止します。requestCancelの戻り値にかかわりなく、
+アプリケ−ションは通常のgetResultを使った結果-読込みのシーケンスを
+続けるべきです。もし現在の問い合わせがトランザクションの一部であれば、
+キャンセルはトランザクション全体を中止させます。
+
+    $dbname = $conn->db
+
+その接続のデータベース名を返します。
+
+    $pguser = $conn->user
+
+その接続のPostgresユーザ名を返します。
+
+    $pguser = $conn->pass
+
+その接続のPostgresパスワードを返します。
+
+    $pghost = $conn->host
+
+その接続のホスト名を返します。
+
+    $pgport = $conn->port
+
+その接続のポートを返します。
+
+    $pgtty = $conn->tty
+
+その接続のttyを返します。
+
+    $pgoptions = $conn->options
+
+その接続で使われているオプションを返します。
+
+    $status = $conn->status
+
+その接続のステータスを返します。ステータスを比較するため以下の定数を使うことができます：
+
+  - PGRES_CONNECTION_OK
+  - PGRES_CONNECTION_BAD
+
+    $errorMessage = $conn->errorMessage
+
+この接続に結び付けられた最後のエラーメッセージを返します。
+
+    $fd = $conn->socket
+
+バックエンド接続ソケットのためのファイル・デスクリプタ番号を取得します。
+-1という結果はバックエンド接続が現在は開いていないことを示します。
+
+    $pid = $conn->backendPID
+
+対応するバックエンド・プロセスのプロセスIDを返します。
+
+    $conn->trace(debug_port)
+
+フロントエンドとバックエンドの間で渡されるメッセージが
+debug_portファイル・ストリームにエコーされます。
+
+    $conn->untrace
+
+トレースを止めます。
+
+    $result = $conn->exec($query)
+
+バックエンドに問い合わせを行います。戻り値はPGresult構造体への
+ポインタで、それにはバックエンドによって返された完全な問い合わせ結果が
+入っています。失敗した場合には、ポインタは空の構造体を指します。
+$resultを使う前に問い合わせが適正に実行されたかを確認するため
+resultStatusを呼び出すべきです。
+
+    ($table, $pid) = $conn->notifies
+
+非同期通知をチェックします。この関数はCの対応するものとは異なります。
+そちらでは新しく占有された構造体へのポインタを返しますが、perl実装では
+リストを返します。$tableはリスンされているテーブル、$idはバックエンドの
+プロセスIDです。
+
+
+    $ret = $conn->sendQuery($string, $query)
+
+結果を待つことなくPostgresへ問い合わせを実行します。PQsendQueryの
+呼び出しに成功した後、１つあるいは複数の問い合わせ結果を取得するため
+PQgetResultを呼び出してください。問い合わせが終了したことを示す、
+getResultがNULLを返すまで、PQsendQueryは呼び出すことができません。
+
+    $result = $conn->getResult
+
+以前のPQsendQueryからの次の結果を待ちます。そして問い合わせが終わり、
+もう結果がなければNULLを返します。getResultは問い合わせがアクティブで
+必要な応答データがまだPQconsumeInputによって読み込まれていない場合にのみ
+ブロックします。
+
+    $ret = $conn->isBusy
+
+問い合わせがビジーであればTRUEを返します。つまりPQgetResultは入力待ちを
+ブロックするでしょう。FALSEはPQgetResultが確実にブロックなしで呼び出すことが
+できることを示します。
+
+    $result = $conn->consumeInput
+
+もし入力がバックエンドから利用可能であれば、それを消費します。
+consumeInputを呼び出した後、アプリケーションはisBusyをチェックし、
+そしてまたはそれらの状態が変更されたかどうかを通知することができます。
+
+    $ret = $conn->getline($string, $length)
+
+バックエンドから$length-1文字まで文字列を読み込みます。EOFになると
+getlineはEOFを返します。全体の行が読まれれば0、そしてバッファがいっぱいで
+あれば1を返します。もし内容が2文字"\."であれば、バックエンドは
+copyコマンドの結果を送信することを完了しています。
+
+    $ret = $conn->putline($string)
+
+バックエンドに文字列を送信します。バックエンドにデータの送信が
+完了したことを示すためにアプリケーションは明示的に2文字"\."を
+送信しなければなりません。
+
+    $ret = $conn->getlineAsync($buffer, $bufsize)
+
+getlineの非ブロック版。バックエンドから$bufsize文字までを
+読み込みます。getlineAsyncはコピーの終わりのマーカー（end-of-copy-marker）を
+認識したら-1、データがなければ0、>0であれば返されたバイト数を返します。
+
+    $ret = $conn->putnbytes($buffer, $nbytes)
+
+バックエンドにn byte送信します。OKであれば0を、そうでなければEOFを返します。
+
+    $ret = $conn->endcopy
+
+この関数はバックエンドがコピーを終わらせるまで待ちます。putlineを
+使ってバックエンドへ最後の文字列が送信されたとき、あるいはgetlineを
+使って最後の文字列をバックエンドから受け取ったとき、発行しなければ
+いけません。endcopyは成功すれば0、失敗すれば1を返します。
+
+    $result = $conn->makeEmptyPGresult($status);
+
+新たに占有され、与えられたステータスで初期化された結果を返します。
+
+=head2 2. 結果
+
+これらの関数でデータベースにコマンドを送信し、結果を調べることができます。
+Libpqではコマンドの結果はPGresultという構造体で表されます。適切なメソッドを
+使って、この構造体のほとんどすべてのフィールドにアクセスすることができます。
+
+    $result_status = $result->resultStatus
+
+結果のステータスを返します。ステータスを比較するため、実行した
+コマンドによって以下の定数の１つを使うことができます：
+
+  - PGRES_EMPTY_QUERY
+  - PGRES_COMMAND_OK
+  - PGRES_TUPLES_OK
+  - PGRES_COPY_OUT
+  - PGRES_COPY_IN
+  - PGRES_BAD_RESPONSE
+  - PGRES_NONFATAL_ERROR
+  - PGRES_FATAL_ERROR
+
+PGresult構造体の内容にアクセスするためには以下の関数を使ってください。
+
+    $ntuples = $result->ntuples
+
+問い合わせ結果のタプルの数を返します。
+
+    $nfields = $result->nfields
+
+問い合わせ結果でのフィールドの数を返します。
+
+    $ret = $result->binaryTuples
+
+問い合わせ結果でのタプルがバイナリであれば1を返します。
+
+    $fname = $result->fname($field_num)
+
+与えられたフィールド番号に対応するフィールド名を返します。
+
+    $fnumber = $result->fnumber($field_name)
+
+与えられたフィールド名に対応するフィールド番号を返します。
+
+    $ftype = $result->ftype($field_num)
+
+与えられたフィールド番号のデータ型のoidを返します。
+
+    $fsize = $result->fsize($field_num)
+
+与えられたフィールド番号のデータ型の大きさをバイト数で返します。
+そのフィールドが可変長であれば-1を返します。
+
+    $fmod = $result->fmod($field_num)
+
+与えられたフィールド・インデックスに対応するフィールドのデータ型修正データを
+返します。フィールド・インデックスは0から始まります。
+
+    $cmdStatus = $result->cmdStatus
+
+最後の問い合わせ命令のコマンド・ステータスを返します。
+DELETEの場合、削除されたタプルの数も返します。INSERTの場合、後ろに1が付き
+（影響を受けたタプルの数）、挿入されたタプルのOIDを返します。
+
+
+    $oid = $result->oidStatus
+
+最後の問い合わせがINSERTコマンドであれば、挿入されたタプルのoidを返します。
+
+    $oid = $result->cmdTuples
+
+最後の問い合わせがINSERTまたはDELETEコマンドであれば、影響を受けたタプルの
+数を返します。
+
+    $value = $result->getvalue($tup_num, $field_num)
+
+与えられたタプル、フィールドの値を返します。これはnullで終わる
+ASCII文字列です。バイナリ・カーソルは機能しません。
+
+    $length = $result->getlength($tup_num, $field_num)
+
+与えられたタプルとフィールドのための値の長さを返します。
+
+    $null_status = $result->getisnull($tup_num, $field_num)
+
+与えられたタプルとフィールドのためのNULLステータスを返します。
+
+    $res->fetchrow
+
+サーバーから次の行を取り出し、すべての行が処理されていればNULLを返します。
+値としてNULLを持っているカラムはC<undef>に設定されます。
+
+    $result->print($fout, $header, $align, $standard, $html3, $expanded, $pager, $fieldSep, $tableOpt, $caption, ...)
+
+すべてのタプルを知的な方法で出力します。この関数はCでの対応するものとは
+異なります。PQprintOptはリストで実装されます。PQprintOptでの
+文字配列fieldNameを面倒みるため、これは可変長のリストです。
+$header, $align, $standard, $html3, $expanded, $pagerはブール値のフラグです。
+$fieldSep, $tableOpt, $captionは文字列です。追加の文字列をつけることができます。
+それはフィールド名を置き換えるために取られます。
+
+    $result->displayTuples($fp, $fillAlign, $fieldSep, $printHeader, qiet)
+
+これは後方互換性を保ちます。printを使ってください。
+
+    $result->printTuples($fout, $printAttName, $terseOutput, $width)
+
+これは後方互換性を保ちます。printを使ってください。
+
+
+=head2 3. ラージ・オブジェクト
+
+これらの関数はユーザ・データへのファイル指向のアクセスを提供します。
+ラージ・オブジェクト・インターフェースはopen、close、read、write、lseek、tellの
+類似品でUnixファイル・システム・インタフェースを真似ています。
+
+postgresql-6.5 からは、ラージ・オブジェクトを使うのはトランザクションの内側だけで
+使うことが必要になりました！ラージ・オブジェクトの扱い方の例はeg/lo_demo.plを
+ご覧ください。
+
+    $lobj_fd = $conn->lo_open($lobjId, $mode)
+
+既にあるラージ・オブジェクトをオープンし、オブジェクトIDを返します。modeビットに
+ついてはlo_createをご覧ください。失敗したら-1を返します。
+
+    $ret = $conn->lo_close($lobj_fd)
+
+既にあるラージ・オブジェクトをクローズします。成功すれば0、
+失敗すれば-1を返します。
+
+    $nbytes = $conn->lo_read($lobj_fd, $buf, $len)
+
+ラージ・オブジェクト$lobj_fdから$lenバイト分、$bufに読み込みます。
+読み込んだバイト数を返します。失敗すれば-1。
+
+    $nbytes = $conn->lo_write($lobj_fd, $buf, $len)
+
+ラージ・オブジェクト$lobj_fdに$lenバイト分、$bufを書き込みます。
+書き込んだバイト数を返します。失敗すれば-1。
+
+    $ret = $conn->lo_lseek($lobj_fd, $offset, $whence)
+
+ラージ・オブジェクト$lobj_fdでの現在の読込み、書き込み位置を変更します。
+現在、$whenceは0（L_SET）にのみ設定することができます。
+
+    $lobjId = $conn->lo_creat($mode)
+
+新しいラージ・オブジェクトを作成します。$modeは新しいオブジェクトの
+異なる属性を記述するビットマスクです。以下の定数をお使いください：
+
+  - PGRES_INV_SMGRMASK
+  - PGRES_INV_ARCHIVE
+  - PGRES_INV_WRITE
+  - PGRES_INV_READ
+
+失敗するとPGRES_InvalidOidを返します。
+
+    $location = $conn->lo_tell($lobj_fd)
+
+新しいラージ・オブジェクト$lobj_fdでの現在の読込み、書き込み位置を返します。
+
+    $ret = $conn->lo_unlink($lobjId)
+
+ラージ・オブジェクトを削除します。失敗ならば-1を返します。
+
+    $lobjId = $conn->lo_import($filename)
+
+Unixファイルをラージ・オブジェクトとしてインポートし、
+新しいオブジェクトのオブジェクトIDを返します。
+
+    $ret = $conn->lo_export($lobjId, $filename)
+
+ラージ・オブジェクトをUnixファイルとしてエクスポートします。
+失敗すれば-1、そうでなければ1を返します。
+
+
+=head1 作者(=AUTHOR)
+
+    Edmund Mergl <E.Mergl@bawue.de>
+
+=head1 参考資料
+
+PostgreSQL Programmer's Guide, Large Objects and libpq
+

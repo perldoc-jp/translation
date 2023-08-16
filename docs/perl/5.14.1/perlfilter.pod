@@ -1,0 +1,1247 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+perlfilter - Source Filters
+
+=end original
+
+perlfilter - ソースフィルタ
+
+=head1 DESCRIPTION
+
+=begin original
+
+This article is about a little-known feature of Perl called
+I<source filters>. Source filters alter the program text of a module
+before Perl sees it, much as a C preprocessor alters the source text of
+a C program before the compiler sees it. This article tells you more
+about what source filters are, how they work, and how to write your
+own.
+
+=end original
+
+この記事は、ほとんど知られていない Perl の機能である I<ソースフィルタ> に
+関するものです。
+C プリプロセッサが C プログラムのソーステキストをコンパイラが見る前に
+変更するように、ソースフィルタはモジュールのプログラム文を Perl が
+見る前に変更します。
+この記事は、ソースフィルタとは何か、どのように動作するのか、自分自身で
+書くにはどうすればいいかについての情報を提供します。
+
+=begin original
+
+The original purpose of source filters was to let you encrypt your
+program source to prevent casual piracy. This isn't all they can do, as
+you'll soon learn. But first, the basics.
+
+=end original
+
+ソースフィルタの本来の目的は、カジュアルな盗み見を防ぐためにプログラム
+ソースを暗号化するためでした。
+これから学ぶように、出来ることはこれだけではありません。
+しかしまずは基本からです。
+
+=head1 CONCEPTS
+
+(コンセプト)
+
+=begin original
+
+Before the Perl interpreter can execute a Perl script, it must first
+read it from a file into memory for parsing and compilation. If that
+script itself includes other scripts with a C<use> or C<require>
+statement, then each of those scripts will have to be read from their
+respective files as well.
+
+=end original
+
+Perl インタプリタが Perl スクリプトを実行できるようにする前に、
+パースとコンパイルのためにまずファイルをメモリに読み込まなければなりません。
+このスクリプト自身が C<use> 文や C<require> 文で他のスクリプトを
+インクルードしているなら、それらのスクリプトも同様にファイルから読み込む
+必要があります。
+
+=begin original
+
+Now think of each logical connection between the Perl parser and an
+individual file as a I<source stream>. A source stream is created when
+the Perl parser opens a file, it continues to exist as the source code
+is read into memory, and it is destroyed when Perl is finished parsing
+the file. If the parser encounters a C<require> or C<use> statement in
+a source stream, a new and distinct stream is created just for that
+file.
+
+=end original
+
+ここで、Perl パーサと個々のファイルとの論理的な接続を I<ソースストリーム>
+(source stream) として考えます。
+ソースストリームは Perl パーサがファイルを開いたときに作成され、
+ソースコードがメモリに読み込まれている間存在し、Perl がファイルを
+パースし終えたときに破壊されます。
+パーサがソースストリーム中に C<require> 文や C<use> 文に出会うと、
+新しく異なったストリームがそのファイルのために作成されます。
+
+=begin original
+
+The diagram below represents a single source stream, with the flow of
+source from a Perl script file on the left into the Perl parser on the
+right. This is how Perl normally operates.
+
+=end original
+
+以下の図は単一のソースストリームを表現していて、左側の Perl スクリプト
+ファイルから右側の Perl パーサへのソースの流れです。
+これは Perl が普通処理する方法です。
+
+    file -------> parser
+
+=begin original
+
+There are two important points to remember:
+
+=end original
+
+覚えておくべき重要なポイントが二つあります:
+
+=over 5
+
+=item 1.
+
+=begin original
+
+Although there can be any number of source streams in existence at any
+given time, only one will be active.
+
+=end original
+
+同時に任意の数のソースストリームが存在できますが、一つだけが
+有効となります。
+
+=item 2.
+
+=begin original
+
+Every source stream is associated with only one file.
+
+=end original
+
+各ソースストリームはただ一つのファイルと関連づけられます。
+
+=back
+
+=begin original
+
+A source filter is a special kind of Perl module that intercepts and
+modifies a source stream before it reaches the parser. A source filter
+changes our diagram like this:
+
+=end original
+
+ソースフィルタは、ソースストリームがパーサに届く前に捕まえて修正する、
+特別な種類の Perl モジュールです。
+ソースフィルタは以下のようにダイアグラムを変更します:
+
+    file ----> filter ----> parser
+
+=begin original
+
+If that doesn't make much sense, consider the analogy of a command
+pipeline. Say you have a shell script stored in the compressed file
+I<trial.gz>. The simple pipeline command below runs the script without
+needing to create a temporary file to hold the uncompressed file.
+
+=end original
+
+これにあまり納得が出来ないなら、コマンドパイプラインの例えを
+考えてみてください。
+圧縮されたファイル I<trial.gz> に補完されたシェルスクリプトを
+考えてみてください。
+後述の単純なパイプラインコマンドは展開されたファイルを保管するための
+一時ファイルを作ることなくスクリプトを実行します。
+
+    gunzip -c trial.gz | sh
+
+=begin original
+
+In this case, the data flow from the pipeline can be represented as follows:
+
+=end original
+
+この場合、パイプラインからのデータフローは以下のように表現できます:
+
+    trial.gz ----> gunzip ----> sh
+
+=begin original
+
+With source filters, you can store the text of your script compressed and use a source filter to uncompress it for Perl's parser:
+
+=end original
+
+ソースフィルタがあると、スクリプトのテキストを圧縮して、Perl パーサのために
+展開するソースフィルタを使います:
+
+     compressed           gunzip
+    Perl program ---> source filter ---> parser
+
+=head1 USING FILTERS
+
+(フィルタを使う)
+
+=begin original
+
+So how do you use a source filter in a Perl script? Above, I said that
+a source filter is just a special kind of module. Like all Perl
+modules, a source filter is invoked with a use statement.
+
+=end original
+
+それで、どうやって Perl スクリプトでソースフィルタを使うのでしょう?
+先に、ソースフィルタは単に特別な種類のモジュールであると言いました。
+その他全ての Perl モジュールと同様、ソースフィルタは use 文で
+起動されます。
+
+=begin original
+
+Say you want to pass your Perl source through the C preprocessor before
+execution. As it happens, the source filters distribution comes with a C
+preprocessor filter module called Filter::cpp.
+
+=end original
+
+Perl のソースを実行前に C のプリプロセッサを通したいとします。
+たまたまソースフィルタ配布には Filter::cpp と呼ばれる C プリプロセッサ
+フィルタモジュールが含まれています。
+
+=begin original
+
+Below is an example program, C<cpp_test>, which makes use of this filter.
+Line numbers have been added to allow specific lines to be referenced
+easily.
+
+=end original
+
+以下は、このフィルタを使うためのサンプルプログラムである C<cpp_test> です。
+行番号は、特定の行を参照しやすくするために追加されています。
+
+    1: use Filter::cpp;
+    2: #define TRUE 1
+    3: $a = TRUE;
+    4: print "a = $a\n";
+
+=begin original
+
+When you execute this script, Perl creates a source stream for the
+file. Before the parser processes any of the lines from the file, the
+source stream looks like this:
+
+=end original
+
+このスクリプトを実行すると、Perl はこのファイルのためのソースストリームを
+作成します。
+パーサがファイルから行を処理する前、ソースストリームは以下のように
+なります:
+
+    cpp_test ---------> parser
+
+=begin original
+
+Line 1, C<use Filter::cpp>, includes and installs the C<cpp> filter
+module. All source filters work this way. The use statement is compiled
+and executed at compile time, before any more of the file is read, and
+it attaches the cpp filter to the source stream behind the scenes. Now
+the data flow looks like this:
+
+=end original
+
+1 行目の C<use Filter::cpp> で、C<cpp> モジュールをインクルードして
+インストールします。
+全てのソースフィルタはこのようにして動作します。
+use 文はコンパイルされてコンパイル時に、ファイルの残りの部分が読み込まれる
+前に実行され、背後でソースフィルタに cpp フィルタをくっつけます。
+ここでデータフローは以下のようになります:
+
+    cpp_test ----> cpp filter ----> parser
+
+=begin original
+
+As the parser reads the second and subsequent lines from the source
+stream, it feeds those lines through the C<cpp> source filter before
+processing them. The C<cpp> filter simply passes each line through the
+real C preprocessor. The output from the C preprocessor is then
+inserted back into the source stream by the filter.
+
+=end original
+
+パーサがソースストリームから 2 行目以降を読むにつれて、処理する前に
+C<cpp> ソースフィルタを通して行が供給されます。
+C<cpp> フィルタは単に各行を実際の C プリプロセッサに通します。
+C プリプロセッサからの出力はそれからフィルタによってソースストリームに
+再挿入されます。
+
+                  .-> cpp --.
+                  |         |
+                  |         |
+                  |       <-'
+   cpp_test ----> cpp filter ----> parser
+
+=begin original
+
+The parser then sees the following code:
+
+=end original
+
+それからパーサは以下のコードを見ます:
+
+    use Filter::cpp;
+    $a = 1;
+    print "a = $a\n";
+
+=begin original
+
+Let's consider what happens when the filtered code includes another
+module with use:
+
+=end original
+
+フィルタされたコードに use を使ったもう一つのモジュールを含んでいる
+場合に何が起きるかを考えてみましょう:
+
+    1: use Filter::cpp;
+    2: #define TRUE 1
+    3: use Fred;
+    4: $a = TRUE;
+    5: print "a = $a\n";
+
+=begin original
+
+The C<cpp> filter does not apply to the text of the Fred module, only
+to the text of the file that used it (C<cpp_test>). Although the use
+statement on line 3 will pass through the cpp filter, the module that
+gets included (C<Fred>) will not. The source streams look like this
+after line 3 has been parsed and before line 4 is parsed:
+
+=end original
+
+C<cpp> フィルタは Fred モジュールのテキストには適用されず、
+フィルタが使われているファイル (C<cpp_test>) のテキストにのみ
+適用されます。
+3 行目の use 文は cpp フィルタに渡されますが、インクルードされる
+モジュール (C<Fred>) は渡されません。
+3 行目がパースされ、4 行目がパースされる前のソースストリームは
+以下のようになります:
+
+    cpp_test ---> cpp filter ---> parser (INACTIVE)
+
+    Fred.pm ----> parser
+
+=begin original
+
+As you can see, a new stream has been created for reading the source
+from C<Fred.pm>. This stream will remain active until all of C<Fred.pm>
+has been parsed. The source stream for C<cpp_test> will still exist,
+but is inactive. Once the parser has finished reading Fred.pm, the
+source stream associated with it will be destroyed. The source stream
+for C<cpp_test> then becomes active again and the parser reads line 4
+and subsequent lines from C<cpp_test>.
+
+=end original
+
+見て分かるように、C<Fred.pm> からソースを読み込むための新しいストリームが
+作成されます。
+このストリームは C<Fred.pm> を全て読み込むまで有効のままです。
+C<cpp_test> のためのソースストリームは存在したままですが、無効に
+なっています。
+パーサが Fred.pm からの読み込みを終了すると、これに関連づけられた
+ソースストリームは破壊されます。
+それから C<cpp_test> のためのソースストリームが再び有効になり、
+パーサは C<cpp_test> から 4 行目以降を読み込みます。
+
+=begin original
+
+You can use more than one source filter on a single file. Similarly,
+you can reuse the same filter in as many files as you like.
+
+=end original
+
+一つのファイルに複数のソースフィルタを使うことができます。
+同様に、好きなだけ多くのファイルに対して同じフィルタを
+再使用することができます。
+
+=begin original
+
+For example, if you have a uuencoded and compressed source file, it is
+possible to stack a uudecode filter and an uncompression filter like
+this:
+
+=end original
+
+例えば、uuencode されて圧縮されているソースファイルがある場合、
+次のようにして uudecode フィルタと uncompress フィルタを
+スタックさせることができます:
+
+    use Filter::uudecode; use Filter::uncompress;
+    M'XL(".H<US4''V9I;F%L')Q;>7/;1I;_>_I3=&E=%:F*I"T?22Q/
+    M6]9*<IQCO*XFT"0[PL%%'Y+IG?WN^ZYN-$'J.[.JE$,20/?K=_[>
+    ...
+
+=begin original
+
+Once the first line has been processed, the flow will look like this:
+
+=end original
+
+最初の行が処理されると、フローは以下のようになります:
+
+    file ---> uudecode ---> uncompress ---> parser
+               filter         filter
+
+=begin original
+
+Data flows through filters in the same order they appear in the source
+file. The uudecode filter appeared before the uncompress filter, so the
+source file will be uudecoded before it's uncompressed.
+
+=end original
+
+データはソースファイルに現れたのと同じ順でフィルタを流れます。
+uudecode フィルタは uncompress フィルタの前に現れるので、ソースファイルは
+展開される前に uudecode されます。
+
+=head1 WRITING A SOURCE FILTER
+
+(ソースフィルタを書く)
+
+=begin original
+
+There are three ways to write your own source filter. You can write it
+in C, use an external program as a filter, or write the filter in Perl.
+I won't cover the first two in any great detail, so I'll get them out
+of the way first. Writing the filter in Perl is most convenient, so
+I'll devote the most space to it.
+
+=end original
+
+独自のソースフィルタを書くには三つの方法があります。
+C で書くか、フィルタとして外部プログラムを使うか、Perl でフィルタを
+書くかです。
+最初の二つについてはあまり詳しくは記述しないので、先にこれらについて
+触れます。
+Perl でフィルタを書くのが一番便利なので、これに最大のスペースを割きます。
+
+=head1 WRITING A SOURCE FILTER IN C
+
+(C でソースフィルタを書く)
+
+=begin original
+
+The first of the three available techniques is to write the filter
+completely in C. The external module you create interfaces directly
+with the source filter hooks provided by Perl.
+
+=end original
+
+利用可能な三つのテクニックのうちの一つ目は、フィルタを完全に C で
+書くことです。
+作成した外部モジュールは Perl によって提供されるソースフィルタフックと
+直接接続されます。
+
+=begin original
+
+The advantage of this technique is that you have complete control over
+the implementation of your filter. The big disadvantage is the
+increased complexity required to write the filter - not only do you
+need to understand the source filter hooks, but you also need a
+reasonable knowledge of Perl guts. One of the few times it is worth
+going to this trouble is when writing a source scrambler. The
+C<decrypt> filter (which unscrambles the source before Perl parses it)
+included with the source filter distribution is an example of a C
+source filter (see Decryption Filters, below).
+
+=end original
+
+このテクニックの利点は、フィルタの実装を完全に制御できることです。
+大きな弱点は、フィルタを書くために必要な複雑性が増すことです -
+ソースフィルタフックについて理解するだけでなく、Perl の内部に関する
+ある程度の知識も必要です。
+この困難に向かう価値のある数回に一回はソースのスクランブル化を
+書くときです。
+(Perl がパースする前にソースのスクランブルを解除する) C<decrypt> フィルタは
+C ソースフィルタの例です (以下の Decryption Filters を参照してください)。
+
+=over 5
+
+=item B<Decryption Filters>
+
+(B<復号フィルタ>)
+
+=begin original
+
+All decryption filters work on the principle of "security through
+obscurity." Regardless of how well you write a decryption filter and
+how strong your encryption algorithm is, anyone determined enough can
+retrieve the original source code. The reason is quite simple - once
+the decryption filter has decrypted the source back to its original
+form, fragments of it will be stored in the computer's memory as Perl
+parses it. The source might only be in memory for a short period of
+time, but anyone possessing a debugger, skill, and lots of patience can
+eventually reconstruct your program.
+
+=end original
+
+全ての復号フィルタは「不明瞭さによるセキュリティ」の原則に則っています。
+どれだけうまく復号フィルタを書いて、どんなに強い暗号化アルゴリズムを
+使っても、十分な決意があれば元のソースコードを取得できます。
+その理由はとても単純です - 一旦復号フィルタがソースを元の形に戻すと、その
+一部は Perl がパースするためにコンピュータのメモリに保管されます。
+ソースは短い時間の間だけしかメモリにないかもしれませんが、デバッガ、スキル、
+多大な忍耐がある人なら最終的にはプログラムを再構成できます。
+
+=begin original
+
+That said, there are a number of steps that can be taken to make life
+difficult for the potential cracker. The most important: Write your
+decryption filter in C and statically link the decryption module into
+the Perl binary. For further tips to make life difficult for the
+potential cracker, see the file I<decrypt.pm> in the source filters
+distribution.
+
+=end original
+
+潜在的なクラッカーに対して物事を難しくするために取るいくつかのステップが
+あります。
+最も重要なのは: 復号フィルタを C で書いて、復号モジュールを Perl バイナリと
+静的にリンクすることです。
+潜在的なクラッカーに対して物事を難しくするために取るさらなるステップは、
+ソースフィルタ配布の I<decrypt.pm> ファイルを参照してください。
+
+=back
+
+=head1 CREATING A SOURCE FILTER AS A SEPARATE EXECUTABLE
+
+(独立した実行ファイルとしてソースフィルタとして作成する)
+
+=begin original
+
+An alternative to writing the filter in C is to create a separate
+executable in the language of your choice. The separate executable
+reads from standard input, does whatever processing is necessary, and
+writes the filtered data to standard output. C<Filter::cpp> is an
+example of a source filter implemented as a separate executable - the
+executable is the C preprocessor bundled with your C compiler.
+
+=end original
+
+C でフィルタを書くための代替案は、好みの言語で独立した実行ファイルを
+作ることです。
+独立した実行ファイルは標準出力から読み込み、何か必要な処理を行い、
+フィルタされたデータを標準出力に書き込みます。
+C<Filter::cpp> は、独立した実行ファイルとして実行されたソースフィルタの
+例です - 実行ファイルは C コンパイラに付いている C プリプロセッサです。
+
+=begin original
+
+The source filter distribution includes two modules that simplify this
+task: C<Filter::exec> and C<Filter::sh>. Both allow you to run any
+external executable. Both use a coprocess to control the flow of data
+into and out of the external executable. (For details on coprocesses,
+see Stephens, W.R., "Advanced Programming in the UNIX Environment."
+Addison-Wesley, ISBN 0-210-56317-7, pages 441-445.) The difference
+between them is that C<Filter::exec> spawns the external command
+directly, while C<Filter::sh> spawns a shell to execute the external
+command. (Unix uses the Bourne shell; NT uses the cmd shell.) Spawning
+a shell allows you to make use of the shell metacharacters and
+redirection facilities.
+
+=end original
+
+ソースフィルタ配布にはこのタスクを簡単にするための二つのモジュールが
+あります: C<Filter::exec> と C<Filter::sh> です。
+どちらも外部実行ファイルを実行します。
+どちらも外部実行ファイルとのデータのやりとりを制御するのにコプロセスを
+使います。
+(コプロセスの詳細については、Stephens, W.R. による
+"Advanced Programming in the UNIX Environment."
+Addison-Wesley, ISBN 0-210-56317-7, 441-445 ページ を参照してください。)
+二つの違いは、C<Filter::exec> は外部コマンドを直接起動しますが、
+C<Filter::sh> は外部コマンドを起動するためのシェルを起動します。
+(Unix は Bourne シェルを使います; NT は cmd シェルを使います。)
+シェルを起動することにより、シェルのメタ文字とリダイレクト機構を
+使えるようになります。
+
+=begin original
+
+Here is an example script that uses C<Filter::sh>:
+
+=end original
+
+以下は C<Filter::sh> を使ったスクリプトの例です:
+
+    use Filter::sh 'tr XYZ PQR';
+    $a = 1;
+    print "XYZ a = $a\n";
+
+=begin original
+
+The output you'll get when the script is executed:
+
+=end original
+
+スクリプトが実行されたときに得られる出力は:
+
+    PQR a = 1
+
+=begin original
+
+Writing a source filter as a separate executable works fine, but a
+small performance penalty is incurred. For example, if you execute the
+small example above, a separate subprocess will be created to run the
+Unix C<tr> command. Each use of the filter requires its own subprocess.
+If creating subprocesses is expensive on your system, you might want to
+consider one of the other options for creating source filters.
+
+=end original
+
+独立した実行ファイルとしてソースフィルタを書くとうまく動作しますが、
+小さい性能上のペナルティがあります。
+例えば、上述の小さい例を実行すると、Unix の C<tr> コマンドを実行するために
+別々のサブプロセスが作られます。
+サブシステムの作成のコストが高いシステムでは、ソースフィルタを作るための
+その他の選択肢を考えたいかもしれません。
+
+=head1 WRITING A SOURCE FILTER IN PERL
+
+(Perl でソースフィルタを書く)
+
+=begin original
+
+The easiest and most portable option available for creating your own
+source filter is to write it completely in Perl. To distinguish this
+from the previous two techniques, I'll call it a Perl source filter.
+
+=end original
+
+独自のソースフィルタを作成するためのもっとも簡単でもっとも移植性のある
+選択肢は、完全に Perl で書くことです。
+これを前述の二つのテクニックと区別するために、ここではこれを
+Perl ソースフィルタと呼びます。
+
+=begin original
+
+To help understand how to write a Perl source filter we need an example
+to study. Here is a complete source filter that performs rot13
+decoding. (Rot13 is a very simple encryption scheme used in Usenet
+postings to hide the contents of offensive posts. It moves every letter
+forward thirteen places, so that A becomes N, B becomes O, and Z
+becomes M.)
+
+=end original
+
+Perl ソースフィルタの書き方を理解するのを助けるために、学習するための
+例が必要です。
+以下は rot13 復号を行う完全なソースフィルタです。
+(rot13 は、攻撃的な投稿を隠すために Usenet 投稿で使われたとても簡単な
+暗号スキームです。
+これはそれぞれの英文字を 13 ずらします; 従って A は N に、B は O に、
+Z は M になります。)
+
+   package Rot13;
+
+   use Filter::Util::Call;
+
+   sub import {
+      my ($type) = @_;
+      my ($ref) = [];
+      filter_add(bless $ref);
+   }
+
+   sub filter {
+      my ($self) = @_;
+      my ($status);
+
+      tr/n-za-mN-ZA-M/a-zA-Z/
+         if ($status = filter_read()) > 0;
+      $status;
+   }
+
+   1;
+
+=begin original
+
+All Perl source filters are implemented as Perl classes and have the
+same basic structure as the example above.
+
+=end original
+
+全ての Perl ソースフィルタは Perl クラスとして実装され、上述の例と
+同じ基本構造を持ちます。
+
+=begin original
+
+First, we include the C<Filter::Util::Call> module, which exports a
+number of functions into your filter's namespace. The filter shown
+above uses two of these functions, C<filter_add()> and
+C<filter_read()>.
+
+=end original
+
+まず、C<Filter::Util::Call> をインクルードして、多くの関数をフィルタの
+名前空間にエクスポートします。
+上述のフィルタはこれらの関数の内 C<filter_add()> と C<filter_read()> の
+二つの関数を使います。
+
+=begin original
+
+Next, we create the filter object and associate it with the source
+stream by defining the C<import> function. If you know Perl well
+enough, you know that C<import> is called automatically every time a
+module is included with a use statement. This makes C<import> the ideal
+place to both create and install a filter object.
+
+=end original
+
+次に、フィルタオブジェクトを作って、C<import> 関数を定義することによって
+これをソースストリームと結びつけます。
+Perl のことを十分知っているなら、
+C<import> は use 文でモジュールがインクルードされる旅に自動的に
+呼び出されることを知っているでしょう。
+これにより、C<import> はフィルタオブジェクトの作成とインストールに
+最適の場所と言えます。
+
+=begin original
+
+In the example filter, the object (C<$ref>) is blessed just like any
+other Perl object. Our example uses an anonymous array, but this isn't
+a requirement. Because this example doesn't need to store any context
+information, we could have used a scalar or hash reference just as
+well. The next section demonstrates context data.
+
+=end original
+
+例のフィルタでは、オブジェクト (C<$ref>) はその他の Perl オブジェクトと
+同じように bless されます。
+この例では無名配列を使っていますが、これは必須ではありません。
+この例では内容の情報を補完する必要がないので、スカラリファレンスや
+ハッシュリファレンスでを使うこともできます。
+次の節ではコンテキストデータを図示します。
+
+=begin original
+
+The association between the filter object and the source stream is made
+with the C<filter_add()> function. This takes a filter object as a
+parameter (C<$ref> in this case) and installs it in the source stream.
+
+=end original
+
+フィルタオブジェクトとソースストリームの関連付けは C<filter_add()> 関数で
+行われます。
+これはフィルタオブジェクト (今回の場合では C<$ref>) を引数に取って、
+これをソースストリームに取り付けます。
+
+=begin original
+
+Finally, there is the code that actually does the filtering. For this
+type of Perl source filter, all the filtering is done in a method
+called C<filter()>. (It is also possible to write a Perl source filter
+using a closure. See the C<Filter::Util::Call> manual page for more
+details.) It's called every time the Perl parser needs another line of
+source to process. The C<filter()> method, in turn, reads lines from
+the source stream using the C<filter_read()> function.
+
+=end original
+
+最後に、実際にフィルタリングを行うコードがあります。
+この種の Perl ソースフィルタのために、フィルタリングの全ては
+C<filter()> と呼ばれるメソッドで行われます。
+(クロージャを使って Perl ソースフィルタを書くことも可能です。
+さらなる詳細については C<Filter::Util::Call> マニュアルページを
+参照してください。)
+これは Perl パーサが処理するソースの行が必要になる度に毎回呼び出されます。
+C<filter()> メソッドは、C<filter_read()> 関数を使ってソースストリームから
+順番に行を読み込みます。
+
+=begin original
+
+If a line was available from the source stream, C<filter_read()>
+returns a status value greater than zero and appends the line to C<$_>.
+A status value of zero indicates end-of-file, less than zero means an
+error. The filter function itself is expected to return its status in
+the same way, and put the filtered line it wants written to the source
+stream in C<$_>. The use of C<$_> accounts for the brevity of most Perl
+source filters.
+
+=end original
+
+ソースストリームから 1 行が利用可能になったら、C<filter_read()> は
+0 より大きいステータス値を返して、C<$_> に行を追加します。
+ステータス値が 0 の場合はファイル末尾を示し、0 より小さい場合は
+エラーを意味します。
+filter 関数自身はステータスを同じ方法で返し、ソースストリームに
+書き込みたいフィルタリングされた行を C<$_> に入れることを
+想定されています。
+C<$_> の使い方はほとんどの Perl ソースフィルタの簡潔さを考慮に
+入れています。
+
+=begin original
+
+In order to make use of the rot13 filter we need some way of encoding
+the source file in rot13 format. The script below, C<mkrot13>, does
+just that.
+
+=end original
+
+rot13 フィルタを使うには、ソースファイルを rot13 形式で符号化する
+方法が必要です。
+以下のスクリプト C<mkrot13> はそれを行います。
+
+    die "usage mkrot13 filename\n" unless @ARGV;
+    my $in = $ARGV[0];
+    my $out = "$in.tmp";
+    open(IN, "<$in") or die "Cannot open file $in: $!\n";
+    open(OUT, ">$out") or die "Cannot open file $out: $!\n";
+
+    print OUT "use Rot13;\n";
+    while (<IN>) {
+       tr/a-zA-Z/n-za-mN-ZA-M/;
+       print OUT;
+    }
+
+    close IN;
+    close OUT;
+    unlink $in;
+    rename $out, $in;
+
+=begin original
+
+If we encrypt this with C<mkrot13>:
+
+=end original
+
+これを C<mkrot13> で暗号化すると:
+
+    print " hello fred \n";
+
+=begin original
+
+the result will be this:
+
+=end original
+
+結果は以下のようになります:
+
+    use Rot13;
+    cevag "uryyb serq\a";
+
+=begin original
+
+Running it produces this output:
+
+=end original
+
+これを実行すると以下の出力を生成します:
+
+    hello fred
+
+=head1 USING CONTEXT: THE DEBUG FILTER
+
+(コンテキストを使う: デバッグフィルタ)
+
+=begin original
+
+The rot13 example was a trivial example. Here's another demonstration
+that shows off a few more features.
+
+=end original
+
+rot13 の例はつまらない例でした。
+以下は、もういくつかの機能を見せるための例です。
+
+=begin original
+
+Say you wanted to include a lot of debugging code in your Perl script
+during development, but you didn't want it available in the released
+product. Source filters offer a solution. In order to keep the example
+simple, let's say you wanted the debugging output to be controlled by
+an environment variable, C<DEBUG>. Debugging code is enabled if the
+variable exists, otherwise it is disabled.
+
+=end original
+
+開発中に Perl スクリプトに大量のデバッグコードを含めておきたいけれども、
+リリース製品では利用可能にしたくないとします。
+ソースフィルタが解決法を提供します。
+例を単純なままにするために、環境変数 C<DEBUG> で制御されるデバッグ出力が
+ほしいとします。
+デバッグコードは、環境変数が存在すれば有効になり、さもなければ
+無効になります。
+
+=begin original
+
+Two special marker lines will bracket debugging code, like this:
+
+=end original
+
+次のように、二つの特殊なマーカー行でデバッグするコードを囲みます:
+
+    ## DEBUG_BEGIN
+    if ($year > 1999) {
+       warn "Debug: millennium bug in year $year\n";
+    }
+    ## DEBUG_END
+
+=begin original
+
+The filter ensures that Perl parses the code between the <DEBUG_BEGIN>
+and C<DEBUG_END> markers only when the C<DEBUG> environment variable
+exists. That means that when C<DEBUG> does exist, the code above
+should be passed through the filter unchanged. The marker lines can
+also be passed through as-is, because the Perl parser will see them as
+comment lines. When C<DEBUG> isn't set, we need a way to disable the
+debug code. A simple way to achieve that is to convert the lines
+between the two markers into comments:
+
+=end original
+
+C<DEBUG> 環境変数が存在するとき、フィルタは Perl が C<DEBUG_BEGIN> と
+C<DEBUG_END> のマーカーの間のコードだけをパースするようにします。
+これにより、C<DEBUG> が存在すると、上述のコードはフィルタを変更なしで
+通過して渡されます。
+マーカー行もそのまま渡されます; Perl パーサはこれらをコメント行として
+扱うからです。
+C<DEBUG> が設定されていないとき、デバッグコードを無効にする方法が
+必要になります。
+これを達成する簡単な方法は、二つのマーカーの間の行をコメントに
+変換することです:
+
+    ## DEBUG_BEGIN
+    #if ($year > 1999) {
+    #     warn "Debug: millennium bug in year $year\n";
+    #}
+    ## DEBUG_END
+
+=begin original
+
+Here is the complete Debug filter:
+
+=end original
+
+以下は完全な Debug フィルタです:
+
+    package Debug;
+
+    use strict;
+    use warnings;
+    use Filter::Util::Call;
+
+    use constant TRUE => 1;
+    use constant FALSE => 0;
+
+    sub import {
+       my ($type) = @_;
+       my (%context) = (
+         Enabled => defined $ENV{DEBUG},
+         InTraceBlock => FALSE,
+         Filename => (caller)[1],
+         LineNo => 0,
+         LastBegin => 0,
+       );
+       filter_add(bless \%context);
+    }
+
+    sub Die {
+       my ($self) = shift;
+       my ($message) = shift;
+       my ($line_no) = shift || $self->{LastBegin};
+       die "$message at $self->{Filename} line $line_no.\n"
+    }
+
+    sub filter {
+       my ($self) = @_;
+       my ($status);
+       $status = filter_read();
+       ++ $self->{LineNo};
+
+       # deal with EOF/error first
+       if ($status <= 0) {
+           $self->Die("DEBUG_BEGIN has no DEBUG_END")
+               if $self->{InTraceBlock};
+           return $status;
+       }
+
+       if ($self->{InTraceBlock}) {
+          if (/^\s*##\s*DEBUG_BEGIN/ ) {
+              $self->Die("Nested DEBUG_BEGIN", $self->{LineNo})
+          } elsif (/^\s*##\s*DEBUG_END/) {
+              $self->{InTraceBlock} = FALSE;
+          }
+
+          # comment out the debug lines when the filter is disabled
+          s/^/#/ if ! $self->{Enabled};
+       } elsif ( /^\s*##\s*DEBUG_BEGIN/ ) {
+          $self->{InTraceBlock} = TRUE;
+          $self->{LastBegin} = $self->{LineNo};
+       } elsif ( /^\s*##\s*DEBUG_END/ ) {
+          $self->Die("DEBUG_END has no DEBUG_BEGIN", $self->{LineNo});
+       }
+       return $status;
+    }
+
+    1;
+
+=begin original
+
+The big difference between this filter and the previous example is the
+use of context data in the filter object. The filter object is based on
+a hash reference, and is used to keep various pieces of context
+information between calls to the filter function. All but two of the
+hash fields are used for error reporting. The first of those two,
+Enabled, is used by the filter to determine whether the debugging code
+should be given to the Perl parser. The second, InTraceBlock, is true
+when the filter has encountered a C<DEBUG_BEGIN> line, but has not yet
+encountered the following C<DEBUG_END> line.
+
+=end original
+
+このフィルタと以前の例との大きな違いは、フィルタオブジェクトの
+コンテキストデータの使用です。
+フィルタオブジェクトはハッシュリファレンスを基礎としていて、フィルタ関数の
+呼び出し間のコンテキスト情報の様々な断片を保持するために使われます。
+二つを除いた全てのハッシュフィールドはエラー報告のために使われます。
+二つの内一番目である Enabled は、デバッグコードが Perl パーサに
+与えられるべきかどうかを決定するために使われます。
+二番目である InTraceBlock は、フィルタが C<DEBUG_BEGIN> に遭遇したけれども
+まだ引き続く C<DEBUG_END> 行に出会っていないときに真となります。
+
+=begin original
+
+If you ignore all the error checking that most of the code does, the
+essence of the filter is as follows:
+
+=end original
+
+コードのほとんどが行っているエラーチェックの全てを無視すると、フィルタの
+本質は以下のようになります:
+
+    sub filter {
+       my ($self) = @_;
+       my ($status);
+       $status = filter_read();
+
+       # deal with EOF/error first
+       return $status if $status <= 0;
+       if ($self->{InTraceBlock}) {
+          if (/^\s*##\s*DEBUG_END/) {
+             $self->{InTraceBlock} = FALSE
+          }
+
+          # comment out debug lines when the filter is disabled
+          s/^/#/ if ! $self->{Enabled};
+       } elsif ( /^\s*##\s*DEBUG_BEGIN/ ) {
+          $self->{InTraceBlock} = TRUE;
+       }
+       return $status;
+    }
+
+=begin original
+
+Be warned: just as the C-preprocessor doesn't know C, the Debug filter
+doesn't know Perl. It can be fooled quite easily:
+
+=end original
+
+警告: C プリプロセッサが C のことを知らないのと同様、Debug フィルタは
+Perl のことを知りません。
+簡単にだませます:
+
+    print <<EOM;
+    ##DEBUG_BEGIN
+    EOM
+
+=begin original
+
+Such things aside, you can see that a lot can be achieved with a modest
+amount of code.
+
+=end original
+
+そのようなことを置いておいても、それほどでもない量のコードで多くのことが
+達成できるのが分かります。
+
+=head1 CONCLUSION
+
+(結び)
+
+=begin original
+
+You now have better understanding of what a source filter is, and you
+might even have a possible use for them. If you feel like playing with
+source filters but need a bit of inspiration, here are some extra
+features you could add to the Debug filter.
+
+=end original
+
+これで、ソースフィルタとは何かについてよりよく理解できたと思います;
+さらにこれらの可能性のある使い方を持っているかもしれません。
+もしソースフィルタで遊んでみたいと思っているけれどもちょっとした
+インスピレーションが必要なら、以下はデバッグフィルタに加えることが出来る
+追加機能です。
+
+=begin original
+
+First, an easy one. Rather than having debugging code that is
+all-or-nothing, it would be much more useful to be able to control
+which specific blocks of debugging code get included. Try extending the
+syntax for debug blocks to allow each to be identified. The contents of
+the C<DEBUG> environment variable can then be used to control which
+blocks get included.
+
+=end original
+
+まずは簡単なものです。
+デバッグコードをオールオアナッシングにするのではなく、どのブロックを
+デバッグコードとして使うかを制御できるようにすればもっと便利です。
+それぞれのデバッグブロックを識別できるように文法に文法を
+拡張してみてください。
+C<DEBUG> 環境変数の内容はどのブロックを使うかを制御するのに使えます。
+
+=begin original
+
+Once you can identify individual blocks, try allowing them to be
+nested. That isn't difficult either.
+
+=end original
+
+個々のブロックを識別できるようになったら、ネストできるように
+してみてください。
+これも難しくはありません。
+
+=begin original
+
+Here is an interesting idea that doesn't involve the Debug filter.
+Currently Perl subroutines have fairly limited support for formal
+parameter lists. You can specify the number of parameters and their
+type, but you still have to manually take them out of the C<@_> array
+yourself. Write a source filter that allows you to have a named
+parameter list. Such a filter would turn this:
+
+=end original
+
+これはデバッグフィルタに関係ない面白いアイデアです。
+今のところ Perl サブルーチンは公式な引数リストに限定的に対応しています。
+パラメータの数とその型は指定できますが、自力で C<@_> 配列から取り出す
+必要があります。
+名前付き引数リストを使えるようなソースフィルタを書きましょう。
+そのようなフィルタは以下のようなものを:
+
+    sub MySub ($first, $second, @rest) { ... }
+
+=begin original
+
+into this:
+
+=end original
+
+次のように変更します:
+
+    sub MySub($$@) {
+       my ($first) = shift;
+       my ($second) = shift;
+       my (@rest) = @_;
+       ...
+    }
+
+=begin original
+
+Finally, if you feel like a real challenge, have a go at writing a
+full-blown Perl macro preprocessor as a source filter. Borrow the
+useful features from the C preprocessor and any other macro processors
+you know. The tricky bit will be choosing how much knowledge of Perl's
+syntax you want your filter to have.
+
+=end original
+
+最後に、本当の挑戦を好むなら、本格的な Perl マクロプリプロセッサを
+ソースフィルタとして書いてみてください。
+C プリプロセッサやその他のマクロプロセッサから便利な機能を
+借りてきてください。
+トリッキーなところは、Perl の文法のどれくらいの知識をフィルタに持たせるかを
+選ぶところです。
+
+=head1 THINGS TO LOOK OUT FOR
+
+(注意するべきこと)
+
+=over 5
+
+=item Some Filters Clobber the C<DATA> Handle
+
+(一部のフィルタは C<DATA> ハンドルを上書きします)
+
+=begin original
+
+Some source filters use the C<DATA> handle to read the calling program.
+When using these source filters you cannot rely on this handle, nor expect
+any particular kind of behavior when operating on it.  Filters based on
+Filter::Util::Call (and therefore Filter::Simple) do not alter the C<DATA>
+filehandle.
+
+=end original
+
+一部のソースフィルタは、呼び出したプログラムを読み込むために
+C<DATA> ハンドルを使います。
+これらのソースフィルタを使うときには、このハンドルに依存したり、これを
+操作したときに何らかの特定の振る舞いを想定できません。
+Filter::Util::Call (従って Filter::Simple) を基礎としたフィルタは
+C<DATA> ファイルハンドルを変更しません。
+
+=back
+
+=head1 REQUIREMENTS
+
+(必要なもの)
+
+=begin original
+
+The Source Filters distribution is available on CPAN, in 
+
+=end original
+
+ソースフィルタディストリビューションは CPAN の以下から利用可能です
+
+    CPAN/modules/by-module/Filter
+
+=begin original
+
+Starting from Perl 5.8 Filter::Util::Call (the core part of the
+Source Filters distribution) is part of the standard Perl distribution.
+Also included is a friendlier interface called Filter::Simple, by
+Damian Conway.
+
+=end original
+
+Perl 5.8 から、Filter::Util::Call (ソースフィルタ配布のコアの部分) は
+標準 Perl 配布の一部です。
+また、Damian Conway によるより親しみやすいインターフェースである
+Filter::Simple も含まれています。
+
+=head1 AUTHOR
+
+Paul Marquess E<lt>Paul.Marquess@btinternet.comE<gt>
+
+=head1 Copyrights
+
+This article originally appeared in The Perl Journal #11, and is
+copyright 1998 The Perl Journal. It appears courtesy of Jon Orwant and
+The Perl Journal.  This document may be distributed under the same terms
+as Perl itself.
+
+=begin meta
+
+Translate: SHIRAKATA Kentaro <argrath@ub32.org>
+Status: completed
+
+=end meta
+

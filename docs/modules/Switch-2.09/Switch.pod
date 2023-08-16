@@ -1,0 +1,711 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+Switch - A switch statement for Perl
+
+=end original
+
+Switch - Perlのswitch文
+
+=head1 バージョン
+
+=begin original
+
+This document describes version 2.09 of Switch,
+released June 12, 2002.
+
+=end original
+
+このドキュメントで扱っているのは2002年6月12日リリースのSwitch 2.09版です。
+
+=head1 概要
+
+	use Switch;
+
+	switch ($val) {
+
+		case 1		{ print "number 1" }
+		case "a"	{ print "string a" }
+		case [1..10,42]	{ print "number in list" }
+		case (@array)	{ print "number in list" }
+		case /\w+/	{ print "pattern" }
+		case qr/\w+/	{ print "pattern" }
+		case (%hash)	{ print "entry in hash" }
+		case (\%hash)	{ print "entry in hash" }
+		case (\&sub)	{ print "arg to subroutine" }
+		else		{ print "previous case not true" }
+	}
+
+=head1 背景
+
+=begin original
+
+[Skip ahead to L<"DESCRIPTION"> if you don't care about the whys
+and wherefores of this control structure]
+
+=end original
+
+[もしあなたがこの制御構造の由来に関心がないなら、
+L<"説明">まで読み飛ばしてください。]
+
+=begin original
+
+In seeking to devise a "Swiss Army" case mechanism suitable for Perl,
+it is useful to generalize this notion of distributed conditional
+testing as far as possible. Specifically, the concept of "matching"
+between the switch value and the various case values need not be
+restricted to numeric (or string or referential) equality, as it is in other 
+languages. Indeed, as Table 1 illustrates, Perl
+offers at least eighteen different ways in which two values could
+generate a match.
+
+=end original
+
+Perlにふさわしい"スイスアーミー"のような[訳補足:切れ味の良い]
+ケースメカニズムを発明しようとするなら、よく知られた条件テストの
+概念を出来るだけ一般化するのが有用だ。
+殊に、スイッチ値と様々なケース値とを"マッチさせる"という考えを、
+他の言語のように数値（文字列、リファレンス）が等しい場合に限定させる必要はない。
+実際、表1の図が示すように、Perlは二つの値をマッチングさせるために
+少なくとも18通りの方法を提供している。
+
+
+=begin original
+
+	Table 1: Matching a switch value ($s) with a case value ($c)
+
+        Switch  Case    Type of Match Implied   Matching Code
+        Value   Value   
+        ======  =====   =====================   =============
+
+        number  same    numeric or referential  match if $s == $c;
+        or ref          equality
+
+
+	object  method	result of method call   match if $s->$c();
+	ref     name 				match if defined $s->$c();
+		or ref
+
+        other   other   string equality         match if $s eq $c;
+        non-ref non-ref
+        scalar  scalar
+
+        string  regexp  pattern match           match if $s =~ /$c/;
+
+        array   scalar  array entry existence   match if 0<=$c && $c<@$s;
+        ref             array entry definition  match if defined $s->[$c];
+                        array entry truth       match if $s->[$c];
+
+        array   array   array intersection      match if intersects(@$s, @$c);
+        ref     ref     (apply this table to
+                         all pairs of elements
+                         $s->[$i] and
+                         $c->[$j])
+
+        array   regexp  array grep              match if grep /$c/, @$s;
+        ref     
+
+        hash    scalar  hash entry existence    match if exists $s->{$c};
+        ref             hash entry definition   match if defined $s->{$c};
+                        hash entry truth        match if $s->{$c};
+
+        hash    regexp  hash grep               match if grep /$c/, keys %$s;
+        ref     
+
+        sub     scalar  return value defn       match if defined $s->($c);
+        ref             return value truth      match if $s->($c);
+
+        sub     array   return value defn       match if defined $s->(@$c);
+        ref     ref     return value truth      match if $s->(@$c);
+
+=end original
+
+	表１：スイッチ値($s)とケース値($c)のマッチ
+
+   スイッチ値    ケース値      マッチのタイプ         コード
+   ==========    ============  =====================  ==================
+
+   数値、        同左          数値、リファレンスの   match if $s == $c;
+   リファレンス                値が等しい
+
+   オブジェクト  メソッド名、  メソッド呼び出しの     match if $s->$c();
+   リファレンス  リファレンス  結果                   match if defined $s->$c();
+
+   その他の非リ  その他の非リ  文字列が等しい         match if $s eq $c;
+   ファレンス    ファレンス
+   スカラー値    スカラー値
+
+   文字列        正規表現      パターンマッチ         match if $s =~ /$c/;
+
+   配列リファ    スカラー値    候補が存在             match if 0<=$c && $c<@$s;
+   レンス                      候補が定義済み         match if defined $s->[$c];
+                               候補が真               match if $s->[$c];
+
+   配列リファ    配列リファ    配列の積            match if intersects(@$s, @$c);
+   レンス        レンス        
+
+   配列リファ    正規表現      配列のgrep             match if grep /$c/, @$s;
+   レンス        
+
+   ハッシュ      スカラー値    候補が存在             match if exists $s->{$c};
+   リファレンス                候補が定義済           match if defined $s->{$c};
+                               候補が真               match if $s->{$c};
+
+   ハッシュ      正規表現      ハッシュのgrep      match if grep /$c/, keys %$s;
+   リファレンス  
+
+   サブルーチン  スカラー      definedを返す          match if defined $s->($c);
+   リファレンス                真を返す               match if $s->($c);
+
+   サブルーチン  配列リファ    definedを返す          match if defined $s->(@$c);
+   リファレンス  レンス        真を返す               match if $s->(@$c);
+
+
+=begin original
+
+In reality, Table 1 covers 31 alternatives, because only the equality and
+intersection tests are commutative; in all other cases, the roles of
+the C<$s> and C<$c> variables could be reversed to produce a
+different test. For example, instead of testing a single hash for
+the existence of a series of keys (C<match if exists $s-E<gt>{$c}>),
+one could test for the existence of a single key in a series of hashes
+(C<match if exists $c-E<gt>{$s}>).
+
+=end original
+
+実は、表1は31通りのマッチをカバーしている。等号と交差テストだけが相互に
+入れ替え可能で、残りは全て別のテストを作り出すために変数C<$s>とC<$c>の
+役割をひっくり返すことができるからだ。
+例えば、単一のハッシュに対して一連のキーが存在しているかテストする
+(C<match if exists $s-E<gt>{$c}>)代わりに、一連のハッシュに対して一つのキーが
+存在するかどうかテストすることができる(C<match if exists $c-E<gt>{$s}>)。
+
+
+=begin original
+
+As L<perltodo> observes, a Perl case mechanism must support all these
+"ways to do it".
+
+=end original
+
+L<perltodo>にあるように、Perlのケース・メカニズムは
+これら全ての"やり方"をサポートしなければならない。
+
+=head1 説明
+
+=begin original
+
+The Switch.pm module implements a generalized case mechanism that covers
+the numerous possible combinations of switch and case values described above.
+
+=end original
+
+Switch.pmモジュールは、先に挙げた多くのスイッチ値とケース値の
+組み合わせをカバーする汎用ケース・メカニズムを実装する。
+
+=begin original
+
+The module augments the standard Perl syntax with two new control
+statements: C<switch> and C<case>. The C<switch> statement takes a
+single scalar argument of any type, specified in parentheses.
+C<switch> stores this value as the
+current switch value in a (localized) control variable.
+The value is followed by a block which may contain one or more
+Perl statements (including the C<case> statement described below).
+The block is unconditionally executed once the switch value has
+been cached.
+
+=end original
+
+モジュールは標準的なPerl構文に二つの制御文：C<switch>とC<case>を追加する。
+C<switch>文は任意の型のスカラー値をひとつ、括弧でくくって引数にとる。
+C<switch>は現在のスイッチ値として、（ローカル化された）制御変数の中に
+この値を保持する。
+その値は一つ以上のPerl文（下で述べるようにC<case>文を含む）を含んだブロックを
+たどる。ひとたびスイッチ値がキャッシュされると、ブロックは無条件に実行される。
+
+=begin original
+
+A C<case> statement takes a single scalar argument (in mandatory
+parentheses if it's a variable; otherwise the parens are optional) and
+selects the appropriate type of matching between that argument and the
+current switch value. The type of matching used is determined by the
+respective types of the switch value and the C<case> argument, as
+specified in Table 1. If the match is successful, the mandatory
+block associated with the C<case> statement is executed.
+
+=end original
+
+C<case>文は一つのスカラー値を引数にとる（それが変数なら括弧が必須；
+そうでなければ括弧はあってもなくてもよい）。
+そして、引数と現在のスイッチ値との適切なマッチタイプを選ぶ。
+使用されるマッチタイプは表1で列挙されたスイッチ値とC<case>引数のそれぞれの型
+によって決定される。マッチが成功すればC<case>文と結び付けられたブロックが
+強制的に実行される。
+
+=begin original
+
+In most other respects, the C<case> statement is semantically identical
+to an C<if> statement. For example, it can be followed by an C<else>
+clause, and can be used as a postfix statement qualifier. 
+
+=end original
+
+多くの点で、意味の上ではC<case>文はC<if>文と同じである。例えば、
+caseの後にC<else>節を続けることができるし、後置修飾子として利用できる。
+
+=begin original
+
+However, when a C<case> block has been executed control is automatically
+transferred to the statement after the immediately enclosing C<switch>
+block, rather than to the next statement within the block. In other
+words, the success of any C<case> statement prevents other cases in the
+same scope from executing. But see L<"Allowing fall-through"> below.
+
+=end original
+
+しかし、C<case>ブロックが実行されると制御はブロック内の次の文に
+移動するのではなく、自動的にC<switch>の終端ブロック後ろの文に移動する。
+つまり、いずれかのC<case>文が成功すると同じスコープ内の他のcaseは実行されない。
+だが、下のL<"フォールスルーの許可">を参照のこと。
+
+=begin original
+
+Together these two new statements provide a fully generalized case
+mechanism:
+
+=end original
+
+これら二つの新しい文が一緒になって十分一般化されたケースメカニズムを提供する。
+
+        use Switch;
+
+        # その後で…
+
+        %special = ( woohoo => 1,  d'oh => 1 );
+
+        while (<>) {
+            switch ($_) {
+
+                case (%special) { print "homer\n"; }      # if $special{$_}
+                case /a-z/i     { print "alpha\n"; }      # if $_ =~ /a-z/i
+                case [1..9]     { print "small num\n"; }  # if $_ in [1..9]
+
+                case { $_[0] >= 10 } {                    # if $_ >= 10
+                    my $age = <>;
+                    switch (sub{ $_[0] < $age } ) {
+
+                        case 20  { print "teens\n"; }     # if 20 < $age
+                        case 30  { print "twenties\n"; }  # if 30 < $age
+                        else     { print "history\n"; }
+                    }
+                }
+
+                print "must be punctuation\n" case /\W/;  # if $_ ~= /\W/
+        }
+
+=begin original
+
+Note that C<switch>es can be nested within C<case> (or any other) blocks,
+and a series of C<case> statements can try different types of matches
+-- hash membership, pattern match, array intersection, simple equality,
+etc. -- against the same switch value.
+
+=end original
+
+C<switch>はC<case>（やその他の）ブロック内でネストすることが出来る。
+そして一連のC<case>文は同じスイッチ値に対して違うマッチタイプ
+-- ハッシュの帰属、パターンマッチ、配列の積、単純な等号、etc. -- 
+を試すことができるということに注意すること。
+
+=begin original
+
+The use of intersection tests against an array reference is particularly
+useful for aggregating integral cases:
+
+=end original
+
+配列リファレンスに対する交差テストの利用は、整数のケースを集める場合には
+特に有効である。：
+
+        sub classify_digit
+        {
+                switch ($_[0]) { case 0            { return 'zero' }
+                                 case [2,4,6,8]    { return 'even' }
+                                 case [1,3,4,7,9]  { return 'odd' }
+                                 case /[A-F]/i     { return 'hex' }
+                               }
+        }
+
+
+=head2 フォールスルーの許可
+
+=begin original
+
+Fall-though (trying another case after one has already succeeded)
+is usually a Bad Idea in a switch statement. However, this
+is Perl, not a police state, so there I<is> a way to do it, if you must.
+
+=end original
+
+switch文でのフォールスルー（ケースに成功した後に別のケースを試すこと）は
+通常良くないこととされる。しかしここはPerlだ。警察国家じゃない。
+だからあなたがそうするべきだと思うなら、やり方はI<ある>。
+
+=begin original
+
+If a C<case> block executes an untargetted C<next>, control is
+immediately transferred to the statement I<after> the C<case> statement
+(i.e. usually another case), rather than out of the surrounding
+C<switch> block.
+
+=end original
+
+もしC<case>ブロック内でラベルを指示されていないC<next>を実行すると、
+制御はC<switch>ブロックの囲みから出るのではなく、直ちにそのC<case>文の
+次の文（つまり通常別のcase）に移動する。
+
+=begin original
+
+For example:
+
+=end original
+
+例えば：
+
+        switch ($val) {
+                case 1      { handle_num_1(); next }    # and try next case...
+                case "1"    { handle_str_1(); next }    # and try next case...
+                case [0..9] { handle_num_any(); }       # and we're done
+                case /\d/   { handle_dig_any(); next }  # and try next case...
+                case /.*/   { handle_str_any(); next }  # and try next case...
+        }
+
+=begin original
+
+If $val held the number C<1>, the above C<switch> block would call the
+first three C<handle_...> subroutines, jumping to the next case test
+each time it encountered a C<next>. After the thrid C<case> block
+was executed, control would jump to the end of the enclosing
+C<switch> block.
+
+=end original
+
+$valが数字のC<1>を保持するなら、上のC<switch>ブロックは、C<next>に出会うたびに
+次のケーステストにジャンプしながら、最初の三つのC<handle_...>サブルーチンを
+呼び出す。三番目のC<case>ブロックが実行された後、制御はC<switch>ブロックの
+終わりまでジャンプする。
+
+=begin original
+
+On the other hand, if $val held C<10>, then only the last two C<handle_...>
+subroutines would be called.
+
+=end original
+
+一方、$valがC<10>の場合、最後の二つのC<handle_...>サブルーチンだけが呼び出される。
+
+=begin original
+
+Note that this mechanism allows the notion of I<conditional fall-through>.
+For example:
+
+=end original
+
+この仕組みを利用して条件付フォールスルーが可能となる。例えば：
+
+        switch ($val) {
+                case [0..9] { handle_num_any(); next if $val < 7; }
+                case /\d/   { handle_dig_any(); }
+        }
+
+=begin original
+
+If an untargetted C<last> statement is executed in a case block, this
+immediately transfers control out of the enclosing C<switch> block
+(in other words, there is an implicit C<last> at the end of each
+normal C<case> block). Thus the previous example could also have been
+written:
+
+=end original
+
+caseブロックでラベルの指定されていないC<last>が実行されると
+直ちに制御はC<switch>ブロックの外にぬける（つまり通常どのC<case>の最後にも
+暗黙のC<last>があるということ）。だから先の例は次のようにも書けた。：
+
+        switch ($val) {
+                case [0..9] { handle_num_any(); last if $val >= 7; next; }
+                case /\d/   { handle_dig_any(); }
+        }
+
+
+=head2 フォールスルーの自動化
+
+=begin original
+
+In situations where case fall-through should be the norm, rather than an
+exception, an endless succession of terminal C<next>s is tedious and ugly.
+Hence, it is possible to reverse the default behaviour by specifying
+the string "fallthrough" when importing the module. For example, the 
+following code is equivalent to the first example in L<"Allowing fall-through">:
+
+=end original
+
+フォールスルーが例外的ではなく標準になっているような場合、
+延々と続くブロック端のC<next>は単調で見苦しい。
+そこでモジュールをインポートする際に"fallthrough"という文字を指定することで、
+デフォルトの振る舞いを逆転させることができる。
+例えば次のコードはL<"フォールスルーの許可">の最初の例と等価である。：
+
+        use Switch 'fallthrough';
+
+        switch ($val) {
+                case 1      { handle_num_1(); }
+                case "1"    { handle_str_1(); }
+                case [0..9] { handle_num_any(); last }
+                case /\d/   { handle_dig_any(); }
+                case /.*/   { handle_str_any(); }
+        }
+
+=begin original
+
+Note the explicit use of a C<last> to preserve the non-fall-through
+behaviour of the third case.
+
+=end original
+
+三番目のcaseでフォールスルーさせないためには明示的にC<last>を
+つけなければならないことに注意。
+
+=head2 もう一つの構文
+
+=begin original
+
+Perl 6 will provide a built-in switch statement with essentially the
+same semantics as those offered by Switch.pm, but with a different
+pair of keywords. In Perl 6 C<switch> will be spelled C<given>, and
+C<case> will be pronounced C<when>. In addition, the C<when> statement
+will not require switch or case values to be parenthesized.
+
+=end original
+
+Perl 6 はSwitch.pmが提供するものと本質的に同等な組み込みのswitch文を用意している。
+だがキーワードが異なっている。Perl 6 ではC<switch>はC<given>と書き、C<case>は
+C<when>と発音する。加えてC<when>文はスイッチ値やケース値を括弧でくくる必要がない。
+
+=begin original
+
+This future syntax is also (largely) available via the Switch.pm module, by
+importing it with the argument C<"Perl6">.  For example:
+
+=end original
+
+Switch.pmをインポートする際にC<"Perl6">という引数を与えてやれば、
+この未来の構文も扱うことが出来る。
+
+        use Switch 'Perl6';
+
+        given ($val) {
+                when 1       { handle_num_1(); }
+                when ($str1) { handle_str_1(); }
+                when [0..9]  { handle_num_any(); last }
+                when /\d/    { handle_dig_any(); }
+                when /.*/    { handle_str_any(); }
+        }
+
+=begin original
+
+Note that scalars still need to be parenthesized, since they would be
+ambiguous in Perl 5.
+
+=end original
+
+Perl 5 では扱いが曖昧であるため、スカラー変数はまだ括弧が必要であることに注意。
+
+=begin original
+
+Note too that you can mix and match both syntaxes by importing the module
+with:
+
+=end original
+
+また、モジュールをインポートする時に以下のようにすれば
+両方の構文を利用できることにも注目：
+
+	use Switch 'Perl5', 'Perl6';
+
+
+=head2 高階操作
+
+=begin original
+
+One situation in which C<switch> and C<case> do not provide a good
+substitute for a cascaded C<if>, is where a switch value needs to
+be tested against a series of conditions. For example:
+
+=end original
+
+C<switch>とC<case>が連続するC<if>のうまい代替手段とならない場合がある。
+それはスイッチ値が一続きの条件でテストされなければならない場合だ。例えば：
+
+        sub beverage {
+            switch (shift) {
+
+                case sub { $_[0] < 10 }  { return 'milk' }
+                case sub { $_[0] < 20 }  { return 'coke' }
+                case sub { $_[0] < 30 }  { return 'beer' }
+                case sub { $_[0] < 40 }  { return 'wine' }
+                case sub { $_[0] < 50 }  { return 'malt' }
+                case sub { $_[0] < 60 }  { return 'Moet' }
+                else                     { return 'milk' }
+            }
+        }
+
+=begin original
+
+The need to specify each condition as a subroutine block is tiresome. To
+overcome this, when importing Switch.pm, a special "placeholder"
+subroutine named C<__> [sic] may also be imported. This subroutine
+converts (almost) any expression in which it appears to a reference to a
+higher-order function. That is, the expression:
+
+=end original
+
+全部の条件をサブルーチンブロックとして指定するのは退屈だ。この状態を
+打開するにはSwitch.pmをインポートする際にC<__>[ママ]という名前の
+特殊な"プレースホルダ"サブルーチンをつける。このサブルーチンは
+それが現れる（ほとんど）どんな式も高階関数へのリファレンスに変換してくれる。
+つまり：
+
+
+        use Switch '__';
+
+        __ < 2 + __
+
+=begin original
+
+is equivalent to:
+
+=end original
+
+これは次のものと等しい：
+
+        sub { $_[0] < 2 + $_[1] }
+
+=begin original
+
+With C<__>, the previous ugly case statements can be rewritten:
+
+=end original
+
+C<__>を使えば、先ほどの見苦しいcase文は次のように書き直される：
+
+        case  __ < 10  { return 'milk' }
+        case  __ < 20  { return 'coke' }
+        case  __ < 30  { return 'beer' }
+        case  __ < 40  { return 'wine' }
+        case  __ < 50  { return 'malt' }
+        case  __ < 60  { return 'Moet' }
+        else           { return 'milk' }
+
+=begin original
+
+The C<__> subroutine makes extensive use of operator overloading to
+perform its magic. All operations involving __ are overloaded to
+produce an anonymous subroutine that implements a lazy version
+of the original operation.
+
+=end original
+
+C<__>サブルーチンは演算子のオーバーロードを利用して魔法のようなことを行う。
+__を伴う全ての演算は無名サブルーチンを生成するようにオーバーロードされる。
+この無名サブルーチンは元もとの演算の怠惰なバージョンを実装する。
+
+=begin original
+
+The only problem is that operator overloading does not allow the
+boolean operators C<&&> and C<||> to be overloaded. So a case statement
+like this:
+
+=end original
+
+唯一の問題は、ブール演算のC<&&>とC<||>がオーバーロードできないことだ。
+そのため、このようなcase文：
+
+        case  0 <= __ && __ < 10  { return 'digit' }  
+
+=begin original
+
+doesn't act as expected, because when it is
+executed, it constructs two higher order subroutines
+and then treats the two resulting references as arguments to C<&&>:
+
+=end original
+
+は、予期したように働かない。なぜならこれが実行されると二つの高階関数が生成され、
+戻り値であるこの二つの関数リファレンスがC<&&>への引数として扱われるからだ。
+
+        sub { 0 <= $_[0] } && sub { $_[0] < 10 }
+
+=begin original
+
+This boolean expression is inevitably true, since both references are
+non-false. Fortunately, the overloaded C<'bool'> operator catches this
+situation and flags it as a error. 
+
+=end original
+
+リファレンスは偽でないため、このブール式は必ず真になる。
+幸いなことに、オーバーロードされたC<'bool'>演算子がこの事態をキャッチし、
+エラーとしてフラグを立ててくれる。
+
+=head1 依存関係
+
+=begin original
+
+The module is implemented using Filter::Util::Call and Text::Balanced
+and requires both these modules to be installed. 
+
+=end original
+
+このモジュールは Filter::Util::Callと Text::Balancedを使って実装されている。
+だからインストールするにはこれらのモジュールが必要である。
+
+=head1 作者
+
+Damian Conway (damian@conway.org)
+
+=head1 バグ
+
+=begin original
+
+There are undoubtedly serious bugs lurking somewhere in code this funky :-)
+Bug reports and other feedback are most welcome.
+
+=end original
+
+このいかすコードのどこかに間違いなく重大なバグが潜んでいる（笑）
+バグレポートやフィードバックは大歓迎。
+
+=head1 制限
+
+=begin original
+
+Due to the heuristic nature of Switch.pm's source parsing, the presence
+of regexes specified with raw C<?...?> delimiters may cause mysterious
+errors. The workaround is to use C<m?...?> instead.
+
+=end original
+
+Switch.pmのパース機能が持つ帰納的な性質のため、C<?...?>デリミタで指定された
+正規表現が存在すると奇妙なエラーな出る。代わりにC<m?...?>を使うこと。
+
+=head1 著作権
+
+    Copyright (c) 1997-2001, Damian Conway. All Rights Reserved.
+    This module is free software. It may be used, redistributed
+        and/or modified under the same terms as Perl itself.

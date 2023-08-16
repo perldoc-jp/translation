@@ -1,0 +1,1790 @@
+
+=encoding euc-jp
+
+=head1 名前
+
+BerkeleyDB - Berkeley DB バージョン2、3、4のためのPerl拡張
+
+=head1 概要
+
+  use BerkeleyDB;
+
+  $env = new BerkeleyDB::Env [OPTIONS] ;
+
+  $db  = tie %hash, 'BerkeleyDB::Hash', [OPTIONS] ;
+  $db  = new BerkeleyDB::Hash [OPTIONS] ;
+
+  $db  = tie %hash, 'BerkeleyDB::Btree', [OPTIONS] ;
+  $db  = new BerkeleyDB::Btree [OPTIONS] ;
+
+  $db  = tie %hash, 'BerkeleyDB::Recno', [OPTIONS] ;
+  $db  = new BerkeleyDB::Recno [OPTIONS] ;
+
+  $db  = tie %hash, 'BerkeleyDB::Queue', [OPTIONS] ;
+  $db  = new BerkeleyDB::Queue [OPTIONS] ;
+
+  $db  = new BerkeleyDB::Unknown [OPTIONS] ;
+
+  $status = BerkeleyDB::db_remove [OPTIONS]
+  $status = BerkeleyDB::db_rename [OPTIONS]
+  $status = BerkeleyDB::db_verify [OPTIONS]
+
+  $hash{$key} = $value ;
+  $value = $hash{$key} ;
+  each %hash ;
+  keys %hash ;
+  values %hash ;
+
+  $status = $db->db_get()
+  $status = $db->db_put() ;
+  $status = $db->db_del() ;
+  $status = $db->db_sync() ;
+  $status = $db->db_close() ;
+  $status = $db->db_close() ;
+  $status = $db->db_pget()
+  $hash_ref = $db->db_stat() ;
+  $status = $db->db_key_range();
+  $type = $db->type() ;
+  $status = $db->status() ;
+  $boolean = $db->byteswapped() ;
+  $status = $db->truncate($count) ;
+
+  ($flag, $old_offset, $old_length) = $db->partial_set($offset, $length) ;
+  ($flag, $old_offset, $old_length) = $db->partial_clear() ;
+
+  $cursor = $db->db_cursor([$flags]) ;
+  $newcursor = $cursor->c_dup([$flags]);
+  $status = $cursor->c_get() ;
+  $status = $cursor->c_put() ;
+  $status = $cursor->c_del() ;
+  $status = $cursor->c_count() ;
+  $status = $cursor->c_pget() ;
+  $status = $cursor->status() ;
+  $status = $cursor->c_close() ;
+
+  $cursor = $db->db_join() ;
+  $status = $cursor->c_get() ;
+  $status = $cursor->c_close() ;
+
+  $status = $env->txn_checkpoint()
+  $hash_ref = $env->txn_stat()
+  $status = $env->setmutexlocks()
+  $status = $env->set_flags()
+
+  $txn = $env->txn_begin() ;
+  $db->Txn($txn);
+  $txn->Txn($db1, $db2,...);
+  $status = $txn->txn_prepare()
+  $status = $txn->txn_commit()
+  $status = $txn->txn_abort()
+  $status = $txn->txn_id()
+  $status = $txn->txn_discard()
+
+  $status = $env->set_lg_dir();
+  $status = $env->set_lg_bsize();
+  $status = $env->set_lg_max();
+
+  $status = $env->set_data_dir() ;
+  $status = $env->set_tmp_dir() ;
+  $status = $env->set_verbose() ;
+
+  $BerkeleyDB::Error
+  $BerkeleyDB::db_version
+
+  # DBMフィルター
+  $old_filter = $db->filter_store_key  ( sub { ... } ) ;
+  $old_filter = $db->filter_store_value( sub { ... } ) ;
+  $old_filter = $db->filter_fetch_key  ( sub { ... } ) ;
+  $old_filter = $db->filter_fetch_value( sub { ... } ) ;
+
+  # 使うべきではありませんが、サポートされています
+  $txn_mgr = $env->TxnMgr();
+  $status = $txn_mgr->txn_checkpoint()
+  $hash_ref = $txn_mgr->txn_stat()
+  $txn = $txn_mgr->txn_begin() ;
+
+=head1 説明
+
+B<注意: このドキュメントはまだ作成中です。所々、不完全である
+と思ってください。>
+
+このPerlモジュールはBerkeley DB バージョン 2, 3 そして 4で利用できる
+ほとんどの機能へのインターフェースを提供します。一般的に
+ここで提供されるインターフェースはBerkeley DBインターフェースと
+同じであると想定して大丈夫です。主な変更はBerkeley DB API を
+Perlで機能するようにしていることです。Berkeley DB 2.xを使っているのであれば、
+Berkeley DB 3.x や DB 4.x で利用できる新しい機能が、このモジュールを
+介して利用できないということに注意してください。
+
+読者はBerkeley DBドキュメントに精通していることが期待されます。
+提供されているインターフェースがBerkeley DBライブラリと同じで...TODO
+
+B<db_appinit>, B<db_cursor>, B<db_open> そして B<db_txn> man ページは
+特に関係があります。
+
+Berkeley DBへのインターフェースはいくつかのPerlクラスで実装されて
+います。
+
+=head1 ENVクラス
+
+B<BerkeleyDB::Env>クラスはBerkeley DB 2.xでのBerkeley DB
+関数B<db_appinit>やBerkeley DB 3.x/4.xでのB<db_env_create>と
+B<DBENV-E<gt>open>へのインターフェースを提供します。
+その目的は、あなたが環境を利用する全てのデータベースで
+一貫性を持って使うことが出来るいくつかのサブシステムを初期化する
+ことです。
+
+トランザクション、ロック、ログを利用するつもりがなければ、
+B<BerkeleyDB::Env>を利用する必要はありません。
+
+=head2 概要
+
+    $env = new BerkeleyDB::Env
+             [ -Home         => $path, ]
+             [ -Server       => $name, ]
+             [ -CacheSize    => $number, ]
+             [ -Config       => { name => value, name => value }, ]
+             [ -ErrFile      => filename, ]
+             [ -ErrPrefix    => "string", ]
+             [ -Flags        => number, ]
+             [ -SetFlags     => bitmask, ]
+             [ -LockDetect   => number, ]
+             [ -Verbose      => boolean, ]
+
+BerkeleyDB::Envコンストラクタへの全てのパラメータはオプションです。
+
+=over 5
+
+=item -Home
+
+もしあれば、このパラメータは存在するディレクトリを示さなければなりません。
+BerkeleyDB::Envクラスによって初期化されるサブシステムの中で
+絶対パスでI<指定されなかった>ファイルは全て、B<Home>ディレクトリにあるものと
+想定されます。
+
+例えば、以下のコードでは、相対パスで指定されているのでデータベース"fred.db"は
+"/home/databases"でオープンされます。しかし"joe.db"は絶対パスを持っているので
+"/other"でオープンされます。
+
+    $env = new BerkeleyDB::Env
+             -Home         => "/home/databases"
+    ...
+
+    $db1 = new BerkeleyDB::Hash
+         -Filename = "fred.db",
+         -Env => $env
+    ...
+
+    $db2 = new BerkeleyDB::Hash
+         -Filename = "/other/joe.db",
+         -Env => $env
+    ...
+
+=item -Server
+
+もしあれば、このパラメータはBerkeley DB RPCサーバーが走っているサーバーのホスト名
+でなければなりません。全てのデータベースはRPCサーバーを介してアクセスされます。
+
+=item -Cachesize
+
+もしあれば、このパラメータは環境共有メモリ・バッファ・プールの大きさを
+設定します。
+
+=item -Config
+
+これはC<-Home>パラメータの変形です。しかしこれは特定のタイプのファイルが
+保存される場所へのより細かい制御を可能にします。
+
+パラメータはハッシュへのリファレンスを期待します。適切なキーは:
+B<DB_DATA_DIR>, B<DB_LOG_DIR> そして B<DB_TMP_DIR>です。
+
+以下のコードは、どのようにそれを使うことができるかの例を示します。
+
+    $env = new BerkeleyDB::Env
+             -Config => { DB_DATA_DIR => "/home/databases",
+                          DB_LOG_DIR  => "/home/logs",
+                          DB_TMP_DIR  => "/home/tmp"
+                        }
+    ...
+
+=item -ErrFile
+
+ファイル名を期待します。Berkeley DBによって内部的に発生したエラーは、
+このファイルに書き込まれます。
+
+=item -ErrPrefix
+
+B<-ErrFile>に送られる前に、エラーメッセージの頭に文字列をつけることを
+可能にします。
+
+=item -Flags
+
+B<Flags>パラメータはどのサブシステムが初期化されるかと環境全体のオプションの
+数の両方を指定します。
+このオプションのさらなる詳細についてはBerkeley DB ドキュメントをご覧ください。
+
+以下の全てをORすることによって指定することが出来ます:
+
+B<DB_CREATE>
+
+存在していないファイルが指定されたら、それを作成します。
+
+B<DB_INIT_CDB>
+
+Concurrent Accessメソッドを初期化します。
+
+B<DB_INIT_LOCK>
+
+ロック・サブシステムを初期化します。
+
+B<DB_INIT_LOG>
+
+ログ・サブシステムを初期化します。
+
+B<DB_INIT_MPOOL>
+
+...を初期化します。
+
+B<DB_INIT_TXN>
+
+...を初期化します。
+
+B<DB_MPOOL_PRIVATE>
+
+...を初期化します。
+
+B<DB_INIT_MPOOL> も指定されます。
+
+...を初期化します。
+
+B<DB_NOMMAP>
+
+...を初期化します。
+
+B<DB_RECOVER>
+
+
+
+B<DB_RECOVER_FATAL>
+
+B<DB_THREAD>
+
+B<DB_TXN_NOSYNC>
+
+B<DB_USE_ENVIRON>
+
+B<DB_USE_ENVIRON_ROOT>
+
+=item -SetFlags
+
+ENV->set_flagsを与えられたビットマスクで呼び出します。DB_ENV->openが
+呼ばれる前にDB_ENV->set_flagsを使う必要があるとき、使用してください。
+
+Berkeley DB 3.x 以上が使われるときにのみ適切です。
+
+=item -LockDetect
+
+ロックの衝突が発生したときに何をするかを指定します。値は以下のいずれかでなければ
+なりません
+
+B<DB_LOCK_DEFAULT> 
+
+B<DB_LOCK_OLDEST>
+
+B<DB_LOCK_RANDOM>
+
+B<DB_LOCK_YOUNGEST>
+
+=item -Verbose
+
+特別なデバッグ情報をB<-ErrFile>に送られるメッセージに追加します。
+
+=back
+
+=head2 メソッド
+
+環境(environment)クラスは以下のメソッドを持っています:
+
+=over 5
+
+=item $env->errPrefix("string") ;
+
+このメソッドはB<-ErrPrefix>フラグと同じです。頭につける文字列を
+動的に変更することができます。
+
+=item $env->set_flags(bitmask, 1|0);
+
+=item $txn = $env->TxnMgr()
+
+B<TxnMgr>オブジェクトを作成するためのコンストラクタ。
+トランザクションを利用する詳細についてはL<"トランザクション">をご覧ください。
+
+このメソッドは使わないようにしてください。下記のB<txn_>メソッドを使って
+環境オブジェクトから直接、トランザクション・メソッドにアクセスしてください。
+
+=item $env->txn_begin()
+
+TODO
+
+=item $env->txn_stat()
+
+TODO
+
+=item $env->txn_checkpoint()
+
+TODO
+
+=item $env->status()
+
+最後のBerkeleyDB::Envメソッドのステータスを返します。
+
+=item $env->setmutexlocks()
+
+Berkeley Db 3.0以上でのみ利用できます。
+Berkeley DB 3.1.xを利用しているとき、B<db_env_set_mutexlocks>を呼びます。
+Berkeley DB 3.0 や 3.2以上を利用しているときには、B<DBENV-E<gt>set_mutexlocks>を
+呼びます。
+
+=back
+
+=head2 使用例
+
+TODO.
+
+=head1 Globalクラス
+
+  $status = BerkeleyDB::db_remove [OPTIONS]
+  $status = BerkeleyDB::db_rename [OPTIONS]
+  $status = BerkeleyDB::db_verify [OPTIONS]
+  
+=head1 DATABASEクラス
+
+B<BerkeleyDB>は以下のデータベース・フォーマットをサポートします:
+
+=over 5
+
+=item B<BerkeleyDB::Hash>
+
+このデータベース・タイプは、任意のキー／値の組をデータファイルに
+格納することを可能にします。これは機能の面でDBM, NDBM, ODBM, GDBM, 
+そしてSDBMといった他のハッシュをおこなうパッケージが提供する同じです。
+しかしB<BErkeleyDB::HASH>を使って作られたファイルが、今上げた他のパッケージと
+互換性がないということを忘れないでください。 
+
+デフォルトのハッシュ・アルゴリズムがBerkeley DBに組み込まれており、
+ほとんどのアプリケーションに適合します。もし独自のハッシュ・アルゴリズムを
+使う必要があれば、Perlで独自に書込み、B<BerkeleyDB>が代わりにそれを使うように
+することも出来ます。
+
+=item B<BerkeleyDB::Btree>
+
+btreeフォーマットは任意のキー／値の組を、バランスがとれた
+バイナリー・ツリーに格納することが出来ます。 
+
+B<BerkeleyDB::Hash>フォーマットの場合と同じように、
+キーの比較を実行するユーザ定義の
+Perlのルーチンを提供することが出来ます。しかしデフォルトでは、
+キーは文字(lexical)の順に格納されます。
+
+=item B<BerkeleyDB::Recno>
+
+TODO.
+
+
+=item B<BerkeleyDB::Queue>
+
+TODO.
+
+=item B<BerkeleyDB::Unknown>
+
+これはデータベース・フォーマットではありません。既存のBerkeley DBデータベースを
+その種類が何かを知ることなく、オープンしたいときに使います。
+
+=back
+
+
+上記で記述されたそれぞれのデータベース・フォーマットは、
+対応するB<BerkeleyDB>クラスを介してアクセスされます。これらは
+次のセクションで説明されます。
+
+=head1 BerkeleyDB::Hash
+
+Berkeley DB 2.xでタイプB<DB_HASH>でB<db_open>を呼び出すことや、
+Berkeley DB 3.x以上でタイプB<DB_HASH>でB<DB-E<gt>open>した後にB<db_create>を
+呼び出したことと同じです。
+
+コンストラクタの2つの形式がサポートされています:
+
+    $db = new BerkeleyDB::Hash
+                [ -Filename      => "filename", ]
+                [ -Subname       => "sub-database name", ]
+                [ -Flags         => flags,]
+                [ -Property      => flags,]
+                [ -Mode          => number,]
+                [ -Cachesize     => number,]
+                [ -Lorder        => number,]
+                [ -Pagesize      => number,]
+                [ -Env           => $env,]
+                [ -Txn           => $txn,]
+                # BerkeleyDB::Hash specific
+                [ -Ffactor       => number,]
+                [ -Nelem         => number,]
+                [ -Hash          => code reference,]
+                [ -DupCompare    => code reference,]
+
+そしてこれです
+
+    [$db =] tie %hash, 'BerkeleyDB::Hash', 
+                [ -Filename      => "filename", ]
+                [ -Subname       => "sub-database name", ]
+                [ -Flags         => flags,]
+                [ -Property      => flags,]
+                [ -Mode          => number,]
+                [ -Cachesize     => number,]
+                [ -Lorder        => number,]
+                [ -Pagesize      => number,]
+                [ -Env           => $env,]
+                [ -Txn           => $txn,]
+                # BerkeleyDB::Hash specific
+                [ -Ffactor       => number,]
+                [ -Nelem         => number,]
+                [ -Hash          => code reference,]
+                [ -DupCompare    => code reference,]
+
+
+"tie"インターフェースが使われると、データベースからの読み込みと書込みは
+tieされたハッシュを介して実現されます。この場合、データベースはPerl連想配列が
+たまたまディスクに格納されているように処理します。
+
+高レベルのtieハッシュ・インターフェースに加えて、Berkeley DBによって
+提供される元になっているメソッドを使用することができます。
+
+=head2 オプション
+
+オプションの標準セット(L<共通オプション>をご覧ください)に加えて、
+B<BerkeleyDB::Hash>は下記のオプションもサポートします:
+
+=over 5
+
+=item -Property
+
+データベースをオープンするとき、特別なフラグを指定するために使われます。
+以下の値の1つまたは複数を一緒に論理的にORすることにより以下のフラグを
+指定することが出来ます:
+
+B<DB_DUP>
+
+新しいデータベースを作るとき、このフラグはデータベースに重複するキーを
+格納することを可能にします。もしB<DB_DUPSORT>が指定されなければ、
+重複はそのデータベースが作成された順番で格納されます。
+
+B<DB_DUPSORT>
+
+データベースでの重複したキーのソートを可能にします。もしB<DB_DUP>も
+指定されなければ、無視されます。
+
+=item -Ffactor
+
+=item -Nelem
+
+これらのオプションについての詳細はBerkeley DBドキュメントをご覧ください。
+
+=item -Hash
+
+ユーザ定義のハッシュ関数を提供することを可能にします。もし指定されなければ、
+デフォルトのハッシュ関数が使われます。いかにユーザ定義ハッシュ関数のテンプレートを
+示します
+
+    sub hash
+    {
+        my ($data) = shift ;
+        ...
+        # $dataのためのハッシュ値を返します
+    return $hash ;
+    }
+
+    tie %h, "BerkeleyDB::Hash", 
+        -Filename => $filename, 
+        -Hash     => \&hash,
+    ...
+
+例についてはL<"">をご覧ください。
+
+=item -DupCompare
+
+B<DB_DUPOSRT>フラグと一緒に使われます。
+
+    sub compare
+    {
+    my ($key, $key2) = @_ ;
+        ...
+        # 戻り値 $key1 eq $key2 ならば 0
+        #        $key1 lt $key2 ならば -1
+        #        $key1 gt $key2 ならば 1
+        return (-1 , 0 or 1) ;
+    }
+
+    tie %h, "BerkeleyDB::Hash", 
+        -Filename   => $filename, 
+    -Property   => DB_DUP|DB_DUPSORT,
+        -DupCompare => \&compare,
+    ...
+
+=back
+
+
+=head2 メソッド
+
+B<BerkeleyDB::Hash>は標準のデータベース・メソッドだけをサポートします。
+L<共通データベース・メソッド>をご覧ください。
+
+=head2 単純なTieされたハッシュの例
+
+    use strict ;
+    use BerkeleyDB ;
+    use vars qw( %h $k $v ) ;
+
+    my $filename = "fruit" ;
+    unlink $filename ;
+    tie %h, "BerkeleyDB::Hash",
+                -Filename => $filename,
+        -Flags    => DB_CREATE
+        or die "Cannot open file $filename: $! $BerkeleyDB::Error\n" ;
+
+    # ファイルにキー/値の組をいくつか追加します
+    $h{"apple"} = "red" ;
+    $h{"orange"} = "orange" ;
+    $h{"banana"} = "yellow" ;
+    $h{"tomato"} = "red" ;
+
+    # キーが存在するかをチェックします
+    print "Banana Exists\n\n" if $h{"banana"} ;
+
+    # キー/値の組を削除します
+    delete $h{"apple"} ;
+
+    # ファイルの内容を出力します
+    while (($k, $v) = each %h)
+      { print "$k -> $v\n" }
+
+    untie %h ;
+
+以下のように出力されます:
+
+    Banana Exists
+    
+    orange -> orange
+    tomato -> red
+    banana -> yellow
+
+通常の連想配列（ハッシュ）と同様、取り出されるキーの順番は見た目上、
+でたらめになることに注意してください。
+
+=head2 単純なハッシュのもう1つの例
+
+tieを使わずに前の例と同じことをします。
+
+    use strict ;
+    use BerkeleyDB ;
+
+    my $filename = "fruit" ;
+    unlink $filename ;
+    my $db = new BerkeleyDB::Hash
+                -Filename => $filename,
+        -Flags    => DB_CREATE
+        or die "Cannot open file $filename: $! $BerkeleyDB::Error\n" ;
+
+    # ファイルにキー/値の組をいくつか追加します
+    $db->db_put("apple", "red") ;
+    $db->db_put("orange", "orange") ;
+    $db->db_put("banana", "yellow") ;
+    $db->db_put("tomato", "red") ;
+
+    # キーが存在するかをチェックします
+    print "Banana Exists\n\n" if $db->db_get("banana", $v) == 0;
+
+    # キー/値の組を削除します
+    $db->db_del("apple") ;
+
+    # ファイルの内容を出力します
+    my ($k, $v) = ("", "") ;
+    my $cursor = $db->db_cursor() ;
+    while ($cursor->c_get($k, $v, DB_NEXT) == 0)
+      { print "$k -> $v\n" }
+
+    undef $cursor ;
+    undef $db ;
+
+=head2 キーの重複
+
+以下のコードは上記の例の変形です。今度はハッシュが逆転しています。
+今度のキーは色であり、値に果物の名前になります。重複を許すため、
+B<DB_DUP>フラグが指定されています。
+
+    use strict ;
+    use BerkeleyDB ;
+
+    my $filename = "fruit" ;
+    unlink $filename ;
+    my $db = new BerkeleyDB::Hash
+                -Filename => $filename,
+        -Flags    => DB_CREATE,
+        -Property  => DB_DUP
+        or die "Cannot open file $filename: $! $BerkeleyDB::Error\n" ;
+
+    # ファイルにキー/値の組をいくつか追加します
+    $db->db_put("red", "apple") ;
+    $db->db_put("orange", "orange") ;
+    $db->db_put("green", "banana") ;
+    $db->db_put("yellow", "banana") ;
+    $db->db_put("red", "tomato") ;
+    $db->db_put("green", "apple") ;
+
+    # ファイルの内容を出力します
+    my ($k, $v) = ("", "") ;
+    my $cursor = $db->db_cursor() ;
+    while ($cursor->c_get($k, $v, DB_NEXT) == 0)
+      { print "$k -> $v\n" }
+
+    undef $cursor ;
+    undef $db ;
+
+以下のように出力されます:
+
+    orange -> orange
+    yellow -> banana
+    red -> apple
+    red -> tomato
+    green -> banana
+    green -> apple
+
+=head2 重複するキーのソート
+
+前の例では、重複するキーがある場合、値はそれが格納された順序にソート
+されます。以下のコードは前の例と同じですが、B<DB_DUPSORT>フラグが指定
+されています。
+
+    use strict ;
+    use BerkeleyDB ;
+
+    my $filename = "fruit" ;
+    unlink $filename ;
+    my $db = new BerkeleyDB::Hash
+                -Filename => $filename,
+        -Flags    => DB_CREATE,
+        -Property  => DB_DUP | DB_DUPSORT
+        or die "Cannot open file $filename: $! $BerkeleyDB::Error\n" ;
+
+    # ファイルにキー/値の組をいくつか追加します
+    $db->db_put("red", "apple") ;
+    $db->db_put("orange", "orange") ;
+    $db->db_put("green", "banana") ;
+    $db->db_put("yellow", "banana") ;
+    $db->db_put("red", "tomato") ;
+    $db->db_put("green", "apple") ;
+
+    # ファイルの内容を出力します
+    my ($k, $v) = ("", "") ;
+    my $cursor = $db->db_cursor() ;
+    while ($cursor->c_get($k, $v, DB_NEXT) == 0)
+      { print "$k -> $v\n" }
+
+    undef $cursor ;
+    undef $db ;
+
+下記の出力で、重複した値がソートされていることに注意してください。
+
+    orange -> orange
+    yellow -> banana
+    red -> apple
+    red -> tomato
+    green -> apple
+    green -> banana
+
+=head2 重複するキーの独自のソート
+
+もう一つの変形
+
+TODO
+
+=head2 ハッシュの変更
+
+TODO
+
+=head2 db_statの使用
+
+TODO
+
+=head1 BerkeleyDB::Btree
+
+Berkeley DB 2.xでタイプB<DB_BTREE>でB<db_open>を呼び出すことや、
+Berkeley DB 3.x以上でタイプB<DB_BTREE>でB<DB-E<gt>open>した後にB<db_create>を
+呼び出したことと同じです。
+
+コンストラクタの2つの形式がサポートされています:
+
+    $db = new BerkeleyDB::Btree
+                [ -Filename      => "filename", ]
+                [ -Subname       => "sub-database name", ]
+                [ -Flags         => flags,]
+                [ -Property      => flags,]
+                [ -Mode          => number,]
+                [ -Cachesize     => number,]
+                [ -Lorder        => number,]
+                [ -Pagesize      => number,]
+                [ -Env           => $env,]
+                [ -Txn           => $txn,]
+                # BerkeleyDB::Btree specific
+                [ -Minkey        => number,]
+                [ -Compare       => code reference,]
+                [ -DupCompare    => code reference,]
+                [ -Prefix        => code reference,]
+
+そしてこれです
+
+    [$db =] tie %hash, 'BerkeleyDB::Btree', 
+                [ -Filename      => "filename", ]
+                [ -Subname       => "sub-database name", ]
+                [ -Flags         => flags,]
+                [ -Property      => flags,]
+                [ -Mode          => number,]
+                [ -Cachesize     => number,]
+                [ -Lorder        => number,]
+                [ -Pagesize      => number,]
+                [ -Env           => $env,]
+                [ -Txn           => $txn,]
+                # BerkeleyDB::Btree specific
+                [ -Minkey        => number,]
+                [ -Compare       => code reference,]
+                [ -DupCompare    => code reference,]
+                [ -Prefix        => code reference,]
+
+=head2 オプション
+
+オプションの標準セット(L<共通オプション>をご覧ください)に加えて、
+B<BerkeleyDB::Btree>は以下のオプションをサポートしています:
+
+=over 5
+
+=item -Property
+
+
+データベースをオープンするとき、特別なフラグを指定するために使われます。
+以下の値の1つまたは複数を一緒に論理的にORすることにより以下のフラグを
+指定することが出来ます:
+
+B<DB_DUP>
+
+新しいデータベースを作るとき、このフラグはデータベースに重複するキーを
+格納することを可能にします。もしB<DB_DUPSORT>が指定されなければ、
+重複はそのデータベースが作成された順番で格納されます。
+
+B<DB_DUPSORT>
+
+データベースでの重複したキーのソートを可能にします。もしB<DB_DUP>も
+指定されなければ、無視されます。
+
+=item Minkey
+
+TODO
+
+=item Compare
+
+データベースでのデフォルトのソート順を上書きすることを可能にします。
+例についてはL<"ソート順の変更"> をご覧ください。
+
+    sub compare
+    {
+    my ($key, $key2) = @_ ;
+        ...
+        # return  0 if $key1 eq $key2
+        #        -1 if $key1 lt $key2
+        #         1 if $key1 gt $key2
+        return (-1 , 0 or 1) ;
+    }
+
+    tie %h, "BerkeleyDB::Hash", 
+        -Filename   => $filename, 
+        -Compare    => \&compare,
+    ...
+
+=item Prefix
+
+    sub prefix
+    {
+    my ($key, $key2) = @_ ;
+        ...
+        # $key1よりも大きいかを判定するために必要な
+        # $key2のバイト数を返します。
+        return $bytes ;
+    }
+
+    tie %h, "BerkeleyDB::Hash", 
+        -Filename   => $filename, 
+        -Prefix     => \&prefix,
+    ...
+=item DupCompare
+
+    sub compare
+    {
+    my ($key, $key2) = @_ ;
+        ...
+        # 戻り値 $key1 eq $key2 ならば 0
+        #        $key1 lt $key2 ならば -1
+        #        $key1 gt $key2 ならば 1
+        return (-1 , 0 or 1) ;
+    }
+
+    tie %h, "BerkeleyDB::Hash", 
+        -Filename   => $filename, 
+        -DupCompare => \&compare,
+    ...
+
+=back
+
+=head2 メソッド
+
+B<BerkeleyDB::Btree>は以下のデータベース・メソッドをサポートしています。
+L<共通データベース・メソッド>も、ご覧ください。
+
+以下の全てのメソッドは正常を示すために0を返します。
+
+=over 5
+
+=item $status = $db->db_key_range($key, $less, $equal, $greater [, $flags])
+
+キー、C<$key>が与えられ、このメソッドは
+C<$less>でのC<$key>よりも小さいキーの割合、C<$equal>でのC<$key>と同じ割合、
+C<$greater>でのC<$key>よりも大きな割合を返します。
+
+その割合は0.0から1.0の範囲のdoubleで返されます。
+
+=back
+
+=head2 簡単なBtreeの例
+
+以下のコードはbtreeデータベースを使った簡単な例です。
+
+    use strict ;
+    use BerkeleyDB ;
+
+    my $filename = "tree" ;
+    unlink $filename ;
+    my %h ;
+    tie %h, 'BerkeleyDB::Btree',
+            -Filename   => $filename,
+            -Flags      => DB_CREATE
+      or die "Cannot open $filename: $!\n" ;
+
+    # ファイルにキー/値の組を追加
+    $h{'Wall'} = 'Larry' ;
+    $h{'Smith'} = 'John' ;
+    $h{'mouse'} = 'mickey' ;
+    $h{'duck'}  = 'donald' ;
+
+    # 削除
+    delete $h{"duck"} ;
+
+    # 順番にキーと通して繰り返し、出力します。
+    # btreeが自動的に順番を保っているので
+    # キーをソートする必要がないことに注意してください
+    foreach (keys %h)
+      { print "$_\n" }
+
+    untie %h ;
+
+上記のコードは以下のように出力します。キーはBerkeley DBのデフォルトの
+ソート・アルゴリズムを使ってソートされています。
+
+    Smith
+    Wall
+    mouse
+
+
+=head2 ソート順の変更
+
+Berkeley DBが使っているものが合わなければ、独自のソート・アルゴリズムを
+提供することも可能です。以下のコードは前の例と同じですが、大文字/小文字の
+違いを無視する比較関数を使っています。
+
+    use strict ;
+    use BerkeleyDB ;
+
+    my $filename = "tree" ;
+    unlink $filename ;
+    my %h ;
+    tie %h, 'BerkeleyDB::Btree',
+            -Filename   => $filename,
+            -Flags      => DB_CREATE,
+        -Compare    => sub { lc $_[0] cmp lc $_[1] }
+      or die "Cannot open $filename: $!\n" ;
+
+    # ファイルにキー/値の組を追加
+    $h{'Wall'} = 'Larry' ;
+    $h{'Smith'} = 'John' ;
+    $h{'mouse'} = 'mickey' ;
+    $h{'duck'}  = 'donald' ;
+
+    # 削除
+    delete $h{"duck"} ;
+
+    # 順番にキーと通して繰り返し、出力します。
+    # btreeが自動的に順番を保っているので
+    # キーをソートする必要がないことに注意してください
+    foreach (keys %h)
+      { print "$_\n" }
+
+    untie %h ;
+
+上記のコードは以下のように出力します。
+
+    mouse
+    Smith
+    Wall
+
+BTREEデータベースで順序を変更したいのであれば、いくつか注意すべき
+ポイントがあります:
+
+=over 5
+
+=item 1.
+
+新しい比較関数はデータベースを作成するときに指定されなければなりません。 
+
+=item 2.
+
+一度データベースを作成してしまったら順序を変更することはできまんせん。
+このためデータベースにアクセスするときには、いつも同じ比較関数を
+使わなければなりません。 
+
+=back 
+
+=head2 db_statの使用
+
+TODO
+
+=head1 BerkeleyDB::Recno
+
+Berkeley DB 2.xでタイプB<DB_RECNO>でB<db_open>を呼び出すことや、
+Berkeley DB 3.x以上でタイプB<DB_RECNO>でB<DB-E<gt>open>した後にB<db_create>を
+呼び出したことと同じです。
+
+コンストラクタの2つの形式がサポートされています:
+
+    $db = new BerkeleyDB::Recno
+                [ -Filename      => "filename", ]
+                [ -Subname       => "sub-database name", ]
+                [ -Flags         => flags,]
+                [ -Property      => flags,]
+                [ -Mode          => number,]
+                [ -Cachesize     => number,]
+                [ -Lorder        => number,]
+                [ -Pagesize      => number,]
+                [ -Env           => $env,]
+                [ -Txn           => $txn,]
+                # BerkeleyDB::Recno specific
+                [ -Delim           => byte,]
+                [ -Len             => number,]
+                [ -Pad             => byte,]
+                [ -Source          => filename,]
+
+そしてこれです
+
+    [$db =] tie @arry, 'BerkeleyDB::Recno', 
+                [ -Filename      => "filename", ]
+                [ -Subname       => "sub-database name", ]
+                [ -Flags         => flags,]
+                [ -Property      => flags,]
+                [ -Mode          => number,]
+                [ -Cachesize     => number,]
+                [ -Lorder        => number,]
+                [ -Pagesize      => number,]
+                [ -Env           => $env,]
+                [ -Txn           => $txn,]
+                # BerkeleyDB::Recno specific
+                [ -Delim           => byte,]
+                [ -Len             => number,]
+                [ -Pad             => byte,]
+                [ -Source          => filename,]
+
+=head2 Recnoの例
+
+以下にRECNOを使う簡単な例を示します(5.004_57よりも前のバージョンの
+Perlを使っていると、この例は動きません -- 回避方法については
+L<特別なRECNOメソッド>をご覧ください)。
+
+    use strict ;
+    use BerkeleyDB ;
+
+    my $filename = "text" ;
+    unlink $filename ;
+
+    my @h ;
+    tie @h, 'BerkeleyDB::Recno',
+            -Filename   => $filename,
+            -Flags      => DB_CREATE,
+        -Property   => DB_RENUMBER
+      or die "Cannot open $filename: $!\n" ;
+
+    # いくつかのキー/値の組をファイルに追加する
+    $h[0] = "orange" ;
+    $h[1] = "blue" ;
+    $h[2] = "yellow" ;
+
+    push @h, "green", "black" ;
+
+    my $elements = scalar @h ;
+    print "The array contains $elements entries\n" ;
+
+    my $last = pop @h ;
+    print "popped $last\n" ;
+
+    unshift @h, "white" ;
+    my $first = shift @h ;
+    print "shifted $first\n" ;
+
+    # キーが存在することをチェックする
+    print "Element 1 Exists with value $h[1]\n" if $h[1] ;
+
+    untie @h ;
+
+このスクリプトにより以下のように出力されます:
+
+    The array contains 5 entries
+    popped black
+    shifted white
+    Element 1 Exists with value blue
+    The last element is green
+    The 2nd last element is yellow
+
+=head1 BerkeleyDB::Queue
+
+Berkeley DB 3.x以上でタイプB<DB_QUEUE>でB<DB-E<gt>open>した後にB<db_create>を
+呼び出したことと同じです。このデータベース・フォーマットはBerkeley DB 2.xを
+使っているならば利用することはできません。
+
+コンストラクタの2つの形式がサポートされています:
+
+    $db = new BerkeleyDB::Queue
+                [ -Filename      => "filename", ]
+                [ -Subname       => "sub-database name", ]
+                [ -Flags         => flags,]
+                [ -Property      => flags,]
+                [ -Mode          => number,]
+                [ -Cachesize     => number,]
+                [ -Lorder        => number,]
+                [ -Pagesize      => number,]
+                [ -Env           => $env,]
+                [ -Txn           => $txn,]
+                # BerkeleyDB::Queue specific
+                [ -Len             => number,]
+                [ -Pad             => byte,]
+                [ -ExtentSize    => number, ]
+
+と、これです
+
+    [$db =] tie @arry, 'BerkeleyDB::Queue', 
+                [ -Filename      => "filename", ]
+                [ -Subname       => "sub-database name", ]
+                [ -Flags         => flags,]
+                [ -Property      => flags,]
+                [ -Mode          => number,]
+                [ -Cachesize     => number,]
+                [ -Lorder        => number,]
+                [ -Pagesize      => number,]
+                [ -Env           => $env,]
+                [ -Txn           => $txn,]
+                # BerkeleyDB::Queue specific
+                [ -Len             => number,]
+                [ -Pad             => byte,]
+
+
+=head1 BerkeleyDB::Unknown
+
+このクラスは既存のデータベースをオープンするときに利用されます。
+
+Berkeley DB 2.xでタイプB<DB_UNKNOWN>でB<db_open>を呼び出すことや、
+Berkeley DB 3.x以上でタイプB<DB_UNKNOWN>でB<DB-E<gt>open>した後にB<db_create>を
+呼び出したことと同じです。
+
+コンストラクタの2つの形式がサポートされています:
+
+    $db = new BerkeleyDB::Unknown
+                [ -Filename      => "filename", ]
+                [ -Subname       => "sub-database name", ]
+                [ -Flags         => flags,]
+                [ -Property      => flags,]
+                [ -Mode          => number,]
+                [ -Cachesize     => number,]
+                [ -Lorder        => number,]
+                [ -Pagesize      => number,]
+                [ -Env           => $env,]
+                [ -Txn           => $txn,]
+
+
+=head2 使用例
+
+=head1 共通オプション
+
+全てのデータベース・アクセス・クラス・コンストラクタは以下にあげる
+オプション共通集合をサポートしています。全て必須ではありません。
+
+=over 5
+
+=item -Filename
+
+データベース・ファイル名。何もファイル名が指定されなければ、テンポラリ・ファイルが
+作成され、プログラムが終了すると削除されます。
+
+=item -Subname
+
+オープンするサブデータベースの名前を指定します。
+このオプションはBerkeley DB 3.x以上を使っているときにのみ有効です。
+
+=item -Flags
+
+データベースがどのようにオープン/作成されるかを指定します。
+有効なフラグは以下のものです:
+
+B<DB_CREATE>
+
+必要であれば元になるファイルを作成します。ファイルが存在せず、B<DB_CREATE>が
+指定されていなければ、その呼び出しは失敗します。
+
+B<DB_NOMMAP>
+
+BerkeleyDBによってサポートされていません。
+
+B<DB_RDONLY>
+
+読み込みのみモードでデータベースをオープンします。
+
+B<DB_THREAD>
+
+BerkeleyDBによってサポートされていません。
+
+B<DB_TRUNCATE>
+
+データベース・ファイルが既に存在していれば、それをオープンする前にその
+全てのデータを削除します。
+
+=item -Mode
+
+データベースが作成されたとき、ファイル保護を決定します。デフォルトは
+0666です。
+
+=item -Cachesize
+
+=item -Lorder
+
+=item -Pagesize
+
+=item -Env
+
+Berkeley DB環境で動くとき、このパラメータ
+
+デフォルトでは環境はありません。
+
+=item -Txn
+
+TODO.
+
+=back
+
+=head1 共通データベース・メソッド
+
+全てのデータベース・インターフェースは以下の定義されているメソッドの
+共通集合をサポートします。
+
+以下の全てのメソッドは正常を表すために0を返します。
+
+=head2 $status = $db->db_get($key, $value [, $flags])
+
+キー(C<$key>)が与えられ、このメソッドはデータベースから、それに
+関連付けられた値を読み込みます。もしあれば、データベースから読み込まれた
+値がC<$value>パラメータに返されます。
+
+B<$flags>パラメータはオプションです。もしあればそれは以下の値のB<1つ>に
+設定されなければなりません:
+
+=over 5
+
+=item B<DB_GET_BOTH>
+
+B<DB_GET_BOTH>フラグが指定されると、B<db_get>はデータベースにC<$key>
+B<と> C<$value>のB<両方>が存在するかをチェックします。
+
+=item B<DB_SET_RECNO>
+
+TODO.
+
+=back
+
+さらに、以下の値を論理的にORすることによりB<$flags>パラメータに設定できる
+かもしれません。
+
+=over 5
+
+=item B<DB_RMW>
+
+TODO
+
+=back
+
+
+=head2 $status = $db->db_put($key, $value [, $flags])
+
+データベースにキー/値の組を格納します。
+
+B<$flags>パラメータはオプションです。もしあればそれは以下の値のB<1つ>に
+設定されなければなりません:
+
+=over 5
+
+=item B<DB_APPEND>
+
+このフラグはB<BerkeleyDB::Recno>データベースにアクセスするときにだけ、
+適切です。
+
+TODO.
+
+
+=item B<DB_NOOVERWRITE>
+
+このフラグが指定され、C<$key>がデータベースに既にあれば、
+B<db_put>の呼び出しは、B<DB_KEYEXIST>を返します。
+
+=back
+
+=head2 $status = $db->db_del($key [, $flags])
+
+データベースでC<$key>に関連付けられたキー/値の組を削除します。
+データベースでキーの重複が可能であれば、B<db_del>はキーC<$key>を持つ
+キー/値の組をB<全て>削除します。
+
+B<$flags>パラメータはオプションで、現在は使われません。
+
+=head2 $status = $db->db_sync()
+
+データベースの一部がメモリにあれば、それをデータベースに書き込みます。
+
+=head2 $cursor = $db->db_cursor([$flags])
+
+カーソル(cursor)オブジェクトを作成します。これはデータベースの内容を
+順番にアクセスするために使われます。カーソルで作業するときに
+利用できるメソッドの詳細についてはL<カーソル>をご覧ください。
+
+B<$flags>パラメータはオプションです。もしあればそれは以下の値のB<1つ>に
+設定されなければなりません:
+
+=over 5
+
+=item B<DB_RMW>
+
+TODO.
+
+=back
+
+=head2 ($flag, $old_offset, $old_length) = $db->partial_set($offset, $length) ;
+
+TODO
+
+=head2 ($flag, $old_offset, $old_length) = $db->partial_clear() ;
+
+TODO
+
+=head2 $db->byteswapped()
+
+TODO
+
+=head2 $db->type()
+
+データベースの種類を返します。ありうるリターンコードはB<BerkeleyDB::Hash>
+データベースのためのB<DB_HASH>、B<BerkeleyDB::Btree>データベースのための
+B<DB_BTREE>、B<BerkeleyDB::Recno>のためのB<DB_RECNO>があります。このメソッドは
+典型的にはB<BerkeleyDB::Unknown>でデータベースがオープンされたときに使われます。
+
+=over
+
+=item $ref = $db->db_stat()
+
+データベースに関する情報が入った連想配列へのリファレンスを返します。
+連想配列のキーは直接、Berkeley DBドキュメントで定義されているフィールドの
+名前に対応します。例えばDBドキュメントでは、フィールドB<bt_version>は
+Btreeデータベースのバージョンを格納します。BtreeデータベースにB<db_stat>を
+呼び出したとすると、同じフィールドが以下のようにしてアクセスされます:
+
+    $version = $ref->{'bt_version'} ;
+
+Berkeley DB 3.x以上を使っているのであれば、このメソッドは全てのデータベース・
+フォーマットで機能します。DB 2.xを使っているときには、B<BerkeleyDB::Btree>
+でのみ機能します。
+
+=back
+
+=head2 $status = $db->status()
+
+最後のC<$db>メソッド呼び出しのステータスを返します。
+
+=head2 $status = $db->truncate($count)
+
+データベースを切り捨て、C<$count>に削除されたレコード数を返します。
+
+=head1 カーソル
+
+カーソルは順番にデータベースの内容にアクセスしたいとき、
+いつでも使われます。
+カーソル・オブジェクトはC<db_cursor>で作成されます。
+
+カーソル・オブジェクトでは以下のメソッドが利用できます:
+
+=head2 $newcursor = $cursor->c_dup($flags)
+
+C<$cursor>の複製を作成します。このメソッドはBerkeley DB 3.0.x以上を必要とします。
+
+C<$flags>パラメータはオプションで、以下の値をとることが出来ます:
+
+=over 5
+
+=item DB_POSITION
+
+このフラグがあると、新しいカーソルを既にあるカーソルと同じ場所に位置づけます。
+
+=back
+
+=head2 $status = $cursor->c_get($key, $value, $flags)
+
+データをC<$key>とC<$value>に返しながら、データベースからキー/値の
+組を読み込みます。キー/値の組の読み込みは、C<$flags>
+パラメータにより制御されます。そのフラグは以下の値のB<1つ>を取ることが
+できます:
+
+=over 5
+
+=item B<DB_FIRST>
+
+カーソルをデータベースでの先頭のキー/値の組に
+位置づけます。キー/値の組をC<$key> と C<$value>に返します。
+
+=item B<DB_LAST>
+
+カーソルをデータベースでの最後のキー/値の組に
+位置づけます。キー/値の組をC<$key> と C<$value>に返します。
+
+=item B<DB_NEXT>
+
+カーソルが既にあるキー/値の組に位置づけられているならば、
+次のキー/値の組に位置を1つ進め、その内容を返します。
+
+カーソルが初期化されていなければ、B<DB_NEXT>はB<DB_FIRST>と同じように
+機能します。
+
+カーソルが既に最後のキー/値の組に位置づけられていれば、B<c_get>は
+B<DB_NOTFOUND>を返します。
+
+=item B<DB_NEXT_DUP>
+
+このフラグは重複するキーが可能になっているときにのみ有効です。
+カーソルが既にあるキー/値の組に位置づけられ、次のキー/値の
+組のキーが同じであれば、カーソルはそこに位置を1つ進め、
+その内容を返します。
+
+=item B<DB_PREV>
+
+カーソルが既にあるキー/値の組に位置づけられているならば、
+前のキー/値の組に位置を1つ戻し、その内容を返します。
+
+カーソルが初期化されていなければ、B<DB_PREV>はB<DB_LAST>と同じように
+機能します。
+
+カーソルが既に先頭のキー/値の組に位置づけられていれば、B<c_get>は
+B<DB_NOTFOUND>を返します。
+
+=item B<DB_CURRENT>
+
+カーソルが既にあるキー/値の組に位置づけられているならば、
+その内容を返します。
+もしカーソルによって参照されているキー/値の区あわせが削除されていれば、
+B<c_get>はB<DB_KEYEMPTY>を返します。
+
+=item B<DB_SET>
+
+カーソルをB<$key>によって参照されるキー/値の組に位置づけ、
+その値をB<$value>に返します。
+
+=item B<DB_SET_RANGE>
+
+このフラグはB<DB_SET>フラグでの変種です。B<$key>を介してキーを返します。
+
+B<BerkeleyDB::Btree>データベースで使われると、B<c_get>によりマッチする
+キーは、与えられたキー以上である（長さとして）最も短いキーになります。
+これにより部分キーの検索が可能になります。このフラグの使い方の例に
+ついては???をご覧ください。
+
+=item B<DB_GET_BOTH>
+
+B<DB_SET>のもう1つの変種です。これはキーと値の両方を返します。
+
+=item B<DB_SET_RECNO>
+
+TODO.
+
+=item B<DB_GET_RECNO>
+
+TODO.
+
+=back
+
+さらに、以下の値をB<$flags>パラメータに論理的にORすることにより設定する
+ことができます:
+
+=over 5
+
+=item B<DB_RMW>
+
+TODO.
+
+=back
+
+=head2  $status = $cursor->c_put($key, $value, $flags)
+
+データベースにキー/値の組を格納します。データベースでのデータが
+格納される位置は、C<$flags>パラメータにより制御されます。それは
+以下の値のB<1つ>を取らなければなりません:
+
+=over 5
+
+=item B<DB_AFTER>
+
+BtreeまたはHashデータベースで使われると、現在のカーソルによって参照される
+キーの重複が作成され、B<$value>の内容は、それに結び付けられます - B<$key>は
+無視されます。
+新しいキー/値の組は現在のカーソルの位置のすぐ後ろに格納されます。
+明らかに、データベースはB<DB_DUP>でオープンされなければなりません。
+
+Recnoで使われるときには ... TODO
+
+
+=item B<DB_BEFORE>
+
+BtreeまたはHashデータベースで使われると、現在のカーソルによって参照される
+キーの重複が作成され、B<$value>の内容は、それに結び付けられます - B<$key>は
+無視されます。
+新しいキー/値の組は現在のカーソルの位置のすぐ前に格納されます。
+明らかに、データベースはB<DB_DUP>でオープンされなければなりません。
+
+Recnoで使われるときには ... TODO
+
+=item B<DB_CURRENT>
+
+もしカーソルが初期化されていれば、データベースの中のキー/値の組の
+値をB<$value>の内容で置き換えます。
+
+=item B<DB_KEYFIRST>
+
+BtreeまたはHashデータベースでのみ有効です。このフラグはデータベースで
+重複が許され、ソートされた重複がしていされていないときにのみ本当に
+使われます。
+この場合、キー/値の組は、特定のキーの重複での先頭のエントリとして
+挿入されます。
+
+=item B<DB_KEYLAST>
+
+BtreeまたはHashデータベースでのみ有効です。このフラグはデータベースで
+重複が許され、ソートされた重複がしていされていないときにのみ本当に
+使われます。
+この場合、キー/値の組は、特定のキーの重複での最後のエントリとして
+挿入されます。
+
+=back
+
+=head2  $status = $cursor->c_del([$flags])
+
+このメソッドは現在のカーソル位置に関連付けられているキー/値の組を
+削除します。カーソル位置はこの操作によって変更されません。そのため
+この後のカーソル操作は、適切なキー/値の組に位置づけるため、
+まずカーソルを初期化しなければなりません。
+
+もしカーソルに関連付けられているキー/値の組が既に削除されて
+いれば、B<c_del>はB<DB_KEYEMPTY>を返します。
+
+B<$flags>パラメータは今のところ使われていません。
+
+=head2 $status = $cursor->c_del($cnt [, $flags])
+
+現在のカーソル位置での重複の数をB<$cnt>に格納します。
+
+B<$flags>は現在は使われていません。このメソッドはBerkeley DB 3.1以上を
+必要とします。
+
+=head2  $status = $cursor->status()
+
+最後のカーソル・メソッドのステータスをdualタイプで返します。
+
+=head2 カーソルの例
+
+TODO
+
+最初から最後まで繰り返す。そして逆
+
+それぞれのフラグの例
+
+=head1 JOIN
+
+BerkeleyDBのためのJoinのサポートは現在進行中。この場所を注目してください。
+
+TODO
+
+=head1 トランザクション
+
+TODO.
+
+=head1 DBMフィルター
+
+DBMフィルターはコードの集まりでであり、DBMデータベースの中の
+全てのキーと/または値に同じ変換を行いたいとI<常に>思っている
+ときに使われます。全てデータベース・クラス(BerkeleyDB::Hash,
+BerkeleyDB::Btree そして BerkeleyDB::Recno)は、DBMフィルターを
+サポートします。
+
+DBMフィルターに関連しては4つのメソッドがあります。全て同様に
+機能します。それぞれは1つのDBMフィルターをインストール
+（またはアンインストール）するために使われます。各メソッドは
+1つのパラメータ、つまりsubへのリファレンスを期待します。
+それぞれの唯一の違いはフィルターがインストールされる場所です。
+
+まとめると以下のようになります：
+
+=over 5
+
+=item B<filter_store_key>
+
+このメソッドでフィルターがインストールされると、
+DBMデータベースにキーを書きこむたびに、それが呼ばれます。
+
+=item B<filter_store_value>
+
+このメソッドでフィルターがインストールされると、DBMデータベースに
+値を書きこむたびに、それが呼ばれます。
+
+=item B<filter_fetch_key>
+
+このメソッドでフィルターがインストールされると、DBMデータベースから
+キーを読みこむたびに、それが呼ばれます。
+
+=item B<filter_fetch_value>
+
+このメソッドでフィルターがインストールされると、DBMデータベースから
+値を読みこむたびに、それが呼ばれます。 
+
+=back
+
+全く無しから4つ全てまで、これらを自由に組み合わせて使うことができます。
+
+全てのフィルター・メソッドは、もしあれば既存のフィルターを、
+無ければC<undef>を返します。
+
+フィルターを削除するにはC<undef>を渡してください。
+
+=head2 フィルター
+
+各フィルターがPerlから呼び出されるとき、C<$_>のローカル・コピーには
+フィルターされるキーまたは値が入ります。フィルタリングはC<$_>の内容を
+変更することにより実現されます。フィルターからの戻り値は無視されます。
+
+=head2 例 -- NULL終わりの問題
+
+以下のシナリオについて考えてみてください。サードパーティの
+Cアプリケーションと共有する必要があるDBMデータベースを
+持っているとします。そのCアプリケーションはC<全ての>キーと
+値はNULLで終わるものと仮定しています。不幸にもPerlがDBM
+データベースに書きこむとき、NULL終わりを使いません。
+そのため、あなたのPerlアプリケーションは自分自身でNULL終わりを
+管理しなければなりません。データベースに書きこむとき、以下のような
+方法をとる必要があります：
+
+    $hash{"$key\0"} = "$value\0" ;
+
+同様に存在するキー／値の長さを考えるとき、NULLを考慮に入れる
+必要があります。
+
+メインのアプリケーション・プログラムでのNULL終わり問題を無視する
+ことができ、データベースに書きこむときにはいつでも自動的に全ての
+キーと値に終わりのNULLを付与し、データベースから読みこむときには、
+それらを削除するような機構を持つならば、素晴らしいことです。
+既におわかりかと思いますが、この問題はDBMフィルターによって
+とても簡単に修正することができます。
+
+    use strict ;
+    use BerkeleyDB ;
+
+    my %hash ;
+    my $filename = "filt.db" ;
+    unlink $filename ;
+
+    my $db = tie %hash, 'BerkeleyDB::Hash',
+            -Filename   => $filename,
+            -Flags      => DB_CREATE
+      or die "Cannot open $filename: $!\n" ;
+
+    # DBMフィルターのインストール
+    $db->filter_fetch_key  ( sub { s/\0$//    } ) ;
+    $db->filter_store_key  ( sub { $_ .= "\0" } ) ;
+    $db->filter_fetch_value( sub { s/\0$//    } ) ;
+    $db->filter_store_value( sub { $_ .= "\0" } ) ;
+
+    $hash{"abc"} = "def" ;
+    my $a = $hash{"ABC"} ;
+    # ...
+    undef $db ;
+    untie %hash ;
+
+できるならば各フィルターの内容は自己説明的であるべきです。
+両方の"fetch"フィルターがNULL終わりを取り除き、
+両方の"store"フィルターがNULL終わりを付与します。
+
+=head2 もう１つの例 -- キーがC int
+
+実際の場面での例をもう一つ。デフォルトではPerlはDBMデータベースに
+書きこむときはいつでも、キーと値を文字列として書きこみます。
+そのため以下のようにすると：
+
+    $hash{12345} = "something" ;
+
+キー12345 は5バイトの文字列"12345"としてDBMデータベースに
+格納されます。もし本当にDBMデータベースにCのintでキーを
+格納したいのであれば、書きこむときにC<pack>し、読みこむときに
+C<unpack>する必要があります。
+
+以下はそれをおこなうDBMフィルターです：
+
+    use strict ;
+    use BerkeleyDB ;
+    my %hash ;
+    my $filename = "filt.db" ;
+    unlink $filename ;
+
+
+    my $db = tie %hash, 'BerkeleyDB::Btree',
+            -Filename   => $filename,
+            -Flags      => DB_CREATE
+      or die "Cannot open $filename: $!\n" ;
+
+    $db->filter_fetch_key  ( sub { $_ = unpack("i", $_) } ) ;
+    $db->filter_store_key  ( sub { $_ = pack ("i", $_) } ) ;
+    $hash{123} = "def" ;
+    # ...
+    undef $db ;
+    untie %hash ;
+
+今回は2つのフィルターを使いました -- キーの内容を扱うことだけが必要
+だったので、値のフィルターをインストールする必要がありません。
+
+=head1 MLDBMでのBerkeleyDBの使い方
+
+BerkeleyDB::Hash と BerkeleyDB::Btreeは両方とも、MLDBMと一緒に使うことが
+出来ます。以下のコードはBerkeleyDB::Btreeに関連付けられたMLDBMをオープン
+する方法を示しています。BerkeleyDB::Hashを使うためには、BerkeleyDB::Hashを
+単純にBerkeleyDB::Btreeに置き換えてください。
+
+    use strict ;
+    use BerkeleyDB ;
+    use MLDBM qw(BerkeleyDB::Btree) ;
+    use Data::Dumper;
+ 
+    my $filename = 'testmldbm' ;
+    my %o ;
+     
+    unlink $filename ;
+    tie %o, 'MLDBM', -Filename => $filename,
+                     -Flags    => DB_CREATE
+                    or die "Cannot open database '$filename: $!\n";
+ 
+モジュールの使い方とその制約についての詳細の情報についてはMLDBMの
+ドキュメントを、ご覧ください。
+
+=head1 使用例
+
+TODO.
+
+=head1 ヒントと小技
+
+=head2 Cアプリケーションとのデータベースの共有
+
+Berkeley DBデータベースをPerlとCアプリケーションとで共有できないという
+技術的な理由は何もありません。
+
+ここで報告されている非常に大きな問題はPerl文字列はそうでないのに、C文字列が
+NULL終わりであるということです。この問題を回避する一般的な方法については
+DBMフィルター セクションでのL<例 -- NULL終わりの問題>をご覧下さい。
+
+=head2 untieがしでかすこと
+
+TODO
+
+=head1 よくある質問
+
+このセクションでは私が聞かれたよくある質問のうちのいくつかに答えてみます。
+
+=head2 DB_Fileとの関係
+
+Berkeley DB 2.xが書かれるまで、Berkeley DBへのインターフェースとなるPerl
+モジュールは1つしかありませんでした。そのモジュールはB<DB_File>です。
+B<DB_File>はBerkeley DB 1.x, 2.x, 3.x あるいは 4.xでビルドすることができますが、
+Berkeley DB 1.xで利用できる機能へのインターフェースしか提供しません。
+つまりそれはトランザクション、ロック、その他のDB 2.x以上で利用できる新しい機能を
+サポートしていません。
+
+=head2 Perlデータ構造体をBerkeleyDBで格納する方法は?
+
+L<MLDBMでのBerkeleyDBの使い方>をご覧ください。
+
+=head1 変更履歴
+
+Changesファイルをご覧ください。
+
+=head1 利用するには
+
+B<BerkeleyDB>の最新バージョンは
+CPAN(詳細についてはL<perlmod/CPAN>をご覧下さい）
+のディレクトリL<modules/by-module/BerkeleyDB>で取得することができます。
+
+Berkeley DB の公式ウェブサイトは F<http://www.sleepycat.com> です。
+
+=head1 著作権(COPYRIGHT)
+
+Copyright (c) 1997-2002 Paul Marquess. All rights reserved. This program
+is free software; you can redistribute it and/or modify it under the
+same terms as Perl itself.
+
+B<BerkeleyDB>はPerlライセンスによってカバーされますが、これが使用する
+ライブラリ、つまりBerkeley DBはそうではありません。Berkeley DBは
+それ自身の著作権と独自のライセンスを持っています。それを読んでください。
+
+Berkeley DB FAQ (F<http://www.sleepycat.com>)からライセンスについての
+一部を示します:
+
+    Perlスクリプトで使うためにDBをライセンスする必要がありますか？
+
+    いいえ。Berkeley DBライセンスはBerkeley DBを利用するソフトウェアは、
+    自由に再配布可能であることを必要とします。Perlの場合、つまり
+    ソフトウェアはPerlであり、あなたのスクリプトではありません。
+    あなたが書いた全てのPerlスクリプトはBerkeley DBを使ったものも
+    含めて、あなたの資産です。PerlライセンスもBerkeley DBライセンスも
+     あなたがそれらを使ってできることを何ら制限しません。
+
+もしライセンスの状況に疑問があれば、Berkeley DBの作者あるいはBerkeleyDBの
+作者にコンタクトしてください。下記のL<作者>をご覧ください。
+
+=head1 作者
+
+Paul Marquess E<lt>Paul.Marquess@btinternet.comE<gt>.
+
+DBシステムそのものについての疑問は
+E<lt>db@sleepycat.com<gt> にお願いします。
+
+=head1 参考資料
+
+perl(1), DB_File, Berkeley DB.
+
+=cut

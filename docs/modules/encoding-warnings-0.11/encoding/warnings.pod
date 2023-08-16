@@ -1,0 +1,350 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+encoding::warnings - Warn on implicit encoding conversions
+
+=end original
+
+encoding::warnings - 暗黙のエンコーディング変換時の警告
+
+=head1 VERSION
+
+=begin original
+
+This document describes version 0.11 of encoding::warnings, released
+June 5, 2007.
+
+=end original
+
+この文書は 2007 年 6 月 5 日にリリースされた encoding::warnings の
+バージョン 0.11 について記述しています。
+
+=head1 SYNOPSIS
+
+    use encoding::warnings; # or 'FATAL' to raise fatal exceptions
+
+    utf8::encode($a = chr(20000));  # a byte-string (raw bytes)
+    $b = chr(20000);		    # a unicode-string (wide characters)
+
+    # "Bytes implicitly upgraded into wide characters as iso-8859-1"
+    $c = $a . $b;
+
+=head1 DESCRIPTION
+
+=head2 Overview of the problem
+
+(問題の概観)
+
+=begin original
+
+By default, there is a fundamental asymmetry in Perl's unicode model:
+implicit upgrading from byte-strings to unicode-strings assumes that
+they were encoded in I<ISO 8859-1 (Latin-1)>, but unicode-strings are
+downgraded with UTF-8 encoding.  This happens because the first 256
+codepoints in Unicode happens to agree with Latin-1.  
+
+=end original
+
+デフォルトでは、Perl の Unicode モデルには本質的な非対称性があります:
+バイト文字列から Unicode 文字列への暗黙の昇格は I<ISO 8859-1 (Latin-1)> で
+エンコードされていることを仮定していますが、Unicode 文字列は
+UTF-8 エンコーディングに降格されます。
+これは、Unicode の最初の 256 の符号位置はたまたま Latin-1 と同じで
+あることにより起こります。
+
+=begin original
+
+However, this silent upgrading can easily cause problems, if you happen
+to mix unicode strings with non-Latin1 data -- i.e. byte-strings encoded
+in UTF-8 or other encodings.  The error will not manifest until the
+combined string is written to output, at which time it would be impossible
+to see where did the silent upgrading occur.
+
+=end original
+
+しかし、Unicode 文字列を非 Latin1 データ -- つまり UTF-8 やその他の
+エンコーディングでエンコードされているバイト文字列 -- と混ぜると、この
+暗黙の昇格は簡単に問題を引き起こします。
+エラーは結合された文字列が出力に書き込まれるまで明らかにならず、
+この時点ではいつ暗黙の昇格が起きたかを知ることは不可能です。
+
+=head2 Detecting the problem
+
+(問題の検出)
+
+=begin original
+
+This module simplifies the process of diagnosing such problems.  Just put
+this line on top of your main program:
+
+=end original
+
+このモジュールは、このような問題を診断する手順を単純化します。
+単にメインプログラムの先頭に以下の行を書きます:
+
+    use encoding::warnings;
+
+=begin original
+
+Afterwards, implicit upgrading of high-bit bytes will raise a warning.
+Ex.: C<Bytes implicitly upgraded into wide characters as iso-8859-1 at
+- line 7>.
+
+=end original
+
+以後、文字位置 128 以上のバイトが暗黙に昇格すると警告が発生します。
+例: C<Bytes implicitly upgraded into wide characters as iso-8859-1 at
+- line 7>.
+
+=begin original
+
+However, strings composed purely of ASCII code points (C<0x00>..C<0x7F>)
+will I<not> trigger this warning.
+
+=end original
+
+しかし、純粋に ASCII 符号位置 (C<0x00>..C<0x7F>) からだけからなる文字列は
+この警告を I<引き起こしません>。
+
+=begin original
+
+You can also make the warnings fatal by importing this module as:
+
+=end original
+
+また、このモジュールを以下のようにしてインポートすることによって警告を
+致命的にすることもできます:
+
+    use encoding::warnings 'FATAL';
+
+=head2 Solving the problem
+
+(問題の解決)
+
+=begin original
+
+Most of the time, this warning occurs when a byte-string is concatenated
+with a unicode-string.  There are a number of ways to solve it:
+
+=end original
+
+Most of the time, this warning occurs when a byte-string is concatenated
+with a unicode-string.  There are a number of ways to solve it:
+(TBT)
+
+=over 4
+
+=item * Upgrade both sides to unicode-strings
+
+=begin original
+
+If your program does not need compatibility for Perl 5.6 and earlier,
+the recommended approach is to apply appropriate IO disciplines, so all
+data in your program become unicode-strings.  See L<encoding>, L<open> and
+L<perlfunc/binmode> for how.
+
+=end original
+
+If your program does not need compatibility for Perl 5.6 and earlier,
+the recommended approach is to apply appropriate IO disciplines, so all
+data in your program become unicode-strings.  See L<encoding>, L<open> and
+L<perlfunc/binmode> for how.
+(TBT)
+
+=item * Downgrade both sides to byte-strings
+
+=begin original
+
+The other way works too, especially if you are sure that all your data
+are under the same encoding, or if compatibility with older versions
+of Perl is desired.
+
+=end original
+
+The other way works too, especially if you are sure that all your data
+are under the same encoding, or if compatibility with older versions
+of Perl is desired.
+(TBT)
+
+=begin original
+
+You may downgrade strings with C<Encode::encode> and C<utf8::encode>.
+See L<Encode> and L<utf8> for details.
+
+=end original
+
+You may downgrade strings with C<Encode::encode> and C<utf8::encode>.
+See L<Encode> and L<utf8> for details.
+(TBT)
+
+=item * Specify the encoding for implicit byte-string upgrading
+
+=begin original
+
+If you are confident that all byte-strings will be in a specific
+encoding like UTF-8, I<and> need not support older versions of Perl,
+use the C<encoding> pragma:
+
+=end original
+
+If you are confident that all byte-strings will be in a specific
+encoding like UTF-8, I<and> need not support older versions of Perl,
+use the C<encoding> pragma:
+(TBT)
+
+    use encoding 'utf8';
+
+=begin original
+
+Similarly, this will silence warnings from this module, and preserve the
+default behaviour:
+
+=end original
+
+Similarly, this will silence warnings from this module, and preserve the
+default behaviour:
+(TBT)
+
+    use encoding 'iso-8859-1';
+
+=begin original
+
+However, note that C<use encoding> actually had three distinct effects:
+
+=end original
+
+However, note that C<use encoding> actually had three distinct effects:
+(TBT)
+
+=over 4
+
+=item * PerlIO layers for B<STDIN> and B<STDOUT>
+
+=begin original
+
+This is similar to what L<open> pragma does.
+
+=end original
+
+This is similar to what L<open> pragma does.
+(TBT)
+
+=item * Literal conversions
+
+=begin original
+
+This turns I<all> literal string in your program into unicode-strings
+(equivalent to a C<use utf8>), by decoding them using the specified
+encoding.
+
+=end original
+
+This turns I<all> literal string in your program into unicode-strings
+(equivalent to a C<use utf8>), by decoding them using the specified
+encoding.
+(TBT)
+
+=item * Implicit upgrading for byte-strings
+
+=begin original
+
+This will silence warnings from this module, as shown above.
+
+=end original
+
+This will silence warnings from this module, as shown above.
+(TBT)
+
+=back
+
+=begin original
+
+Because literal conversions also work on empty strings, it may surprise
+some people:
+
+=end original
+
+Because literal conversions also work on empty strings, it may surprise
+some people:
+(TBT)
+
+    use encoding 'big5';
+
+    my $byte_string = pack("C*", 0xA4, 0x40);
+    print length $a;	# 2 here.
+    $a .= "";		# concatenating with a unicode string...
+    print length $a;	# 1 here!
+
+=begin original
+
+In other words, do not C<use encoding> unless you are certain that the
+program will not deal with any raw, 8-bit binary data at all.
+
+=end original
+
+In other words, do not C<use encoding> unless you are certain that the
+program will not deal with any raw, 8-bit binary data at all.
+(TBT)
+
+=begin original
+
+However, the C<Filter =E<gt> 1> flavor of C<use encoding> will I<not>
+affect implicit upgrading for byte-strings, and is thus incapable of
+silencing warnings from this module.  See L<encoding> for more details.
+
+=end original
+
+However, the C<Filter =E<gt> 1> flavor of C<use encoding> will I<not>
+affect implicit upgrading for byte-strings, and is thus incapable of
+silencing warnings from this module.  See L<encoding> for more details.
+(TBT)
+
+=back
+
+=head1 CAVEATS
+
+(警告)
+
+=begin original
+
+For Perl 5.9.4 or later, this module's effect is lexical.
+
+=end original
+
+Perl 5.9.4 以降では、このモジュールの効果はレキシカルです。
+
+=begin original
+
+For Perl versions prior to 5.9.4, this module affects the whole script,
+instead of inside its lexical block.
+
+=end original
+
+5.9.4 より前のバージョンの Perl では、このモジュールはレキシカルブロックの
+内側ではなく、スクリプト全体に影響を与えます。
+
+=head1 SEE ALSO
+
+L<perlunicode>, L<perluniintro>
+
+L<open>, L<utf8>, L<encoding>, L<Encode>
+
+=head1 AUTHORS
+
+Audrey Tang
+
+=head1 COPYRIGHT
+
+Copyright 2004, 2005, 2006, 2007 by Audrey Tang E<lt>cpan@audreyt.orgE<gt>.
+
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
+
+See L<http://www.perl.com/perl/misc/Artistic.html>
+
+=cut
+

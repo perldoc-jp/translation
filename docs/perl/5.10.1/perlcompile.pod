@@ -1,0 +1,679 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+perlcompile - Introduction to the Perl Compiler-Translator 
+
+=end original
+
+perlcompile - Perl コンパイラ・トランスレータの解説
+
+=head1 DESCRIPTION
+
+=begin original
+
+Perl has always had a compiler: your source is compiled into an
+internal form (a parse tree) which is then optimized before being
+run.  Since version 5.005, Perl has shipped with a module
+capable of inspecting the optimized parse tree (C<B>), and this has
+been used to write many useful utilities, including a module that lets
+you turn your Perl into C source code that can be compiled into a
+native executable.
+
+=end original
+
+Perl は常にコンパイラを持っています: ソースコードは内部コード (構文木) に
+変換され、実行する前に最適化されます。
+バージョン 5.005 以降、Perl は最適化された構文木 (C<B>) を
+調査できる能力があるモジュールとともに配布されており、
+このツールは Perl からネイティブな実行ファイルにコンパイルできる C のコードに
+変換するモジュールのような様々な便利なユーティリティを記述するのに
+用いられています。
+
+=begin original
+
+The C<B> module provides access to the parse tree, and other modules
+("back ends") do things with the tree.  Some write it out as
+semi-human-readable text.  Another traverses the parse tree to build a
+cross-reference of which subroutines, formats, and variables are used
+where.  Another checks your code for dubious constructs.  Yet another back
+end dumps the parse tree back out as Perl source, acting as a source code
+beautifier or deobfuscator.
+
+=end original
+
+C<B> モジュールは構文木にアクセスすることを可能にし、その他のモジュール
+(「バックエンド」"back ends") はその構文木を利用します。
+また、人間がいくらか読みやすく出力するものもあります。
+その他の用途としてはサブルーチンの繋がりや変数がどこで使用されているかなどの
+クロスリファレンスを生成するのに用いられています。
+また疑わしい構造に関してコードのチェックにも用いられています。
+もう一つのバックエンドとしてコードを整頓し美しく読みやすい Perl ソースとして
+再出力します。
+
+=begin original
+
+Because its original purpose was to be a way to produce C code
+corresponding to a Perl program, and in turn a native executable, the
+C<B> module and its associated back ends are known as "the
+compiler", even though they don't really compile anything.
+Different parts of the compiler are more accurately a "translator",
+or an "inspector", but people want Perl to have a "compiler
+option" not an "inspector gadget".  What can you do?
+
+=end original
+
+元々の目的が Perl プログラムと等価な C 言語のコードを提供し、ネイティブな
+実行可能ファイルにすることであったので、本来何もコンパイルはしないのですが、
+現在 C<B> モジュールは「コンパイラ」として知られています。
+このコンパイラは正確に言うとトランスレータやインスペクタに近いですが、
+人々は Perl にインスペクタツールではなくコンパイラオプションを
+持ってほしいと思っています。
+あなたには何ができますか?
+
+=begin original
+
+This document covers the use of the Perl compiler: which modules
+it comprises, how to use the most important of the back end modules,
+what problems there are, and how to work around them.
+
+=end original
+
+この文書は Perl コンパイラについて解説しています: Perl コンパイラを
+構成しているモジュール、バックエンドモジュールの使い方、そしてそこに
+どのような問題があるかです。
+
+=head2 Layout
+
+(構成)
+
+=begin original
+
+The compiler back ends are in the C<B::> hierarchy, and the front-end
+(the module that you, the user of the compiler, will sometimes
+interact with) is the O module.
+
+=end original
+
+コンパイラのバックエンドは C<B::> 以下に入っていて、(あなたや、コンパイラ
+利用者が使うであろう) フロントエンドは O モジュールです。
+
+=begin original
+
+Here are the important back ends to know about, with their status
+expressed as a number from 0 (outline for later implementation) to
+10 (if there's a bug in it, we're very surprised):
+
+=end original
+
+以下は知っておくべき重要なバックエンドのリストで、それぞれ 0 (今後
+実装するためのアウトラインの段階) から10 (もしバグが
+あったらとても驚きます) のステータス番号は作業進行度を表しています:
+
+=over 4
+
+=item B::Lint
+
+=begin original
+
+Complains if it finds dubious constructs in your source code.  Status:
+6 (it works adequately, but only has a very limited number of areas
+that it checks).
+
+=end original
+
+あなたのコードのに疑わしい部分があれば警告します。
+ステータス: 6 (適切に動作しますが、限られたエリアしかチェックしません)。
+
+=item B::Deparse
+
+=begin original
+
+Recreates the Perl source, making an attempt to format it coherently.
+Status: 8 (it works nicely, but a few obscure things are missing).
+
+=end original
+
+フォーマットが一貫しているか注意しながらの Perl ソースの再構成を行います。
+ステータス: 8 (ほぼ正確に動作しますが、いくつかの不明瞭なものは
+欠けています)。
+
+=item B::Xref
+
+=begin original
+
+Reports on the declaration and use of subroutines and variables.
+Status: 8 (it works nicely, but still has a few lingering bugs).
+
+=end original
+
+変数やサブルーチンの宣言と使用を報告します。
+ステータス: 8 (よく動きますが、まだいくつかの根深いバグがあります)。
+
+=back
+
+=head1 Using The Back Ends
+
+(バックエンドを使う)
+
+=begin original
+
+The following sections describe how to use the various compiler back
+ends.  They're presented roughly in order of maturity, so that the
+most stable and proven back ends are described first, and the most
+experimental and incomplete back ends are described last.
+
+=end original
+
+以下の節ではどのようにコンパイラのバックエンドを利用するかを解説します。
+これらはおよそ成熟度の順に並んでいるので、最も安定していて
+検証されているバックエンドを最初に解説し、最も実験的で不完全な
+バックエンドを最後に解説します。
+
+=begin original
+
+The O module automatically enabled the B<-c> flag to Perl, which
+prevents Perl from executing your code once it has been compiled.
+This is why all the back ends print:
+
+=end original
+
+O モジュールは B<-c> フラグを Perl に渡すことで自動的に有効になり、
+Perl はコードを実行せずにコンパイルだけを行います。
+これが全てのバックエンドが以下のように表示する理由です:
+
+  myperlprogram syntax OK
+
+=begin original
+
+before producing any other output.
+
+=end original
+
+すべての出力に先立ってこのような表示がなされます。
+
+=head2 The Cross Referencing Back End
+
+(クロスリファレンスのバックエンド)
+
+=begin original
+
+The cross referencing back end (B::Xref) produces a report on your program,
+breaking down declarations and uses of subroutines and variables (and
+formats) by file and subroutine.  For instance, here's part of the
+report from the I<pod2man> program that comes with Perl:
+
+=end original
+
+クロスリファレンスを作成するバックエンド (B::Xref) は変数の宣言や
+サブルーチンの使用法などの分析を行ったレポートを作成します。
+例えば、以下は Perl に同梱されている I<pod2man> プログラムのレポートです:
+
+  Subroutine clear_noremap
+    Package (lexical)
+      $ready_to_print   i1069, 1079
+    Package main
+      $&                1086
+      $.                1086
+      $0                1086
+      $1                1087
+      $2                1085, 1085
+      $3                1085, 1085
+      $ARGV             1086
+      %HTML_Escapes     1085, 1085
+
+=begin original
+
+This shows the variables used in the subroutine C<clear_noremap>.  The
+variable C<$ready_to_print> is a my() (lexical) variable,
+B<i>ntroduced (first declared with my()) on line 1069, and used on
+line 1079.  The variable C<$&> from the main package is used on 1086,
+and so on.
+
+=end original
+
+これは C<clear_noremap> で用いられている変数を表示しています。
+C<$ready_to_print> という変数は my()(レキシカル) 変数で、1069 行目で
+(my() で宣言されて)導入され、1079 行目で使われています。
+main パッケージの C<$&> という変数は 1086 行目で使われている、などです。
+
+=begin original
+
+A line number may be prefixed by a single letter:
+
+=end original
+
+行番号は以下の接頭辞を伴って出力されます:
+
+=over 4
+
+=item i
+
+=begin original
+
+Lexical variable introduced (declared with my()) for the first time.
+
+=end original
+
+レキシカル変数が最初に (my() で宣言されて) 導入された。
+
+=item &
+
+=begin original
+
+Subroutine or method call.
+
+=end original
+
+サブルーチンまたはメソッド呼び出し。
+
+=item s
+
+=begin original
+
+Subroutine defined.
+
+=end original
+
+サブルーチンが定義された。
+
+=item r
+
+=begin original
+
+Format defined.
+
+=end original
+
+フォーマットが定義された。
+
+=back
+
+=begin original
+
+The most useful option the cross referencer has is to save the report
+to a separate file.  For instance, to save the report on
+I<myperlprogram> to the file I<report>:
+
+=end original
+
+クロスリファレンスを作成するにあたり最も有用なオプションとしてレポートを
+複数のファイルに分割して保存するというものがあります。
+たとえば I<myperlprogram> のレポートと I<report> ファイルに保存するには:
+
+  $ perl -MO=Xref,-oreport myperlprogram
+
+=head2 The Decompiling Back End
+
+(逆コンパイルバックエンド)
+
+=begin original
+
+The Deparse back end turns your Perl source back into Perl source.  It
+can reformat along the way, making it useful as a deobfuscator.  The
+most basic way to use it is:
+
+=end original
+
+Deparse バックエンドはあなたの Perl ソースが Perl コンパイラにどのように
+パースされたかを表示します。
+この出力は読みやすいように整形することができます。
+基本的な使用法は以下の通りです: 
+
+  $ perl -MO=Deparse myperlprogram
+
+=begin original
+
+You'll notice immediately that Perl has no idea of how to paragraph
+your code.  You'll have to separate chunks of code from each other
+with newlines by hand.  However, watch what it will do with
+one-liners:
+
+=end original
+
+出力を見ると、Perl がコードをどのように整形すべきか
+分かっていないことが分かるでしょう。
+あなたはコードのブロックごとに自分で改行することになるでしょう。
+しかし、その作業は以下の一行野郎で可能です: 
+
+  $ perl -MO=Deparse -e '$op=shift||die "usage: $0
+  code [...]";chomp(@ARGV=<>)unless@ARGV; for(@ARGV){$was=$_;eval$op;
+  die$@ if$@; rename$was,$_ unless$was eq $_}'
+  -e syntax OK
+  $op = shift @ARGV || die("usage: $0 code [...]");
+  chomp(@ARGV = <ARGV>) unless @ARGV;
+  foreach $_ (@ARGV) {
+      $was = $_;
+      eval $op;
+      die $@ if $@;
+      rename $was, $_ unless $was eq $_;
+  }
+
+=begin original
+
+The decompiler has several options for the code it generates.  For
+instance, you can set the size of each indent from 4 (as above) to
+2 with:
+
+=end original
+
+逆コンパイラは生成するコードに対するオプションを持っています。
+例えば、インデントの量を (上述のような) 4 から 2 に変更できます: 
+
+  $ perl -MO=Deparse,-si2 myperlprogram
+
+=begin original
+
+The B<-p> option adds parentheses where normally they are omitted:
+
+=end original
+
+B<-p> オプションは普通省略可能なところにかっこを挿入します: 
+
+  $ perl -MO=Deparse -e 'print "Hello, world\n"'
+  -e syntax OK
+  print "Hello, world\n";
+  $ perl -MO=Deparse,-p -e 'print "Hello, world\n"'
+  -e syntax OK
+  print("Hello, world\n");
+
+=begin original
+
+See L<B::Deparse> for more information on the formatting options.
+
+=end original
+
+その他のフォーマットオプションは L<B::Deparse> を参照してください。
+
+=head2 The Lint Back End
+
+(Lint バックエンド)
+
+=begin original
+
+The lint back end (B::Lint) inspects programs for poor style.  One
+programmer's bad style is another programmer's useful tool, so options
+let you select what is complained about.
+
+=end original
+
+Lint バックエンド (B::Lint) は良くないスタイルのプログラムを調査します。
+あるプログラマの間違ったスタイルは他のプログラマの学習を促進します;
+よってどのような事について警告するかオプションで設定できます。
+
+=begin original
+
+To run the style checker across your source code:
+
+=end original
+
+スタイルチェッカーをソースコードに対して実行するには: 
+
+  $ perl -MO=Lint myperlprogram
+
+=begin original
+
+To disable context checks and undefined subroutines:
+
+=end original
+
+コンテキストのチェックと未定義のサブルーチンを無効にするには:
+
+  $ perl -MO=Lint,-context,-undefined-subs myperlprogram
+
+=begin original
+
+See L<B::Lint> for information on the options.
+
+=end original
+
+その他のオプションについては L<B::Lint> を参照してください。
+
+=head1 Module List for the Compiler Suite
+
+(コンパイラに関するモジュールのリスト)
+
+=over 4
+
+=item B
+
+=begin original
+
+This module is the introspective ("reflective" in Java terms)
+module, which allows a Perl program to inspect its innards.  The
+back end modules all use this module to gain access to the compiled
+parse tree.  You, the user of a back end module, will not need to
+interact with B.
+
+=end original
+
+このモジュールは Perl プログラム内の機構を内省する
+(Java の用語では「リフレクションする」) モジュールで、Perl プログラムが
+その内部を調べられるようにします。
+バックエンドモジュールはコンパイルされた構文木にアクセスする機能を提供します。
+バックエンドモジュールのユーザーは B に関する経験は問われません。
+
+=item O
+
+=begin original
+
+This module is the front-end to the compiler's back ends.  Normally
+called something like this:
+
+=end original
+
+このモジュールはコンパイラのバックエンドのフロントエンドモジュールです。
+通常では以下のような感じで利用します:
+
+  $ perl -MO=Deparse myperlprogram
+
+=begin original
+
+This is like saying C<use O 'Deparse'> in your Perl program.
+
+=end original
+
+これは C<use O 'Deparse'> があなたのプログラムに含まれているようにします。
+
+=item B::Concise
+
+=begin original
+
+This module prints a concise (but complete) version of the Perl parse
+tree.  Its output is more customizable than the one of B::Terse or
+B::Debug (and it can emulate them). This module useful for people who
+are writing their own back end, or who are learning about the Perl
+internals.  It's not useful to the average programmer.
+
+=end original
+
+このモジュールは簡潔な (しかし完全な) Perl 構文木を表示します。
+このモジュールの出力は B::Terse や B::Debug よりもカスタマイズ可能です
+(またそれらをエミュレートすることも可能です)。
+このモジュールはバックエンドを書いている人や、Perl の内部構造を学びたい人に
+有用です。
+平均的なプログラマには役に立たないでしょう。
+
+=item B::Debug
+
+=begin original
+
+This module dumps the Perl parse tree in verbose detail to STDOUT.
+It's useful for people who are writing their own back end, or who
+are learning about the Perl internals.  It's not useful to the
+average programmer.
+
+=end original
+
+このモジュールは Perl 構文木を詳細に STDOUT にダンプします。
+このモジュールはバックエンドを書いている人や Perl の内部構造を学びたい人に
+有用です。
+平均的なプログラマには役に立たないでしょう。
+
+=item B::Deparse
+
+=begin original
+
+This module produces Perl source code from the compiled parse tree.
+It is useful in debugging and deconstructing other people's code,
+also as a pretty-printer for your own source.  See
+L</"The Decompiling Back End"> for details about usage.
+
+=end original
+
+このモジュールは Perl コードのコンパイルされた構文木を提供します。
+このモジュールは他人の書いたコードをデバッグ再構成しようとしている人に
+役立つでしょう。
+また自分のコードを綺麗に出力するのにも役立ちます。
+使用法の詳細は L</"The Decompiling Back End"> を参照してください。
+
+=item B::Lint
+
+=begin original
+
+This module inspects the compiled form of your source code for things
+which, while some people frown on them, aren't necessarily bad enough
+to justify a warning.  For instance, use of an array in scalar context
+without explicitly saying C<scalar(@array)> is something that Lint
+can identify.  See L</"The Lint Back End"> for details about usage.
+
+=end original
+
+このモジュールはコンパイルされたソースコードを分析します; これは
+一部の人は難色を示すものの、警告を出すほど悪いものではないものです。
+例えば、配列を C<scalar(@array)> することなくスカラコンテキストとして
+使用するというのは Lint が識別できるものです。
+使用法の詳細は L</"The Lint Back End"> を参照してください。
+
+=item B::Showlex
+
+=begin original
+
+This module prints out the my() variables used in a function or a
+file.  To get a list of the my() variables used in the subroutine
+mysub() defined in the file myperlprogram:
+
+=end original
+
+このモジュールは関数内およびファイル内で使用されている my() で
+宣言された変数を表示します。
+myperlprogram 内で定義された mysub() サブルーチン内で使用されている
+my() で宣言された変数を取得するには以下のようにします: 
+
+  $ perl -MO=Showlex,mysub myperlprogram
+
+=begin original
+
+To get a list of the my() variables used in the file myperlprogram:
+
+=end original
+
+myperlprogram 内で使用されている my() で宣言された変数を取得するには
+以下のようにします: 
+
+  $ perl -MO=Showlex myperlprogram
+
+=begin original
+
+[BROKEN]
+
+=end original
+
+[BROKEN]
+
+=item B::Terse
+
+=begin original
+
+This module prints the contents of the parse tree, but without as much
+information as B::Debug.  For comparison, C<print "Hello, world.">
+produced 96 lines of output from B::Debug, but only 6 from B::Terse.
+
+=end original
+
+このモジュールは構文木の内容を出力しますが、B::Debug より得られる
+情報は少ないです。
+比較のための例として C<print "Hello, world."> について B::Debug は 96 行もの
+情報を出力しますが、B::Terse は 6 行しか出力しません。
+
+=begin original
+
+This module is useful for people who are writing their own back end,
+or who are learning about the Perl internals.  It's not useful to the
+average programmer.
+
+=end original
+
+このモジュールは自分のプログラムのバックエンドを書いている人及び Perl の
+内部について学ぼうとしている人に役立つでしょう。
+平均的なプログラマには役に立たないでしょう。
+
+=item B::Xref
+
+=begin original
+
+This module prints a report on where the variables, subroutines, and
+formats are defined and used within a program and the modules it
+loads.  See L</"The Cross Referencing Back End"> for details about
+usage.
+
+=end original
+
+このモジュールは変数、サブルーチン、プログラム内で使用されたフォーマット、
+モジュールのロードそれぞれの場所についてレポートを出力します。
+使用法の詳細は L</"The Cross Referencing Back End"> を参照してください。
+
+=back
+
+=head1 KNOWN PROBLEMS
+
+(既知の不具合)
+
+=begin original
+
+BEGIN{} blocks are executed while compiling your code.  Any external
+state that is initialized in BEGIN{}, such as opening files, initiating
+database connections etc., do not behave properly.  To work around
+this, Perl has an INIT{} block that corresponds to code being executed
+before your program begins running but after your program has finished
+being compiled.  Execution order: BEGIN{}, (possible save of state
+through compiler back-end), INIT{}, program runs, END{}.
+
+=end original
+
+BEGIN{} ブロックはコードがコンパイルされる段階で実行されてしまいます。
+ファイルを開いたり、データベース接続を初期化したりといった、
+BEGIN{} 内での外部状態の初期化は正しく動作しません。
+これに対応するに、Perl には INIT{} ブロック構文があります;
+この構文はあなたのコードがコンパイルされたあと、実行される前に
+処理されます。
+実行される順序: BEGIN{} ブロック、(コンパイラのバックエンドを用いて状態を
+保存できます) 、INIT{}ブロック、コードの実行、END{}ブロック。
+
+=head1 AUTHOR
+
+=begin original
+
+This document was originally written by Nathan Torkington, and is now
+maintained by the perl5-porters mailing list
+I<perl5-porters@perl.org>.
+
+=end original
+
+このドキュメントは Nathan Torkington によって書かれ、現在は
+perl5-porters のメーリングリスト I<perl5-porters@perl.org> によって
+保守されています。
+
+=begin meta
+
+Translate: pocket7878 (5.10.0)
+Update: SHIRAKATA Kentaro <argrath@ub32.org> (5.10.1)
+Status: completed
+
+=end meta
+
+=cut
+

@@ -1,0 +1,262 @@
+
+=encoding euc-jp
+
+=head1 名前 (NAME)
+
+Apache::Filter - 前のハンドラの出力を変更
+
+=head1 概要 (SYNOPSIS)
+
+  #### httpd.conf 内:
+  PerlModule Apache::Filter
+  # これだけ - これはハンドラではない。
+  
+  <Files ~ "*\.blah">
+   SetHandler perl-script
+   PerlSetVar Filter On
+   PerlHandler Filter1 Filter2 Filter3
+  </Files>
+  
+  #### Filter1, Filter2, そして Filter3 内:
+  $r = $r->filter_register();  # 必須
+  my $fh = $r->filter_input(); # 任意 (input FH は不要かもしれない)
+  while (<$fh>) {
+    s/ something / something else /;
+    print;
+  }
+  
+  #### 別の方法:
+  $r = $r->filter_register();
+  my ($fh, $status) = $r->filter_input(); # ステータス情報の取得
+  return $status unless $status == OK;
+  while (<$fh>) {
+    s/ something / something else /;
+    print;
+  }
+
+=head1 説明 (DESCRIPTION)
+
+基本のオペレーション内は、Filter1, Filter2, そして Filter3 の各ハンドラは
+$r->filter_input() の呼び出しを作り、ファイルハンドルを返すでしょう。Filter1
+へは、ファイルハンドルはリクエストされたファイルを指す。Filter2 へは、
+ファイルハンドルは Filter1 が STDOUT に書き出した全てのものも含みます。
+Filter3 へは Filter2 が STDOUT に書き出した全てのものも含みます。Filter3 の出力は
+直接ブラウザに行きます。
+
+Filter1, Filter2, そして Filter3 モジュールは B<前進方向> の順で並びます。
+Apache::OutputChain の並びが逆順であることとは対照的であることに
+注意してください。
+
+あなたがこのモジュールを受け取ったとき、あなたはスタンドアロンのハンドラとして、
+そして要素として、チェーン内で共に同じハンドラを利用できます。あなたが
+チェーン化した時はいつも B<全ての> ハンドラがチェーン内で "フィルタ認識"
+するのか、すなわちそれらはそれぞれ STDOUT への出力を開始する前に、一度
+$r->filter_register() を確実に呼び出しているかを確認してください。それらが
+チェーン内でたった一つの要素である時、これを実行するのに、オーバーヘッドは殆どない
+だろう。
+
+現在、下記の公開モジュールはフィルタ認識します。他にもご存知であれば
+どうか私に教えてください。
+
+ Apache::Registry (同梱されている Apache::RegistryFilter を利用すること)
+ Apache::SSI
+ Apache::ASP
+ HTML::Mason
+ Apache::SimpleReplace
+ Apache::HTML::ClassParser (HTML_Tree ディストリビューションの一部)
+
+
+=head1 メソッド (METHODS)
+
+Apache::Filter は Apache のサブクラスなので全ての Apache メソッドが利用可能です。
+
+このモジュールはこれの独自な Apache ハンドラクラスを作りません - むしろ、これは
+Apache:: クラスへ幾つかのメソッドを追加します。したがって、これはまさに、
+$r リクエストオブジェクトへ機能性を追加するだけの mix-in パッケージです。
+
+=over 4
+
+=item * $r = $r->filter_register()
+
+全てのフィルタ認識モジュールは Apache::filter が前のハンドラから適切に
+そのフィルタを展開可能にし、そして出力がいつ最後にブラウザへ行くべきなのか
+を認知可能にするために 確実に一度このメソッドを呼び出さなければならない。
+
+=item * $r->filter_input()
+
+このメソッドはユーザによりリクエストされたファイル ($r->filename)、
+または前のフィルタの出力のどちらかのファイルハンドルを返します。
+もしスカラーコンテキストで呼び出したら、あなたは $r->filename がうまく見つかり、
+開かれたのかどうかをあなたに知らせる Apache ステータスコード (OK, NOT_FOUND,
+または FORBIDDEN) も得ることができます。もしそうでなければ返された
+ファイルハンドルは undef でしょう。
+
+=item * $r->changed_since($time)
+
+現在の入力が C<$time> から変化したか否かを真偽値を使って返します。
+現在の判断基準は次のようなものです。:
+ファイルが C<$r-E<gt>finfo> によって示すのが与えられた時間から変更されて
+いないか、そしてチェーン内にある前の全フィルタが、deterministic (下記参照)
+であるかで、その場合は偽を返します。異なれば真を返します。
+
+このメソッドはキャッシュ機構の実現において役立つように意図されてます。
+
+警告: C<changed_since()> と C<deterministic()> メソッドが、C<filter_register()>
+の B<後に> いつも呼び出されます。これは Apache::Filter がチェーン内で
+どのハンドラが現在実行中かを判断するために粗製のカウントメソッドを利用しており、
+これらのルーチン呼び出しはカウントをめちゃめちゃに乱してしまうためです。
+
+=item * $r->deterministic(1|0);
+
+バージョン 0.07 にて、"決定論的" なフィルタのコンセプトがサポートされました。
+deterministic フィルタはその出力が完全にその入力ファイルの内容 ($r->filename
+ファイルか他のフィルタの出力であるかどうか) によって決定され、
+そして一切他の外的要素に依存しないものです。例えば、全出力を大文字に直すフィルタは
+deterministic ですが、ページに日付スタンプを追加するとか、長期間で可変的かも知れない
+データベース内から何かを調べるとかは、そうではありません。
+
+どうしてこれが重要な事柄か？あなたが下記の定義を持っているとしましょう:
+
+ <Files ~ "\.boffo$">
+  SetHandler perl-script
+  PerlSetVar Filter On
+  PerlHandler Apache::FormatNumbers Apache::DoBigCalculation
+  # 上記は偽物のモジュールです。わかってますよね。
+ </Files>
+
+FormatNumber モジュールが deterministic であり、DoBigCalculation モジュールが
+実行に長時間掛かると仮定して下さい。DoBigCalculation モジュールは入力ファイルが
+ディスク上で変更されていない時のために、今その結果をキャッシュできます。
+FormatNumbers モジュールを通る時に、その結果は既知で残されているでしょうから、
+
+モジュール内部はこのような何かに見えるでしょう:
+
+ sub Apache::FormatNumbers::handler {
+    my $r = shift;
+    $r->content_type("text/html");
+    my ($fh, $status) = $r->filter_input();
+    return $status unless $status == OK;
+    $r->deterministic(1); # 真をセット; デフォルトは偽
+    
+    # ... いくつかの書式定義をし、STDOUT へ出力
+    return OK;
+ }
+ 
+ sub Apache::DoBigCalculation::handler {
+    my $r = shift;
+    $r->content_type("text/html");
+    my ($fh, $status) = $r->filter_input();
+    return $status unless $status == OK;
+    
+    # このモジュールは %chache_time と %cache_content ハッシュを利用し
+    # キャッシュ機構を実現しています。
+    my $time = $cache_time{$r->filename};
+    my $output;
+    if ($r->changed_since($time)) {
+        # <$fh> から読み、ここで巨大な演算を実行し、STDOUT へ出力
+    } else {
+        print $cache_content{$r->filename};
+    }
+    
+    return OK;
+ }
+
+警告: C<changed_since()> と C<deterministic()> メソッドが、C<filter_register()>
+の B<後に> いつも呼び出されます。これは Apache::Filter がチェーン内で
+どのハンドラが現在実行中かを判断するために粗製のカウントメソッドを利用しており、
+これらのルーチン呼び出しはカウントをめちゃめちゃに乱してしまうためです。
+
+
+=back
+
+
+=head1 ヘッダ (HEADERS)
+
+このモジュールの以前のリリースでは、$r->send_http_header() を呼び出す事は
+危険でした。なぜなら、前/後のフィルタもまたヘッダを送出する可能性があり、
+その場合、あなたは送信を取得すると複数のヘッダを持つことになるからです。
+現在のリリースではあなたは簡単にヘッダを送れます。もし現在のフィルタが
+最後のフィルタであれば、ヘッダはいつも通り送られ、それ以外であれば
+send_http_header() は作用しません。
+
+=head1 注意 (NOTES)
+
+あなたは、概要 (SYNOPSIS) で私が C<"PerlSetVar Filter On"> と書いていた事を
+覚えているでしょう。この情報は実際はこのモジュールで使われず、それら自身のフィルタ
+(Apache::SSI のような) モジュールによって使われます。私はここに、
+フィルタするモジュールは、それらが $r->filter_register を呼び出すべきかどうかを
+見つけるスイッチとして、このパラメータを利用するように提案します。しかしながら、
+これはしばしば不要 - あなたが何らのフィルタリングも不必要なときでさえ、
+単純な $r->filter_register は等しく呼び出しにごくわずかなオーバヘッドがあり、
+$r->filter_input は $r->filename ファイルを開く方法として手近にできます。
+
+非常に重要: もしスタックされたハンドラチェーン内の一つのハンドラが
+C<Apache::Filter> を使う場合、それらは全てこれを使わなくてはなりません (THEY ALL MUST USE IT)。
+これはそれら全てが $r->filter_register を確実に一度呼び出さなくてはならない事を
+意味します。そうでなければ、C<Apache::Filter> はハンドラの出力を適切に捕捉できず、
+いつブラウザへ出力をリリースすべきか知り得ないでしょう。
+
+各フィルタ (最後を除く) の出力は次のフィルタへ渡される前にメモリに蓄積されるので、
+大きなページには大きなメモリが必要になります。Apache::OutputChain は、一度に
+print() の引数リストから一つのアイテムをメモリに保持する必要があるだけなので、
+この問題は抱えていないですが、他があります (それぞれのチャンクが独立してフィルタされ、
+いくつかのチャンクに及ぶコンテンツが適切に解析されないでしょう)。
+今後のバージョンで、この周囲の方法を見出すか、大きなページをディスク上に
+キャッシュしてメモリが手に負えなくはならないようにするかもしれません。
+私達はそれが問題であるかどうかを調べるでしょう。
+
+二つのフィルタの例は、このディストリビューションの t/ サブディレクトリで
+提供されています: UC.pm はその全ての入力を大文字に変換し、Reverse.pm は
+その入力の行を逆に出力します。
+
+最後に警告: バージョン 0.09 では私は明示的に Content-Length を undef に
+セットし始めました。これは早い段階のフィルタが不正確にコンテンツ長を
+セッティングしてしまうことを阻止します。これはもしこの後に
+幾つかのフィルタが存在したら、殆ど確実に不適当になります。このことは
+もしあなたがコンテンツ長をセットするモジュールを書いた場合、それを
+$r->filter_register 呼び出しの B<後に> 実行すべきであることを意味します。
+
+=head1 行うこと (TO DO)
+
+私達が適切な Content-Length ヘッダを送信出来るようにするため、最終出力へ
+バッファモードを追加する。[gozer@hbesoftware.com (Philippe M. Chiasson)]
+
+=head1 バグ (BUGS)
+
+これは現在実行しているハンドラがチェーン内で最後のハンドラであるかを理解するため
+幾つかのおかしな要素を使います。結果として、実行時にハンドラリストを
+(push_handlers 等を使って) 扱うコードは大混乱を引き起こすでしょう。あなたが
+何かを試す前に、コードを少しだけ詮索してください。もしあなたが名案を持っていたら
+どうぞ知らせてください。
+
+0.07 では、Apache::Filter は $r->filename がディレクトリを指し示す時、
+自動的に DECLINED を返すでしょう。これは、ちょうど殆どの場合に、
+あなたが何かすること (mod_dir がリクエストを引き受けるために)
+を望んでいるからで、かつディレクトリ処理の "正しい" 方法を理解するのは
+かなり厳しいと思われるからです - 正しい方法はディレクトリをインデックス化する
+ハンドラがフィルタになる事を許可することでしょう。それは今不可能です。また
+あなたは適切に mod_autoindex のような 非 mod_perl のインデックス作成者に
+制御を渡す事は出来ません。提案を歓迎します。
+
+私はもしあなたがこれを使い、PERL_STACKED_HANDLERS をオンにしなかった時に、
+何が起こるかまでは考慮していません。だからそのようなことはしないで下さい。
+
+=head1 作者 (AUTHOR)
+
+Ken Williams (ken@forum.swarthmore.edu)
+
+=head1 著作権 (COPYRIGHT)
+
+Copyright 1998,1999,2000 Ken Williams.  All rights reserved.
+
+This library is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
+
+=head1 参考資料 (SEE ALSO)
+
+perl(1).
+
+=head1 翻訳者
+
+谷口公一 E<lt>taniguchi@users.sourceforge.jpE<gt>
+

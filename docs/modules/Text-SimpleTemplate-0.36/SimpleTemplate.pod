@@ -1,0 +1,215 @@
+
+=encoding euc-jp
+
+# -*- mode: perl -*-
+#
+# $Id$
+#
+
+package Text::SimpleTemplate;
+
+=head1 名前
+
+ Text::SimpleTemplate - テンプレートを処理するまたもう一つのモジュール
+
+=head1 概要
+
+ use Text::SimpleTemplate;
+
+     $tmpl = new Text::SimpleTemplate;    # プロセッサオブジェクトを生成します
+     $tmpl->setq(TEXT => "hello, world"); # テンプレートにデータをエクスポートします
+     $tmpl->load($file);                  # 名前のあるファイルからテンプレートをロードします
+     $tmpl->pack(q{TEXT: <% $TEXT; %>});  # メモリ内のデータからテンプレートをロードします
+
+     print $tmpl->fill;                   # "TEXT: hello, world"を表示
+
+=head1 説明
+
+これはテンプレートをベースとしたテキストを生成するまたもう一つの
+ライブラリです。
+
+テンプレートをベースとするテキストの生成はプログラムコードとデータを
+分離するための手段であり、非プログラマーがプログラムコードをいじること
+なしに、最終的な望まれた結果(HTMLのような)を制御することが可能となります。
+そうすることにより、たとえページの再デザインが必要になったとしても、
+プログラムコードの変更をせずにすむため、ウェブサイトのメンテナンスの
+ような仕事はより楽になります。
+
+そのアイデアはシンプルです。'<%'と'%>'で囲まれたテキストのブロック
+(又はあなた記述した区切り記号のペアならどんなものでも)を見付けると、
+いつでもPerlの式として受け取り、評価された結果に置換されるでしょう。
+
+この手のライブラリの主な最終目標はシンプルさとスピードです。テンプレート
+処理用のモジュールは沢山あれども、このモジュールは生のPerlコードに近い
+(例えば、 "s|xxx|xxx|ge")スピードなのですが、その一方では
+シンプルに使えるオブジェクティブなインターフェースを提供しています。
+
+=head1 インストール方法 / 必要な物
+
+このモジュールはCarp.pm及びFileHandle.pmを必要とします。これらは標準
+モジュールですので、あなたが必要とするのはperlそのものだけです。
+
+インストールするためには、標準的な手順
+
+    perl Makefile.PL
+    make
+    make test
+    make install
+
+でうまく動いてくれるはずです。
+
+=head1 テンプレートの文法及び使用方法
+
+"sample.tmpl"と名付けられた次のテンプレートがあると想定します:
+
+    === Module Information ===
+    Name: <% $INFO->{Name}; %>
+    Description: <% $INFO->{Description}; %>
+    Author: <% $INFO->{Author}; %> <<% $INFO->{Email}; %>>
+
+下記のコードを用いると…
+
+    use Safe;
+    use Text::SimpleTemplate;
+
+    $tmpl = new Text::SimpleTemplate;
+    $tmpl->setq(INFO => {
+        Name        => "Text::SimpleTemplate",
+        Description => "Yet another module for template processing",
+        Author      => "Taisuke Yamada",
+        Email       => "tai\@imasy.or.jp",
+    });
+    $tmpl->load("sample.tmpl");
+
+    print $tmpl->fill(PACKAGE => new Safe);
+
+…あなたは次のような結果を得られるでしょう:
+
+    === Module Information ===
+    Name: Text::SimpleTemplate
+    Description: Yet another module for template processing
+    Author: Taisuke Yamada <tai@imasy.or.jp>
+
+ひょっとするとお気づきかも知れませんが、スカラーデータでさえあれば
+ハッシュのリファレンスやコードのリファレンスでさえも、テンプレートの
+名前空間としてエクスポートすることが可能です。
+
+一方、私は"Safe"モジュールを上記の例に使っているのですが、これは
+別に必要なものではありません。しかしながら、もしテンプレートの
+編集者がプログラムのロジックを越えることを抑制したいのであれば、導入する
+ことをお奨めします(より詳しくはSafeのmanpageを御覧下さい)。
+
+=head1 テンプレートの名前空間への直接アクセス
+
+ネイティブなインターフェースのことを付け加えることによって、
+テンプレートの名前空間に直接アクセスすることも可能となります。
+
+    $FOO::text = 'hello, world';
+    @FOO::list = qw(foo bar baz);
+
+    $tmpl = new Text::SimpleTemplate;
+    $tmpl->pack(q{TEXT: <% $text; %>, LIST: <% "@list"; %>});
+
+    print $tmpl->fill(PACKAGE => 'FOO');
+
+しかし私はこのスタイルをお奨めしません、これはリスト、ハッシュ及び
+サブルーチンをリファレンスを扱うこと無しにリストをエクスポート
+したいのであればおそらく有用かも知れません。
+
+=head1 メソッド
+
+次に挙げるメソッドは現在使用可能なものです。
+
+=over 4
+
+=item $tmpl = Text::SimpleTemplate->new;
+
+コンストラクタです。オブジェクトを新しく生成し返します。
+
+もしこのメソッドが存在するオブジェクトを通して呼び出された場合、
+クローンされたオブジェクトが返されることでしょう。このクローンされた
+インスタンスはテンプレートデータを保存している内部バッファを
+除いた全てのプロパティを引き継いでいます。クローンは
+テンプレートの処理を連続させるのに便利です。
+
+=item $tmpl->setq($name => $data, $name => $data, ...);
+
+$nameをテンプレートで使用されるスカラー値の名前として、
+テンプレートの名前空間にデータ($data)をエクスポートする。
+
+一つの操作で複数のセットをエクスポートするためにペアを
+繰り返すことが可能です。
+
+=item $tmpl->load($file, %opts);
+
+テンプレートファイル($file)を後程評価するためにロードします。
+ファイルはpathname及びfileglobのどちらでも形式でも記述できます。
+
+このメソッドは特定の区切り記号でテンプレートをパースする
+ためにDELIMオプションを受け付けます。丁度下記のように、区切り記号のペアを
+含む配列へのリファレンスを渡すことによって記述されます。
+
+    $tmpl->load($file, DELIM => [qw(<? ?>)]);
+
+オブジェクト自身のリファレンスを返します。
+
+=item $tmpl->pack($data, %opts);
+
+後程評価するためにメモリ内のデータ($data)をロードします。
+この違いを除けば、ちょうど$tmpl->loadと同じような働きをします。
+
+=item $text = $tmpl->fill(%opts);
+
+事前に$tmpl->pack又は$tmpl->loadメソッドのどちらかによって
+ロードされたテンプレートの評価結果を返します。
+
+このメソッドは二つのオプションを受け付けます: PACKAGE 及び OHANDLEです。
+
+PACKAGEオプションはテンプレートの評価される場所はどこかと言う
+名前空間を記述します。パッケージの名前及びオブジェクトそのものを
+渡すことの両方が可能です。よって
+
+    $tmpl->fill(PACKAGE => new Safe);
+    $tmpl->fill(PACKAGE => new Some::Module);
+    $tmpl->fill(PACKAGE => 'Some::Package');
+
+のいずれもが動作します。Safeモジュール(あるいはそのサブクラス)が
+渡された場合、"reval"メソッドがビルトインのevalに代わって使用されるでしょう。
+
+OHANDLEオプションは出力先を選択するためのものです。デフォルトでは、
+このメソッドは評価の結果を返しますが、OHANDLEオプションを設定すると、
+代わりに与えられたハンドルに出力させることができます。
+
+    $tmpl->fill(OHANDLE => \*STDOUT);
+    $tmpl->fill(OHANDLE => new FileHandle(...));
+
+のうち、どちらもサポートしています。
+
+=back
+
+=head1 ノート / バグ
+
+ネストされたテンプレートの区切り記号はこのモジュールにおいて失敗の原因と
+なります。
+
+=head1 コンタクトアドレス
+
+バグやレポート/コメントがあれば<tai@imasy.or.jp>に送って下さい。
+
+=head1 作者 / コントリビューター
+
+ - Taisuke Yamada <tai@imasy.or.jp>
+ - Lin Tianshan <lts@www.qz.fj.cn>
+
+=head1 著作権
+
+Copyright 1999-2001. All rights reserved.
+
+This library is free software; you can redistribute it
+and/or modify it under the same terms as Perl itself.
+
+=head1 翻訳者
+
+三浦真磁 <snj@users.sourceforge.jp>
+
+=cut

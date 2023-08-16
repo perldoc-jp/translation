@@ -1,0 +1,1764 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+perlfaq5 - Files and Formats ($Revision$, $Date$)
+
+=end original
+
+perlfaq5 - ファイルとフォーマット ($Revision$, $Date$)
+
+=head1 DESCRIPTION
+
+このセクションでは、入出力と“f”に関する事柄: ファイルハンドル
+(filehandle)、フラッシング(flushing)、フォーマット(format)、
+フッター(footer)を扱います。
+
+=head2 How do I flush/unbuffer an output filehandle?  Why must I do this?
+
+(出力ファイルハンドルを flush/unbufferするには? なぜ私はこれを
+やらなければならないのでしょうか?)
+
+Cの標準入出力ライブラリ(stdio)は、通常はキャラクターをバッファリングして
+デバイスへ送出します。これは効率上の理由で行われるので、
+バイト毎にシステムコールを行ったりはしません。Perlでprint()や
+write()を使った場合、それは出力バッファを通ることになります。
+syswrite()はstdioとバッファリングを回避します。
+
+大部分のstdioの実装では、バッファリングの方式とバッファのサイズは
+デバイスの型に従ったものになっています。ディスクファイルはブロック
+バッファリングされ、たいていの場合バッファサイズは2キロバイト以上です。
+パイプやソケットはほとんどの場合、0.5キロバイトから2キロバイトの間の
+バッファでバッファリングされます。
+シリアルデバイス(モデムや端末など)は通常はラインバッファリングされ、
+stdioは改行を受け取ったときに行全体を送出します。
+
+Perlは本当のバッファリングなし出力をサポートしてはいません 
+(C<syswrite(OUT, $char, 1)>のようにできることは除きます)。
+Perlはその代わりに、“コマンドバッファリング”をサポートしています。
+これは各コマンドの出力の後で物理的な書き出しが行われるというものです。
+これはバッファリングなしにするよりも難しくはありませんが、
+望んだとき、望んだ場所で出力が行われます。
+
+デバイスに出力したときにそのキャラクタが反映されるようにしたいのなら、
+そのハンドルを自動フラッシュするようにしたいでしょう。
+自動フラッシュを制御するためにselect()と変数C<$|>を使います
+(L<perlvar/$|> と L<perlfunc/select>を参照してください):
+
+    $old_fh = select(OUTPUT_HANDLE);
+    $| = 1;
+    select($old_fh);
+
+もしくは伝統的なイディオムを使って以下のようにします:
+
+    select((select(OUTPUT_HANDLE), $| = 1)[0]);
+
+=begin original
+
+Or if don't mind slowly loading several thousand lines of module code
+just because you're afraid of the C<$|> variable:
+
+=end original
+
+C<$|>という変数を敬遠したい場合、数千行のモジュールを
+ロードして遅くなることを気にしないのなら以下のようにできます:
+
+    use FileHandle;
+    open(DEV, "+</dev/tty"); 	  # ceci n'est pas une pipe
+    DEV->autoflush(1);
+
+新しい IO::*モジュールでは:
+
+    use IO::Handle;
+    open(DEV, ">/dev/printer");   # しかしこれは?
+    DEV->autoflush(1);
+
+こうもできます:
+
+    use IO::Socket;		  # これはパイプの類かい?
+    $sock = IO::Socket::INET->new(PeerAddr => 'www.perl.com',
+				  PeerPort => 'http(80)',
+				  Proto    => 'tcp');
+    die "$!" unless $sock;
+
+    $sock->autoflush();
+    print $sock "GET / HTTP/1.0" . "\015\012" x 2;
+    $document = join('', <$sock>);
+    print "DOC IS: $document\n";
+
+=begin original
+
+Note the bizarrely hardcoded carriage return and newline in their octal
+equivalents.  This is the ONLY way (currently) to assure a proper flush
+on all platforms, including Macintosh.  That the way things work in
+network programming: you really should specify the exact bit pattern
+on the network line terminator.  In practice, C<"\n\n"> often works,
+but this is not portable.
+
+=end original
+
+八進表記で記述されているキャリッジリターンと改行に注意してください。
+これは、Macintoshを含め全てのプラットフォームで適切にフラッシュを
+行うための(現時点では)唯一の方法なのです。これはネットワーク
+プログラミングで動作させるための方法で、ネットワークでの
+行終端子の実際のビットパターンで指定すべきなのです。C<"\n\n">は
+ほとんどの場合はうまくいきますが、これは移植性に欠けるところが
+あります。
+
+webを通じてURLの内容を取り込む例はL<perlfaq9>を参照してください。
+
+=head2 How do I change one line in a file/delete a line in a file/insert a line in the middle of a file/append to the beginning of a file?
+
+(ファイルの一行を変更する/ファイルのある行を削除する/
+ファイルの中程で一行挿入する/ファイルの先頭に追加するには?)
+
+これらの操作はテキストエディターの仕事です。Perlはテキストエディターではなく、
+プログラミング言語です。あなたは問題をより低レベルな
+read、write、open、close、seekに分解する必要があります。
+
+人はテキストファイルをトランプやパンチカードの山のように操作できる行の
+並びのように簡単に考えてしまいがちですが、通常コンピューターは、
+テキストファイルをバイトの並びと見ます。
+一般的には、Perlにファイルの特定の行にシークさせるとか、
+テキストをファイルに挿入させるとかテキストを取り除かせるような
+直接的な方法はありません。
+
+=begin original
+
+(There are exceptions in special circumstances.  You can add or remove
+data at the very end of the file.  A sequence of bytes can be replaced
+with another sequence of the same length.  The C<$DB_RECNO> array
+bindings as documented in L<DB_File> also provide a direct way of
+modifying a file.  Files where all lines are the same length are also
+easy to alter.)
+
+=end original
+
+(例外となる特別な状況があります。
+ファイルの一番最後の部分ではデータの追加や削除ができます。
+あるバイト列を同じ長さをの別の
+バイト列で置き換えることができます。
+さらにL<DB_File>で説明されているようなC<$DB_RECNO> 配列割り付けも
+ファイルを修正する直接の方法を提供します。
+全ての行が同じ長さを持っているファイルも簡単に変更できます。)
+
+一般的な解決策は、行いたい変更を行ったテキストファイルのコピーを作り、
+その後でオリジナルを上書きしてしまうというものです。
+ここではロッキングはしないと仮定します。
+
+    $old = $file;
+    $new = "$file.tmp.$$";
+    $bak = "$file.orig";
+
+    open(OLD, "< $old") 	or die "can't open $old: $!";
+    open(NEW, "> $new") 	or die "can't open $new: $!";
+
+    # Correct typos, preserving case
+    while (<OLD>) {
+	s/\b(p)earl\b/${1}erl/i;
+	(print NEW $_)		or die "can't write to $new: $!";
+    }
+
+    close(OLD)			or die "can't close $old: $!";
+    close(NEW) 			or die "can't close $new: $!";
+
+    rename($old, $bak)		or die "can't rename $old to $bak: $!";
+    rename($new, $old)		or die "can't rename $new to $old: $!";
+
+Perl はこの類のことをコマンドラインスイッチ C<-i>か、密接に関連した変数
+C<$^I> を使って自動的に行うことができます。
+C<-i> は一部の非UNIXシステムでは拡張子を要求することに注意してください。
+これは使っている移植に付属していたドキュメントを参照してください。
+
+    # コマンドラインにあるテストの並びをリナンバリングする
+    perl -pi -e 's/(^\s+test\s+)\d+/ $1 . ++$count /e' t/op/taint.t
+
+    # スクリプトを形成する
+    local($^I, @ARGV) = ('.orig', glob("*.c"));
+    while (<>) {
+	if ($. == 1) {
+	    print "This line should appear at the top of each file\n";
+	}
+	s/\b(p)earl\b/${1}erl/i;        # 打ち間違いを(大小文字を無視して)訂正する
+	print;
+	close ARGV if eof;              # $. をリセットする
+    }
+
+あまり変更しないファイルの任意の行にシークする必要があるのなら、
+そのファイルの行末のバイト位置のインデクスを構築することができます。
+ファイルが大きいのであれば、十行毎、百行毎にインデクスを作れば
+シークと読み込みの効率を向上させることができるでしょう。
+ファイルの内容がソートされているのであれば、look.plライブラリ(標準Perl
+配布キットの一部です)を試してみてください。
+
+ファイルの終端にある行の削除は得意なケースで、tell()やtruncate()が使えます。
+以下のコードはあるファイルの最後にある行を、
+コピーを作ったりファイル全体をメモリに読み込むことなしに削除するものです:
+
+	open (FH, "+< $file");
+        while ( <FH> ) { $addr = tell(FH) unless eof(FH) }
+        truncate(FH, $addr);
+
+エラーチェックは読者の練習のために残されています。
+
+=head2 How do I count the number of lines in a file?
+
+(あるファイルの行数を数えるには?)
+
+非常に効率の良いやり方の一つはファイルの改行の数を数えるというものです。
+以下のプログラムはL<perlop>で説明されているようなtr///の機能を使っています。
+テキストファイルが改行で終わっていなければ、
+それは適切なテキストファイルではありません。
+そのため、期待しているよりも一少ない行数を報告するでしょう。
+
+
+    $lines = 0;
+    open(FILE, $filename) or die "Can't open `$filename': $!";
+    while (sysread FILE, $buffer, 4096) {
+	$lines += ($buffer =~ tr/\n//);
+    }
+    close FILE;
+
+これは改行に絡む妙な動作がないと仮定しています。
+
+=head2 How do I make a temporary file name?
+
+(一時ファイルの名前を作り出すには?)
+
+=begin original
+
+Use the C<new_tmpfile> class method from the IO::File module to get a
+filehandle opened for reading and writing.  Use it if you don't
+need to know the file's name:
+
+=end original
+
+IO::FileモジュールにあるクラスメソッドC<new_tmpfile>を使って
+読み書きのためにオープンされたファイルハンドルを取得します。
+ファイルがどんな名前なのかを知る必要がない場合はこれを使ってください。
+
+     use IO::File;
+     $fh = IO::File->new_tmpfile()
+            or die "Unable to make new temporary file: $!";
+
+ファイル名を知る必要がある場合には、
+POSIXモジュールのC<tmpnam>関数を使って
+自分でオープンするためのファイル名を取得することができます。
+
+    use Fcntl;
+    use POSIX qw(tmpnam);
+
+    #存在しないファイルが見つかるまで新しい一時名で試す。
+    #チェックは不要かも知れないが、用心するに越したことはない。
+    do { $name = tmpnam() }
+        until sysopen(FH, $name, O_RDWR|O_CREAT|O_EXCL);
+
+    #atexitスタイルのハンドラーをインストールするので、exitやdie
+    #したときに自動的にテンポラリファイルを削除する
+    END { unlink($name) or die "Couldn't unlink $name : $!" }
+
+    # ファイルを実際に使用する…
+
+一時ファイルの作成を手作業で行いたいのなら、
+プロセスIDやその時点での時刻(あるいはこれら両方)を使用してください。
+一つのプロセスで複数の一時ファイルを使用するのであれば、
+カウンターを使用しましょう:
+
+    BEGIN {
+	use Fcntl;
+	my $temp_dir = -d '/tmp' ? '/tmp' : $ENV{TMP} || $ENV{TEMP};
+	my $base_name = sprintf("%s/%d-%d-0000", $temp_dir, $$, time());
+	sub temp_file {
+	    local *FH;
+	    my $count = 0;
+	    until (defined(fileno(FH)) || $count++ > 100) {
+		$base_name =~ s/-(\d+)$/"-" . (1 + $1)/e;
+		sysopen(FH, $base_name, O_WRONLY|O_EXCL|O_CREAT);
+	    }
+	    if (defined(fileno(FH))
+		return (*FH, $base_name);
+	    } else {
+		return ();
+	    }
+	}
+    }
+
+=head2 How can I manipulate fixed-record-length files?
+
+(どうやれば固定長レコードのファイルを操作できますか?)
+
+=begin original
+
+The most efficient way is using pack() and unpack().  This is faster than
+using substr() when take many, many strings.  It is slower for just a few.
+
+=end original
+
+最も効率的なやり方はpack()とunpack()を使うものです。
+これは文字列が大量にあるときにはsubstr()を使うよりも高速で、
+速度低下もほとんどありません。
+
+以下に挙げたのは幾つかの固定フォーマットをした入力行に対して
+分解を行ったり書き戻しをするコード片の例で、出力は
+Berkeley形式のpsに準じています。
+
+
+    # 入力行のサンプル
+    #   15158 p5  T      0:00 perl /home/tchrist/scripts/now-what
+    $PS_T = 'A6 A4 A7 A5 A*';
+    open(PS, "ps|");
+    print scalar <PS>; 
+    while (<PS>) {
+	($pid, $tt, $stat, $time, $command) = unpack($PS_T, $_);
+	for $var (qw!pid tt stat time command!) {
+	    print "$var: <$$var>\n";
+	}
+	print 'line=', pack($PS_T, $pid, $tt, $stat, $time, $command),
+		"\n";
+    }
+
+=begin original
+
+We've used C<$$var> in a way that forbidden by C<use strict 'refs'>.
+That is, we've promoted a string to a scalar variable reference using
+symbolic references.  This is ok in small programs, but doesn't scale
+well.   It also only works on global variables, not lexicals.
+
+=end original
+
+この例のようなC<$$var>の使い方はC<use strict 'refs'>したときには
+使えないものです。
+つまり、ここではシンボリックリファレンスを使って文字列をスカラー変数に
+するということを行っているのです。
+これは小規模なプログラムには良いでしょうが、スケーラビリティが
+あるとは言えません。シンボリックリファレンスは大域変数でのみ働き、
+レキシカル変数では使えません。
+
+=head2 How can I make a filehandle local to a subroutine?  How do I pass filehandles between subroutines?  How do I make an array of filehandles?
+
+(どうすればファイルハンドルをサブルーチンに局所化できますか?
+サブルーチンにファイルハンドルを渡すには?
+ファイルハンドルの配列を作るには?)
+
+最も早くてかつ単純で、
+最も直接なやり方はファイルハンドルの型グロブを局所化するというものです:
+
+    local *TmpHandle;
+
+=begin original
+
+Typeglobs are fast (especially compared with the alternatives) and
+reasonably easy to use, but they also have one subtle drawback.  If you
+had, for example, a function named TmpHandle(), or a variable named
+%TmpHandle, you just hid it from yourself.
+
+=end original
+
+型グロブは(別の手段と比較した場合)高速で、使いやすいものではありますが、
+分かりづらい欠点があります。
+例えば、TmpHandle()という名前の関数や%TmpHandleという名前の変数を使ったときに、
+あなたは自分自身でその名前を隠してしまうことになるのです。
+
+    sub findme {
+        local *HostFile;
+	open(HostFile, "</etc/hosts") or die "no /etc/hosts: $!";
+	local $_;		# ← とても重要
+        while (<HostFile>) {
+	    print if /\b127\.(0\.0\.)?1\b/;
+	}
+	# *HostFile はここで自動的にクローズと解放が行われる
+    }
+
+=begin original
+
+Here's how to use typeglobs in a loop to open and store a bunch of
+filehandles.  We'll use as values of the hash an ordered
+pair to make it easy to sort the hash in insertion order.
+
+=end original
+
+以下の例は、ループの中で複数のファイルハンドルをオープンしストアした場合の
+型グロブの使い方です。
+ここではハッシュの値を、ハッシュのソートがやりやすいように
+順序付きペアとしています。
+
+    @names = qw(motd termcap passwd hosts);
+    my $i = 0;
+    foreach $filename (@names) {
+	local *FH;
+	open(FH, "/etc/$filename") || die "$filename: $!";
+        $file{$filename} = [ $i++, *FH ];
+    }
+
+    #配列にあるファイルハンドルを使う
+    foreach $name (sort { $file{$a}[0] <=> $file{$b}[0] } keys %file) {
+        my $fh = $file{$name}[1];
+        my $line = <$fh>;
+        print "$name $. $line";
+     }
+
+関数に対してファイルハンドルを渡すのにもっとも簡単なやり方は
+それにアスタリスクをつけてfunc(*STDIN)のようにすることです。
+詳しくはL<perlfaq7/"Passing Filehandles">を参照してください。
+
+=begin original
+
+If you want to create many, anonymous handles, you should check out the
+Symbol, FileHandle, or IO::Handle (etc.) modules.  Here's the equivalent
+code with Symbol::gensym, which is reasonably light-weight:
+
+=end original
+
+大量の無名ハンドルを作りたいのであれば、
+Symbol, FileHandle, IO::Handle といったモジュールを参照してください。
+以下の例は使いやすく軽い処理であるSymbol::gensymを使ったものです:
+
+    foreach $filename (@names) {
+	use Symbol;
+	my $fh = gensym();
+	open($fh, "/etc/$filename") || die "open /etc/$filename: $!";
+        $file{$filename} = [ $i++, $fh ];
+    }
+
+    use FileHandle;
+
+    foreach $filename (@names) {
+        push(@files, $fh);
+        my $fh = FileHandle->new("/etc/$filename") or die "$filename: $!";
+        $file{$filename} = [ $i++, $fh ];
+    }
+
+=begin original
+
+Please understand that whether the filehandle happens to be a (probably
+localized) typeglob or an anonymous handle from one of the modules
+in no way affects the bizarre rules for managing indirect handles.
+See the next question.
+
+=end original
+
+ファイルハンドルが(おそらくは局所化された)型グロブになるかモジュールを使って
+作成した無名ハンドルのどちらであるかを理解してください。
+間接的なハンドルを管理するのに奇妙なルールが影響を及ぼすことはありません。
+詳しくは次の質問を参照してください。
+
+=head2 How can I use a filehandle indirectly?
+
+(どうすればファイルハンドルを間接的に扱えますか?)
+
+=begin original
+
+An indirect filehandle is using something other than a symbol
+in a place that a filehandle is expected.  Here are ways
+to get indirect filehandles:
+
+=end original
+
+間接ファイルハンドルは、あるファイルハンドルを期待している場所に置かれた
+シンボル以外のなにかを使っています。
+以下に間接ファイルハンドルの例を挙げます:
+
+    $fh =   SOME_FH;       # bareword は strict-subs に反します
+    $fh =  "SOME_FH";      # strict-refs hostile; 同じパッケージのみ
+    $fh =  *SOME_FH;       # 型グロブ
+    $fh = \*SOME_FH;       # 型グロブのリファレンス (bless-able)
+    $fh =  *SOME_FH{IO};   # blessed IO::Handle from *SOME_FH typeglob
+
+=begin original
+
+Or, you can use the C<new> method from the FileHandle or IO modules to
+create an anonymous filehandle, store that in a scalar variable,
+and use it as though it were a normal filehandle.
+
+=end original
+
+あるいは、FileHandleモジュールやIOモジュールのC<new>メソッドを使い、
+それをスカラー変数に格納してからそれを普通のファイルハンドルと
+同じように扱います。
+
+    use FileHandle;
+    $fh = FileHandle->new();
+
+    use IO::Handle;                     # 5.004以降
+    $fh = IO::Handle->new();
+
+=begin original
+
+Then use any of those as you would a normal filehandle.  Anywhere that
+Perl is expecting a filehandle, an indirect filehandle may be used
+instead. An indirect filehandle is just a scalar variable that contains
+a filehandle.  Functions like C<print>, C<open>, C<seek>, or the functions or
+the C<< <FH> >> diamond operator will accept either a read filehandle
+or a scalar variable containing one:
+
+=end original
+
+上記のように作成して、後は普通のファイルハンドルと同じように使います。
+Perlがファイルハンドルを期待しているところではどこでも
+間接ファイルハンドルを使うことができるでしょう。
+間接ファイルハンドルは、ファイルハンドルを保持しているスカラー変数に
+すぎません。C<print>, C<open>, C<seek>のような関数や、
+ダイヤモンド演算子 C<< <FH> >> はファイルハンドルもファイルハンドルを
+保持しているスカラー変数の両方とも受け付けます。
+
+    ($ifh, $ofh, $efh) = (*STDIN, *STDOUT, *STDERR);
+    print $ofh "Type it: ";
+    $got = <$ifh>
+    print $efh "What was that: $got";
+
+ファイルハンドルを関数に渡した場合、渡される関数は二種類の書き方ができます:
+
+    sub accept_fh {
+        my $fh = shift;
+        print $fh "Sending to indirect filehandle\n";
+    }
+
+型グロブを局所化して、ファイルハンドルを直接使うことも可能です:
+
+    # ファイルハンドルをサブルーチンに渡す
+    sub accept_fh {
+        local *FH = shift;
+        print  FH "Sending to localized filehandle\n";
+    }
+
+両方の形式とも、オブジェクトでも実際のファイルハンドルの型グロブでも動作します
+(ある場合においては文字列でも可能ですが、これはちょっとリスクがあります)。
+
+    accept_fh(*STDOUT);
+    accept_fh($handle);
+
+=begin original
+
+In the examples above, we assigned the filehandle to a scalar variable
+before using it.  That is because only simple scalar variables, not
+expressions or subscripts of hashes or arrays, can be used with
+built-ins like C<print>, C<printf>, or the diamond operator.  Using
+something other than a simple scalar varaible as a filehandle is
+illegal and won't even compile:
+
+=end original
+
+上の例では、ファイルハンドルを使う前にそれをスカラー変数に代入していました。
+これは式でもなく、ハッシュや配列の添え字でもなく単純スカラ変数だけが
+C<print>やC<printf>、ダイヤモンド演算子と一緒に使えるからです。
+単純スカラ変数以外のものをファイルハンドルとして使うのは不正であり、
+コンパイル時にエラーとなります:
+
+    @fd = (*STDIN, *STDOUT, *STDERR);
+    print $fd[1] "Type it: ";                           # 間違い
+    $got = <$fd[0]>                                     # 間違い
+    print $fd[2] "What was that: $got";                 # 間違い
+
+C<print>やC<printf>の場合には、ブロックを使ってその中にファイルハンドルを
+含む式を置くことによって対処することができます:
+
+    print  { $fd[1] } "funny stuff\n";
+    printf { $fd[1] } "Pity the poor %x.\n", 3_735_928_559;
+    # Pity the poor deadbeef.
+
+これらのブロックは妥当なものですから、より複雑なコードをその中に
+入れこむことができます。
+以下の例はメッセージを二ヶ所のどちらかひとつに送り出します:
+
+    $ok = -x "/bin/cat";                
+    print { $ok ? $fd[1] : $fd[2] } "cat stat $ok\n";
+    print { $fd[ 1+ ($ok || 0) ]  } "cat stat $ok\n";           
+
+=begin original
+
+This approach of treating C<print> and C<printf> like object methods
+calls doesn't work for the diamond operator.  That's because it's a
+real operator, not just a function with a comma-less argument.  Assuming
+you've been storing typeglobs in your structure as we did above, you
+can use the built-in function named C<readline> to reads a record just
+as C<< <> >> does.  Given the initialization shown above for @fd, this
+would work, but only because readline() require a typeglob.  It doesn't
+work with objects or strings, which might be a bug we haven't fixed yet.
+
+=end original
+
+このアプローチはC<print>やC<printf>をオブジェクトメソッドの呼び出しのように
+扱うものですが、これはダイヤモンド演算子には使えません。
+なぜなら、ダイヤモンド演算子はカンマなしの引数を取る関数ではなくて本当の
+演算子だからです。
+さて、上記の例のように型グロブをあなたの作った構造に格納したとしましょう。
+C<readline>という名前の組み込み関数を使ってC<< <> >> が行うように
+レコードを読み込むことができます。
+@fdを例にあったように初期化してやることでうまく動作します。
+しかし、readline()は型グロブを要求するからです。
+これはオブジェクトや文字列では動作しません。
+このことはバグとも言えるもので現時点では修正されていません。
+
+    $got = readline($fd[0]);
+
+=begin original
+
+Let it be noted that the flakiness of indirect filehandles is not
+related to whether they're strings, typeglobs, objects, or anything else.
+It's the syntax of the fundamental operators.  Playing the object
+game doesn't help you at all here.
+
+=end original
+
+間接ファイルハンドルの妙な点はそれが文字列であるか、型グロブであるか、
+オブジェクトであるか、はたまた別の何者であるかには関係しないということに
+注意してください。
+これは基本的な演算子の構文なのです。
+オブジェクトをいじくりまわして遊ぶことはここでは何の助けにもなりません。
+
+=head2 How can I set up a footer format to be used with write()?
+
+(write()と一緒に使うフッターのフォーマットのセットアップはどうやればできますか?)
+
+これを行うための組み込みの方法はありません。
+しかしL<perlfrom>には、これを可能にするためのニ、三の intrepid hacker向けの
+テクニックがあります。
+
+=head2 How can I write() into a string?
+
+(文字列に対してwrite()するのはどうやればできますか?)
+
+L<perlform/"Accessing Formatting Internals">の swrite() 関数を参照してください。
+
+=head2 How can I output my numbers with commas added?
+
+(出力する数字にカンマを付加するのはどうやればできますか?)
+
+一つのやり方:
+
+    sub commify {
+	local $_  = shift;
+	1 while s/^([-+]?\d+)(\d{3})/$1,$2/;
+	return $_;
+    }
+
+    $n = 23659019423.2331;
+    print "GOT: ", commify($n), "\n";
+
+    GOT: 23,659,019,423.2331
+
+これを単に
+
+    s/^([-+]?\d+)(\d{3})/$1,$2/g;
+
+のようにはできません。なぜなら、カンマを押し込んだ後で位置の再計算を
+行わなければならないからです。
+
+=begin original
+
+Alternatively, this code commifies all numbers in a line regardless of
+whether they have decimal portions, are preceded by + or -, or
+whatever:
+
+=end original
+
+以下の例は、小数点があるかどうか、+ や ー が先行しているかどうかに関係なく
+行にある全ての数値を受け付けます:
+
+    # Andrew Johnson <ajohnson@gpu.srv.ualberta.ca> による
+    sub commify {
+       my $input = shift;
+        $input = reverse $input;
+        $input =~ s<(\d\d\d)(?=\d)(?!\d*\.)><$1,>g;
+        return scalar reverse $input;
+    }
+
+=head2 How can I translate tildes (~) in a filename?
+
+(どうやれば ファイル名の中にあるチルダ (~)を変換できますか?)
+
+=begin original
+
+Use the <> (glob()) operator, documented in L<perlfunc>.  Older
+versions of Perl require that you have a shell installed that groks
+tildes.  Recent perl versions have this feature built in. The
+Glob::KGlob module (available from CPAN) gives more portable glob
+functionality.
+
+=end original
+
+L<perlfunc>で説明されている <> (glob()) を使います。
+古いバージョンの Perl では、チルダを展開するシェルが既に
+インストールされていることを要求します。
+最近のバージョンの Perl は内部にこの機能を持っています。
+Glob::KGlob モジュール(CPANで入手可能)はより移植性のあるglob機能を提供します。
+
+Perl を使えば、これを以下のように直接的に行えます。
+
+	$filename =~ s{
+	  ^ ~             # 先行するチルダを探す
+	  (               # それを $1 に保存する
+	      [^/]        # スラッシュ以外のキャラクターの
+	            *     # 0回以上のくり返し(0にも意味がある)
+	  )
+	}{
+	  $1
+	      ? (getpwnam($1))[7]
+	      : ( $ENV{HOME} || $ENV{LOGDIR} )
+	}ex;
+
+=head2 How come when I open the file read-write it wipes it out?
+
+(ファイルを読み書きモードでオープンしたときに内容をクリアしてしまうのはなぜ?)
+
+ファイルを切り詰めて、B<その後で>読み書きアクセスを提供するようなものを
+使おうとしたからです。
+
+    open(FH, "+> /path/name");		# (ほぼ常に)間違い
+
+おっと、ファイルがなかったときに失敗するような以下のやり方を使うべきでしょう。
+
+    open(FH, "+< /path/name");  	# open for update
+
+">"を使うと常に切り詰めか作成が行われます。
+"<"を使った場合にはどちらも行いません。
+"+"はこれらを変更することはありません。
+
+ファイルをオープンする多くのやり方の例を以下に挙げます。
+sysopenを使っているものはすべて
+
+    use Fcntl;
+
+をしているものと仮定します。
+
+ファイルを読み込みのためにオープンするには:
+
+    open(FH, "< $path")                                 || die $!;
+    sysopen(FH, $path, O_RDONLY)                        || die $!;
+
+ファイルを書き出しのためにオープンし、ファイルがなければ新しく作り
+あれば古いファイルを切り詰めるには:
+
+    open(FH, "> $path") || die $!;
+    sysopen(FH, $path, O_WRONLY|O_TRUNC|O_CREAT)        || die $!;
+    sysopen(FH, $path, O_WRONLY|O_TRUNC|O_CREAT, 0666)  || die $!;
+
+ファイルを書き出しのためにオープンし、ファイルを新たに作成するが
+慈善に存在していてはいけない場合:
+
+    sysopen(FH, $path, O_WRONLY|O_EXCL|O_CREAT)         || die $!;
+    sysopen(FH, $path, O_WRONLY|O_EXCL|O_CREAT, 0666)   || die $!;
+
+ファイルを追加のためにオープンし、必要があればファイルを作成するには:
+
+    open(FH, ">> $path") || die $!;
+    sysopen(FH, $path, O_WRONLY|O_APPEND|O_CREAT)       || die $!;
+    sysopen(FH, $path, O_WRONLY|O_APPEND|O_CREAT, 0666) || die $!;
+
+ファイルを追加のためにオープンするが、ファイルが事前になければいけない場合:
+
+    sysopen(FH, $path, O_WRONLY|O_APPEND)               || die $!;
+
+ファイルを更新のためにオープンするが、ファイルが事前になければいけない場合:
+
+    open(FH, "+< $path")                                || die $!;
+    sysopen(FH, $path, O_RDWR)                          || die $!;
+
+ファイルを更新のためにオープンし、必要があればファイルを作成する場合:
+
+    sysopen(FH, $path, O_RDWR|O_CREAT)                  || die $!;
+    sysopen(FH, $path, O_RDWR|O_CREAT, 0666)            || die $!;
+
+To open file for update, file must not exist:
+ファイルを更新のためにオープンするが、ファイルが事前に存在してはいけない場合:
+
+    sysopen(FH, $path, O_RDWR|O_EXCL|O_CREAT)           || die $!;
+    sysopen(FH, $path, O_RDWR|O_EXCL|O_CREAT, 0666)     || die $!;
+
+ブロッキングなしでフィルをオープンし、必要があれば作成するには:
+
+    sysopen(FH, "/tmp/somefile", O_WRONLY|O_NDELAY|O_CREAT)
+	    or die "can't open /tmp/somefile: $!":
+
+=begin original
+
+Be warned that neither creation nor deletion of files is guaranteed to
+be an atomic operation over NFS.  That is, two processes might both
+successfully create or unlink the same file!  Therefore O_EXCL
+isn't as exclusive as you might wish.
+
+=end original
+
+ファイルの作成や削除はNFS越しの場合にはアトミックな操作ではないことに
+注意してください。
+つまり、二つのプロセスが同じファイルの作成や削除に成功するかもしれないのです!
+したがってO_EXCLはあなたが期待しているようには排他的ではないのです。
+
+=begin original
+
+See also the new L<perlopentut> if you have it (new for 5.6).
+
+=end original
+
+もしあれば 新しい L<perlopentut> (5.6 対応) も参照して下さい。
+
+=head2 Why do I sometimes get an "Argument list too long" when I use <*>?
+
+(なぜ <*> を使ったときに "Argument list too long" (引数リストが長すぎる)と
+なることがあるの?)
+
+=begin original
+
+The C<< <> >> operator performs a globbing operation (see above).
+In Perl versions earlier than v5.6.0, the internal glob() operator forks
+csh(1) to do the actual glob expansion, but
+csh can't handle more than 127 items and so gives the error message
+C<Argument list too long>.  People who installed tcsh as csh won't
+have this problem, but their users may be surprised by it.
+
+=end original
+
+<*> 演算子はグロブ操作(globbing operation)を行います。
+v5.6.0 以前の Perl では、glob() はcsh(1)を起動して、
+実際のグロブを行います。
+しかし、cshは127を越えるアイテムを扱うことができないので、
+そういったエラーメッセージ C<Argument list too long>となるのです。
+cshをcshとしてインストールしている人はこの問題に直面することはないでしょうが、
+ユーザーがびっくりすることがあるかもしれません。
+
+=begin original
+
+To get around this, either upgrade to Perl v5.6.0 or later, do the glob
+yourself with readdir() and patterns, or use a module like Glob::KGlob,
+one that doesn't use the shell to do globbing.
+
+=end original
+
+これに対処するには、Perl v5.6.0 以降にアップグレードするか
+グロブをreaddir()とパターンを使って
+自分自身で実行するか、あるいはGlob::KGlobのようなモジュールを使って、
+シェルによるグロブを行わないようにします。
+
+=head2 Is there a leak/bug in glob()?
+
+(glob()に leak/bugはあるの?)
+
+一部のオペレーティングシステム上の実装のために、
+glob()関数やスカラーコンテキストでのアングルブラケットによる
+そのエイリアスを使った場合、メモリリークや予測できない振る舞いを
+引き起こす可能性があります。
+したがって、glob()はリストコンテキストでのみ使うのが最善です。
+
+=head2 How can I open a file with a leading ">" or trailing blanks?
+
+(どうやれば 名前の先頭に">"があったり
+末尾に空白があるようなファイルをオープンすることができますか?)
+
+通常、perl はファイル名の末尾にある空白を無視し、幾つかのキャラクターが
+先行している場合(もしくは末尾に“|”がついている場合)には、
+それを特別な意味として解釈します。
+これを避けるために、以下のようなルーチンを使いたくなるかもしれません。
+これは不完全なパス名を明確な相対パス名に変換し、
+perlが(ファイル名に対して)何もしないようにさせるために
+名前の末尾にあるナルバイトを記録します。
+
+    sub safe_filename {
+	local $_  = shift;
+        s#^([^./])#./$1#;
+        $_ .= "\0";
+	return $_;
+    }
+
+    $badpath = "<<<something really wicked   ";
+    $fn = safe_filename($badpath");
+    open(FH, "> $fn") or "couldn't open $badpath: $!";
+
+=begin original
+
+This assumes that you are using POSIX (portable operating systems
+interface) paths.  If you are on a closed, non-portable, proprietary
+system, you may have to adjust the C<"./"> above.
+
+=end original
+
+これはあなたが POSIX(portable operating systems interface) パスを
+使っているという仮定をしています。
+もしあなたが閉鎖的で、移植性のない、独占的システムを使っているのであれば、
+C<"./">を調整する必要があるかもしれません。
+
+=begin original
+
+It would be a lot clearer to use sysopen(), though:
+
+=end original
+
+このことはsysopen()ではっきりと変わります:
+
+    use Fcntl;
+    $badpath = "<<<something really wicked   ";
+    sysopen (FH, $badpath, O_WRONLY | O_CREAT | O_TRUNC)
+	or die "can't open $badpath: $!";
+ 
+より詳しい情報は、新規のL<perlopentut>を参照してください。(5.6 対応).
+
+=head2 How can I reliably rename a file?
+
+(どうすれば信頼性のあるファイルのリネームができますか?)
+
+=begin original
+
+Well, usually you just use Perl's rename() function.  That may not
+work everywhere, though, particularly when renaming files across file systems.
+Some sub-Unix systems have broken ports that corrupt the semantics of
+rename()--for example, WinNT does this right, but Win95 and Win98
+are broken.  (The last two parts are not surprising, but the first is. :-)
+
+=end original
+
+えー、通常は Perl の rename() 関数を使うだけです。しかし、これはどこでも
+働くわけではなく、とくにファイルシステムをまたがったリネームはできません。
+非 Unix システムの中には rename() の意味論が崩壊している
+壊れた移植がされているものがあります--例えば、
+WinNT は正しく動きますが、Win95 と Win98 は壊れています。
+(後者の二つは驚くに値しませんが、前者は驚きです。:-)
+
+=begin original
+
+If your operating system supports a proper mv(1) program or its moral
+equivalent, this works:
+
+=end original
+
+あなたの使っているオペレーティングシステムが、適切な mv(1) あるいは
+それと等価なプログラムをサポートしているのなら以下のようなやり方が
+使えるでしょう:
+
+    rename($old, $new) or system("mv", $old, $new);
+
+File::Copy モジュールを使うのが、より魅力的かもしれません。新しい名前で
+新しいファイルにコピーして(ここで戻り値をチェック)、
+古いものを削除するだけです。
+ただし、これはパーミッション、タイムスタンプ、inode情報などが本当の
+rename()とは同じにはなりません。
+
+新しいバージョンのFile::Copyは関数move()をエクスポートしています。
+
+=head2 How can I lock a file?
+
+(どうすればファイルをロックできますか?)
+
+Perlに組み込みの flock関数(詳しくはL<perlfunc>を参照)は、flock(2)が
+あればそれを、なければfcntl(2)を呼び出します(5.004以降の場合)。
+そして、これら二つのシステムコールのいずれもない場合にはlockf(3)を
+呼び出します。
+一部のシステムでは、ネイティブなロッキングとは異なった使い方を
+するかもしれません。
+以下に、Perlのflock()に関する罠(gotchas)を挙げておきます:
+
+=over 4
+
+=item 1
+
+三つのシステムコールがどれもなければ(もしくは等価なものがなければ)、
+致命的エラーを生成します。
+
+=item 2
+
+lockf(3)は共有ロックをサポートしません。そして、書き込み用に(もしくは
+追加モードか読み書きモード)オープンされているファイルハンドルを要求します。
+
+=item 3
+
+=begin original
+
+Some versions of flock() can't lock files over a network (e.g. on NFS file
+systems), so you'd need to force the use of fcntl(2) when you build Perl.
+But even this is dubious at best.  See the flock entry of L<perlfunc>
+and the F<INSTALL> file in the source distribution for information on
+building Perl to do this.
+
+=end original
+
+flock()の一部のバージョンはネットワーク越し(NFSファイルシステムなど)に
+ファイルをロックすることはできません。
+このため、Perlをビルドするときにfcntl(2)を使うように強制する必要が
+あるかもしれません。しかしこれでも最善かどうかは疑わしいです。
+L<perlfunc>のflock()のエントリと、そのためのPerlをビルドする
+情報のある、ソース配布中にあるF<INSTALL>というファイルを参照してください。
+
+=begin original
+
+Two potentially non-obvious but traditional flock semantics are that
+it waits indefinitely until the lock is granted, and that its locks are
+I<merely advisory>.  Such discretionary locks are more flexible, but
+offer fewer guarantees.  This means that files locked with flock() may
+be modified by programs that do not also use flock().  Cars that stop
+for red lights get on well with each other, but not with cars that don't
+stop for red lights.  See the perlport manpage, your port's specific
+documentation, or your system-specific local manpages for details.  It's
+best to assume traditional behavior if you're writing portable programs.
+(If you're not, you should as always feel perfectly free to write
+for your own system's idiosyncrasies (sometimes called "features").
+Slavish adherence to portability concerns shouldn't get in the way of
+your getting your job done.)
+
+=end original
+
+二つの潜在的に明らかでないけれども、伝統的な flock の手法があります。
+一つはロックが与えられるまで無限に待ち、そしてそのロックは
+I<めったに忠告されません>。このような自由度の高いロックはより柔軟ですが、
+得るものはより少ないです。
+つまり、 flock() でロックされたファイルは flock() を使っていない
+プログラムによって修正される可能性があるからです。
+赤信号で止まる車同士ならうまくいきますが、片方が信号を守らないなら
+うまくいかないということです。
+詳細については perlport man ページ、使っているバージョン独自のドキュメント、
+システム独自のローカルな man ページを参照してください。
+移植性のあるプログラムのためには、伝統的な振る舞いを仮定するのが最善です。
+(そうしないなら、あなたは自分のシステムの癖(「仕様」とも呼ばれます)に
+合わせて書くことをいつでも気にしないようにするべきです。
+あなたの仕事をやり遂げる時に、盲目的に移植性を考慮するべきではありません。)
+
+ファイルのロッキングに関する詳細は<perlopentut/"FileLocking">を
+参照してください(new for 5.6)。
+
+=back
+
+=head2 What can't I just open(FH, ">file.lock")?
+
+(なぜ単に open(FH, ">file.lock")とできないの?)
+
+=begin original
+
+A common bit of code B<NOT TO USE> is this:
+
+=end original
+
+以下のようなことをB<してはいけません>:
+
+    sleep(3) while -e "file.lock";	# こういったやり方を
+    open(LCK, "> file.lock");		# しないようにしてください
+
+これは古典的な競合状態(race conditon)です: あなたはここで、
+一つのステップでやらなければならないことを二つのステップでやっています。
+つまりこれが、コンピューターのハードウェアがアトミックな 
+test-and-setの命令を備えている理由です。理論的には、
+これを動作するにさせるには:
+
+    sysopen(FH, "file.lock", O_WRONLY|O_EXCL|O_CREAT)
+		or die "can't open  file.lock: $!":
+
+残念なことに、NFSを通じた場合にはファイルの作成(と削除)は
+アトミックではありません。
+このため、この例はネットワークを通した場合にはうまく動きません
+(少なくとも失敗する可能性があります)。
+link()を含め、様々なやり方が既に提案されていますが、これらは busy-waitを
+伴うものでありあまり望ましいものではありません。
+
+=head2 I still don't get locking.  I just want to increment the number in the file.  How can I do this?
+
+(まだロックができない。ただ単にファイルにある数値をインクリメントしたいだけなんだけど。
+どうすればいいの?)
+
+=begin original
+
+Didn't anyone ever tell you web-page hit counters were useless?
+They don't count number of hits, they're a waste of time, and they serve
+only to stroke the writer's vanity.  It's better to pick a random number;
+they're more realistic.
+
+=end original
+
+これまでただの一人もあなたにwebページのヒットカウンターは役たたずなんだと
+いうことを言わなかったんですか? ヒットカウンターはヒットした数は数えず、
+時間を浪費し、さらに言えば作者のうぬぼれを叩くのに役立つだけです。
+乱数を取り出したほうがよっぽどましです。
+
+まあいずれにしろ、以下のようにしてやります:
+
+    use Fcntl qw(:DEFAULT :flock);
+    sysopen(FH, "numfile", O_RDWR|O_CREAT) 	 or die "can't open numfile: $!";
+    flock(FH, LOCK_EX) 				 or die "can't flock numfile: $!";
+    $num = <FH> || 0;
+    seek(FH, 0, 0) 				 or die "can't rewind numfile: $!";
+    truncate(FH, 0) 				 or die "can't truncate numfile: $!";
+    (print FH $num+1, "\n")			 or die "can't write numfile: $!";
+    close FH 					 or die "can't close numfile: $!";
+
+以下の例はもっと良いweb-page ヒットカウンターです:
+
+    $hits = int( (time() - 850_000_000) / rand(1_000) );
+
+=begin original
+
+If the count doesn't impress your friends, then the code might.  :-)
+
+=end original
+
+カウントがあなたの友達を感心させないのなら、このコードもそうでしょうね :-)
+
+=head2 How do I randomly update a binary file?
+
+(バイナリファイルをランダムに更新するには?)
+
+単にバイナリにパッチをあてたいというのなら、多くの場合は以下のように
+単純にできます:
+
+    perl -i -pe 's{window manager}{window mangler}g' /usr/bin/emacs
+
+もし固定サイズのレコードを持っているのなら、以下のようにして行うことも
+できます:
+
+    $RECSIZE = 220; # バイトで表した レコードのサイズ
+    $recno   = 37;  # 更新すべきレコード
+    open(FH, "+<somewhere") || die "can't update somewhere: $!";
+    seek(FH, $recno * $RECSIZE, 0);
+    read(FH, $record, $RECSIZE) == $RECSIZE || die "can't read record $recno: $!";
+    # munge the record
+    seek(FH, -$RECSIZE, 1);
+    print FH $record;
+    close FH;
+
+ロックとエラーチェックは読者の練習として残してあります。
+これらを行うことを忘れてはいけません。
+さもなくばとても後悔することになるでしょう。
+
+=head2 How do I get a file's timestamp in perl?
+
+(perlでファイルのタイムスタンプを取得するには?)
+
+そのファイルが最後に読み込まれ、書き出され、そのメタデータ(所有者など)が
+変更された時刻を取得したいのであれば、L<perlfunc>に説明がある
+B<-M>, B<-A>, B<-C> といったファイルテスト演算子を使います。
+これらはファイルの年齢(あなたのプログラムの実行開始に対するもの)を
+浮動小数点数で表現された日数で取得します。
+epochからの経過秒数による“生の”時間を得るためには、
+stat関数を呼び出して、その値をlocaltime()、gmtime()、POSIX::strftime()を
+使って人が読めるような形へ変換します。
+
+例を挙げましょう:
+
+    $write_secs = (stat($file))[9];
+    printf "file %s updated at %s\n", $file,
+	scalar localtime($write_secs);
+
+もっと読みやすいものがお好みなら、File::statモジュールを使います
+(これは5.004以降の標準配布キットに含まれています)。
+
+    # エラーチェックは読者の練習のために残しています。
+    use File::stat;
+    use Time::localtime;
+    $date_string = ctime(stat($file)->mtime);
+    print "file $file updated at $date_string\n";
+
+POSIX::strftime()アプローチは理論的にはロカール非依存で、
+使う価値があります。詳しくはL<perlolcale>を参照してください。
+
+=head2 How do I set a file's timestamp in perl?
+
+(perlでファイルのタイムスタンプを設定するには?)
+
+=begin original
+
+You use the utime() function documented in L<perlfunc/utime>.
+By way of example, here's a little program that copies the
+read and write times from its first argument to all the rest
+of them.
+
+=end original
+
+L<perlfunc/utime>で説明されているutime()という関数を使います。
+例として、引数の最初のファイルのread and write 時刻を読んで、
+残りのファイルにその時刻を設定する小さなプログラムを挙げましょう。
+
+    if (@ARGV < 2) {
+	die "usage: cptimes timestamp_file other_files ...\n";
+    }
+    $timestamp = shift;
+    ($atime, $mtime) = (stat($timestamp))[8,9];
+    utime $atime, $mtime, @ARGV;
+
+例によって、エラーチェックは読者の練習として残してあります。
+
+現時点では、Windows 95/NT への移植ではutimeは正しく動作しないと
+いうことに注意してください。バグが報告されています。これらのプラ
+ットフォームではutime()を使う前に注意してチェックしてください。
+
+=head2 How do I print to more than one file at once?
+
+(一度に二つ以上のファイルに出力するには?)
+
+これをやる必要があるのが一回だけなら、以下のようにしてできます:
+
+    for $fh (FH1, FH2, FH3) { print $fh "whatever\n" }
+
+一つのファイルハンドルを幾つかの出力ファイルハンドルに接続するには、
+multiplexingを注意深く行うtee(1) を持っているのならそれを使うのが最も簡単です。
+
+    open (FH, "| tee file1 file2 file3");
+
+あるいは:
+
+    # make STDOUT go to three files, plus original STDOUT
+    open (STDOUT, "| tee file1 file2 file3") or die "Teeing off: $!\n";
+    print "whatever\n"                       or die "Writing: $!\n";
+    close(STDOUT)                            or die "Closing: $!\n";
+
+そういったものがなければ、自分で multiplexing print 関数を書くか、
+あるいは tee プログラムを自分で書くか
+http://www.perl.com/CPAN/authors/id/TOMC/scripts/tct.gz,
+に置かれている Tom ChristiansenによってPerlで書かれたものを
+使うかする必要があるでしょう。
+
+=head2 How can I read in an entire file all at once?
+
+(ファイル全体を一度に読みこむにはどうすればいいですか?)
+
+=begin original
+
+The customary Perl approach for processing all the lines in a file is to
+do so one line at a time:
+
+=end original
+
+Perl においてファイルの全ての行を処理するための慣例的な手法は
+1 行ずつ読みこむことです:
+
+    open (INPUT, $file) 	|| die "can't open $file: $!";
+    while (<INPUT>) {
+	chomp;
+	# do something with $_
+    } 
+    close(INPUT)	    	|| die "can't close $file: $!";
+
+=begin original
+
+This is tremendously more efficient than reading the entire file into
+memory as an array of lines and then processing it one element at a time,
+which is often--if not almost always--the wrong approach.  Whenever
+you see someone do this:
+
+=end original
+
+これはファイル全体を行の配列として読みこんでから1行ずつ処理するという
+(ほとんど常に、でないのなら)しばしば誤った手法よりも
+遥かに効率的です。
+それでもファイル全体を読み込みたいなら以下のようにします:
+
+    @lines = <INPUT>;
+
+=begin original
+
+you should think long and hard about why you need everything loaded
+at once.  It's just not a scalable solution.  You might also find it
+more fun to use the standard DB_File module's $DB_RECNO bindings,
+which allow you to tie an array to a file so that accessing an element
+the array actually accesses the corresponding line in the file.
+
+=end original
+
+本当に全てを一度に読み込む必要があるのかを良く考えるべきです。
+これは単にスケールの問題ではありません。DB_File モジュールの $DB_RECNO
+バインディングの方がより好ましいと考えるかもしれません。
+これは配列とファイルを結び付けるので、配列にアクセスすると、実際には
+ファイルの対応する行にアクセスすることになります。
+
+=begin original
+
+On very rare occasion, you may have an algorithm that demands that
+the entire file be in memory at once as one scalar.  The simplest solution
+to that is
+
+=end original
+
+非常にまれな場合に、ファイル全体を一度にひとつのスカラとして
+メモリに読みこむ必要があるアルゴリズムを使うかもしれません。
+これを解決する最も単純な方法は以下のとおりです:
+
+    $var = `cat $file`;
+
+=begin original
+
+Being in scalar context, you get the whole thing.  In list context,
+you'd get a list of all the lines:
+
+=end original
+
+スカラコンテキストとして、全てを得ることが出来ます。
+以下のようにすればリストコンテキストで全ての行のリストを得ることが出来ます:
+
+    @lines = `cat $file`;
+
+=begin original
+
+This tiny but expedient solution is neat, clean, and portable to
+all systems on which decent tools have been installed.  For those
+who prefer not to use the toolbox, you can of course read the file
+manually, although this makes for more complicated code.
+
+=end original
+
+この単純だけれども便利な解法はすっきりしていて、明快で、ツールが
+インストールされている全てのシステムにおいて移植性があります。
+このツールボックスを使いたくない人のために、もちろんファイルを手動で
+読み込むこともできますが、これはやや煩わしいコードになります。
+
+    {
+	local(*INPUT, $/);
+	open (INPUT, $file) 	|| die "can't open $file: $!";
+	$var = <INPUT>;
+    }
+
+=begin original
+
+That temporarily undefs your record separator, and will automatically 
+close the file at block exit.  If the file is already open, just use this:
+
+=end original
+
+これは一時的にレコードセパレータを未定義にし、ブロックを出るときに
+自動的にファイルをクローズします。ファイルが既にオープンしているなら、
+単に以下のようにします:
+
+    $var = do { local $/; <INPUT> };
+
+=head2 How can I read in a file by paragraphs?
+
+(どうすればファイルをパラグラフ毎に読み出すことができますか?)
+
+C<$/>という変数を使います(詳しくはL<perlvar>を参照してください)。
+たとえば (C<"abc\n\n\n\ndef">で三つではなく二つのパラグラフを受
+け取る、つまり空のパラグラフを除去するにはC<"">を設定します。空
+のパラグラフを受け付けるにはC<"\n\n">を設定します。
+
+=begin original
+
+Note that a blank line must have no blanks in it.  Thus C<"fred\n
+\nstuff\n\n"> is one paragraph, but C<"fred\n\nstuff\n\n"> is two.
+
+=end original
+
+空行はブランクを持っていてはいけないということに注意しましょう。
+このため、C<"fred\n\nstuff\n\n"> は一つのパラグラフですが
+C<"fred\n\nstuff\n\n">は二つのパラグラフです。
+
+=head2 How can I read a single character from a file?  From the keyboard?
+
+(どうすればファイルからキャラクターを一つだけ読み出せますか?キーボードからは?)
+
+ほとんどのファイルハンドルに対してはC<getc()>という組み込み関数を
+使うことができますが、これはターミナルデバイスに対してはうまくいきません。
+STDIN に対しては、CPAN にある Term::ReadKey を使うか
+L<perlfunc/getc>にあるサンプルコードを使います。
+
+あなたの使っているシステムがPOSIXをサポートしているのなら、echo を
+オフにしているのを気をつけながら以下のようなコードでできます。
+
+以下のようなコードが使えます。
+
+    #!/usr/bin/perl -w
+    use strict;
+    $| = 1;
+    for (1..4) {
+	my $got;
+	print "gimme: ";
+	$got = getone();
+	print "--> $got\n";
+    }
+    exit;
+
+    BEGIN {
+	use POSIX qw(:termios_h);
+
+	my ($term, $oterm, $echo, $noecho, $fd_stdin);
+
+	$fd_stdin = fileno(STDIN);
+
+	$term     = POSIX::Termios->new();
+	$term->getattr($fd_stdin);
+	$oterm     = $term->getlflag();
+
+	$echo     = ECHO | ECHOK | ICANON;
+	$noecho   = $oterm & ~$echo;
+
+	sub cbreak {
+	    $term->setlflag($noecho);
+	    $term->setcc(VTIME, 1);
+	    $term->setattr($fd_stdin, TCSANOW);
+	}
+
+	sub cooked {
+	    $term->setlflag($oterm);
+	    $term->setcc(VTIME, 0);
+	    $term->setattr($fd_stdin, TCSANOW);
+	}
+
+	sub getone {
+	    my $key = '';
+	    cbreak();
+	    sysread(STDIN, $key, 1);
+	    cooked();
+	    return $key;
+	}
+
+    }
+
+    END { cooked() }
+
+CPAN にある Term::ReadKey モジュールならもっと簡単に使えます。
+最新のバージョンでは non-portable システムのサポートも含まれています:
+
+    use Term::ReadKey;
+    open(TTY, "</dev/tty");
+    print "Gimme a char: ";
+    ReadMode "raw";
+    $key = ReadKey 0, *TTY;
+    ReadMode "normal";
+    printf "\nYou said %s, char number %03d\n",
+        $key, ord $key;
+
+DOS システムに対しては、Dan Carson <dbc@tc.fluke.COM>が
+以下のように報告しています。
+
+PC を“raw”モードにするには、msdos.c(Perlのソースファイル)と Ralf Brown の
+割り込みリスト(よくネットにあります)から取り出したマジックナンバーを使って
+ioctl を行います。
+
+    $old_ioctl = ioctl(STDIN,0,0);     # デバイス情報を取得
+    $old_ioctl &= 0xff;
+    ioctl(STDIN,1,$old_ioctl | 32);    # bit5をセットして書き戻す
+
+それからキャラクター一つを読み込む:
+
+    sysread(STDIN,$c,1);               # キャラクター一つを読み込む
+
+PC を "cooked" モードに戻す:
+
+    ioctl(STDIN,1,$old_ioctl);         # cooked modeに戻す
+
+これで $c にキャラクターが入っています。C<ord($c) == 0>なら、特殊なキーが
+叩かれたことを表す 2 バイトのコードを受け取りました。
+もう 1 バイトを  C<sysread(STDIN,$c,1)> を使って読み込み、以下のテーブルに従って
+組み合わせたものがあなたの求めているものです。
+
+    # PC の2バイトキーコード = ^@ と以下のいずれか
+
+    # 十六進   キー
+    # ------   ----
+    # 0F       SHF TAB
+    # 10-19    ALT QWERTYUIOP
+    # 1E-26    ALT ASDFGHJKL
+    # 2C-32    ALT ZXCVBNM
+    # 3B-44    F1-F10
+    # 47-49    HOME,UP,PgUp
+    # 4B       LEFT
+    # 4D       RIGHT
+    # 4F-53    END,DOWN,PgDn,Ins,Del
+    # 54-5D    SHF F1-F10
+    # 5E-67    CTR F1-F10
+    # 68-71    ALT F1-F10
+    # 73-77    CTR LEFT,RIGHT,END,PgDn,HOME
+    # 78-83    ALT 1234567890-=
+    # 84       CTR PgUp
+
+=begin original
+
+This is all trial and error I did a long time ago, I hope I'm reading the
+file that worked.
+
+=end original
+
+これはかなり昔に私が試行錯誤したもので、きちんと動くだろうと期待しています。
+
+=head2 How can I tell whether there's a character waiting on a filehandle?
+
+(ファイルハンドルがあったときにそれがキャラクターを待っているかどうかを
+知るには?)
+
+あなたがすべき第一のことは、CPAN にある Term::ReadKey を入手することです。
+今では閉鎖的な独占システム
+(オープンなシステムではない、POSIX でもなく、UNIX でもないような…)に
+対する限定的なサポートさえあります。
+
+comp.unix.* の Frequently Asked Questions(しばしば尋ねられる質問)リストで、
+同じようなものをチェックすべきでしょう: この答えは本質的に同じものです。
+つまり、非常にシステム依存なものです。
+以下に挙げたのは、BSDシステムで動作する解決策の一つです。
+
+    sub key_ready {
+	my($rin, $nfd);
+	vec($rin, fileno(STDIN), 1) = 1;
+	return $nfd = select($rin,undef,undef,0);
+    }
+
+どの位のキャラクターが待っているのかを知りたいのであれば、
+FIONREAD ioctl 呼び出しを使うことができます。
+I<h2ph>ツールは C のインクルードファイルを Perl に変換するもので、その結果は
+C<require>によって呼び出すことが可能です。
+FIONREAD は I<sys/ioctl.ph> にある関数として定義されます。
+
+    $size = pack("L", 0);
+    ioctl(FH, FIONREAD(), $size)    or die "Couldn't call ioctl: $!\n";
+    $size = unpack("L", $size);
+
+I<h2ph> がインストールされていないか、うまく動作しなかったのであれば、
+以下のようにできます。
+
+    % grep FIONREAD /usr/include/*/*
+    /usr/include/asm/ioctls.h:#define FIONREAD      0x541B
+
+=begin original
+
+Or write a small C program using the editor of champions:
+
+=end original
+
+あるいはエディターの王様を使って小さな C プログラムを書きます:
+
+    % cat > fionread.c
+    #include <sys/ioctl.h>
+    main() {
+        printf("%#08x\n", FIONREAD);
+    }
+    ^D
+    % cc -o fionread fionread.c
+    % ./fionread
+    0x4004667f
+
+=begin original
+
+And then hard-code it, leaving porting as an exercise to your successor.
+
+=end original
+
+その後でその値をハードコードしてやって、あなたの仕事を引き継ぐ人のための
+練習として移植をさぼります。
+
+    $FIONREAD = 0x4004667f;         # XXX: opsys に依存
+
+    $size = pack("L", 0);
+    ioctl(FH, $FIONREAD, $size)     or die "Couldn't call ioctl: $!\n";
+    $size = unpack("L", $size);
+
+=begin original
+
+FIONREAD requires a filehandle connected to a stream, meaning sockets,
+pipes, and tty devices work, but I<not> files.
+
+=end original
+
+FIONREAD はストリームに接続されたファイルハンドルを要求します。
+これはソケット、パイプ、あるいは tty デバイスではうまく動作しますが、
+ファイルに対してはB<うまく行きません>。
+
+=head2 How do I do a C<tail -f> in perl?
+
+(perlで C<tail -f>をするには?)
+
+まず最初に以下のものを試してみてください
+
+    seek(GWFILE, 0, 1);
+
+C<seek(GWFILE, 0, 1)>という文はカレントの位置を変更しませんが、
+そのファイルハンドルにおける end-fo-file 状態を解除します。
+このため、次に <GWFILE>とすると Perl は再度何かを読もうとするのです。
+
+このやり方がうまくいかない(これはあなたの使っている stdio が実装している
+機能に依存しています)のなら、以下のようにする必要があるでしょう:
+
+	for (;;) {
+	  for ($curpos = tell(GWFILE); <GWFILE>; $curpos = tell(GWFILE)) {
+	    # 何かを探し、それをファイルに押し込む
+	  }
+	  # しばらく眠る
+	  seek(GWFILE, $curpos, 0);  # かつていた場所にシークする
+	}
+
+これでもうまく行かなければ、POSIX モジュールを試してみてください。
+POSIX はファイルハンドルに対する end-of-file 状態をクリアすることのできる
+cleaererr()というメソッドを定義しています。
+やり方: 終端に至るまでファイルを読み込む。
+clearerr()。何かを読み込む。洗って、濯いで、くり返す(lather, rince, repeat)。
+
+CPANにはFile::Tailモジュールがあります。
+
+=head2 How do I dup() a filehandle in Perl?
+
+(Perl でファイルハンドルの dup() をするには?)
+
+L<perlfunc/open>を見れば、それを行うための open() の呼び出し方が
+何通りもあることに気がつくでしょう。例を挙げます:
+
+    open(LOG, ">>/tmp/logfile");
+    open(STDERR, ">&LOG");
+
+あるいは、リテラルの数値ディスクリプターを使います:
+
+   $fd = $ENV{MHCONTEXTFD};
+   open(MHCONTEXT, "<&=$fd");	# fdopen(3S) のようなもの
+
+=begin original
+
+Note that "<&STDIN" makes a copy, but "<&=STDIN" make
+an alias.  That means if you close an aliased handle, all
+aliases become inaccessible.  This is not true with 
+a copied one.
+
+=end original
+
+"<&STDIN"はコピーを作成し、"<&=STDIN" が
+エイリアスを作成するということに注意してください。
+これはつまり、あなたがエイリアスが作成されたファイルハンドルを
+クローズすると、エイリアスはすべてアクセスできなくなります。
+これはコピーの場合にはそうはなりません。
+
+エラーチェックはいつものように読者の練習のために残してあります。
+
+=head2 How do I close a file descriptor by number?
+
+(数値によるファイルディスクリプターをクローズするには?)
+
+Perl の close() 関数は、先の例にあった MHCNOTEXT のように数値ディスクリプター
+(numeric descriptor)を使って dup したものでさえも含めて、
+Perl 自身がオープンしたものに対して使うことができますから、
+その必要はほとんどないはずです。
+しかし本当にそうする必要があるのなら、以下のようにできるでしょう:
+
+    require 'sys/syscall.ph';
+    $rc = syscall(&SYS_close, $fd + 0);  # 強制的に数値にしなければならない
+    die "can't sysclose $fd: $!" unless $rc == -1;
+
+=begin original
+
+Or, just use the fdopen(3S) feature of open():
+
+=end original
+
+あるいは、単に open() の fdopen(3S) 機能を使います:
+
+    { 
+	local *F; 
+	open F, "<&=$fd" or die "Cannot reopen fd=$fd: $!";
+	close F;
+    }
+
+=head2 Why can't I use "C:\temp\foo" in DOS paths?  What doesn't `C:\temp\foo.exe` work?
+
+(なぜ DOS のパスで "C:\temp\foo" が使えないのでしょうか?
+なぜ `C:\temp\foo.exe` はうまくいかないの?)
+
+おーっと! ファイル名にタブや改ページを入れてしまいましたね! 
+"like\this"のようにダブルクォートで括られた文字列の中では、
+バックスラッシュはエスケープキャラクターであるということを思い出してください。
+エスケープキャラクター全てのリストは
+L<perlop/Quote and Quote-like Operators>にあります。
+当然のことでしょうが、あなたの使っているDOSのファイルシステムでは
+"c:(tab)emp(formfeed)oo" とか
+"c:(tab)emp(formfeed)oo.exe" 
+なんて名前のファイルはできませんよね。
+
+=begin original
+
+Either single-quote your strings, or (preferably) use forward slashes.
+Since all DOS and Windows versions since something like MS-DOS 2.0 or so
+have treated C</> and C<\> the same in a path, you might as well use the
+one that doesn't clash with Perl--or the POSIX shell, ANSI C and C++,
+awk, Tcl, Java, or Python, just to mention a few.
+
+=end original
+
+文字列を括るのにシングルクォートを使うか、もしくは(こちらが好ましい)
+スラッシュを使ってください。
+全てのDOSおよびWindowsは、MS-DOS 2.0以降、パス中にあるC</> と C<\>を
+同じに扱いますから、あなたはPerlを壊すことなく使えます。
+もしくは POSIXシェル、ANSI CとC++、awk、tcl、Java、Python を考慮してください。
+POSIXパスはより移植性に富んでいます。
+
+=head2 Why doesn't glob("*.*") get all the files?
+
+(なぜ glob("*.*")で全てのファイルを得られないのでしょうか?)
+
+非 UNIX システムに対する移植であっても、Perl の glob 関数は UNIX の標準的な
+グロブの振る舞いに従うからです。
+全ての(隠し属性でない)ファイルを得るには C<glob("*")>とする必要があります。
+これは glob() の移植性を高めます。
+あなたの使っている Perl が独自のグロブ関数をサポートしているかもしれません。
+詳しくはドキュメントを参照してください。
+
+
+=head2 Why does Perl let me delete read-only files?  Why does C<-i> clobber protected files?  Isn't this a bug in Perl?
+
+(なぜ Perl は読みとり専用ファイルを削除してしまうのでしょうか?
+なぜC<-i> clobberはファイルをプロテクトするのでしょうか?
+これはPerlのバグじゃないんですか?)
+
+http://www.perl.com/CPAN/doc/FMTEYEWTK/file-dir-perms 
+にある "Far More Than You Ever Wanted To Know" が
+教育的、かつ懇切丁寧にこの問題を説明しています。
+
+簡単なまとめ: あなたの使っているファイルシステムがどのように動作しているのかを
+考えてください。
+ファイルに対するパーミッションはそのファイルにあるデータに何が
+できるかということを表しています。
+ディレクトリに対するパーミッションは、そのディレクトリにあるファイルリストに
+対して何ができるのかということを表しています。
+ファイルを削除したとき、そのファイルに対する名前がディレクトリから
+取り除かれます(したがってこの操作はファイルに対するパーミッションでは
+なく、ディレクトリに対するパーミッションに依存しているのです)。
+ファイルに対して書き込みを行おうとすると、ファイルに対するパーミッションが
+それができるかどうかを決定します。
+
+=head2 How do I select a random line from a file?
+
+(あるファイルからランダムに行を選択するには?)
+
+以下に示すのは らくだ本にあったアルゴリズムです:
+
+    srand;
+    rand($.) < 1 && ($line = $_) while <>;
+
+=begin original
+
+This has a significant advantage in space over reading the whole
+file in.  A simple proof by induction is available upon 
+request if you doubt the algorithm's correctness.
+
+=end original
+
+これは、ファイル全体を読み込んで処理するやり方に比べて使用する空間の
+大きさにおいて明らかなアドバンテージがあります。
+あなたがアルゴリズムの正確さに自信がない場合には
+帰納法による単純な証明がつかえるでしょう。
+ 
+=head2 Why do I get weird spaces when I print an array of lines?
+
+(行の配列を出力したときになぜ余計なスペースがつくのでしょうか?)
+
+    print "@lines\n";
+
+とした場合、C<@line>の要素を繋ぎあわせ、その間に空白を置きます。
+C<@lines> が C<("little", "fluffy", "clouds")>だったとすると、
+先のやり方で出力した場合以下のようになります:
+
+    little fluffy clouds
+
+しかし、C<@lines>の各要素がテキストの行であって終端に改行がある
+C<("little\n", "fluffy\n", "clouds\n")>のようなものだっとすると
+その結果は以下のようになります:
+
+    little
+     fluffy
+     clouds
+
+配列が行から構成されているのなら、出力するには単に以下のようにします:
+
+    print @lines;
+
+=head1 AUTHOR AND COPYRIGHT
+
+Copyright (c) 1997-1999 Tom Christiansen and Nathan Torkington.
+All rights reserved.
+
+When included as an integrated part of the Standard Distribution
+of Perl or of its documentation (printed or otherwise), this works is
+covered under Perl's Artistic License.  For separate distributions of
+all or part of this FAQ outside of that, see L<perlfaq>.
+
+Irrespective of its distribution, all code examples here are in the public
+domain.  You are permitted and encouraged to use this code and any
+derivatives thereof in your own programs for fun or for profit as you
+see fit.  A simple comment in the code giving credit to the FAQ would
+be courteous but is not required.

@@ -1,0 +1,244 @@
+
+=encoding euc-jp
+
+=head1 名前
+
+File::Slurp - ファイル全体の効率的な読込/書込
+
+=head1 概要
+
+  use File::Slurp;
+
+  my $text = read_file( 'filename' ) ;
+  my @lines = read_file( 'filename' ) ;
+
+  write_file( 'filename', @lines ) ;
+
+=head1 説明
+
+このモジュールは1つの簡単な呼び出しによりファイル全体を読み込み、
+書き込みを可能にするサブルーチンを提供します。これらは簡単に使え、
+柔軟な方法でファイルの内容を渡したり、取得できるように、そして
+非常に効率よくなるように設計されています。またディレクトリに
+入っているC<.> と C<..>を除く全てのファイルを読み込むサブルーチンも
+提供します。
+
+これらの丸呑み/吐き出しサブルーチンはファイルにのみ機能し、パイプや標準入出力には
+機能しないことに注意してください。もし後者のものの全体を読み込みたければ、
+$/をundefに設定したり、リスト・コンテキストで<>を読み込んだり、
+出力したいもの全てをSTDOUTに出力するといった標準のテクニックを使ってください。
+
+=head2 B<read_file>
+
+このサブルーチンはファイル全体を読みこみ、その内容を呼び出し元に返します。
+リスト・コンテキストでは行のリストを返します($/の現在の値を分割子として
+利用します)。スカラー・コンテキストではファイル全体を1つのスカラーとして
+返します。
+
+  my $text = read_file( 'filename' ) ;
+  my @lines = read_file( 'filename' ) ;
+
+C<read_file>への最初の引数はファイル名、残りの引数はオプションで、
+その呼び出しの動きを変更するキー/値の組み合わせになります。
+binmodeを除くオプションは全て、丸呑みされたファイルが呼び出し元に
+どのように返されるかを制御します。
+
+先頭の引数がファイル・ハンドルのリファレンスや(filenoが定義された
+値を返すならば)I/Oオブジェクトであれば、ハンドルが丸呑みされます。この
+モードがサポートされているので、<DATA>、\*STDINといったハンドルも
+丸呑みされます。例としてはC<open( '-|' )>を行い、子供プロセスが親に
+丸呑みしたデータを吐き出しているtestのhandle.tをご覧ください。
+この場合にもデータがどのように呼び出し元に返されるかを制御する
+オプションの全てが機能します。
+
+オプションには以下のものがあります:
+
+=head3 binmode
+
+binmodeオプションを設定するとファイルはバイナリ・モードで丸呑みされます。
+
+    my $bin_data = read_file( $bin_file, binmode => ':raw' ) ;
+
+注意: これは実際にはsysopenのためのO_BINARYを設定します。おそらくは
+binmodeを呼び出し、他のファイル・モードをサポートするためその引数を
+パスするべきでしょう。
+
+=head3 array_ref
+
+このブール値のオプションが設定されると、(スカラー・コンテキストでのみ)
+返される値が丸呑みされたファイルの行が入っている
+配列リファレンスになります。以下の2つの呼び出しは同じ意味です:
+
+    my $lines_ref = read_file( $bin_file, array_ref => 1 ) ;
+    my $lines_ref = [ read_file( $bin_file ) ] ;
+
+=head3 scalar_ref
+
+このブール値のオプションが設定されると、(スカラー・コンテキストでのみ)
+返される値は丸呑みされたファイルの内容である文字列への
+スカラー・リファレンスになります。これは通常は単なるスカラーを
+返すよりも速くなります。
+
+    my $text_ref = read_file( $bin_file, scalar_ref => 1 ) ;
+
+=head3 buf_ref
+
+このオプションを使ってスカラー・リファレンスを渡すことができます。
+そして丸呑みされたファイルの内容はそのスカラーに格納されます。
+これはそのほかのオプションと一緒に使うことができます。
+
+    my $text_ref = read_file( $bin_file, buf_ref => \$buffer,
+                         array_ref => 1 ) ;
+    my @lines = read_file( $bin_file, buf_ref => \$buffer ) ;
+
+=head3 blk_size
+
+このオプションを使って、(\*STDINのように)既にオープンされている
+ハンドルから丸呑みするときに使われるブロック・サイズを設定することができます。
+デフォルトは1MBです。
+
+    my $text_ref = read_file( $bin_file, blk_size => 10_000_000,
+                         array_ref => 1 ) ;
+
+=head3 err_mode
+
+このオプションを使って、エラーが発生したときread_fileがどのように動くかを
+制御することができます。このオプションのデフォルトは'croak'です。これを
+'carp'や何もエラーを扱わないさせる'quiet'を設定することができます。
+このコードでは、失敗したときには警告を発し(=carp)、それから
+他のファイルを読みこみたいと思っています。
+
+    my $text_ref = read_file( $file, err_mode => 'carp' ) ;
+    unless ( $text_ref ) {
+
+        # 他のファイルを読みこみます、しかし見つからなければ死にます(=croak)
+        $text_ref = read_file( $another_file ) ;
+    }
+    
+    # ${$text_ref}を処理
+
+=head2 B<write_file>
+
+このサブルーチンは一回の呼び出しでファイル全体を出力します。
+
+  write_file( 'filename', @data ) ;
+
+C<write_file>への最初の引数はファイル名です。次の引数はオプションで
+C<write_file>の動きを変更することができるキー/値が入ったハッシュの
+リファレンスです。引数のリストでの後のものはファイルに出力される
+データになります。
+
+  write_file( 'filename', {append => 1 }, @data ) ;
+  write_file( 'filename', {binmode => ':raw' }, $buffer ) ;
+
+省略形として、もしデータ引数の先頭がスカラーまたは配列リファンレンスで
+あれば、それはファイルに書き込まれるデータとしてだけ使われます。
+それ以降の@_の引数は全て無視されます。これは
+ファイルに書き込まれる出力を渡すより早い方法であり、
+C<buf_ref>オプションと同等です。これら2つの組み合わせは同等です。
+しかしリファレンス渡しによる呼び出しはほとんどの場合でより速くなります。
+(特に大きなファイルでは)
+
+  write_file( 'filename', \$buffer ) ;
+  write_file( 'filename', $buffer ) ;
+
+  write_file( 'filename', \@lines ) ;
+  write_file( 'filename', @lines ) ;
+
+もし先頭の引数がファイル・ハンドルへのリファレンスまたは(もしfilenoが
+定義されている値を返せば)I/Oオブジェクトであれば、そのハンドルが
+読み込まれます。このモードは\*STDOUTのようなハンドルへ吐き出せるよう
+サポートされています。例についてはtest handle.tをご覧ください。
+C<open( '-|' )>を行い、子プロセスが丸呑みしたデータを親に吐き出します。
+データがどのようにC<write_file>に渡されるのかを制御する全てのオプションは
+この場合でも機能します。
+
+そのオプションは以下のとおりです:
+
+=head3 binmode
+
+binmodeオプションを設定すると、ファイルはバイナリ・モードで書き込まれます。
+
+    write_file( $bin_file, {binmode => ':raw'}, @data ) ;
+
+注意: これは実際にはsysopenのためのO_BINARYモード･フラグを設定
+しています。おそらくbinmodeを呼び出し、他のファイル・モードを
+サポートするためその引数を渡すべきでしょう。
+
+=head3 buf_ref
+
+このオプションを使って出力されるデータが入っているスカラーへの
+リファレンスで渡すことができます。これが設定されていると、
+@_の中の全てのデータ引数は(スカラー・リファレンスの省略形も含めて)
+無視されます。それは以下のものと同等です:
+
+    write_file( $bin_file, { buf_ref => \$buffer } ) ;
+    write_file( $bin_file, \$buffer ) ;
+    write_file( $bin_file, $buffer ) ;
+
+=head3 append
+
+このブール値のオプションを設定すると、データは現在のファイルの末尾に
+出力されます。
+
+    write_file( $file, {append => 1}, @data ) ;
+
+ファイルがオープンできないとC<write_file>は死んでしまいます(croad)。
+ファイルを出力することに成功するとtrueを、エラーがあるとundefを
+返します。(その通り。私はそれがcroakすると、何も戻すことができません。
+しかしそれはエラー取り扱いモードを選択するためのオプションを追加した
+ときのためにあります)。
+
+=head3 err_mode
+
+このオプションを使って、エラーが発生したときread_fileがどのように動くかを
+制御することができます。このオプションのデフォルトは'croak'です。これを
+'carp'や何もエラーを扱わないさせる'quiet'を設定することができます。
+C<write_file>の最初の呼び出しが失敗すると、それは警告を発し(=carp)、
+他のファイルに出力します。もしC<write_file>の2回目の呼び出しが
+失敗すると、それは死にます(=croak)。
+
+    unless ( write_file( $file, { err_mode => 'carp', \$data ) ;
+
+        # 別のファイルに出力します。見つからなければ死にます(croak)
+        write_file( $other_file, \$data ) ;
+    }
+
+=head2 overwrite_file
+
+write_fileが常に既存のファイルを書き換えてしまうため、
+このサブルーチンは単なるwrite_fileへのtypeglobエイリアスです。
+このサブルーチンはこのモジュールの元のバージョンとの
+後方互換性のためにサポートされています。APIと動きについては
+write_fileの項をご覧ください。
+
+=head2 append_file
+
+このサブルーチンはデータをファイルの末尾に書き込みます。
+これはwrite_fileのラッパーで、同じAPIを持っています。そのため
+ドキュメントをご覧ください。これらの呼び出しは同等です:
+
+    append_file( $file, @data ) ;
+    write_file( $file, {append => 1}, @data ) ;
+
+=head2 read_dir
+
+このサブルーチンはディレクトリからファイルの名前を全て読みこみ、
+呼び出し元に返します。しかしC<.> と C<..>は削除されます。
+
+    my @files = read_dir( '/path/to/dir' ) ;
+
+ディレクトリをオープンできなければ、警告を発します。
+
+=head2 EXPORT
+
+  read_file write_file overwrite_file append_file read_dir
+
+=head1 作者(=AUTHOR)
+
+Uri Guttman, E<lt>uri@stemsystems.comE<gt>
+
+=head1 翻訳者
+
+川合 孝典(GCD00051@nifty.ne.jp)
+

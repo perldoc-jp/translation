@@ -1,0 +1,449 @@
+
+=encoding euc-jp
+
+=head1 名前
+
+DBD::DB2 - DB2 UDBのためのデータベースドライバ 
+
+=head1 説明
+
+DBD::DB2は、DBIと一緒に使われ、 Perl5をIBMのDB2 Universal Databaseと
+通信できるようにするPerl5モジュールです。 
+
+一般には、DBDにより提供される機能のほとんどはDBIを通じて間接的に
+アクセスされます。 
+
+=head1 概要
+
+  use DBI;
+  use DBD::DB2::Constants;
+  use DBD::DB2;
+
+  $dbh = DBI->connect("dbi:DB2:db_name", $username, $password);
+
+詳しくはL<DBI>をご覧ください。
+
+=head1 例
+
+  #!/usr/local/bin/perl
+
+  use DBI;
+  use DBD::DB2::Constants;
+  use DBD::DB2 qw($attrib_int $attrib_char $attrib_float
+                  $attrib_date $attrib_ts);
+
+  # 外来の属性型を作成する書き方の例
+  $attrib_dec = { %$attrib_int,
+                 'db2_type'  => SQL_DECIMAL,
+                 'SCALE'     => 2,
+                 'PRECISION' => 31 };
+
+  #$DBI::dbi_debug=9; # デバッグの出力を増やす
+
+  #接続をオープンし、カラムの最大サイズにLongReadLenを設定します
+  $dbh = DBI->connect("dbi:DB2:sample","","", { LongReadLen => 102400 } );
+  if (!defined($dbh)) { exit; }
+
+  # 以下の一連の処理に注意、ステートメントにはパラメータ・マーカーは
+  # 何も入っていません。それは実行のための一連の処理になっています。
+  # 単にprepareしてexecuteしてください。
+  $stmt = "SELECT empno, photo_format FROM emp_photo WHERE
+            photo_format = 'gif';";
+  $sth = $dbh->prepare($stmt);
+
+  $sth->execute();
+
+  # $row[0]はデータベースからのempnoであり、$row[1]はイメージの型です。
+  # この場合、型は常に"gif"になります。
+  $stmt = "SELECT picture FROM emp_photo WHERE empno = ? AND
+              photo_format = ? ;" ;
+  # ステートメントをprepare、2つのパラメータ･マーカーが入っています
+  $pict_sth = $dbh->prepare($stmt);
+  while( @row = $sth->fetchrow ) {
+   # カレント・ディレクトリにempno.typeという名前で出力ファイルを作ります。
+    open(OUTPUT,">$row[0].$row[1]") || die "Can't open $row[0].$row[1]";
+    binmode OUTPUT;
+
+    # bind_paramを使ってDB2コードにパラメータのための値が入っている変数が
+    # どこかを伝えます。加えて、$attrib_*ハッシュの内容をベースに
+    # DB2にperlの値をDB2の値に変換する方法を伝えます。
+    # 実行のたびに、パラメータ毎に1回のbind_param呼び出します。
+    $pict_sth->bind_param(1,$row[0]);
+    $pict_sth->bind_param(2,$row[1]);
+    $pict_sth->execute();
+
+    # blobを取得するためfetchします
+    @row = $pict_sth->fetchrow;
+
+    print OUTPUT $row[0];
+    @row = "";
+
+    close(OUTPUT);
+    # blobカーソルをクローズします
+    $pict_sth->finish();
+  }
+  # 余分にblobカーソルをクローズします。--無害なはずです。
+  $pict_sth->finish();
+  # 検索の基準となる選択カーソルをクローズします。
+  $sth->finish();
+  $dbh->disconnect();
+
+=head1 接続属性
+
+以下のDB2接続属性がサポートされています。（接続属性の設定と問い合わせ
+の情報については、DBIのガイドをご覧ください。）サポートされている値も
+示されています：ブール値はPerlのtrueやfalseを示し、
+大文字で示されているトークンはDB2の定数です（'use DBD::DB2::Constants'が
+入っていることを確認してください。）
+
+  db2_access_mode      SQL_MODE_READ_ONLY あるいは SQL_MODE_READ_WRITE
+  db2_clischema        文字列
+  db2_close_behavior   SQL_CC_NO_RELEASE あるいは SQL_CC_RELEASE
+  db2_connect_node     整数 (DBI->connectメソッドで設定されなければいけません；
+                       後から変更することはできません)
+  db2_current_schema   文字列
+  db2_db2estimate      整数
+  db2_db2explain       以下の１つ：
+                         SQL_DB2EXPLAIN_OFF
+                         SQL_DB2EXPLAIN_SNAPSHOT_ON
+                         SQL_DB2EXPLAIN_MODE_ON
+                         SQL_DB2EXPLAIN_SNAPSHOT_MODE_ON
+  db2_info_acctstr     文字列
+  db2_info_applname    文字列
+  db2_info_userid      文字列
+  db2_info_wrkstnname  文字列
+  db2_longdata_compat  ブール値
+  db2_quiet_mode       整数
+  db2_sqlerrp          文字列（読み込みのみ）
+  db2_txn_isolation    以下のうちの１つ:
+                         SQL_TXN_READ_UNCOMMITTED
+                         SQL_TXN_READ_COMMITTED
+                         SQL_TXN_REPEATABLE_READ
+                         SQL_TXN_SERIALIZABLE
+                         SQL_TXN_NOCOMMIT
+
+DB2の古いバージョンでは、全ての属性が使えるわけではありません。
+これらの属性についてのさらに詳しい情報は、DB2 Call Level 
+Interface Guide and Reference, Chapter 5.  CLI Functions,SQLSetConnectAttr
+をご覧ください。上記で示された属性名はドキュメントに載っているCLI属性に
+似ています（例えば db2_access_modeはSQL_ATTR_ACCESS_MODEと同じです）。
+
+=head1 ステートメント属性
+
+以下のDB2ステートメント属性がサポートされています（ステートメント属性
+の設定と問い合わせの情報については、DBIガイドをご覧ください。）
+サポートされている値も示されています：ブール値はPerlのtrueやfalseを
+参照しています。
+
+  db2_concurrency               以下のうちの１つ:
+                                  SQL_CONCUR_READ_ONLY
+                                  SQL_CONCUR_LOCK
+                                  SQL_CONCUR_VALUES
+  db2_cursor_hold               ブール値
+  db2_deferred_prepare          ブール値
+  db2_earlyclose                ブール値
+  db2_max_length                整数
+  db2_max_rows                  整数
+  db2_more_results              ブール値 (読込のみ、以下のセクション:
+                                  複数のリザルト・セット)
+  db2_noscan                    ブール値
+  db2_optimize_for_nrows        整数
+  db2_prefetch                  ブール値
+  db2_query_optimization_level  整数
+  db2_query_timeout             整数 (以下の注意をご覧ください)
+  db2_retrieve_data             ブール値
+  db2_row_number                整数 (読込のみ)
+  db2_txn_isolation             One of the following:
+                                  SQL_TXN_READ_UNCOMMITTED
+                                  SQL_TXN_READ_COMMITTED
+                                  SQL_TXN_REPEATABLE_READ
+                                  SQL_TXN_SERIALIZABLE
+                                  SQL_TXN_NOCOMMIT
+
+これらの属性についてのさらに詳しい情報は、DB2 Call Level 
+Interface Guide and Reference, Chapter 5.  CLI Functions, SQLSetStmtAttr
+をご覧ください。上記で示された属性名はドキュメントに載っているCLI属性に
+似ています（例えば db2_deferred_prepareはSQL_ATTR_DEFERRED_PREPAREと同じです）。
+
+注意: 版によってはCLI GuideではSQL_ATTR_QUERY_TIMEOUTが
+Windows 3.1だけに有効であるといっています。これは正しくありません。
+全てのプラットホームで機能します。その本の最近の版では修正されています。
+
+=head1 データ・ソース名(=Data Source Names) (DSNs)
+
+あなたがDBI->connect()メソッドで指定したデータベース名は
+ローカルなカタログに入っているDBデータベース・エイリアスです。
+この情報が既にカタログに入っているので、ホスト名やポート番号を
+入れません。リモートのデータベースにアクセスするためには、
+リモート・ノード、(AS/400、MVSそしてVM/VSEデータベースのための）
+DCSデータベース、そしてデータベース・エイリアスをカタログに
+いれてください。クライアント-サーバー間の通信を設定するための
+助けとして、DB2 Installation and Configuration Supplement
+をご覧ください。ホスト・データベースへアクセスすることの情報に
+ついては、DB2 Connect User's Guideをご覧ください。
+
+DBI->data_sources('DB2') はカタログに入っている全てのデータベースの
+リストを返します。
+
+=head1 パラメータのバインド
+
+DBD::DB2は以下のパラメータをバインドするメソッドをサポートしています：
+
+  入力のみのパラメータ：
+  $rc = $sth->bind_param($p_num, $bind_value);
+  $rc = $sth->bind_param($p_num, $bind_value, $bind_type);
+  $rc = $sth->bind_param($p_num, $bind_value, \%attr);
+
+  入出力用、リファレンスによる出力あるいは入力：
+  $rc = $sth->bind_param_inout($p_num, \$bind_value, $max_len);
+  $rc = $sth->bind_param_inout($p_num, \$bind_value, $max_len, $bind_type);
+  $rc = $sth->bind_param_inout($p_num, \$bind_value, $max_len, \%attr)
+
+=head2 属性
+
+属性ハッシュは特定のデータ型についての情報の集まりです。それぞれの
+属性はコンパイル時に判定することができます（既に定義されている属性ハッシュ
+のリストは、DB2.pmをご覧ください）。実行時に作成され、実行時に変更されます。
+
+以下の属性がDBD::DB2によってサポートされています：
+
+  TYPE            SQL_CHAR, SQL_BINARY, SQL_INTEGER など.
+  PRECISION       カラムお大きさ
+  SCALE           １０進数
+  db2_param_type  SQL_PARAM_INPUT, SQL_PARAM_OUTPUT など.
+  db2_c_type      SQL_C_CHAR あるいは SQL_C_BINARY
+  db2_type        TYPEの同意語：SQL_CHAR, SQL_BINARY, SQL_INTEGER など
+  db2_file        ブール値。下記参照
+
+後方互換性のため、以下の古い属性名もまだサポートされています。
+これらはDBD::DB2の将来のリリースではサポートされないかもしれないことに
+注意してください。そのため新しい属性名を使い始めることは良い考えです：
+
+  Stype   db2_typeと同じ
+  Prec    PRECISIONと同じ
+  Scale   SCALEと同じ
+  ParamT  db2_param_typeと同じ
+  Ctype   db2_c_typeと同じ
+  File    db2_fileと同じ
+
+新しい属性ハッシュを作成する最も簡単な方法は既存のハッシュを
+変更することです：
+
+  $new_type = { %$existing_type, 'db2_type' => SQL_"NewTYPE" };
+
+あるいは新しい型の完全に作成することです：
+
+  $attrib_char = { 'db2_param_type' => SQL_PARAM_INPUT,
+                   'db2_c_type'     => SQL_C_CHAR,
+                   'db2_type'       => SQL_CHAR,
+                   'PRECISION'      => 254,
+                   'SCALE'          => 0,
+                 };
+
+ステートメントが"describe"され、適切な値が使われるので、
+一般的には属性は必要ではありません。しかし以下の状況では、属性が
+必要とされます：
+
+  - SQLDescribeParamをサポートしていないデータベース・サーバ：
+      - DB2 for MVS, 5.1.2より前のバージョン
+      - DB2 for VM
+      - DB2 for AS/400
+  - 登録されていないプロシージャをCALLするステートメント
+  - 以下のようなデフォルトではない動きを要望する場合：
+      - LOBパラメータに直接ファイルをバインドする
+      - 出力のみのパラメータをバインドする
+
+属性が常に必要とされないとしても、"describe"ステップを不要とするため、
+それらを提供することはパフォーマンスを改善します。
+特に'db2_type'と'SCALE'は両方とも、属性与えられるか、SQLDescribeParamを
+通して自動的に取得されなければいけません。
+
+=head2 パラメータ・タイプ (入力、出力、そして入出力)
+
+bind_param() は入力のみのパラメータのためだけに使うことが出来ます。
+そのためdb2_param_type属性は無視されます。bind_param_inout()は
+入出力を想定していますが、属性ハッシュでのdb2_param_typeを通して
+パラメータを入力のみあるいは出力のみを指示することができます：
+
+  db2_param_type => SQL_PARAM_INPUT
+
+あるいは
+
+  db2_param_type => SQL_PARAM_OUTPUT
+
+bind_param_inout()に与えられる'maxlen'の値が、全てのありうる入力値
+だけでなく出力値にも十分に大きくなければいけません。
+
+=head2 bind_param_inout()を使ってリファレンスにより入力値をバインドする
+
+この関数は - その名前にもかかわらず - 一度、入力パラメータ変数を
+バインドすると再びバインドすることなく繰り返し実行することができる
+ようにするためにも使うことが出来ます。bind_param()を使った以下の
+例について考えてみてください：
+
+  $sth->prepare( "INSERT INTO MYTABLE (INTCOL) VALUES(?)" );
+  for(...)
+  {
+    $int = ...;                  # 新しい値
+    $sth->bind_param( 1, $int ); # バインドするときに値を設定
+    $sth->execute();
+  }
+
+繰り返したびに新しい値をバインドします。これを以下の様にして
+より効率的にすることができます：
+
+  $sth->prepare( "INSERT INTO MYTABLE (INTCOL) VALUES(?)" );
+  $sth->bind_param_inout( 1,
+                          \$input,
+                          20, # いかなるintegerにも20バイトで十分
+                          { db2_param_type => SQL_PARAM_INPUT } );
+  for(...)
+  {
+    $input = ...     # 新しい値を設定
+    $sth->execute(); # 実行時に新しい値が読み込まれる
+  }
+
+変数がリファンレスによってバインドされているために、入力値が
+バインド字に値がコピーされるbind_param()ではなく、実行時に
+デリファレンスされていることに注意してください。
+'maxlen'の値は全ての予想される入力値に対して十分に大きくなければ
+いけません。
+
+=head2 入力LOBパラメータにファイルをバインドする
+
+属性を以下のように指定することにより、LOBパラメータにファイルを
+直接バインドすることができます：
+
+  db2_file => 1
+
+この場合、bind_param()に渡される値はファイル名です。
+
+これは入力でLOBパラメータに対してのみ適切です。便宜上、
+以下のあらかじめ定義されている属性ハッシュが提供されています：
+
+  $attrib_blobfile
+  $attrib_clobfile
+  $attrib_dbclobfile
+
+=head1 LongReadLen
+
+LongReadLenのデフォルト値は32700であり、SQL_LONG型の最大サイズと同じ
+です。これは取り出されるカラムにのみ適用されます；出力パラメータには
+適用されません。
+このオプションは以下のカラム型に適用できます：
+
+  SQL_LONGVARBINARY
+  SQL_LONGVARCHAR
+  SQL_LONGVARGRAPHIC
+  SQL_BLOB
+  SQL_CLOB
+  SQL_DBCLOB
+
+値を変更するためには、接続属性で提供してください：
+
+  $dbh = DBI->connect( $db, $user, $pw, { LongReadLen => 100 } );
+
+あるいは接続後のいつれかに設定してください
+
+  $dbh->{LongReadLen} = 100;
+
+=head1 LOBデータをバラバラに取り出す
+
+LOBカラムは通常のデータ取り出しメソッドによって完全にサポート
+されていますが、一度にLOB全体を取り出すさい、（LongReadLen設定に
+従って）大量のメモリを食いかねません。代わりの方法として以下のものが
+あります：
+
+  $buf = $sth->blob_read( $field, $offset, $len );
+
+これは与えられたLOBフィールドから$lenバイトまでを返します。
+読み込むデータが残っていなければ、'undef'が返されます。
+名前にもかかわらず、この関数は全てのLOB型(BLOB、CLOBそしてDBCLOB)に
+機能します。効率を最大限にするため、最初の取り出しで、LOBデータが
+まったく取り出されないように実行する前にLongReadLenを0に
+設定してください（しかしLongReadLenは全ての長い(=long)フィールドに
+影響を与えることを忘れないでください）。
+
+現在、DB2は$offsetパラメータを無視します。この関数はDBIで
+公式にはドキュメントになっていないことに注意してください。
+そのため変更されるかもしません。
+
+=head1 複数のリザルト・セット
+
+以下のようにdb2_more_resultsステートメント属性を使って、
+複数のリザルト・セットを処理することが出来ます：
+
+  do
+  {
+    while( @row = $sth->fetchrow_array )
+    {
+      # 行データを処理する
+    }
+  } while( $sth->{db2_more_results} );
+
+この属性にアクセスすると、現在のリザルト・セットをクローズし、
+新しいものをオープンします。リザルト・セットがもうなければ、
+この属性はfalseを返し、stateを02000に設定します。
+
+=head1 テーブル情報の取得
+
+$dbh->tablesと$dbh->table_infoの両方がサポートされています。
+dbh->tablesにより返されるテーブル名は修飾されています。
+つまりそれらは<schema>.<table>という形式になります。属性が何も
+指定されなければ、全てのテーブル、ビュー、エイリアスなどの情報が
+返されます。DBI 1.14以降では、リストを絞り込むため以下の属性を
+使うことが出来ます：
+
+  TABLE_SCHEM  スキーマ名パターン、デフォルトは全てのスキーマ
+  TABLE_NAME   テーブル名パターン、デフォルトは全てのテーブル
+  TABLE_TYPE   テーブル型；以下のものの１つあるいはカンマで
+               区切って複数、デフォルトは全てのタイプ：
+               separated by commas, default is all types:
+                 TABLE, VIEW, SYSTEM TABLE, ALIAS, SYNONYM
+
+それぞれのパターン引数には以下のものが入ります：
+
+  - 何らかの１文字を表すアンダースコア文字(_)。
+  - 0または複数の文字の並びを表すパーセント文字(%)。
+    １つの%が入っているパターンの値を与えることは、その
+    その引数に空文字列を与えたのと同じであることに注意してください。
+  - それら自体を表す文字。文字の場合には重要です。
+
+メタデータ文字(_, %)そのものを扱うためには、その文字の前に
+バックスラッシュ(\)を付けてください。エスケープ文字そのものは
+続けて２回繰り返すことによってパターンの一部として指定することが
+できます。
+
+例えば、スキーマ'CHOMSKY'のための全てのテーブルとビューのリストを
+取得するためには以下のようにします；
+
+  @tables = $dbh->tables( { 'TABLE_SCHEM' => 'CHOMSKY',
+                            'TABLE_TYPE'  => 'TABLE,VIEW' } );
+
+=head2 スキーマのリストの取得
+
+全てのスキーマのリストを取得するためには、以下の特別な
+書き方を使うことができます：
+
+  @schemas = $dbh->tables( { 'TABLE_SCHEM' => '%',
+                             'TABLE_TYPE'  => '' } );
+
+あるいは
+
+  $sth = $dbh->table_info( { 'TABLE_SCHEM' => '%',
+                             'TABLE_TYPE'  => '' } );
+
+結果にはデータ・ソースのために適切な全てのスキーマが入っています。
+DBI 1.14以上が必要です。
+
+=head2 テーブル型のリストの取得
+
+サポートされているテーブル型のリストを取得するためには、以下の特別な
+書き方を使うことが出来ます：
+
+  $sth = $dbh->table_info( { 'TABLE_TYPE'  => '%',
+                             'TABLE_SCHEM' => '',
+                             'TABLE_NAME'  => '' } );
+
+結果にはデータ・ソースのために適切な全てのテーブル型が入っています。
+DBI 1.14以上が必要です。

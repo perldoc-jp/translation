@@ -1,0 +1,416 @@
+
+=encoding euc-jp
+
+=head1 名前
+
+Algorithm::Diff - 2つのファイル/リスト間での'気の利いた'差異を求めます。
+
+=head1 概要
+
+  use Algorithm::Diff qw(diff sdiff LCS traverse_sequences
+                         traverse_balanced);
+
+  @lcs    = LCS( \@seq1, \@seq2 );
+
+  @lcs    = LCS( \@seq1, \@seq2, $key_generation_function );
+
+  $lcsref = LCS( \@seq1, \@seq2 );
+
+  $lcsref = LCS( \@seq1, \@seq2, $key_generation_function );
+
+  @diffs = diff( \@seq1, \@seq2 );
+
+  @diffs = diff( \@seq1, \@seq2, $key_generation_function );
+
+  @sdiffs = sdiff( \@seq1, \@seq2 );
+
+  @sdiffs = sdiff( \@seq1, \@seq2, $key_generation_function );
+  
+  traverse_sequences( \@seq1, \@seq2,
+                     { MATCH => $callback,
+                       DISCARD_A => $callback,
+                       DISCARD_B => $callback,
+                     } );
+
+  traverse_sequences( \@seq1, \@seq2,
+                     { MATCH => $callback,
+                       DISCARD_A => $callback,
+                       DISCARD_B => $callback,
+                     },
+                     $key_generation_function );
+
+  traverse_balanced( \@seq1, \@seq2,
+                     { MATCH => $callback,
+                       DISCARD_A => $callback,
+                       DISCARD_B => $callback,
+                       CHANGE    => $callback,
+                     } );
+
+=head1 はじめに
+
+(by Mark-Jason Dominus)
+
+私は以前、C<diff>の作者によって書かれた記事を読んだことがあります;彼らは
+正しいアルゴリムを見つけるために大変苦労したといっていました。
+
+私は彼らが作り上げたものが'最長共通部分列(=longest common subsequence)'法
+であると思っています(これについてはあまり自信がないので、だれかが私を
+間違いを指摘することを希望しています)。LCSの問題では、
+2つの要素シーケンスを持っているとします:
+
+        a b c d f g h j q z
+
+        a b c d e f g i j k r x y z
+
+そして両方の元のシーケンスに同じ順序で現れる、要素の最も長い部分列を探したいと
+思っています。つまり、あなたは、最初のシーケンスからいくつかの要素を削り、
+2番目のシーケンスから他の要素を削ることによって得られる、新しいシーケンス 
+I<S>を見つけたいと思っています。またあなたはI<S>はできるだけ長くしたいと
+思っています。ここでのI<S>は
+
+        a b c d f g j z
+
+になります。
+
+ここからdiffライクな出力を得るのは、ほんのちょっとです:
+
+        e   h i   k   q r x y 
+        +   - +   +   - + + +
+
+このモジュールはLCSの問題を解決します。それはC<diff>ライクな出力を
+生成する関数も一緒に入っています。
+
+２つのシーケンスのLCSは常に非常に明確なものだと思うかもしれません。
+しかし、いつでもそうではありません。特に2つのリストが要素の繰り返しを
+数多く持っている場合には。例えば以下のようなケースを考えてみてください。
+
+    a x b y c z p d q
+    a b c a x b y c z
+
+単純なアプローチは、以下のように各シーケンスの先頭にあるC<a>とC<b>から、
+マッチングをはじめようとするでしょう：
+
+    a x b y c         z p d q
+    a   b   c a b y c z
+
+これにより共通部分列C<a b c z>が見つかります。しかし実際には、LCSは
+C<a x b y c z>になります:
+
+          a x b y c z p d q
+    a b c a x b y c z
+
+=head1 利用方法
+
+このモジュールは3つのエクスポート可能な関数を提供します。それらを簡単な順に
+説明します: C<LCS>, C<diff>, C<sdiff>, C<traverse_sequences>, 
+そして C<traverse_balanced>です。
+
+=head2 C<LCS>
+
+要素のリストへのリファレンスが2つ渡され、LCSはそれらの最長共通部分列
+(=longest common subsequence)が入った配列を返します。スカラー・コンテキストでは、
+それはそのようなリストへのリファレンスを返します。
+
+  @lcs    = LCS( \@seq1, \@seq2 );
+  $lcsref = LCS( \@seq1, \@seq2 );
+
+C<LCS>にはオプションで3番目のパラメータを渡すことが出来ます;これは
+キー生成関数へのCODEリファレンスです。L<KEY GENERATION FUNCTIONS>を
+ご覧ください。
+
+  @lcs    = LCS( \@seq1, \@seq2, $keyGen );
+  $lcsref = LCS( \@seq1, \@seq2, $keyGen );
+
+もし追加のパラメータがあれば、キー生成ルーチンに渡されます。
+
+=head2 C<diff>
+
+  @diffs     = diff( \@seq1, \@seq2 );
+  $diffs_ref = diff( \@seq1, \@seq2 );
+
+C<diff>は、最初のシーケンスを2番目のものに変換するための最小の
+追加および削除の集合を計算し、これらの変更についての説明を返します。
+この説明はI<hunk>のリストになります；各hunk（かたまり）は
+追加、削除あるいは変更されるべき連続したセクションを表します。
+C<diff>の戻り値はhunkのリストです。スカラー・コンテキストでは、
+そのようなリストへのリファレンスになります。
+
+以下に例を示します: 以下の2つのシーケンスのdiffを求めます:
+
+  a b c e h j l m n p
+  b c d e f j k l m r s t
+
+結果:
+
+ [ 
+   [ [ '-', 0, 'a' ] ],       
+
+   [ [ '+', 2, 'd' ] ],
+
+   [ [ '-', 4, 'h' ] , 
+     [ '+', 4, 'f' ] ],
+
+   [ [ '+', 6, 'k' ] ],
+
+   [ [ '-', 8, 'n' ], 
+     [ '-', 9, 'p' ], 
+     [ '+', 9, 'r' ], 
+     [ '+', 10, 's' ], 
+     [ '+', 11, 't' ],
+   ]
+ ]
+
+ここでは5つのhunkがあります。最初のhunkは最初のシーケンスの位置0にある
+C<a>は削除(C<->)されなければならないと言っています。2番目のhunkは
+2番目のシーケンスの位置2でのC<d>が挿入(C<+>)されなければならないと
+言っています。3番目のhunkは最初のシーケンスの位置4にあるC<h>は削除され、
+2番目のシーケンスの位置4のC<f>で置き換えられなければならないと
+言っています。他の2つのhunkも同様です。
+
+C<diff>にはオプションで3番目のパラメータを渡すことが出来ます;
+キー生成関数へのCODEリファレンスです。L<KEY GENERATION FUNCTIONS>を
+ご覧ください。
+
+もし追加のパラメータがあれば、キー生成ルーチンに渡されます。
+
+=head2 C<sdiff>
+
+  @sdiffs     = sdiff( \@seq1, \@seq2 );
+  $sdiffs_ref = sdiff( \@seq1, \@seq2 );
+
+C<sdiff> は、Unixユーティリティー I<sdiff>がするように、
+2つのシーケンスと、それらの最小限の違いを並べて表示するために
+必要な全ての部分を計算します:
+
+    same             same
+    before     |     after
+    old        <     -
+    -          >     new
+
+これは配列リファレンスのリストを返し、それぞれは表示命令の配列を
+示します。スカラー・コンテキストでは、そのようなリストへの
+リファレンスを返します。
+
+表示命令は3つの要素で構成されます:修飾指示子(C<+>: 要素追加,
+C<->: 要素削除 C<u>: 要素変更なし, C<c>: 要素変更)と、古い要素と
+新しい要素の値が並んで表示されます。
+
+以下の2つのシーケンスのC<sdiff>は:
+
+  a b c e h j l m n p
+  b c d e f j k l m r s t
+
+以下のようになります
+
+[ [ '-', 'a', ''  ],
+  [ 'u', 'b', 'b' ],
+  [ 'u', 'c', 'c' ],
+  [ '+', '',  'd' ],
+  [ 'u', 'e', 'e' ],
+  [ 'c', 'h', 'f' ],
+  [ 'u', 'j', 'j' ],
+  [ '+', '',  'k' ],
+  [ 'u', 'l', 'l' ],
+  [ 'u', 'm', 'm' ],
+  [ 'c', 'n', 'r' ],
+  [ 'c', 'p', 's' ],
+  [ '+', '', 't' ] ]
+
+C<sdiff>にはオプションで3番目のパラメータを渡すことが出来ます;
+キー生成関数へのCODEリファレンスです。L<KEY GENERATION FUNCTIONS>を
+ご覧ください。
+
+もし追加のパラメータがあれば、キー生成ルーチンに渡されます。
+
+=head2 C<traverse_sequences>
+
+C<traverse_sequences>は、このモジュールで提供されている最も汎用的な
+ファシリティです;C<diff> と C<LCS>は、これを呼ぶように実装されています。
+
+2つの矢があるものと考えてください。矢AはシーケンスAの要素を指し、矢Bは
+シーケンスBの要素を指します。最初、両方の矢はそれぞれのシーケンスの先頭の
+要素を指しています。C<traverse_sequences>は、１回に矢をシーケンスの要素１つ、
+進める前に毎回ユーザーが指定したコールバック関数を呼び出しながら、
+進めます。C<traverse_sequences>を実行していく途中で、矢AがC<$A[$i]>
+を示し、矢BがC<$B[$j]>が示しているとき、それらが等しくLCSの部分である、
+同じ要素C<$A[$i]>とC<$B[$j]>があれば、そのように進めます。
+これが発生したとき、C<traverse_sequences>はC<MATCH>コールバック関数を呼び出し、
+両方の矢を進めます。
+
+そうでなければ、そのシーケンスで、どちらかの矢がLCSの部分ではない要素を指しています。
+C<traverse_sequences>は矢を進め、C<DISCARD_A>あるいはC<DISCARD_B>コールバックを
+呼び出します。もし両方の矢がLCSの部分でなければ、C<traverse_sequences>は
+どちらか一方を進め、対応するコールバックを呼び出します。しかし、どちらが呼ばれる
+かは指定されません。
+
+C<traverse_sequences>は、検証する2つのシーケンスとコールバック関数を指定する
+ハッシュです。以下のようになります;
+
+  traverse_sequences( \@seq1, \@seq2,
+                     { MATCH => $callback_1,
+                       DISCARD_A => $callback_2,
+                       DISCARD_B => $callback_3,
+                     } );
+
+MATCH, DISCARD_A, そして DISCARD_Bのためのコールバックは、
+少なくとも2つの矢のインデックスを引数として持って呼び出されます。
+それらは値を返すことは全く期待されていません。もしそのテーブルから
+コールバックが、省略されれば、それは呼ばれません。
+
+A_FINISHED と B_FINISHEDのためのコールバックは少なくとも対応するAまたはBの
+インデックス付きで呼び出されます。
+
+もし矢Bがそうなる前に、矢Aがそのシーケンスの最後になったら、
+C<traverse_sequences>は、矢Bを進めるとき、もしそのような関数があれば、
+C<A_FINISHED>コールバックをそうでなければ代わりにC<DISCARD_B>を
+呼び出します。もし矢Bが先に終っても同様です。
+C<traverse_sequences>は両方の矢が、それぞれの対応するシーケンスの終わりに
+なったときにリターンします。成功したらtrue、失敗したらfalseを返します。
+現在は何も失敗することはありません。
+
+C<traverse_sequences>にはオプションで3番目のパラメータを渡すことが出来ます;
+キー生成関数へのCODEリファレンスです。L<KEY GENERATION FUNCTIONS>を
+ご覧ください。
+
+もし追加のパラメータがあれば、キー生成ルーチンに渡されます。
+
+=head2 C<traverse_balanced>
+
+C<traverse_balanced>はC<traverse_sequences>の代わりとなります。
+計算されたLCSでの要素を通して繰り返すために異なるアルゴリズムを利用します。
+一面から突き通し、挿入と削除だけで要素の変更を示す代わりに、2つのシーケンス間を
+前や後ろに飛び、一方では削除であり、一方で発生した削除の後ろにもう一方の挿入が
+続く、I<変更点>を報告します。
+
+さらにC<traverse_sequences>によってサポートされている
+C<DISCARD_A>,
+C<DISCARD_B>, そして
+C<MATCH>
+コールバックに加えて、C<traverse_balanced>は、１つの要素がも他のものによって
+C<置換>されていることを示すC<CHANGE>コールバックをサポートします。
+
+  traverse_sequences( \@seq1, \@seq2,
+                     { MATCH => $callback_1,
+                       DISCARD_A => $callback_2,
+                       DISCARD_B => $callback_3,
+                       CHANGE    => $callback_4,
+                     } );
+
+C<CHANGE>が指定されなければ、C<traverse_balanced>は、
+
+C<CHANGE>イベントをC<DISCARD_A>とC<DISCARD_B>アクションに対応付けます。
+この結果、イベントの順番が違った、C<traverse_sequences>と同じ動きになります。
+
+C<traverse_balanced>はC<traverse_sequences>より、大量のデータを処理している
+ときにだけわかるくらい、ちょっとだけ遅いかもしれません。
+
+このモジュールのC<sdiff>関数は、C<traverse_balanced>を呼ぶように実装されて
+います。
+
+=head1 KEY GENERATION FUNCTIONS
+
+（キー生成関数）
+
+C<diff>, C<LCS>, そして C<traverse_sequences> は最後にオプションのパラメータを
+受け取ります。これは与えられた要素を一意に識別する文字列を返す、キー生成（ハ
+ッシュ）関数へのCODEリファレンスです。
+（それ以外は、そうならずに）2つの要素が同じだと考えられる場合には、
+それらのキーは同じでなければなりません何もキー生成関数が提供されなければ、
+そのキーは文字列としてのその要素になります。
+
+デフォルトでは、比較は"eq"を使い、デフォルトの文字列化演算子'""'を使って
+キーにされます。
+
+これが重要になるのは文字列以外のものを比較するときです。
+もし同じと考えられる異なる複数のオブジェクトを持っている場合、キー生成関数を
+提供する必要があります。そうでなければ、配列がユニークなリファレンスで構成
+されていることを確実にしなければなりません。
+
+例えば、以下の例ついてに考えてみてください:
+
+  package Person;
+
+  sub new
+  {
+    my $package = shift;
+    return bless { name => '', ssn => '', @_ }, $package;
+  }
+
+  sub clone
+  {
+    my $old = shift;
+    my $new = bless { %$old }, ref($old);
+  }
+
+  sub hash
+  {
+    return shift()->{'ssn'};
+  }
+
+  my $person1 = Person->new( name => 'Joe', ssn => '123-45-6789' );
+  my $person2 = Person->new( name => 'Mary', ssn => '123-47-0000' );
+  my $person3 = Person->new( name => 'Pete', ssn => '999-45-2222' );
+  my $person4 = Person->new( name => 'Peggy', ssn => '123-45-9999' );
+  my $person5 = Person->new( name => 'Frank', ssn => '000-45-9999' );
+
+もし以下のようにすると:
+
+  my $array1 = [ $person1, $person2, $person4 ];
+  my $array2 = [ $person1, $person3, $person4, $person5 ];
+  Algorithm::Diff::diff( $array1, $array2 );
+
+すべてが正常に動作するでしょう(各オブジェクトは比較のため
+"Person=HASH(0x82425b0)"のような文字列に変換されます）。
+
+しかし以下のようにすると:
+
+  my $array1 = [ $person1, $person2, $person4 ];
+  my $array2 = [ $person1, $person3, $person4->clone(), $person5 ];
+  Algorithm::Diff::diff( $array1, $array2 );
+
+$person4 と$person4->clone()は(同じnameとSSNを持っています）は、異なる
+オブジェクトとして見られます。もし同等と見て欲しいのであれば、
+あなたはキー生成関数を渡さなければいけません:
+
+  my $array1 = [ $person1, $person2, $person4 ];
+  my $array2 = [ $person1, $person3, $person4->clone(), $person5 ];
+  Algorithm::Diff::diff( $array1, $array2, \&Person::hash );
+
+これは各Personでの'ssn'フィールドを比較キーとして使います。そのため
+$person4 と $person4->clone()を同じと考えます。
+
+あなたが望めば、追加のパラメータをキー生成関数に渡すこともできます。
+
+=head1 作者
+
+このバージョンは Ned Konz, perl@bike-nomad.com によって作られています。
+
+=head1 ライセンス
+
+Copyright (c) 2000-2002 Ned Konz.  All rights reserved.
+This program is free software;
+you can redistribute it and/or modify it under the same terms
+as Perl itself.
+
+=head1 クレジット
+
+バージョン0.59まで（そして、このドキュメントの大半）は
+
+Mark-Jason Dominus, mjd-perl-diff@plover.com
+
+によって書かれています：
+
+このバージョンでもドキュメントとルーチンの名前をMark-Jasonのものから
+借りてきています。しかしDiff.pmのコードは完全に新しくなっています。
+
+このコードはMario Wolczko <mario@wolczko.com>のSmalltalkコードが
+適用されています。それは以下のURLで取得することが出来ます：
+ftp://st.cs.uiuc.edu/pub/Smalltalk/MANCHESTER/manchester/4.0/diff.st
+
+C<sdiff> そして C<traverse_balanced> はMike Schilli
+<m@perlmeister.com>によって書かれました。
+
+アルゴリズムは
+I<A Fast Algorithm for Computing Longest Common Subsequences>,
+CACM, vol.20, no.5, pp.350-353, May 1977,で、スピードを改善するための
+小さな改造点とともに説明されています。

@@ -1,0 +1,687 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+threads::shared - Perl extension for sharing data structures between threads
+
+=end original
+
+threads::shared - スレッド間でデータ構造を共有するための Perl エクステンション
+
+=head1 VERSION
+
+=begin original
+
+This document describes threads::shared version 1.14
+
+=end original
+
+このドキュメントは threads::shared バージョン 1.14 を記述しています。
+
+=head1 SYNOPSIS
+
+  use threads;
+  use threads::shared;
+
+  my $var :shared;
+  $var = $scalar_value;
+  $var = $shared_ref_value;
+  $var = share($simple_unshared_ref_value);
+
+  my ($scalar, @array, %hash);
+  share($scalar);
+  share(@array);
+  share(%hash);
+  my $bar = &share([]);
+  $hash{bar} = &share({});
+
+  { lock(%hash); ...  }
+
+  cond_wait($scalar);
+  cond_timedwait($scalar, time() + 30);
+  cond_broadcast(@array);
+  cond_signal(%hash);
+
+  my $lockvar :shared;
+  # condition var != lock var
+  cond_wait($var, $lockvar);
+  cond_timedwait($var, time()+30, $lockvar);
+
+=head1 DESCRIPTION
+
+=begin original
+
+By default, variables are private to each thread, and each newly created
+thread gets a private copy of each existing variable.  This module allows you
+to share variables across different threads (and pseudo-forks on Win32).  It is
+used together with the L<threads> module.
+
+=end original
+
+デフォルトにおいて、変数は各スレッドに対しプライベートで、
+新たに生成されたスレッドはすでに存在している各変数のプライベートなコピーを
+得ます。
+このモジュールは、異なるスレッド（と Win32 上の擬似 fork）間で変数を
+共有することを可能にします。
+L<threads> モジュールと共に使います。
+
+=head1 EXPORT
+
+(エクスポート)
+
+C<share>, C<cond_wait>, C<cond_timedwait>, C<cond_signal>, C<cond_broadcast>,
+C<is_shared>
+
+=begin original
+
+Note that if this module is imported when L<threads> has not yet been loaded,
+then these functions all become no-ops.  This makes it possible to write
+modules that will work in both threaded and non-threaded environments.
+
+=end original
+
+まだ L<threads> がロードされていない段階でこのモジュールをインポートすると、
+その機能は全て無効になることに注意してください。
+これによりスレッド・非スレッド環境の両方で動作するモジュールを
+書くことができます。
+
+=head1 FUNCTIONS
+
+(関数)
+
+=over 4
+
+=item share VARIABLE
+
+=begin original
+
+C<share> takes a value and marks it as shared. You can share a scalar, array,
+hash, scalar ref, array ref, or hash ref.  C<share> will return the shared
+rvalue, but always as a reference.
+
+=end original
+
+C<share> は値を引数に取り、それを共有化されたものとしてマークします。
+スカラー、配列、ハッシュ、スカラーリファレンス、配列リファレンス、あるいは
+ハッシュリファレンスを共有化することができます。
+C<share> は共有化された右辺値(rvalue)を返しますが、それは常に
+リファレンスとして返されます。
+
+=begin original
+
+A variable can also be marked as shared at compile time by using the
+C<:shared> attribute: C<my $var :shared;>.
+
+=end original
+
+C<:shared> 属性（ C<my $var : shared;> ）を使うことで、ある変数を
+コンパイル時に共有化されたものとしてマークすることもできます。
+
+=begin original
+
+Due to problems with Perl's prototyping, if you want to share a newly created
+reference, you need to use the C<&share([])> and C<&share({})> syntax.
+
+=end original
+
+Perl のプロトタイプ宣言に伴う問題で、もし新たに生成したリファレンスを
+共有したい場合、C<&share([])>とC<&share({})> という構文を
+使う必要があります。
+
+=begin original
+
+The only values that can be assigned to a shared scalar are other scalar
+values, or shared refs:
+
+=end original
+
+共有したスカラに代入できる値は、他のスカラ値か、共有した
+リファレンスだけです:
+
+  my $var :shared;
+  $var = 1;              # ok
+  $var = [];             # error
+  $var = &share([]);     # ok
+
+=begin original
+
+C<share> will traverse up references exactly I<one> level.  C<share(\$a)> is
+equivalent to C<share($a)>, while C<share(\\$a)> is not.  This means that you
+must create nested shared data structures by first creating individual shared
+leaf nodes, and then adding them to a shared hash or array.
+
+=end original
+
+C<share> はリファレンスを正確に I<1> レベルだけ調べます。
+C<share(\$a)> は C<share($a)> と等価ですが、C<share(\\$a)> は違います。
+これは、ネストした共有データ構造は、まずそれぞれの共有葉オブジェクトを作成し、
+それからそれらを共有ハッシュやアレイに追加することによって
+作成しなければならないことを意味します。
+
+  my %hash :shared;
+  $hash{'meaning'} = &share([]);
+  $hash{'meaning'}[0] = &share({});
+  $hash{'meaning'}[0]{'life'} = 42;
+
+=item is_shared VARIABLE
+
+=begin original
+
+C<is_shared> checks if the specified variable is shared or not.  If shared,
+returns the variable's internal ID (similar to
+L<refaddr()|Scalar::Util/"refaddr EXPR">).  Otherwise, returns C<undef>.
+
+=end original
+
+C<is_shared> は、指定された変数が共有されているかどうかをチェックします。
+共有されていれば、(L<refaddr()|Scalar::Util/"refaddr EXPR"> と同様に) 変数の
+内部 ID を返します。
+そうでなければ、C<undef> を返します。
+
+  if (is_shared($var)) {
+      print("\$var is shared\n");
+  } else {
+      print("\$var is not shared\n");
+  }
+
+=item lock VARIABLE
+
+=begin original
+
+C<lock> places a lock on a variable until the lock goes out of scope.  If the
+variable is locked by another thread, the C<lock> call will block until it's
+available.  Multiple calls to C<lock> by the same thread from within
+dynamically nested scopes are safe -- the variable will remain locked until
+the outermost lock on the variable goes out of scope.
+
+=end original
+
+C<lock> はスコープから外れるまで変数をロックします。
+もし他のスレッドによってその変数がロックされているなら、ロックが
+可能になるまで C<lock> の呼び出しはブロックされます。
+動的にネストしたスコープの中から同じスレッドによって
+複数回 C<lock> を呼び出しても安全です -- 最も外側のロックがスコープから
+抜けるまでその変数はロックされ続けます。
+
+=begin original
+
+Locking a container object, such as a hash or array, doesn't lock the elements
+of that container. For example, if a thread does a C<lock(@a)>, any other
+thread doing a C<lock($a[12])> won't block.
+
+=end original
+
+ハッシュや配列といったコンテナオブジェクトがロックしても、
+その要素はロックされません。
+例えば、あるスレッドが C<lock(@a)> するとしても、他のスレッドの行う
+C<lock($a[12])> はブロックされません。
+
+=begin original
+
+C<lock()> follows references exactly I<one> level.  C<lock(\$a)> is equivalent
+to C<lock($a)>, while C<lock(\\$a)> is not.
+
+=end original
+
+C<lock> は正確に I<1> レベルリファレンスを辿ります。
+C<lock(\$a)> は、 C<lock($a)> と等価ですが、C<lock(\\$a)> とは
+等価ではありません。
+
+=begin original
+
+Note that you cannot explicitly unlock a variable; you can only wait for the
+lock to go out of scope.  This is most easily accomplished by locking the
+variable inside a block.
+
+=end original
+
+明示的に変数を unlock することはできないことに注意してください;
+ロックがスコープを抜けるのを待つしかありません。
+これはブロックの内側で変数をロックすることで最も簡単に達成できます。
+
+  my $var :shared;
+  {
+      lock($var);
+      # $var is locked from here to the end of the block
+      ...
+  }
+  # $var is now unlocked
+
+=begin original
+
+If you need more fine-grained control over shared variable access, see
+L<Thread::Semaphore>.
+
+=end original
+
+もし共有変数へのアクセスについてより精度の高い制御を望むなら、
+L<Thread::Semaphore> を参照してください。
+
+=item cond_wait VARIABLE
+
+=item cond_wait CONDVAR, LOCKVAR
+
+=begin original
+
+The C<cond_wait> function takes a B<locked> variable as a parameter, unlocks
+the variable, and blocks until another thread does a C<cond_signal> or
+C<cond_broadcast> for that same locked variable.  The variable that
+C<cond_wait> blocked on is relocked after the C<cond_wait> is satisfied.  If
+there are multiple threads C<cond_wait>ing on the same variable, all but one
+will re-block waiting to reacquire the lock on the variable. (So if you're only
+using C<cond_wait> for synchronisation, give up the lock as soon as possible).
+The two actions of unlocking the variable and entering the blocked wait state
+are atomic, the two actions of exiting from the blocked wait state and
+re-locking the variable are not.
+
+=end original
+
+C<cond_wait> 関数は B<ロックされた> 変数を引数に取り、その変数のロックを
+解除します。
+そして他のスレッドがその同じロックされていた変数に向けて
+C<cond_signal> か C<cond_broadcast> するまで、ブロック（待機）します。
+C<cond_wait> がブロックする変数は、C<cond_wait> が完了した後、再度
+ロックされます。
+もし複数のスレッドが同じ変数に対して C<cond_wait> しているなら、
+一つを除いて全てのスレッドがロックを獲得するまで待機するために再度
+ブロックします (よって同期のために C<cond_wait> を使うだけなら、可能な限り
+早くロックを解除してください)。
+変数のロック解除と、ブロックされて待ち状態に入るという二つの動作は
+アトミックです。
+待ち状態から抜けることと、変数の再ロックという二つの動作は、
+アトミックではありません。
+
+=begin original
+
+In its second form, C<cond_wait> takes a shared, B<unlocked> variable followed
+by a shared, B<locked> variable.  The second variable is unlocked and thread
+execution suspended until another thread signals the first variable.
+
+=end original
+
+第二の書式では、C<cond_wait> は B<ロックされていない> 共有変数をとり、
+その後ろに B<ロック> された共有変数がきます。
+この二番目の変数はロックが解除され、そして他のスレッドが一番目の変数に
+シグナルを送るまで、そのスレッドの実行は停止します。
+
+=begin original
+
+It is important to note that the variable can be notified even if no thread
+C<cond_signal> or C<cond_broadcast> on the variable.  It is therefore
+important to check the value of the variable and go back to waiting if the
+requirement is not fulfilled.  For example, to pause until a shared counter
+drops to zero:
+
+=end original
+
+どのスレッドも、変数に対し C<cond_signal> や C<cond_broadcast> をしなくても、
+その変数は notify されうるということに注意することが重要です。
+それゆえ、変数の値のチェック及び、要求が満たされない場合に待ち状態へ
+戻ることが重要です。
+例えば、共有カウンタが 0 になるまで停止するには:
+
+  { lock($counter); cond_wait($count) until $counter == 0; }
+
+=item cond_timedwait VARIABLE, ABS_TIMEOUT
+
+=item cond_timedwait CONDVAR, ABS_TIMEOUT, LOCKVAR
+
+=begin original
+
+In its two-argument form, C<cond_timedwait> takes a B<locked> variable and an
+absolute timeout as parameters, unlocks the variable, and blocks until the
+timeout is reached or another thread signals the variable.  A false value is
+returned if the timeout is reached, and a true value otherwise.  In either
+case, the variable is re-locked upon return.
+
+=end original
+
+二つの引数をとる形式では、C<cond_timedwait> は B<ロックされた> 変数と
+絶対的なタイムアウト時間を引数にとります。
+変数はロック解除され、タイムアウト時間に達するか、他のスレッドが変数に
+シグナルを送るかするまでブロックされます。
+タイムアウトになると偽の値が返されます。
+そうでなければ真の値が返されます。
+どちらの場合でも戻りの際に変数は再ロックされます。
+
+=begin original
+
+Like C<cond_wait>, this function may take a shared, B<locked> variable as an
+additional parameter; in this case the first parameter is an B<unlocked>
+condition variable protected by a distinct lock variable.
+
+=end original
+
+C<cond_wait> 同様、この関数は B<ロックされた> 共有変数を追加の
+パラメータとしてとれます; この場合、最初のパラメータは
+B<ロックされていない> 条件変数であり、これと区別されるロック変数によって
+守られます。
+
+=begin original
+
+Again like C<cond_wait>, waking up and reacquiring the lock are not atomic,
+and you should always check your desired condition after this function
+returns.  Since the timeout is an absolute value, however, it does not have to
+be recalculated with each pass:
+
+=end original
+
+さらに C<cond_wait> 同様、覚醒とロックの再獲得はアトミックではありません。
+この関数が戻った後、あなたが望んだ状態になっているかどうか常に
+チェックするべきです。
+しかし、タイムアウトは絶対的な値なので、パスごとに
+再計算させるべきではありません:
+
+  lock($var);
+  my $abs = time() + 15;
+  until ($ok = desired_condition($var)) {
+      last if !cond_timedwait($var, $abs);
+  }
+  # we got it if $ok, otherwise we timed out!
+
+=item cond_signal VARIABLE
+
+=begin original
+
+The C<cond_signal> function takes a B<locked> variable as a parameter and
+unblocks one thread that's C<cond_wait>ing on that variable. If more than one
+thread is blocked in a C<cond_wait> on that variable, only one (and which one
+is indeterminate) will be unblocked.
+
+=end original
+
+C<cond_signal> 関数は B<ロックされた> 変数を引数にとり、その変数に対して
+C<cond_wait> している一つのスレッドのブロックを解除します。
+もし一つ以上のスレッドが C<cond_wait> してブロックされているなら、
+ただ一つのスレッドだけがブロックを解除されます (そしてどの一つかは
+不確定です)。
+
+=begin original
+
+If there are no threads blocked in a C<cond_wait> on the variable, the signal
+is discarded. By always locking before signaling, you can (with care), avoid
+signaling before another thread has entered cond_wait().
+
+=end original
+
+もしどのスレッドもその変数を C<cond_wait> していない場合、シグナルは
+破棄されます。
+常にシグナルの前にロックされるので、他のスレッドが cond_wait() に
+入る前にシグナルを発するのを（注意深くやれば）回避することが出来ます。
+
+=begin original
+
+C<cond_signal> will normally generate a warning if you attempt to use it on an
+unlocked variable. On the rare occasions where doing this may be sensible, you
+can suppress the warning with:
+
+=end original
+
+ロックされていない変数に対し C<cond_signal> を試みると、通常は警告を
+発します。
+稀に起こるこの警告がうるさい場合、次の方法で警告を抑制することができます:
+
+  { no warnings 'threads'; cond_signal($foo); }
+
+=item cond_broadcast VARIABLE
+
+=begin original
+
+The C<cond_broadcast> function works similarly to C<cond_signal>.
+C<cond_broadcast>, though, will unblock B<all> the threads that are blocked in
+a C<cond_wait> on the locked variable, rather than only one.
+
+=end original
+
+C<cond_broadcast> 関数は C<cond_signal> とよく似た働きをします。
+しかし C<cond_broadcast> はスレッド一つだけではなく、ロックされた変数に
+対して C<cond_wait> して待機中の B<全ての> スレッドをブロック解除します。
+
+=back
+
+=head1 OBJECTS
+
+=begin original
+
+L<threads::shared> exports a version of L<bless()|perlfunc/"bless REF"> that
+works on shared objects such that I<blessings> propagate across threads.
+
+=end original
+
+L<threads::shared> I<bless> がスレッドをまたいで伝搬するような
+共有オブジェクトで動作するバージョンの L<bless()|perlfunc/"bless REF"> を
+エクスポートします。
+
+  # Create a shared 'foo' object
+  my $foo;
+  share($foo);
+  $foo = &share({});
+  bless($foo, 'foo');
+
+  # Create a shared 'bar' object
+  my $bar;
+  share($bar);
+  $bar = &share({});
+  bless($bar, 'bar');
+
+  # Put 'bar' inside 'foo'
+  $foo->{'bar'} = $bar;
+
+  # Rebless the objects via a thread
+  threads->create(sub {
+      # Rebless the outer object
+      bless($foo, 'yin');
+
+      # Cannot directly rebless the inner object
+      #bless($foo->{'bar'}, 'yang');
+
+      # Retrieve and rebless the inner object
+      my $obj = $foo->{'bar'};
+      bless($obj, 'yang');
+      $foo->{'bar'} = $obj;
+
+  })->join();
+
+  print(ref($foo),          "\n");    # Prints 'yin'
+  print(ref($foo->{'bar'}), "\n");    # Prints 'yang'
+  print(ref($bar),          "\n");    # Also prints 'yang'
+
+=head1 NOTES
+
+(注意)
+
+=begin original
+
+threads::shared is designed to disable itself silently if threads are not
+available. If you want access to threads, you must C<use threads> before you
+C<use threads::shared>.  L<threads> will emit a warning if you use it after
+L<threads::shared>.
+
+=end original
+
+threads が利用できない場合、threads::shared は黙って利用不可になるよう
+設計されています。
+threads にアクセスしようとするなら、C<use threads::shared> する前に
+C<use threads> しなければなりません。
+L<threads::shared> の後に L<threads> を use しようとすれば、
+警告が発せられます。
+
+=head1 BUGS AND LIMITATIONS
+
+(バグと制限)
+
+=begin original
+
+When C<share> is used on arrays, hashes, array refs or hash refs, any data
+they contain will be lost.
+
+=end original
+
+C<share> が配列、ハッシュ、配列リファレンス、ハッシュリファレンスで
+使われると、含まれるあらゆるデータは失われます。
+
+  my @arr = qw(foo bar baz);
+  share(@arr);
+  # @arr is now empty (i.e., == ());
+
+  # Create a 'foo' object
+  my $foo = { 'data' => 99 };
+  bless($foo, 'foo');
+
+  # Share the object
+  share($foo);        # Contents are now wiped out
+  print("ERROR: \$foo is empty\n")
+      if (! exists($foo->{'data'}));
+
+=begin original
+
+Therefore, populate such variables B<after> declaring them as shared.  (Scalar
+and scalar refs are not affected by this problem.)
+
+=end original
+
+従って、このような変数は、共有すると宣言した B<後に> 設定してください。
+(スカラとスカラリファレンスはこの問題の影響を受けません。)
+
+=begin original
+
+It is often not wise to share an object unless the class itself has been
+written to support sharing.  For example, an object's destructor may get
+called multiple times, once for each thread's scope exit.  Another danger is
+that the contents of hash-based objects will be lost due to the above
+mentioned limitation.  See F<examples/class.pl> (in the CPAN distribution of
+this module) for how to create a class that supports object sharing.
+
+=end original
+
+クラス自身が共有に対応するように書かれていないオブジェクトを共有することは
+たいてい賢明なこととは言えません。
+例えば、各スレッドのスコープから外れる毎に、あるオブジェクトの
+デストラクタが複数回呼び出されるかも知れません。
+もう一つの危険性は、ハッシュベースのオブジェクトの内容が、
+上述した制限のために失われてしまうことです。 
+オブジェクト共有に対応したクラスの作り方については、(このモジュールの
+CPAN 配布に含まれている F<examples/class.pl> を参照してください。
+
+=begin original
+
+Does not support C<splice> on arrays!
+
+=end original
+
+配列に対する C<splice> はサポートしていません!
+
+=begin original
+
+Taking references to the elements of shared arrays and hashes does not
+autovivify the elements, and neither does slicing a shared array/hash over
+non-existent indices/keys autovivify the elements.
+
+=end original
+
+共有化された配列とハッシュの要素へのリファレンスをとっても
+自動有効化しません。
+また、共有配列／ハッシュで存在しないインデックスや
+キーにスライスしても、その要素は自動有効化しません。
+
+=begin original
+
+C<share()> allows you to C<< share($hashref->{key}) >> without giving any
+error message.  But the C<< $hashref->{key} >> is B<not> shared, causing the
+error "locking can only be used on shared values" to occur when you attempt to
+C<< lock($hasref->{key}) >>.
+
+=end original
+
+C<< share($hashref->{key}) >> しても、C<share()> はエラーメッセージを
+出しません。
+しかし、C<< $hashref->{key} >> は共有 B<されません>。
+C<< lock($hashref->{key}) >> しようとすれば
+"locking can only be used on shared values"
+(ロックは共有変数に対してのみ使用できます) というエラーが発生します。
+
+=begin original
+
+View existing bug reports at, and submit any new bugs, problems, patches, etc.
+to: L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=threads-shared>
+
+=end original
+
+既に報告されているバグの閲覧や、新しいバグ、問題、パッチなどの投稿先:
+L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=threads-shared>
+
+=head1 SEE ALSO
+
+=begin original
+
+L<threads::shared> Discussion Forum on CPAN:
+L<http://www.cpanforum.com/dist/threads-shared>
+
+=end original
+
+CPAN の L<threads::shared> ディスカッションフォーラム:
+L<http://www.cpanforum.com/dist/threads-shared>
+
+=begin original
+
+Annotated POD for L<threads::shared>:
+L<http://annocpan.org/~JDHEDDEN/threads-shared-1.14/shared.pm>
+
+=end original
+
+L<threads::shared> の注釈付き POD:
+L<http://annocpan.org/~JDHEDDEN/threads-shared-1.14/shared.pm>
+
+=begin original
+
+Source repository:
+L<http://code.google.com/p/threads-shared/>
+
+=end original
+
+ソースレポジトリ:
+L<http://code.google.com/p/threads-shared/>
+
+L<threads>, L<perlthrtut>
+
+=begin original
+
+L<http://www.perl.com/pub/a/2002/06/11/threads.html> and
+L<http://www.perl.com/pub/a/2002/09/04/threads.html>
+
+=end original
+
+L<http://www.perl.com/pub/a/2002/06/11/threads.html> と
+L<http://www.perl.com/pub/a/2002/09/04/threads.html>
+
+=begin original
+
+Perl threads mailing list:
+L<http://lists.cpan.org/showlist.cgi?name=iThreads>
+
+=end original
+
+Perl threads メーリングリスト:
+L<http://lists.cpan.org/showlist.cgi?name=iThreads>
+
+=head1 AUTHOR
+
+Artur Bergman E<lt>sky AT crucially DOT netE<gt>
+
+threads::shared is released under the same license as Perl.
+
+Documentation borrowed from the old Thread.pm.
+
+CPAN version produced by Jerry D. Hedden E<lt>jdhedden AT cpan DOT orgE<gt>.
+
+=begin meta
+
+Update: Kentaro Shirakata <argrath@ub32.org> (1.14-)
+
+=end meta
+
+=cut
+

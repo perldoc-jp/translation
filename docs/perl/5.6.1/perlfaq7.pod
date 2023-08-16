@@ -1,0 +1,1424 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+perlfaq7 - Perl Language Issues ($Revision$, $Date$)
+
+=end original
+
+perlfaq7 - Perlに関することがら ($Revision$, $Date$)
+
+=head1 DESCRIPTION
+
+このセクションでは、他のセクションにはきっちりとあてはまらないような
+Perl 言語に関する一般的な事柄を扱います。
+
+=head2 Can I get a BNF/yacc/RE for the Perl language?
+
+(Perlのための BNF/yacc/RE は入手できますか?)
+
+=begin original
+
+There is no BNF, but you can paw your way through the yacc grammar in
+perly.y in the source distribution if you're particularly brave.  The
+grammar relies on very smart tokenizing code, so be prepared to
+venture into toke.c as well.
+
+=end original
+
+BNFはありませんが、もし多少の勇気を持ちあわせているのであれば
+配布ソースに含まれているperly.yにあるyacc文法をいじくりまわすことができます。
+その文法は非常に賢い字句解析ルーチンに依存したものなので、
+toke.c を眺める準備もしておきましょう。
+
+Chaim Frenkelの言葉を借りればこうです: “Perlの文法は
+BNF まで縮小(reduce)することができない。
+perl の構文解析の作業は yacc、字句解析器、煙と鏡とに分配される”
+
+=head2 What are all these $@%&* punctuation signs, and how do I know when to use them?
+
+($@%&* のマークはなんですか?これらをいつ使えばいいのかを知るには
+どうすればいいですか?)
+
+これらは型指定子(type specifiers)で、L<perldata>で説明されています:
+
+=begin original
+
+    $ for scalar values (number, string or reference)
+    @ for arrays
+    % for hashes (associative arrays)
+    & for subroutines (aka functions, procedures, methods)
+    * for all types of that symbol name.  In version 4 you used them like
+      pointers, but in modern perls you can just use references.
+
+=end original
+
+    $ スカラー値(数値、文字列、リファレンス)に対するもの
+    @ 配列に対するもの
+    % ハッシュ(連想配列)に対するもの
+    & サブルーチン(またの名を関数、手続き、メソッド)に対するもの
+    * シンボル名に対する全ての型。バージョン4ではポインターのように
+      使われていましたが、新しい perl ではリファレンスが使えます。
+
+実際には型指定子として見ることはないであろう二つのものが
+この他にもあります:
+
+    <> あるファイルハンドルからレコードを入力するのに使われます
+    \  なにかのリファレンスを取ります。
+
+=begin original
+
+Note that <FILE> is I<neither> the type specifier for files
+nor the name of the handle.  It is the C<< <> >> operator applied
+to the handle FILE.  It reads one line (well, record--see
+L<perlvar/$/>) from the handle FILE in scalar context, or I<all> lines
+in list context.  When performing open, close, or any other operation
+besides C<< <> >> on files, or even when talking about the handle, do
+I<not> use the brackets.  These are correct: C<eof(FH)>, C<seek(FH, 0,
+2)> and "copying from STDIN to FILE".
+
+=end original
+
+<FILE>は、ファイルに対する型指定子にもハンドルの名前の
+I<どちらでもない>ということに注意してください。
+これはハンドル FILE に対する C<< <> >>演算子です。
+一行(そう、レコードですね。L<perlvar/$/>を参照してください) を
+FILE というハンドルからスカラーコンテキストで読み出します。
+リストコンテキストの場合はB<全ての>行を読み出します。
+ファイルの C<< <> >> に関係するopen、closeなどの操作を行うときには、
+ハンドルについて行っている場合であっても
+アングルブラケットを使ってはB<いけません>。
+C<eof(FH)>,  C<seek(FH, 0,2)> や "copying from STDIN to FILE" は
+正しいものなのです。
+
+=head2 Do I always/never have to quote my strings or use semicolons and commas?
+
+(文字列では 常にクォートする/決してクォートしない 必要があるのでしょうか?
+また、セミコロンやカンマについては?)
+
+通常は、裸の単語(barewords)はクォートする必要はありませんが、
+ほとんど場合はクォートすべきでしょう(そして、C<use strcit>しているときは
+しなければなりません)。
+しかし、単純な単語(サブルーチンの名前として定義されていないもの)から
+構成されるハッシュと、C<< => >> 演算子の左側にあるオペランドは
+両方ともクォートされているとみなされます:
+
+    This                    is like this
+    ------------            ---------------
+    $foo{line}              $foo{"line"}
+    bar => stuff            "bar" => stuff
+
+ブロックの最後にあるセミコロンは、リストの最後にあるカンマと同じく
+省略可能です。
+良いスタイル(L<perlstyle>を参照)は一行野郎(one-liners)でなければ
+それらを使うようにしましょうと言っています。
+
+    if ($whoops) { exit 1 }
+    @nums = (1, 2, 3);
+
+    if ($whoops) {
+        exit 1;
+    }
+    @lines = (
+	"There Beren came from mountains cold",
+	"And lost he wandered under leaves",
+    );
+
+=head2 How do I skip some return values?
+
+(戻り値の一部をスキップするには?)
+
+方法の一つは、戻り値をリストとみなして、それに添え字づけするというものです:
+
+        $dir = (getpwnam($user))[7];
+
+もう一つのやりかたは、左辺の要素としてundefを使うというものです:
+
+    ($dev, $ino, undef, undef, $uid, $gid) = stat($file);
+
+=head2 How do I temporarily block warnings?
+
+(一時的に警告をブロックするには?)
+
+=begin original
+
+If you are running Perl 5.6.0 or better, the C<use warnings> pragma
+allows fine control of what warning are produced.
+See L<perllexwarn> for more details.
+
+=end original
+
+Perl 5.6.0 以降を使っているなら、C<use warnings> プラグマで
+どんな警告を生成するかをうまく制御できます。
+詳細については L<perllexwarn> を参照してください。
+
+    {
+	no warnings;          # temporarily turn off warnings
+	$a = $b + $c;         # I know these might be undef
+    }
+
+=begin original
+
+If you have an older version of Perl, the C<$^W> variable (documented
+in L<perlvar>) controls runtime warnings for a block:
+
+=end original
+
+より古いバージョンの場合は、変数 C<$^W>(L<perlvar>に説明があります)は
+実行時の警告のブロックを制御します:
+
+    {
+	local $^W = 0;        # 一時的に警告をオフにする
+	$a = $b + $c;         # これらがundefかもしれないことを知っている
+    }
+
+全ての句読点変数(punctuation variable)と同様、現時点ではC<$^W>に対して
+my() を使うことはできず、local()だけしか使えないということに注意してください。
+
+=head2 What's an extension?
+
+(エクステンションてなんですか?)
+
+エクステンションとは、Perlからコンパイル済みのCコードを呼び出すための方法です。
+エクステンションについて知るにはL<perlxstut>を読むのが良いでしょう。
+
+=head2 Why do Perl operators have different precedence than C operators?
+
+(なぜ Perl の演算子は C の演算子とは異なった優先順位を持っているのでしょうか?)
+
+実際はそうではありません。Perlに持ち込まれたCの演算子はすべて、
+C と Perl とで同じ優先順位を持っています。
+問題は、C にはない演算子、特にその右辺に対してつねにリストコンテキストを
+与える関数、例えば print、chmod、exec などです。
+そういった関数は“リスト演算子”と呼ばれ、
+L<perlop> にある優先順位テーブルにあります。
+
+ありがちな間違いは
+
+    unlink $file || die "snafu";
+
+のように書いてしまうことです。これは以下のように解釈されます:
+
+    unlink ($file || die "snafu");
+
+この問題を避けるためには、余計な括弧をつけるかより優先順位の低い C<or> 演算子を
+使うようにします:
+
+    (unlink $file) || die "snafu";
+    unlink $file or die "snafu";
+
+“English”演算子(C<and>, C<or>, C<xor>, C<not>)は先に説明している
+同じ働きをするリスト演算子よりも低い優先順位を故意に持たされています。
+
+もう一つの、びっくりするような優先順位を持っている演算子は
+べき乗(exponentiation)です。
+これは単項のマイナスよりも強く結び付くので、C<-2**2>はプラス4ではなく、
+マイナス4を生成します。この演算子は右結合するので、
+C<2**3**2>は8の二乗ではなく、2の九乗です。
+
+=begin original
+
+Although it has the same precedence as in C, Perl's C<?:> operator
+produces an lvalue.  This assigns $x to either $a or $b, depending
+on the trueness of $maybe:
+
+=end original
+
+C と同じ優先順位を持っているにも関らず、PerlではC<?:>演算子は
+lvalue(代入可能な値)を作り出します。以下の代入では、$maybe の値に応じて、
+$a か $b のいずれかに$xの値を代入します:
+
+    ($maybe ? $a : $b) = $x;
+
+=head2 How do I declare/create a structure?
+
+(構造体を宣言したり生成するには?)
+
+一般的には、構造体を“宣言”することはありません。単に(おそらくは無名の)
+ハッシュリファレンスを使うだけです。
+詳しくはL<perlref>と L<perldsc> を参照してください。例を挙げましょう:
+
+    $person = {};                   # 新しい無名ハッシュ
+    $person->{AGE}  = 24;           # フィールド AGE に24を設定
+    $person->{NAME} = "Nat";        # フィールド NAME に "Nat"を設定
+
+もうちょっと正確ななにかを求めているのなら、
+L<perltoot> に挑戦してみてください。
+
+=head2 How do I create a module?
+
+(モジュールを作成するには?)
+
+モジュールとは同じ名前を持ったファイルに置かれているパッケージです。
+例えば、Hello::There というモジュールはHello/There.pmに置かれます。
+詳しいことは L<perlmod>を参照してください。L<Exporter>も助けになるでしょう。
+C か、C と Perl を混ぜたモジュールを作ろうとしているなら、
+L<perlxstut>で学んでおくべきでしょう。
+
+以下のものは、自分のモジュールを作ろうとしたときに使いたくなるような
+便利なテンプレートです。間違いなく名前を適切に変更してください。
+
+    package Some::Module;  # Some/Module.pmを仮定
+
+    use strict;
+    use warnings;
+
+    BEGIN {
+	use Exporter   ();
+	our ($VERSION, @ISA, @EXPORT, @EXPORT_OK, %EXPORT_TAGS);
+
+	## バージョンチェックのためのバージョンを設定。使うにはコメントを外す
+	## $VERSION     = 1.00;
+
+        # RCS/VCSを使っているのなら次の行が好ましいでしょうが
+        # 二桁のバージョンに注意してください
+	$VERSION = do{my@r=q$Revision$=~/\d+/g;sprintf '%d.'.'%02d'x$#r,@r};
+
+	@ISA         = qw(Exporter);
+	@EXPORT      = qw(&func1 &func2 &func3);
+	%EXPORT_TAGS = ( );  	# eg: TAG => [ qw!name1 name2! ],
+
+	# exportするパッケージグローバルなものをここに置く。
+	# export可能な関数もここに置く。
+	@EXPORT_OK   = qw($Var1 %Hashit);
+    }
+    our @EXPORT_OK;
+
+    # exported package globals go here
+    our $Var1;
+    our %Hashit;
+
+    # exportしないパッケージグローバルをここに
+    our @more;
+    our $stuff;
+
+    # パッケージグローバルを初期化する。最初にexportしているものを。
+    $Var1   = '';
+    %Hashit = ();
+
+    # それから他のもの(これらは$Some::Module::stuffとすればアクセスできます)を初期化する
+    $stuff  = '';
+    @more   = ();
+
+    # ファイルスコープを持った全てのlecicalは
+    # 関数がそれ使うよりも前に生成しておかねばならない
+
+    # ファイルプライベートなlexicalsはここに
+    my $priv_var    = '';
+    my %secret_hash = ();
+
+    # これはクロージャーとしてのファイルプライベートな関数で、
+    # &$priv_funcで呼び出しができる。これはプロトタイプを作れない。
+    my $priv_func = sub {
+        # 内容をここに
+    };
+
+    # exportするしないに関らず、全ての関数を作成する。
+    # {}スタブを適当に埋めることを忘れないように
+    sub func1      {}	 # プロトタイプなし
+    sub func2()    {}	 # void のプロトタイプ
+    sub func3($$)  {}	 # 二つのスカラーを取るプロトタイプ
+
+    # これはexportされないが、それでも呼び出しは可能!
+    sub func4(\%)  {}    # 一つのハッシュリファレンスを取るプロトタイプ
+
+    END { }       # モジュールの後始末コードをここに (グローバルデストラクター)
+
+    1;            # モジュールはtureを返さなければならない
+
+h2xsというプログラムはあなたのために、重要なもの全てのためのスタブを作成します。
+
+  % h2xs -XA -n My::Module
+
+=head2 How do I create a class?
+
+(クラスを作るには?)
+
+クラスとオブジェクトについての入門は L<perltoot>を参照してください。
+同様に、L<perlobj> と L<perlbot>も参照してください。
+
+=head2 How can I tell if a variable is tainted?
+
+(変数が汚染されているかどうかをどうやれば確かめられますか?)
+
+L<perlsec/"Laundering and Detecting Tainted Data">を参照してください。
+以下に例を示します(これはkill()がシグナルを送る何のプロセスも
+与えられていないのでなんのシステムコールも使いません):
+
+    sub is_tainted {
+	return ! eval { join('',@_), kill 0; 1; };
+    }
+
+しかしこれは C<-w>クリーンではありません。汚染検査を C<-w>クリーンにする
+方法はありません。
+これは汚染された可能性のあるデータ全てを浄化(untaint)すべき
+ヒントであると受け取ってください。
+
+=head2 What's a closure?
+
+(クロージャー(closure)ってなんですか?)
+
+=begin original
+
+Closures are documented in L<perlref>.
+
+=end original
+
+クロージャーはL<perlref>に説明があります。
+
+B<クロージャー>は、きちんとした定義を持ったコンピューター科学の用語ですが
+その意味を説明するのはとても難しいのです。
+クロージャーは Perl では、そのスコープの外側でもレキシカル変数に対する
+リファレンスを保持しつづける無名サブルーチンとして実装されています。
+これらのレキシカルは、サブルーチンが定義されたときの変数に対して、
+魔法のような参照(magically refer)を行います(深い束縛、deep binding)。
+
+クロージャーは、Perlができるような関数の戻り値として関数それ自身を返す関数を
+持つことができるプログラミング言語で意味があります。
+一部の言語では、無名関数を提供しているけれども適切なクロージャーを提供する
+能力はないということに注意してください。
+たとえば Python がそうです。
+クロージャーに関するより詳しいことは、関数言語に関するなんらかの教科書を
+みてください。
+Scheme はクロージャーをサポートするだけでなく、それを推奨している言語です。
+
+以下は、古典的な関数を生成する関数です:
+
+    sub add_function_generator {
+      return sub { shift + shift };
+    }
+
+    $add_sub = add_function_generator();
+    $sum = $add_sub->(4,5);                # $sum はここで 9 となる
+
+クロージャーは、後で埋めることのできるカスタマイズ可能な幾つかのスロットを持つ
+B<関数テンプレート>のように働きます。
+add_function_generator() が返した無名サブルーチンは技術的には
+クロージャーではありません。
+なぜなら、あれはスコープの外側で参照するようなレキシカルがないからです。
+
+それとは対照的に、次の関数 make_adder()では、関数自身のスコープの外側で
+レキシカル変数に対するリファレンスを持つ無名関数を返します。
+そのようなリファレンスは Perl が適切なクロージャーを返すように要求するので、
+その変数を参照するときはいつでも関数が生成されたときの
+レキシカルが参照されます。
+
+    sub make_adder {
+        my $addpiece = shift;
+        return sub { shift + $addpiece };
+    }
+
+    $f1 = make_adder(20);
+    $f2 = make_adder(555);
+
+これで、C<&$f1($n)>は それに渡した $nに対して常に20を加え、
+C<&$f2($n)>は渡された $nに常に555を加えます。
+クロージャーの中にある $addpieceが仕事をしています。
+
+
+クロージャーは、それほど難しくない状況でよく使われます。たとえば、
+関数にちょっとしたコードを押しこみたいときがそうです:
+
+    my $line;
+    timeout( 30, sub { $line = <STDIN> } );
+
+=begin original
+
+If the code to execute had been passed in as a string,
+C<< '$line = <STDIN>' >>, there would have been no way for the
+hypothetical timeout() function to access the lexical variable
+$line back in its caller's scope.
+
+=end original
+
+もし実行すべきコードが文字列として渡されていたのであれば、
+C<< '$line = <STDIN>' >> としているところは、仮想的な timeout()
+関数が アクセスする lexical変数 $lineを呼び出し元のスコープのものに戻す
+手段がなくなってしまいます。
+
+=head2 What is variable suicide and how can I prevent it?
+
+(変数の自殺(variable suicide)って何で、それをどうすれば防げますか?)
+
+=begin original
+
+Variable suicide is when you (temporarily or permanently) lose the
+value of a variable.  It is caused by scoping through my() and local()
+interacting with either closures or aliased foreach() iterator
+variables and subroutine arguments.  It used to be easy to
+inadvertently lose a variable's value this way, but now it's much
+harder.  Take this code:
+
+=end original
+
+変数の自殺とは、(一時的にしろ、恒久的にしろ)変数の値を失ったときのことを指します。
+これは、クロージャー、もしくは別名つけされた foreach イテレーター変数や
+サブルーチンの引数と相互作用しているmy()やlocal()を通したスコープによって
+引き起こされます。
+以前はこのやり方で変数の値をうっかりとなくしてしまうように使われがちでしたが、
+現在は非常に難しくなっています。以下のコードを考えてみましょう:
+
+    my $f = "foo";
+    sub T {
+      while ($i++ < 3) { my $f = $f; $f .= "bar"; print $f, "\n" }
+    }
+    T;
+    print "Finally $f\n";
+
+=begin original
+
+The $f that has "bar" added to it three times should be a new C<$f>
+(C<my $f> should create a new local variable each time through the loop).
+It isn't, however.  This was a bug, now fixed in the latest releases
+(tested against 5.004_05, 5.005_03, and 5.005_56).
+
+=end original
+
+"bar" を保持している$fは三回 new C<$f>されるべきものです (C<my $f>は、
+ループが通る度に新たなローカル変数を生成すべきなのです)。
+しかしそうではありません。これはバグでした。
+最新のリリース(5.004_05, 5.005_03, and 5.005_56)では修正されています。
+
+=head2 How can I pass/return a {Function, FileHandle, Array, Hash, Method, Regex}?
+
+({関数, ファイルハンドル, 配列, ハッシュ, メソッド, 正規表現} を渡したり返すのは
+どうすればできますか?)
+
+正規表現を除いて、これらのオブジェクトのリファレンスを渡す必要があります。
+L<perlsub/"Pass by Reference">にある関連した質問と、
+L<perlref>にあるリファレンスに関する情報を参照してください。
+
+=begin original
+
+See ``Passing Regexes'', below, for information on passing regular
+expressions.
+
+=end original
+
+正規表現を渡すための情報については、下記の``Passing Regexes''を
+参照して下さい。
+
+=over 4
+
+=item Passing Variables and Functions
+
+(変数や関数を渡す)
+
+普通の変数や関数はとても簡単に渡せます: 既に存在している変数や関数に対する
+リファレンスか、無名変数や無名関数に対するリファレンスを渡せばよいのです。
+
+    func( \$some_scalar );
+
+    func( \@some_array  );
+    func( [ 1 .. 10 ]   );
+
+    func( \%some_hash   );
+    func( { this => 10, that => 20 }   );
+
+    func( \&some_func   );
+    func( sub { $_[0] ** $_[1] }   );
+
+=item ファイルハンドルを渡す
+
+=begin original
+
+To pass filehandles to subroutines, use the C<*FH> or C<\*FH> notations.
+These are "typeglobs"--see L<perldata/"Typeglobs and Filehandles">
+and especially L<perlsub/"Pass by Reference"> for more information.
+
+=end original
+
+サブルーチンにファイルハンドルを渡すには、C<*FH>やC<\*FH>といった記法を使います。
+これらは“型グロブ”(typeglob)です。
+L<perldata/"Typeglobs and Filehandles">)とL<perlsub/"Pass by Reference">に
+詳しい説明があります。
+
+以下はその抜粋です:
+
+ファイルハンドルを渡すのであれば
+*STDOUTのような裸の型グロブを使うこともできますが、
+型グロブのリファレンスを渡す方がもっと良いです。
+なぜなら、そうしておけばC<use strict 'refs'>の状態でも正しく働くからです。
+例を挙げましょう:
+
+    splutter(\*STDOUT);
+    sub splutter {
+        my $fh = shift;
+        print $fh "her um well a hmmm\n";
+    }
+
+    $rec = get_rec(\*STDIN);
+    sub get_rec {
+        my $fh = shift;
+        return scalar <$fh>;
+    }
+
+もし新しいファイルハンドルを生成しようと考えているのなら、
+以下のようにすればできます:
+
+    sub openit {
+        my $path = shift;
+        local *FH;
+        return open (FH, $path) ? *FH : undef;
+    }
+    $fh = openit('< /etc/motd');
+    print <$fh>;
+
+=item 正規表現を渡す
+
+=begin original
+
+To pass regexes around, you'll need to be using a release of Perl
+sufficiently recent as to support the C<qr//> construct, pass around
+strings and use an exception-trapping eval, or else be very, very clever.
+
+=end original
+
+正規表現を渡すには、C<qr//> 構造が利用可能な最近の Perl を使うか、
+文字列を渡したあとで exception-trapping evalを使うか、
+さもなければとてもとても賢明でなければなりません。
+
+=begin original
+
+Here's an example of how to pass in a string to be regex compared
+using C<qr//>:
+
+=end original
+
+以下の例は、c<qr//>を使って正規表現として比較すべき文字列を渡す方法の例です:
+
+    sub compare($$) {
+        my ($val1, $regex) = @_;
+        my $retval = $val1 =~ /$regex/;
+	return $retval;
+    }
+    $match = compare("old McDonald", qr/d.*D/i);
+
+=begin original
+
+Notice how C<qr//> allows flags at the end.  That pattern was compiled
+at compile time, although it was executed later.  The nifty C<qr//>
+notation wasn't introduced until the 5.005 release.  Before that, you
+had to approach this problem much less intuitively.  For example, here
+it is again if you don't have C<qr//>:
+
+=end original
+
+C<qr//> の末尾に付けることができるフラグに注意してください。
+このパターンは一度だけコンパイル時にコンパイルされ、
+実行時にはコンパイルされません。
+このしゃれた C<qr//> 記法は 5.005 リリースで初めて提供されました。
+それまでは、この問題に対して遥かに直感的でない手法をとらなければなりませんでした。
+例えば、先ほどのコードを C<qr//> なしで書くと:
+
+    sub compare($$) {
+        my ($val1, $regex) = @_;
+        my $retval = eval { $val1 =~ /$regex/ };
+	die if $@;
+	return $retval;
+    }
+
+    $match = compare("old McDonald", q/($?i)d.*D/);
+
+決して以下のようにしてはいけません:
+
+    return eval "\$val =~ /$regex/";   # 間違い
+
+あるいは、誰かがevalの二重展開とダブルクォートで括られた文字列のために、
+正規表現に妙なシェルエスケープを押し込むかもしれません。
+例を挙げましょう:
+
+    $pattern_of_evil = 'danger ${ system("rm -rf * &") } danger';
+
+    eval "\$string =~ /$pattern_of_evil/";
+
+=begin original
+
+Those preferring to be very, very clever might see the O'Reilly book,
+I<Mastering Regular Expressions>, by Jeffrey Friedl.  Page 273's
+Build_MatchMany_Function() is particularly interesting.  A complete
+citation of this book is given in L<perlfaq2>.
+
+=end original
+
+これらのことに関してとてもとても賢明になるには、
+Jeffrey Friedl による O'Reillyの本 I<Mastering Regular Expressions>を
+読むことでしょう。
+特に 273ページにある Build_MatchMany_Function()は興味深いものです。
+この本に関する完全な情報は L<perlfaq2>にあります。
+
+=item Passing Methods
+
+(メソッドを渡す)
+
+サブルーチンにオブジェクトメソッドを渡すには、以下のようにできます:
+
+    call_a_lot(10, $some_obj, "methname")
+    sub call_a_lot {
+        my ($count, $widget, $trick) = @_;
+        for (my $i = 0; $i < $count; $i++) {
+            $widget->$trick();
+        }
+    }
+
+オブジェクトとそのメソッド呼び出しと引数とをまとめるために
+クロージャーを使うこともできます:
+
+    my $whatnot =  sub { $some_obj->obfuscate(@args) };
+    func($whatnot);
+    sub func {
+        my $code = shift;
+        &$code();
+    }
+
+UNIVERSALクラスにあるcan()メソッドを試すこともできます
+(これは標準の perl 配布キットの一部です)。
+
+=back
+
+=head2 How do I create a static variable?
+
+(静的変数(static variable)を作るには?)
+
+Perlにおけるほとんどの事柄と同様、TMTOWTDI(やり方はいくつもあります)です。
+他の言語における“静的変数”は、Perlでは関数にプライベート
+(その変数が宣言されたある単一の関数でのみ可視で、
+関数の呼び出しの間その値を保っている)な変数かファイルに
+プライベート(変数が宣言されたファイルにある関数からのみ可視)な変数の
+いずれかになります。
+
+=begin original
+
+Here's code to implement a function-private variable:
+
+=end original
+
+以下の例は、関数にプライベートな変数を実装するものです:
+
+    BEGIN {
+        my $counter = 42;
+        sub prev_counter { return --$counter }
+        sub next_counter { return $counter++ }
+    }
+
+これで、prev_counter() と next_counter() はコンパイル時に初期化された
+$counter というプライベート変数を共有します。
+
+=begin original
+
+To declare a file-private variable, you'll still use a my(), putting
+the declaration at the outer scope level at the top of the file.
+Assume this is in file Pax.pm:
+
+=end original
+
+ファイルプライベートな変数を宣言するにはmy()を使う必要があり、
+ファイルの先頭で outer スコープレベルに宣言を置きます。
+以下のコードが Pax.pm というファイルにあったと仮定します:
+
+    package Pax;
+    my $started = scalar(localtime(time()));
+
+    sub begun { return $started }
+
+=begin original
+
+When C<use Pax> or C<require Pax> loads this module, the variable will
+be initialized.  It won't get garbage-collected the way most variables
+going out of scope do, because the begun() function cares about it,
+but no one else can get it.  It is not called $Pax::started because
+its scope is unrelated to the package.  It's scoped to the file.  You
+could conceivably have several packages in that same file all
+accessing the same private variable, but another file with the same
+package couldn't get to it.
+
+=end original
+
+C<use Pax> か C<require Pax> によってこのモジュールがロードされたとき、
+この変数は初期化されます。
+この変数はほとんどの変数がスコープから外れたときのように
+ガーベッジコレクトされることはありません。
+なぜなら、begun()関数はこの変数を使っていて、他の誰もこの変数を
+手に入れることはできないからです。
+これは $Pax::started と呼び出すこともできません。
+なぜなら、そのスコープはパッケージには関係ないものだからです。
+それはファイルスコープなのです。
+同じファイル中で同じプライベート変数をアクセスできるけれども、
+同じパッケージの他のファイルが変数にアクセスすることはできないような、
+幾つかのパッケージを持つことができると想像できるでしょう
+
+詳しくは L<perlsub/"Perstent Private Variables"> を参照してください。
+
+=head2 What's the difference between dynamic and lexical (static) scoping?  Between local() and my()?
+
+(動的スコープ(dynamic scoping)とレキシカルスコープ(lexical scoping, もしくは
+static scoping)との間の違いは何ですか? local()とmy()との違いは?)
+
+=begin original
+
+C<local($x)> saves away the old value of the global variable C<$x>
+and assigns a new value for the duration of the subroutine I<which is
+visible in other functions called from that subroutine>.  This is done
+at run-time, so is called dynamic scoping.  local() always affects global
+variables, also called package variables or dynamic variables.
+
+=end original
+
+C<local($x)> は、C<$x>のグローバルな値を保存して、サブルーチンの
+存在する間の新たな値を代入します。
+この変数はB<そのサブルーチンから呼び出された関数から参照できます>。
+これはコンパイル時ではなく、実行時に行われます。
+local() は常にグローバル変数に対して作用し、
+パッケージ変数とか動的変数(dynamic variables)と呼ばれることもあります。
+
+=begin original
+
+C<my($x)> creates a new variable that is only visible in the current
+subroutine.  This is done at compile-time, so it is called lexical or
+static scoping.  my() always affects private variables, also called
+lexical variables or (improperly) static(ly scoped) variables.
+
+=end original
+
+C<my($x)>は、現在のサブルーチンにおいてのみ参照できる変数を新たに生成します。
+これはコンパイル時に行われるので、レキシカルスコープだとか
+静的スコープと呼ばれます。my()はプライベート変数に作用し、
+レキシカル変数とか(間違って)静的(スコープを持った)変数と呼ばれることもあります。
+
+例を挙げましょう:
+
+    sub visible {
+	print "var has value $var\n";
+    }
+
+    sub dynamic {
+	local $var = 'local';	# $var という名前の変数の新たなす
+	visible();              # テンポラリ値はまだグローバルです
+    }
+
+    sub lexical {
+	my $var = 'private';    # 新しいプライベート変数である $var
+	visible();              # (subスコープの外側では不可視です)
+    }
+
+    $var = 'global';
+
+    visible();      		# グローバルなものを出力
+    dynamic();      		# ローカルなものを出力
+    lexical();      		# グローバルなものを出力
+
+"private"という値を出力させる方法がないということに注目してください。
+これは、$varが関数の lexical()なブロックの内側でのみその値を持っていて、
+そこから呼び出されたサブルーチンからは隠されてしまうからです。
+
+まとめると、local()はあなたがプライベートと考えるようなことをローカルな
+変数に対して行うようなことはありません。
+これはグローバル変数に一時的な値を与えるだけです。
+my()は、あなたがプライベート変数を必要としているときに探し求めているものです。
+
+このことをより詳しく説明している
+See L<perlsub/"Private Variables via my()"> と
+L<perlsub/"Temporary Values via local()"> を参照してください。
+
+=head2 How can I access a dynamic variable while a similarly named lexical is in scope?
+
+(どうやれば同じ名前のlexicalがスコープにあるときに動的変数にアクセスできますか?)
+
+これは、C<use strict "refs">とせずにシンボリックリファレンスを使えばできます。
+ですから、$var ではなく C<${'var'}>を使います
+
+    local $var = "global";
+    my    $var = "lexical";
+
+    print "lexical is $var\n";
+
+    no strict 'refs';
+    print "global  is ${'var'}\n";
+
+自分のパッケージを知っているのなら、これを $Some_Pack::var と陽に記述できます。
+$::var という記法はカレントパッケージにおける動的な$varではなく、
+C<main>パッケージの中にあるそれなのだということに注意してください。
+パッケージを直接指定することによってその名前をハードコードすることになりますが、
+実行速度を速くし、C<use strict "refs">と衝突することを避けます。
+
+=head2 What's the difference between deep and shallow binding?
+
+(深い束縛(deep binding)と浅い束縛(shallow binding)との間の違いとは?)
+
+深い束縛では、無名サブルーチンに置かれているleical変数はそのサブルーチンが
+生成されたときのものと同一のものになります。
+浅い束縛では、これはそのサブルーチンが呼び出されたときのスコープに存在している
+同じ名前を持った変数のどれか、になります。
+Perl はレキシカル変数(つまり、my()によって作られるもの)に対しては
+常に深い束縛を使います。
+それに対し動的変数(つまりグローバル変数か、ローカル変数か、パッケージ変数)では、
+浅い束縛がなされます。
+こういったものを使わない理由がもう一つあります。
+その答えは L<"What's a closure?">を参照してください。
+
+=head2 Why doesn't "my($foo) = <FILE>;" work right?
+
+(なぜ "my($foo) = <FILE>;" が正しく動作しないのでしょうか?)
+
+C<my()>とC<local()>はC<=>の右辺に対してリストコンテキストを与えます。
+読み込み操作 <FH>は Perlの関数や演算子の多くと同じくそれが呼び出されたときの
+コンテキストを見分けることができて、それに応じて適切に振る舞います。
+一般的には、scalar()関数が助けになるでしょう。
+その関数は(一般的な神話(myth)とは反して)引数となるデータに対して
+何も行いませんが、引数がスカラーとして振る舞うように指示します。
+関数のスカラー時の振る舞いが定義されていないのであれば、
+当然ながらこれはあなたの助けにはなりません(sort()がそうです)。
+
+しかしながら特定のケースにおいては、スカラーコンテキストを強制するために
+単に括弧を取り除く必要があります:
+
+    local($foo) = <FILE>;	    # 間違い
+    local($foo) = scalar(<FILE>);   # ok
+    local $foo  = <FILE>;	    # 正しい
+
+これと同じ問題があるものの、なんにしろレキシカル変数を使うべきでしょう。
+
+    my($foo) = <FILE>;	# 間違い
+    my $foo  = <FILE>;	# 正しい
+
+=head2 How do I redefine a builtin function, operator, or method?
+
+(組み込みの関数や演算子、メソッドを再定義するには?)
+
+なんだってそんなことをしたがるのですか? :-)
+
+open()のようなあらかじめ定義されている関数をオーバーライドしたいのであれば、
+異なるモジュールから新しい定義をimportする必要があるでしょう。
+L<perlsub/"Overriding Built-in Functions">を参照してください。
+L<perltoot/"Class::Template">にも例があります。
+
+C<+> や C<**>のようなPerlの演算子をオーバーロードしたいのであれば
+L<overload>で説明されているような C<use overload>プラグマを使いたくなるでしょう。
+
+親クラス郡における不明瞭なメソッド呼び出しについて考えているのなら、
+L<perltoot/"Overridden Methods">を参照してください。
+
+=head2 What's the difference between calling a function as &foo and foo()?
+
+(関数呼び出しを &fooで行ったときとfoo()で行ったときとの違いはなんですか?)
+
+関数を C<&foo>として呼び出したとき、その関数はプロトタイプを無視して
+カレントの@_の値全てにアクセスすることができます。
+これはつまり、空の@_を受け取るのではなくてあなたが使っていた
+それを受け取るということなのです!
+これは厳密にバグとは考えられていませんが(L<perlsub>に説明があります)、
+ほとんどの場合はこの機能が使われるとは考えられないでしょう。
+
+C<&foo()>のように関数を呼び出した場合には新たな @_を受け取りますが、
+この場合もプロトタイプは無視されます。
+
+通常は、関数を  C<foo()>のように呼び出したいでしょう。
+既に定義がされていたり(C<require> ではなくC<use>)、先行宣言を使っていたり、
+C<use subs> 宣言などがあってコンパイラーが既にその関数を知っているときにのみ
+括弧を省略することができます。
+この場合でさえ、そこにあるべきでない古い値が漏れだしていることのない
+クリーンな @_ を得られます。
+
+=head2 How do I create a switch or case statement?
+
+(switch文やcase文を作るには?)
+
+これは L<perlsyn>でより詳細に説明されています。
+簡単にいうと、Perl では様々なやり方(数値比較、文字列比較、グロブ比較、
+正規表現マッチング、オーバーロードされた比較…)で検査が行えるので、
+正式な case 文はありません。
+Larry はこのどれが最善であるかを決めることができないので、
+perl1 の時代から wish リストに置かれているにも関らずこの問題は
+そのままにしておかれているのです。
+
+構造文を書くための一般的な答えは以下のようなものです:
+
+    for ($variable_to_test) {
+	if    (/pat1/)  { }     # 何かを行う
+	elsif (/pat2/)  { }     # 別の何かを行う
+	elsif (/pat3/)  { }     # 別の何かを行う
+	else            { }     # デフォルト
+    } 
+
+以下の例は、パターンマッチングに基づいた単純なswitchの例です。
+$whatchamacallitに格納されたリファレンスの型に基づいて多様なやり方の
+条件判断を行っています:
+
+    SWITCH: for (ref $whatchamacallit) {
+
+	/^$/		&& die "not a reference";
+
+	/SCALAR/	&& do {
+				print_scalar($$ref);
+				last SWITCH;
+			};
+
+	/ARRAY/		&& do {
+				print_array(@$ref);
+				last SWITCH;
+			};
+
+	/HASH/		&& do {
+				print_hash(%$ref);
+				last SWITCH;
+			};
+
+	/CODE/		&& do {
+				warn "can't print function ref";
+				last SWITCH;
+			};
+
+	# DEFAULT
+
+	warn "User defined type skipped";
+
+    }
+
+この形式の他の例についてはC<perlsyn/"Basic BLOCKs and Switch Statements">を
+参照してください。
+
+=begin original
+
+Sometimes you should change the positions of the constant and the variable.
+For example, let's say you wanted to test which of many answers you were
+given, but in a case-insensitive way that also allows abbreviations.
+You can use the following technique if the strings all start with
+different characters or if you want to arrange the matches so that
+one takes precedence over another, as C<"SEND"> has precedence over
+C<"STOP"> here:
+
+=end original
+
+定数や変数の位置を変えた方が良いことがあるかもしれません。
+たとえば、与えられたたくさんの答についてテストを行いたいとしましょう。
+この場合大小文字を無視することもできますし、
+略記することもあります。もし全て文字列が異なるキャラクターで始まっていたり、
+C<"SEND">がC<"STOP">
+より高い優先順位を持つように調整したくいのならマッチの順序を
+アレンジしたいのであれば以下に示すようなテクニックを使うことができます。
+
+    chomp($answer = <>);
+    if    ("SEND"  =~ /^\Q$answer/i) { print "Action is send\n"  }
+    elsif ("STOP"  =~ /^\Q$answer/i) { print "Action is stop\n"  }
+    elsif ("ABORT" =~ /^\Q$answer/i) { print "Action is abort\n" }
+    elsif ("LIST"  =~ /^\Q$answer/i) { print "Action is list\n"  }
+    elsif ("EDIT"  =~ /^\Q$answer/i) { print "Action is edit\n"  }
+
+まったく異なるアプローチに、関数のリファレンスのハッシュを作成するという
+やり方があります。
+
+    my %commands = (
+        "happy" => \&joy,
+        "sad",  => \&sullen,
+        "done"  => sub { die "See ya!" },
+        "mad"   => \&angry,
+    );
+
+    print "How are you? ";
+    chomp($string = <STDIN>);
+    if ($commands{$string}) {
+        $commands{$string}->();
+    } else {
+        print "No such command: $string\n";
+    } 
+
+=head2 How can I catch accesses to undefined variables/functions/methods?
+
+(どうすれば undefinedな変数/関数/メソッドに対するアクセスを捕捉できますか?)
+
+L<perlsub/"Autoloading"> と L<perltoot/"AUTOLOAD: Proxy Methods">で
+言及されている AUTOLOADメソッドは、undefine な関数やメソッドに対する
+呼び出しを捕捉させてくれます。
+
+C<-w>が有効なときに警告の引き金になるような未定義変数へのアクセスがあったとき、
+以下の例にあるような擬似シグナルC<__WARN__>をトラップするハンドラーを
+使うことができます:
+
+    $SIG{__WARN__} = sub {
+
+	for ( $_[0] ) {		# voici un switch statement 
+
+	    /Use of uninitialized value/  && do {
+		# 警告をエラーにします
+		die $_;
+	    };
+
+	    # その他の警告はここで捕捉できます
+
+	    warn $_;
+	}
+
+    };
+
+=head2 Why can't a method included in this same file be found?
+
+(なぜ同じファイルにあるメソッドが見つけられないのでしょうか?)
+
+幾つかの理由が考えられます: あなたが継承したものが混乱していているか、
+メソッド名を間違えたか、あるいはオブジェクトの型が間違っていたか。
+上記の場合に関する詳細は L<perltoot> をチェックしてみてください。
+C<$object> がblessされているクラスは C<print ref($object)>として
+見分けることができます。
+
+もう一つありうる理由は、Perlがパッケージを見いだす前にクラス名を使った
+間接オブジェクト構文(C<find Guru "Samy">のようなもの)を使ったためでしょう。
+パッケージは、それを使うよりも前に全てが定義されているようにします。
+これはC<require>文ではなくC<use>文を使えば考慮されます。
+あるいは、代わりに矢印記法(arrow notation、
+C<< Guru->find("Samy") >> のようなもの)を使うようにしてください。
+オブジェクトの記法はL<perlobj>で説明されています。
+
+=begin original
+
+Make sure to read about creating modules in L<perlmod> and
+the perils of indirect objects in L<perlobj/"WARNING">.
+
+=end original
+
+モジュールの作り方については L<perlmod> を、
+間接オブジェクトの問題点については L<perlobj/"WARNING"> を
+確認してください。
+
+=head2 How can I find out my current package?
+
+(カレントのパッケージはどうすればわかりますか?)
+
+ランダムなプログラムであるなら、以下のようにすれば現在コンパイルされている
+パッケージを知ることができます:
+
+    my $packname = __PACKAGE__;
+
+=begin original
+
+But, if you're a method and you want to print an error message
+that includes the kind of object you were called on (which is
+not necessarily the same as the one in which you were compiled):
+
+=end original
+
+しかし、対象がメソッドで、呼び出されたオブジェクトの種類がなんであるかを
+含んだエラーメッセージを出力したいのなら(これはそれが
+コンパイルされたものと同一である必要はありません):
+
+
+    sub amethod {
+	my $self  = shift;
+	my $class = ref($self) || $self;
+	warn "called me from a $class object";
+    }
+
+=head2 How can I comment out a large block of perl code?
+
+(perlプログラムの大きなブロックをコメントアウトするのは
+どうすればできますか?)
+
+埋め込みのPODを説明のために使います:
+
+    # プログラムはここに
+
+    =for nobody
+    このパラグラフはコメントアウトされます
+
+    # プログラムの続き
+
+    =begin comment text
+
+    ここにあるものすべては
+
+    なにからも無視されます
+
+    =end comment text
+
+    =cut
+
+=begin original
+
+This can't go just anywhere.  You have to put a pod directive where
+the parser is expecting a new statement, not just in the middle
+of an expression or some other arbitrary yacc grammar production.
+
+=end original
+
+これはどこにでも置けるわけではありません。パーザーが
+新しいステートメントを期待している場所にpod指令を置く必要があって、
+式の途中であるとかその他任意の yacc 文法生成規則には置けません。
+
+=head2 How do I clear a package?
+
+(パッケージをクリアするには?)
+
+Mark-Jason Dominusによる以下のコードを使います:
+
+
+    sub scrub_package {
+	no strict 'refs';
+	my $pack = shift;
+	die "Shouldn't delete main package" 
+	    if $pack eq "" || $pack eq "main";
+	my $stash = *{$pack . '::'}{HASH};
+	my $name;
+	foreach $name (keys %$stash) {
+	    my $fullname = $pack . '::' . $name;
+	    # 名前に関する全てのものを取り去る
+	    undef $$fullname;
+	    undef @$fullname;
+	    undef %$fullname;
+	    undef &$fullname;
+	    undef *$fullname;
+	}
+    }
+
+あるいは、あなたが使っている Perl が最近のリリースのものであれば、
+単に Symbol::delete_package() という関数を代わりに使うことができます。
+
+=head2 How can I use a variable as a variable name?
+
+(変数を変数名として使うにはどうすればいいですか?)
+
+=begin original
+
+Beginners often think they want to have a variable contain the name
+of a variable.
+
+=end original
+
+初心者はしばしば変数名が入った変数を使いたいと考えます。
+
+    $fred    = 23;
+    $varname = "fred";
+    ++$$varname;         # $fred now 24
+
+=begin original
+
+This works I<sometimes>, but it is a very bad idea for two reasons.
+
+=end original
+
+これはI<時には>動作します。しかしこれは二つの理由により悪いアイデアです。
+
+=begin original
+
+The first reason is that this technique I<only works on global
+variables>.  That means that if $fred is a lexical variable created
+with my() in the above example, the code wouldn't work at all: you'd
+accidentally access the global and skip right over the private lexical
+altogether.  Global variables are bad because they can easily collide
+accidentally and in general make for non-scalable and confusing code.
+
+=end original
+
+一つ目の理由は、このテクニックはI<グローバル変数でのみ動作する>からです。
+つまり、もし上記の例において $fred が my() で作成されたレキシカル変数の場合、
+このコードは全く動作しません。プライベートなレキシカル変数を飛ばして、
+思いがけずグローバル変数にアクセスすることになります。
+グローバル変数は、簡単に衝突し、一般に拡張性がなく、混乱するコードを
+作ることになるので、よくないものです。
+
+=begin original
+
+Symbolic references are forbidden under the C<use strict> pragma.
+They are not true references and consequently are not reference counted
+or garbage collected.
+
+=end original
+
+シンボリックリファレンスは C<use strict> プラグマの元では禁止されます。
+これは真のリファレンスではないので、リファレンスカウントに含まれず、
+ガベージゴレクションもされません。
+
+=begin original
+
+The other reason why using a variable to hold the name of another
+variable is a bad idea is that the question often stems from a lack of
+understanding of Perl data structures, particularly hashes.  By using
+symbolic references, you are just using the package's symbol-table hash
+(like C<%main::>) instead of a user-defined hash.  The solution is to
+use your own hash or a real reference instead.
+
+=end original
+
+変数に他の変数の名前を記録するというのがよくない考えであるという
+別の理由としては、このような疑問はしばしば Perl のデータ構造、
+特にハッシュに関する理解の不足から発生するからです。
+シンボリックリファレンスを使うことによって、
+ユーザー定義のハッシュの代わりにパッケージのシンボルテーブルハッシュ
+(C<%main::> など)を使うことができます。
+解決法は、代わりに自分自身のハッシュや真のリファレンスを使うことです。
+
+    $fred    = 23;
+    $varname = "fred";
+    $USER_VARS{$varname}++;  # not $$varname++
+
+=begin original
+
+There we're using the %USER_VARS hash instead of symbolic references.
+Sometimes this comes up in reading strings from the user with variable
+references and wanting to expand them to the values of your perl
+program's variables.  This is also a bad idea because it conflates the
+program-addressable namespace and the user-addressable one.  Instead of
+reading a string and expanding it to the actual contents of your program's
+own variables:
+
+=end original
+
+ここではシンボリックリファレンスの代わりに %USER_VARS ハッシュを使っています。
+時々これはユーザーから文字列を変数へのリファレンスとして読み込んで、
+それを perl プログラムの変数の値として拡張することがあります。
+これもよくない考えです。なぜなら、プログラムが指定する名前空間と
+ユーザーが指定する名前空間を融合させることになるからです。
+以下のように文字列を読み込んであなたのプログラムの変数の実際の内容の
+ために拡張するのではなく:
+
+
+    $str = 'this has a $fred and $barney in it';
+    $str =~ s/(\$\w+)/$1/eeg;		  # need double eval
+
+=begin original
+
+it would be better to keep a hash around like %USER_VARS and have
+variable references actually refer to entries in that hash:
+
+=end original
+
+%USER_VARS のようなハッシュを保存し、このハッシュの
+エントリを参照する変数リファレンスを持つよりよい方法です:
+
+    $str =~ s/\$(\w+)/$USER_VARS{$1}/g;   # no /e here at all
+
+=begin original
+
+That's faster, cleaner, and safer than the previous approach.  Of course,
+you don't need to use a dollar sign.  You could use your own scheme to
+make it less confusing, like bracketed percent symbols, etc.
+
+=end original
+
+これは前述の手法よりも、より高速で、より明快で、より安全です。
+もちろん、ドル記号を使う必要はありません。
+パーセント記号で囲むなどのより混乱しにくい独自のスキームを使えます。
+
+    $str = 'this has a %fred% and %barney% in it';
+    $str =~ s/%(\w+)%/$USER_VARS{$1}/g;   # no /e here at all
+
+=begin original
+
+Another reason that folks sometimes think they want a variable to
+contain the name of a variable is because they don't know how to build
+proper data structures using hashes.  For example, let's say they
+wanted two hashes in their program: %fred and %barney, and that they
+wanted to use another scalar variable to refer to those by name.
+
+=end original
+
+人々が時々変数名が入った変数を欲しがるもう一つの理由は、
+ハッシュを使った適切なデータ構造を構築する方法を知らないからです。
+例えば、プログラムで%fredと%barneyが必要で、
+さらにこれらを名前で参照するスカラへ変数が必要だとします。
+
+    $name = "fred";
+    $$name{WIFE} = "wilma";     # set %fred
+
+    $name = "barney";           
+    $$name{WIFE} = "betty";	# set %barney
+
+=begin original
+
+This is still a symbolic reference, and is still saddled with the
+problems enumerated above.  It would be far better to write:
+
+=end original
+
+これはやはりシンボリックリファレンスで、やはり上記の問題を抱えたままです。
+以下のように書けば遥かに改善します:
+
+    $folks{"fred"}{WIFE}   = "wilma";
+    $folks{"barney"}{WIFE} = "betty";
+
+=begin original
+
+And just use a multilevel hash to start with.
+
+=end original
+
+そして始めるのに単に多段ハッシュを使います。
+
+=begin original
+
+The only times that you absolutely I<must> use symbolic references are
+when you really must refer to the symbol table.  This may be because it's
+something that can't take a real reference to, such as a format name.
+Doing so may also be important for method calls, since these always go
+through the symbol table for resolution.
+
+=end original
+
+唯一あなたが完全にシンボリックリファレンスを I<使わなければならない> 場合は、
+シンボルテーブルに対するリファレンスが必要なときだけです。
+これは、フォーマット名といったものに対する真のリファレンスを得ることが
+できないからです。
+そうすることはメソッド呼び出しのためにも重要です。
+なぜなら名前解決のためにシンボルテーブルを使うからです。
+
+=begin original
+
+In those cases, you would turn off C<strict 'refs'> temporarily so you
+can play around with the symbol table.  For example:
+
+=end original
+
+これらの場合、一時的に C<strict 'refs'> にして
+シンボルテーブルを使うようにできます。例えば:
+
+    @colors = qw(red blue green yellow orange purple violet);
+    for my $name (@colors) {
+        no strict 'refs';  # renege for the block
+        *$name = sub { "<FONT COLOR='$name'>@_</FONT>" };
+    } 
+
+=begin original
+
+All those functions (red(), blue(), green(), etc.) appear to be separate,
+but the real code in the closure actually was compiled only once.
+
+=end original
+
+これら(red(), blue(), green()など)の関数全ては別々に現れますが、
+クロージャの中の実際のコードは一回だけコンパイルされます。
+
+=begin original
+
+So, sometimes you might want to use symbolic references to directly
+manipulate the symbol table.  This doesn't matter for formats, handles, and
+subroutines, because they are always global--you can't use my() on them.
+For scalars, arrays, and hashes, though--and usually for subroutines--
+you probably only want to use hard references.
+
+=end original
+
+シンボルテーブルを直接操作するためにシンボリックリファレンスを
+使いたくなることがあるかもしれません。
+これには、フォーマット、ハンドル、サブルーチンには関係ありません。
+これらは常にグローバルだからです--これらに my() を使うことはできません。
+おそらく、スカラー、配列、ハッシュのために--そして普通はサブルーチンのために--
+だけ、ハードリファレンスが必要でしょう。
+
+=head1 AUTHOR AND COPYRIGHT
+
+Copyright (c) 1997-1999 Tom Christiansen and Nathan Torkington.
+All rights reserved.
+
+When included as part of the Standard Version of Perl, or as part of
+its complete documentation whether printed or otherwise, this work
+may be distributed only under the terms of Perl's Artistic License.
+Any distribution of this file or derivatives thereof I<outside>
+of that package require that special arrangements be made with
+copyright holder.
+
+Irrespective of its distribution, all code examples in this file
+are hereby placed into the public domain.  You are permitted and
+encouraged to use this code in your own programs for fun
+or for profit as you see fit.  A simple comment in the code giving
+credit would be courteous but is not required.

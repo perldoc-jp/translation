@@ -1,0 +1,1717 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+Net::Server - Extensible, general Perl server engine
+
+=end original
+
+Net::Server - Perlによる拡張可能な汎用サーバエンジン
+
+=head1 概要
+
+  #!/usr/bin/perl -w -T
+  package MyPackage;
+
+  use Net::Server;
+  @ISA = qw(Net::Server);
+
+  sub process_request {
+     #...コード...
+  }
+
+  MyPackage->run(port => 160);
+  exit;
+
+=head1 取得方法
+
+=begin original
+
+Visit http://seamons.com/ for the latest version.
+
+=end original
+
+http://seamons.com/ に最新バージョンがある
+
+=head1 特徴
+
+=begin original
+
+ * Single Server Mode
+ * Inetd Server Mode
+ * Preforking Simple Mode (PreForkSimple)
+ * Preforking Managed Mode (PreFork)
+ * Forking Mode
+ * Multiplexing Mode using a single process
+ * Multi port accepts on Single, Preforking, and Forking modes
+ * Simultaneous accept/recv on tcp, udp, and unix sockets
+ * Safe signal handling in Fork/PreFork avoids perl signal trouble
+ * User customizable hooks
+ * Chroot ability after bind
+ * Change of user and group after bind
+ * Basic allow/deny access control
+ * Customized logging (choose Syslog, log_file, or STDERR)
+ * HUP able server (clean restarts via sig HUP)
+ * Dequeue ability in all Fork and PreFork modes.
+ * Taint clean
+ * Written in Perl
+ * Protection against buffer overflow
+ * Clean process flow
+ * Extensibility
+
+=end original
+
+ * シングルサーバモード
+ * Inetdサーバモード
+ * 単純なプリフォークモード (PreForkSimple)
+ * 管理されたプリフォークモード (PreFork)
+ * フォークモード
+ * 単一プロセスを利用した多重化モード
+ * シングル、プリフォーク、フォークモードで複数ポートにacceptできる
+ * tcp、udp、unixソケットに対し同時にaccept/recvできる
+ * Fork/PreForkで安全にシグナルを扱うことによってPerlのシグナルトラブルを回避
+ * hookを使ってユーザカスタマイズが可能
+ * bind後にchroot可能
+ * bind後にuserとgroupを変更
+ * 基本的な allow/deny アクセスコントロール
+ * ログ取りのカスタマイズ（Syslog、logファイル、あるいはSTDERRから選択）
+ * HUP可能なサーバ（HUPシグナルを通じてクリーンに再起動）
+ * 全てのフォーク及びプリフォークモードでキューの取り出しが可能
+ * 汚染チェックモード(Taint)で正しく動作する
+ * Perlで書かれている
+ * バッファオーバーフローから守られる
+ * クリーンなプロセス制御
+ * 拡張可能
+
+
+=head1 説明
+
+=begin original
+
+C<Net::Server> is an extensible, generic Perl server engine.
+C<Net::Server> combines the good properties from
+C<Net::Daemon> (0.34), C<NetServer::Generic> (1.03), and
+C<Net::FTPServer> (1.0), and also from various concepts in
+the Apache Webserver.
+
+=end original
+
+C<Net::Server>は拡張可能な汎用Perlサーバエンジンである。
+C<Net::Server>はC<Net::Daemon> (0.34)とC<NetServer::Generic> (1.03)、
+そしてC<Net::FTPServer> (1.0)の持っている優れた性質と、さらには
+Apache Webサーバにおける様々なコンセプトとを結合している。
+
+=begin original
+
+C<Net::Server> attempts to be a generic server as in
+C<Net::Daemon> and C<NetServer::Generic>.  It includes with
+it the ability to run as an inetd process
+(C<Net::Server::INET>), a single connection server
+(C<Net::Server> or C<Net::Server::Single>), a forking server
+(C<Net::Server::Fork>), a preforking server which maintains
+a constant number of preforked children (C<Net::Server::PreForkSimple>),
+or as a managed preforking server which maintains the number
+of children based on server load (C<Net::Server::PreFork>).
+In all but the inetd type, the server provides the ability to
+connect to one or to multiple server ports.
+
+=end original
+
+C<Net::Server>はC<Net::Daemon>とC<NetServer::Generic>のような
+汎用サーバになることを試みる。これには以下のような機能が含まれる。
+すなわち、inetdプロセス（C<Net::Server::INET>）、シングルコネクション
+サーバ（C<Net::Server>あるいはC<Net::Server::Single>）、フォークサーバ
+（C<Net::Server::Fork>）、予めforkされた子プロセスを一定数維持する
+プリフォークサーバ（C<Net::Server::PreForkSimple>）、あるいはサーバへの
+負荷に応じて子プロセス数を制御するプリフォークサーバ
+（C<Net::Server::PreFork>）として実行することができる。inetdタイプを
+除いて、全てのサーバは一つ以上のポートをコネクトすることができる。
+
+=begin original
+
+C<Net::Server> uses ideologies of C<Net::FTPServer> in order
+to provide extensibility.  The additional server types are
+made possible via "personalities" or sub classes of the
+C<Net::Server>.  By moving the multiple types of servers out of
+the main C<Net::Server> class, the C<Net::Server> concept is
+easily extended to other types (in the near future, we would
+like to add a "Thread" personality).
+
+=end original
+
+C<Net::Server>は拡張性を提供するためにC<Net::FTPServer>の理念を利用している。
+追加されるサーバタイプは"パーソナリティ"(personalities)、すなわち
+C<Net::Server>のサブクラスを通じて可能となる。メインとなる
+C<Net::Server>クラスからマルチタイプのサーバへと移行することによって、
+C<Net::Server>のコンセプトは容易に別のタイプへと拡張される
+（我々は近い将来、"スレッド"パーソナリティを追加したいと思っている）。
+
+=begin original
+
+C<Net::Server> borrows several concepts from the Apache
+Webserver.  C<Net::Server> uses "hooks" to allow custom
+servers such as SMTP, HTTP, POP3, etc. to be layered over
+the base C<Net::Server> class.  In addition the
+C<Net::Server::PreFork> class borrows concepts of
+min_start_servers, max_servers, and min_waiting servers.
+C<Net::Server::PreFork> also uses the concept of an flock
+serialized accept when accepting on multiple ports (PreFork
+can choose between flock, IPC::Semaphore, and pipe to control
+serialization).
+
+=end original
+
+C<Net::Server>はApache Webサーバから幾つかの概念を借りている。
+ベースとなるC<Net::Server>クラスの上に積み重ねるために
+SMTP、HTTP、POP3のようなカスタムサーバを可能にするよう、
+"フック"(hooks)を利用する。加えて、C<Net::Server::PreFork>クラスは
+min_start_servers、max_servers、そしてmin_waiting_serversという概念を
+借りている。また、C<Net::Server::PreFork>は複数のポートに対して待ち受けを
+行う際に、flockによる直列化されたacceptという考えも利用している
+（PreForkは直列化を制御するために、flock、IPC::Semaphore、そしてパイプの
+いずれかを選ぶことができる）。
+
+
+=head1 パーソナリティ
+
+=begin original
+
+C<Net::Server> is built around a common class (Net::Server)
+and is extended using sub classes, or C<personalities>.
+Each personality inherits, overrides, or enhances the base
+methods of the base class.
+
+=end original
+
+C<Net::Server>は共通クラス（Net::Server）の周囲に構築される。
+そしてサブクラス、すなわちC<personalities>を利用して拡張される。
+各パーソナリティは基底クラスのメソッドを継承・オーバーライド、
+エンハンスする。
+
+=begin original
+
+Included with the Net::Server package are several basic
+personalities, each of which has their own use.
+
+=end original
+
+Net::Serverパッケージには幾つかのベースパーソナリティが含まれているが、
+それらは皆、独自の利用をする。
+
+=over 4
+
+=item Fork
+
+=begin original
+
+Found in the module Net/Server/Fork.pm (see
+L<Net::Server::Fork>).  This server binds to one or more
+ports and then waits for a connection.  When a client
+request is received, the parent forks a child, which then
+handles the client and exits.  This is good for moderately
+hit services.
+
+=end original
+
+Net/Server/Fork.pmに基づく（L<Net::Server::Fork>を参照）。
+このサーバは一つ以上のポートにbindし、コネクションを待つ。
+クライアントのリクエストを受け取ると、親プロセスは子プロセスを
+forkし、子プロセスがクライアントの処理を制御し、exitする。
+これはサーバへのアクセスが穏やかな場合に適している。
+
+
+=item INET
+
+=begin original
+
+Found in the module Net/Server/INET.pm (see
+L<Net::Server::INET>).  This server is designed to be used
+with inetd.  The C<pre_bind>, C<bind>, C<accept>, and
+C<post_accept> are all overridden as these services are
+taken care of by the INET daemon.
+
+=end original
+
+Net/Server/INET.pmに基づく（L<Net::Server::INET>を参照）。
+このサーバはinetdを利用するように設計されている。
+C<pre_bind>、C<bind>、C<accept>そしてC<post_accept>は全て
+INETデーモンによって扱われるサービスとしてオーバーライドされる。
+
+=item MultiType
+
+=begin original
+
+Found in the module Net/Server/MultiType.pm (see
+L<Net::Server::MultiType>).  This server has no server
+functionality of its own.  It is designed for servers which
+need a simple way to easily switch between different
+personalities.  Multiple C<server_type> parameters may be
+given and Net::Server::MultiType will cycle through until it
+finds a class that it can use.
+
+=end original
+
+Net/Server/MultiType.pmに基づく（L<Net::Server::MultiType>を参照）。
+このサーバはそれ自身としてサーバの機能は持たない。
+様々なパーソナリティを簡単に切り替えるための単純な方法を必要とする
+サーバのためにデザインされている。複数の C<server_type>パラメータが
+与えられると、利用可能なクラスが見つかるまで、Net::Server::MultiTypeは順に
+探していく。
+
+=item Multiplex
+
+=begin original
+
+Found in the module Net/Server/Multiplex.pm (see
+L<Net::Server::Multiplex>).  This server binds to one or more
+ports.  It uses IO::Multiplex to multiplex between waiting
+for new connections and waiting for input on currently
+established connections.  This personality is designed to
+run as one process without forking.  The C<process_request>
+method is never used but the C<mux_input> callback is used
+instead (see also L<IO::Multiplex>).  See
+examples/samplechat.pl for an example using most of the
+features of Net::Server::Multiplex.
+
+=end original
+
+Net/Server/Multiplex.pmに基づく（L<Net::Server::Multiplex>を参照）。
+このサーバは一つ以上のポートにbindする。新しいコネクションのための待機と、
+現在確立されたコネクションからの入力待ちとを多重化するために、
+IO::Multiplexを利用する。このパーソナリティはforkを使わないで一つの
+プロセスとして実行するために設計されている。C<process_request>メソッドは
+決して使われず、代わりにC<mux_input>コールバックが利用される
+（L<IO::Multiplex>も参照）。Net::Server::Multiplexのほとんどの機能を使っている
+サンプルコードexamples/samplechat.plを参照のこと。
+
+
+=item PreForkSimple
+
+=begin original
+
+Found in the module Net/Server/PreFork.pm (see
+L<Net::Server::PreFork>).  This server binds to one or more
+ports and then forks C<max_servers> child process.  The
+server will make sure that at any given time there are always
+C<max_servers> available to receive a client request.  Each
+of these children will process up to C<max_requests> client
+connections.  This type is good for a heavily hit site that
+can dedicate max_server processes no matter what the load.
+It should scale well for most applications.  Multi port accept
+is accomplished using either flock, IPC::Semaphore, or pipe to serialize the
+children.  Serialization may also be switched on for single
+port in order to get around an OS that does not allow multiple
+children to accept at the same time.  For a further
+discussion of serialization see L<Net::Server::PreFork>.
+
+=end original
+
+Net/Server/PreForkSimple.pmに基づく（L<Net::Server::PreForkSimple>を参照）。
+このサーバは一つ以上のポートにbindし、C<max_servers>個の子プロセスを
+forkする。サーバは常にC<max_servers>個のクライアントリクエストを
+受け付けられることを保証する。このタイプはアクセスの激しいサイトに適して
+おり、負荷に関わりなくmax_server個のプロセスを実行できる。
+これはほとんどのアプリケーション用に適しているといえる。複数のポートを
+受け付けるために、flock、IPC::Semaphore、ないしはパイプのいずれかを利用
+して子プロセスを直列化する。複数の子プロセスが同時にacceptするのを許可
+しないOSに対処するため、直列化を単一ポート用に切り替えるかもしれない。
+今後の直列化についての議論についてははL<Net::Server::PreFork>を見よ。
+
+
+=item PreFork
+
+=begin original
+
+Found in the module Net/Server/PreFork.pm (see
+L<Net::Server::PreFork>).  This server binds to one or more
+ports and then forks C<min_servers> child process.  The
+server will make sure that at any given time there are
+at least C<min_spare_servers> but not more than C<max_spare_servers>
+available to receive a client request, up
+to C<max_servers>.  Each of these children will process up
+to C<max_requests> client connections.  This type is good
+for a heavily hit site, and should scale well for most
+applications.  Multi port accept is accomplished using
+either flock, IPC::Semaphore, or pipe to serialize the
+children.  Serialization may also be switched on for single
+port in order to get around an OS that does not allow multiple
+children to accept at the same time.  For a further
+discussion of serialization see L<Net::Server::PreFork>.
+
+=end original
+
+Net/Server/PreFork.pmに基づく（L<Net::Server::PreFork>を参照）。
+このサーバは一つ以上のポートにbindし、C<min_servers>個の子プロセスを
+forkする。サーバは常に、少なくともC<min_spare_servers>個以上、
+C<max_spare_servers>以下のクライアントリクエストを受け付け、
+最大C<max_servers>まで受付られることを保証する。
+これらの子プロセスは皆、C<max_requests>個までのクライアントコネクションを
+処理する。このタイプはアクセスの激しいサイトに適しており、ほとんどの
+アプリケーションにとってちょうど良いものとなる。複数のポートを
+受け付けるために、flock、IPC::Semaphore、ないしはパイプのいずれかを利用
+して子プロセスを直列化する。複数の子プロセスが同時にacceptするのを許可
+しないOSに対処するため、直列化を単一ポート用に切り替えるかもしれない。
+今後の直列化についての議論についてははL<Net::Server::PreFork>を見よ。
+
+=item Single
+
+=begin original
+
+All methods fall back to Net::Server.  This personality is
+provided only as parallelism for Net::Server::MultiType.
+
+=end original
+
+全てのメソッドはNet::Serverに還元される。このパーソナリティは
+Net::Server::MultiTypeに対応したものとしてのみ提供される。
+
+=back
+
+=begin original
+
+C<Net::Server> was partially written to make it easy to add
+new personalities.  Using separate modules built upon an
+open architecture allows for easy addition of new features,
+a separate development process, and reduced code bloat in
+the core module.
+
+=end original
+
+C<Net::Server>は部分的ではるが、新たなパーソナリティを追加しやすい
+ように書かれている。オープンなアーキテクチャを基に構築された独立の
+モジュールを使うことによって、新しい機能、別個に開発されたプロセス、
+そしてコアモジュールから膨れ出したために縮めることになったコードを
+容易に追加できる。
+
+
+=head1 ソケットアクセス
+
+=begin original
+
+Once started, the Net::Server will take care of binding to
+port and waiting for connections.  Once a connection is
+received, the Net::Server will accept on the socket and
+will store the result (the client connection) in
+$self-E<gt>{server}-E<gt>{client}.  This property is a
+Socket blessed into the the IO::Socket classes.  UDP
+servers are slightly different in that they will perform
+a B<recv> instead of an B<accept>.
+
+=end original
+
+ひとたび開始されると、Net::Serverはポートのbindとコネクションのための
+待機に取り掛かる。コネクションを受け取るとNet::Serverはソケットを受け入れ、
+その結果（クライアントコネクション）を$self-E<gt>{server}-E<gt>{client}に
+保持する。このプロパティはIO::SocketクラスにblessされたSocketである。
+UDPサーバは少し違っていて、B<accept>の代わりにB<recv>で処理を行なう。
+
+=begin original
+
+To make programming easier, during the post_accept phase,
+STDIN and STDOUT are opened to the client connection.  This
+allows for programs to be written using E<lt>STDINE<gt> and
+print "out\n" to print to the client connection.  UDP will
+require using a -E<gt>send call.
+
+=end original
+
+より簡単にプログラミングするために、post_accept段階の間は、
+STDINとSTDOUTをクライアントコネクションに開く。これによりプログラムはE<lt>STDINE<gt>を使って書き込まれ、print "out\n"で
+クライアントコネクションに書き込むことができる。
+UDPは-E<gt>sendの呼び出しが必要となる。
+
+
+=head1 サンプルコード
+
+=begin original
+
+The following is a very simple server.  The main
+functionality occurs in the process_request method call as
+shown below.  Notice the use of timeouts to prevent Denial
+of Service while reading.  (Other examples of using
+C<Net::Server> can, or will, be included with this distribution).
+
+=end original
+
+以下は非常にシンプルなサーバ例である。中心となる機能は下記に示した
+process_requestメソッドの呼び出し部分である。
+読み取り中のサービス拒否攻撃を防ぐためにタイムアウトを利用している
+点に注目（C<Net::Server>で使用しているほかの例はこの
+ディストリビューションを含んでいる可能性がある、ないしはそうしている）。
+
+  #!/usr/bin/perl -w -T
+  #--------------- file test.pl ---------------
+
+  package MyPackage;
+
+  use strict;
+  use vars qw(@ISA);
+  use Net::Server::PreFork; # どのパーソナリティでも行う
+
+  @ISA = qw(Net::Server::PreFork);
+
+  MyPackage->run();
+  exit;
+
+  ### 下のサブルーチンをオーバーライドする
+
+  sub process_request {
+    my $self = shift;
+    eval {
+
+      local $SIG{ALRM} = sub { die "Timed Out!\n" };
+      my $timeout = 30; # 行入力に30秒の時間を与える
+
+      my $previous_alarm = alarm($timeout);
+      while( <STDIN> ){
+        s/\r?\n$//;
+        print "You said \"$_\"\r\n";
+        alarm($timeout);
+      }
+      alarm($previous_alarm);
+
+    };
+
+    if( $@=~/timed out/i ){
+      print STDOUT "Timed Out.\r\n";
+      return;
+    }
+
+  }
+
+  1;
+
+  #--------------- file test.pl ---------------
+
+=begin original
+
+Playing this file from the command line will invoke a
+Net::Server using the PreFork personality.  When building a
+server layer over the Net::Server, it is important to use
+features such as timeouts to prevent Denial of Service
+attacks.
+
+=end original
+
+コマンドラインからこのファイルを試してみるとPreForkパーソナリティを
+使ったNet::Serverが起動する。Net::Serverの上層にサーバを構築する際、
+DOS攻撃を防ぐためにこのようなタイムアウト機能を利用することが大切である。
+
+=head1 引数
+
+=begin original
+
+There are four possible ways to pass arguments to
+Net::Server.  They are I<passing on command line>, I<using a
+conf file>, I<passing parameters to run>, or I<using a
+pre-built object to call the run method>.
+
+=end original
+
+Net::Serverに引数を渡すには、四通りの方法がある。
+I<コマンドラインから渡す>、I<設定ファイルを使う>、
+I<runメソッドに渡す>、I<runメソッドを呼び出すために
+予め作成したオブジェクトを利用する> がそれだ。
+
+=begin original
+
+Arguments consist of key value pairs.  On the commandline
+these pairs follow the POSIX fashion of C<--key value> or
+C<--key=value>, and also C<key=value>.  In the conf file the
+parameter passing can best be shown by the following regular
+expression: ($key,$val)=~/^(\w+)\s+(\S+?)\s+$/.  Passing
+arguments to the run method is done as follows:
+C<Net::Server-E<gt>run(key1 =E<gt> 'val1')>.  Passing arguments via
+a prebuilt object can best be shown in the following code:
+
+=end original
+
+引数はキーと値のペアで構成される。コマンドライン上では、これらの
+ペアはPOSIX流のC<--key value>で行なうか、あるいはC<key=value>でもよい。
+設定ファイルを利用する場合、パラメータの引渡しは、次のような
+正規表現でうまく表される：($key,$val)=~/^(\w+)\s+(\S+?)\s+$/ 。
+runメソッドへ引数を渡すには次のようにする：
+C<Net::Server-E<gt>run(key1 =E<gt> 'val1')> 。予め作成しておいたオブジェクトを
+通じて引数を渡す方法は次のコードでうまく表される。
+
+  #!/usr/bin/perl -w -T
+  #--------------- file test2.pl ---------------
+  package MyPackage;
+  use strict;
+  use vars (@ISA);
+  use Net::Server;
+  @ISA = qw(Net::Server);
+
+  my $server = bless {
+    key1 => 'val1',
+    }, 'MyPackage';
+
+  $server->run();
+  #--------------- file test.pl ---------------
+
+=begin original
+
+All five methods for passing arguments may be used at the
+same time.  Once an argument has been set, it is not over
+written if another method passes the same argument.  C<Net::Server>
+will look for arguments in the following order:
+
+=end original
+
+引数を渡す五通りの方法は全て同時に利用することが出来る。
+ひとたび引数をセットすると、他の方法で同じ引数を渡しても
+上書きされない。C<Net::Server>は以下の順番で引数を見ていく。
+
+=begin original
+
+  1) Arguments contained in the prebuilt object.
+  2) Arguments passed on command line.
+  3) Arguments passed to the run method.
+  4) Arguments passed via a conf file.
+  5) Arguments set in the configure_hook.
+
+=end original
+
+  1) 予め作成されたオブジェクトに含まれる引数
+  2) コマンドラインで渡された引数
+  3) runメソッドに渡された引数
+  4) 設定ファイルを通じて渡された引数
+  5) configure_hookにセットされた引数
+
+=begin original
+
+Key/value pairs used by the server are removed by the
+configuration process so that server layers on top of
+C<Net::Server> can pass and read their own parameters.
+Currently, Getopt::Long is not used. The following arguments
+are available in the default C<Net::Server> or
+C<Net::Server::Single> modules.  (Other personalities may
+use additional parameters and may optionally not use
+parameters from the base class.)
+
+=end original
+
+サーバによって利用されるKey/valueのペアは設定処理によって
+取り除かれる。その結果C<Net::Server>上に構築されたサーバは
+引数を渡し、サーバ自身のパラメータを読み込むことができる。
+今のところGetopt::Longは利用できない。次の引数はデフォルトの
+C<Net::Server>、あるいはC<Net::Server::Single>モジュールで
+利用可能なものだ（他のパーソナリティは追加のパラメータを
+利用するかもしれないし、ベースクラスのパラメータをオプション
+としては利用しないかもしれない）。
+
+
+
+  Key               Value                    Default
+  conf_file         "filename"               undef
+
+  log_level         0-4                      2
+  log_file          (filename|Sys::Syslog)   undef
+
+  ## syslogパラメータ
+  syslog_logsock    (unix|inet)              unix
+  syslog_ident      "identity"               "net_server"
+  syslog_logopt     (cons|ndelay|nowait|pid) pid
+  syslog_facility   \w+                      daemon
+
+  port              \d+                      20203
+  host              "host"                   "*"
+  proto             (tcp|udp|unix)           "tcp"
+  listen            \d+                      SOMAXCONN
+
+  reverse_lookups   1                        undef
+  allow             /regex/                  none
+  deny              /regex/                  none
+
+  ## デーモン関連のパラメータ
+  pid_file          "filename"               undef
+  chroot            "directory"              undef
+  user              (uid|username)           "nobody"
+  group             (gid|group)              "nobody"
+  background        1                        undef
+  setsid            1                        undef
+
+  no_close_by_child (1|undef)                undef
+
+  ## Net::Server::Proto::(TCP|UDP|UNIX|etc)を参照
+  ## もっと多くのパラメータ例がある
+
+=over 4
+
+=item conf_file
+
+=begin original
+
+Filename from which to read additional key value pair arguments
+for starting the server.  Default is undef.
+
+=end original
+
+サーバをスタートさせる際に、追加されたkey/valueの引数を
+このファイル名から読み取る。デフォルトはundef。
+
+=item log_level
+
+=begin original
+
+Ranges from 0 to 4 in level.  Specifies what level of error
+will be logged.  "O" means logging is off.  "4" means very
+verbose.  These levels should be able to correlate to syslog
+levels.  Default is 2.  These levels correlate to syslog levels
+as defined by the following key/value pairs: 0=>'err',
+1=>'warning', 2=>'notice', 3=>'info', 4=>'debug'.
+
+=end original
+
+レベルは0から4までの範囲。どのレベルのエラーをログに記録するか
+指定する。0は記録しないことを意味する。4は非常にやかましいぐらいに
+記録する。このレベルはsyslogレベルに対応する。デフォルトは2。
+以下のkey/valueによって定義されるsyslogレベルとも対応する：
+0=>'err',1=>'warning', 2=>'notice', 3=>'info', 4=>'debug'
+
+=item log_file
+
+=begin original
+
+Name of log file to be written to.  If no name is given and
+hook is not overridden, log goes to STDERR.  Default is undef.
+If the magic name "Sys::Syslog" is used, all logging will
+take place via the Sys::Syslog module.  If syslog is used
+the parameters C<syslog_logsock>, C<syslog_ident>, and
+C<syslog_logopt>,and C<syslog_facility> may also be defined.
+If a C<log_file> is given or if C<setsid> is set, STDIN and
+STDOUT will automatically be opened to /dev/null and STDERR
+will be opened to STDOUT.  This will prevent any output
+from ending up at the terminal.
+
+=end original
+
+ログを書き込むファイル名。名前を与えず、かつhookがオーバーライド
+されていない場合、ログはSTDERRに出力される。デフォルトはundef。
+"Sys::Syslog"という名前を使うとログの記録は全てSys::Syslog
+モジュールを通じて行なわれる。もしsyslogが使われるなら、
+C<syslog_logsock>, C<syslog_ident>, C<syslog_logopt>そして
+C<syslog_facility>も定義されるだろう。
+C<log_file>が与えられるかC<setsid>がセットされると、
+STDINとSTDOUTは自動的に/dev/nullに、そしてSTDERRはSTDOUTに
+開かれる。これにより端末が終了した時に出力を抑制することができる。
+
+=item pid_file
+
+=begin original
+
+Filename to store pid of parent process.  Generally applies
+only to forking servers.  Default is none (undef).
+
+=end original
+
+親プロセスのpidを保持するファイルの名前。一般的にフォークサーバ
+にのみ適用される。デフォルトは何もなし（undef）。
+
+=item syslog_logsock
+
+=begin original
+
+Only available if C<log_file> is equal to "Sys::Syslog".  May
+be either "unix" of "inet".  Default is "unix".
+See L<Sys::Syslog>.
+
+=end original
+
+C<log_file>が"Sys::Syslog"となっているときにのみ利用できる。
+"unix"か"inet"のどちらかをとる。デフォルトは"unix"。
+L<Sys::Syslog>を参照のこと。
+
+=item syslog_ident
+
+=begin original
+
+Only available if C<log_file> is equal to "Sys::Syslog".  Id
+to prepend on syslog entries.  Default is "net_server".
+See L<Sys::Syslog>.
+
+=end original
+
+C<log_file>が"Sys::Syslog"となっているときにのみ利用できる。
+syslogエントリーにprependするID。[訳者：?]
+デフォルトは"net_server"。L<Sys::Syslog>を参照のこと。
+
+=item syslog_logopt
+
+=begin original
+
+Only available if C<log_file> is equal to "Sys::Syslog".  May
+be either zero or more of "pid","cons","ndelay","nowait".
+Default is "pid".  See L<Sys::Syslog>.
+
+=end original
+
+C<log_file>が"Sys::Syslog"となっているときにのみ利用できる。
+何も設定しないか、"pid"、"cons"、"ndelay"、"nowait"のどれかを
+使う。デフォルトは"pid"。L<Sys::Syslgo>を参照のこと。
+
+
+=item syslog_facility
+
+=begin original
+
+Only available if C<log_file> is equal to "Sys::Syslog".
+See L<Sys::Syslog> and L<syslog>.  Default is "daemon".
+
+=end original
+
+C<log_file>が"Sys::Syslog"となっているときにのみ利用できる。
+See L<Sys::Syslog>とL<syslog>を参照せよ。デフォルトは"daemon"。
+
+=item port
+
+=begin original
+
+See L<Net::Server::Proto>.
+Local port/socket on which to bind.  If low port, process must
+start as root.  If multiple ports are given, all will be
+bound at server startup.  May be of the form
+C<host:port/proto>, C<host:port>, C<port/proto>, or C<port>,
+where I<host> represents a hostname residing on the local
+box, where I<port> represents either the number of the port
+(eg. "80") or the service designation (eg.  "http"), and
+where I<proto> represents the protocol to be used.  See
+L<Net::Server::Proto>.  If you are working with unix sockets,
+you may also specify C<socket_file|unix> or
+C<socket_file|type|unix> where type is SOCK_DGRAM or
+SOCK_STREAM.  If the protocol is not specified, I<proto> will
+default to the C<proto> specified in the arguments.  If C<proto> is not
+specified there it will default to "tcp".  If I<host> is not
+specified, I<host> will default to C<host> specified in the
+arguments.  If C<host> is not specified there it will
+default to "*".  Default port is 20203.
+
+=end original
+
+L<Net::Server::Proto>を参照。
+bindするローカルport/socket。低い番号のportを使うには
+プロセスをrootで開始しなければならない。複数のポートが与えられた
+場合、サーバ起動時に全てがbindされる。可能な書式は
+C<host:port/proto>,C<host:port>,C<port/proto>,あるいはC<port>。
+I<host>はそのコンピュータに属するホスト名。I<port>はポート番号
+（例："80"）かサービス名（例："http"）。そしてI<proto>は使用する
+プロトコルだ。L<Net::Server::Proto>を見て欲しい。
+もしもUNIX socketを使うなら、さらにC<socket_file|unix>か
+C<socket_file|type|unix>を指定することになるだろう。typeとは
+SOCK_DGRAMかSOCK_STREAMのことだ。プロトコルが指定されない場合、
+デフォルトは引数で指定したC<proto>になる。
+もしそこでC<proto>が設定されていなければ、デフォルトは"tcp"になる。
+I<host>が指定されていない場合、デフォルトは引数で指定されたC<host>に
+なる。そこでC<host>が指定されていなければ"*"になる。
+ポートのデフォルトは20203だ。
+
+
+=item host
+
+=begin original
+
+Local host or addr upon which to bind port.  If a value of '*' is
+given, the server will bind that port on all available addresses
+on the box.  See L<Net::Server::Proto>. See L<IO::Socket>.
+
+=end original
+
+bindするローカルホスト、あるいはアドレス。価に"*"が与えられると、
+サーバはコンピュータ上の利用可能なポート全てにbind使用とする。
+L<Net::Server::Proto>、L<IO::Socket>を参照。
+
+=item proto
+
+=begin original
+
+See L<Net::Server::Proto>.
+Protocol to use when binding ports.  See L<IO::Socket>.  As
+of release 0.70, Net::Server supports tcp, udp, and unix.  Other
+types will need to be added later (or custom modules extending the
+Net::Server::Proto class may be used).
+
+=end original
+
+L<Net::Server::Proto>を参照。
+ポートをbindするときに使うプロトコル。L<IO::Socket>を見よ。
+バージョン0.70でNet::Serverはtcp、udp、それにunixをサポートしている。
+その他のタイプは今後追加していく必要があるかもしれない（あるいは
+Net::Server::Protoクラスを拡張した独自モジュールを利用する）。
+
+
+=item listen
+
+=begin original
+
+  See L<IO::Socket>.  Not used with udp protocol (or UNIX SOCK_DGRAM).
+
+=end original
+
+  L<IO::Socket>を参照。udpプロトコル（またはUNIX SOCK_DGRAM）では使用しない。
+
+=item reverse_lookups
+
+=begin original
+
+Specify whether to lookup the hostname of the connected IP.
+Information is cached in server object under C<peerhost>
+property.  Default is to not use reverse_lookups (undef).
+
+=end original
+
+接続してきたIPのホスト名をlookupするかどうか指定する。
+情報はサーバオブジェクトのC<peerhost>プロパティにキャッシュされる。
+デフォルトはundef（reverse_lookupsを使用しない）。
+
+=item allow/deny
+
+=begin original
+
+May be specified multiple times.  Contains regex to compare
+to incoming peeraddr or peerhost (if reverse_lookups has
+been enabled).  If allow or deny options are given, the
+incoming client must match an allow and not match a deny or
+the client connection will be closed.  Defaults to empty
+array refs.
+
+=end original
+
+複数回指定できる。やってくるpeeraddrや（reverse_lookupsを有効に
+しているなら）peerhostと比較する正規表現を含む。もしallowかdeny
+オプションが与えられた場合、接続してきたクライアントはallowに
+マッチするかdenyにマッチしないかしなければならない。さもなければ
+クライアントコネクションは閉じられる。デフォルトは空配列への
+リファレンス。
+
+=item chroot
+
+=begin original
+
+Directory to chroot to after bind process has taken place
+and the server is still running as root.  Defaults to
+undef.
+
+=end original
+
+bindプロセス発生後にchrootさせるディレクトリ。
+サーバは依然rootで実行し続ける。デフォルトはundef。
+
+=item user
+
+=begin original
+
+Userid or username to become after the bind process has
+occured.  Defaults to "nobody."  If you would like the
+server to run as root, you will have to specify C<user>
+equal to "root".
+
+=end original
+
+bindプロセス発生後に設定されるuseridあるいはusername。
+デフォルトは"nobody"。もしサーバをrootで実行したいのなら
+C<user>を"root"に指定しなければならない。
+
+=item group
+
+=begin original
+
+Groupid or groupname to become after the bind process has
+occured.  Defaults to "nobody."  If you would like the
+server to run as root, you will have to specify C<group>
+equal to "root".
+
+=end original
+
+bindプロセス発生後に設定されるgroupidあるいはgroupname。
+デフォルトは"nobody"。もしサーバをrootで実行したいのなら
+C<group>を"root"に指定しなければならない。
+
+=item background
+
+=begin original
+
+Specifies whether or not the server should fork after the
+bind method to release itself from the command line.
+Defaults to undef.  Process will also background if
+C<setsid> is set.
+
+=end original
+
+bindメソッドがコマンドラインから自らを解放した後、サーバが
+forkするかどうかを設定する。デフォルトはundef。C<setsid>が
+セットされていればプロセスはバックグラウンドで走る。
+
+=item setsid
+
+=begin original
+
+Specifies whether or not the server should fork after the
+bind method to release itself from the command line and then
+run the C<POSIX::setsid()> command to truly daemonize.
+Defaults to undef.  If a C<log_file> is given or if
+C<setsid> is set, STDIN and STDOUT will automatically be
+opened to /dev/null and STDERR will be opened to STDOUT.
+This will prevent any output from ending up at the terminal.
+
+=end original
+
+bindメソッドがコマンドラインから自らを解放した後、サーバが
+forkするかどうかを設定する。その後サーバはC<POSIX::setsid()>
+を実行し、真のデーモンになる。デフォルトはundef。C<log_file>
+が与えられているかC<setsid>がセットされていれば、STDINと
+STDOUTは自動的に/dev/nullに開かれる。そしてSTDERRはSTDOUTに
+開かれる。これは端末機が終了した時の出力を抑制する。
+
+=item no_close_by_child
+
+=begin original
+
+Specifies whether or not a forked child process has permission
+or not to shutdown the entire server process.  If set to 1, the
+child may NOT signal the parent to shutdown all children.  Default
+is undef (not set).
+
+=end original
+
+forkされた子プロセスがサーバプロセスを完全にシャットダウンする
+権限を持つかどうかを指定する。もし1をセットすれば子プロセスは親
+プロセスが全ての子プロセスをシャットダウンさせるシグナルを送らB<ない>。
+デフォルトはundef（セットされない）。
+
+=back
+
+=head1 プロパティ
+
+=begin original
+
+All of the C<ARGUMENTS> listed above become properties of
+the server object under the same name.  These properties, as
+well as other internal properties, are available during
+hooks and other method calls.
+
+=end original
+
+先に挙げた全てのC<引数>は同じ名前でサーバオブジェクトの
+プロパティとなる。他の内部プロパティと同様、このプロパティは
+hookや他のメソッド呼び出しで使うことができる。
+
+=begin original
+
+The structure of a Net::Server object is shown below:
+
+=end original
+
+Net::Serverオブジェクトの構造を以下に示すと：
+
+  $self = bless( {
+                   'server' => {
+                                 'key1' => 'val1',
+                                 # more key/vals
+                               }
+                 }, 'Net::Server' );
+
+=begin original
+
+This structure was chosen so that all server related
+properties are grouped under a single key of the object
+hashref.  This is so that other objects could layer on top
+of the Net::Server object class and still have a fairly
+clean namespace in the hashref.
+
+=end original
+
+この構造を選んだおかげで、サーバに関連する全てのプロパティは
+そのオブジェクトのハッシュリファレンスの単一キーに基づいて
+グループ化される。つまり他のオブジェクトがNet::Serverクラスの
+上に重なることができる。そして依然ハッシュリファレンスの
+名前空間はクリーンに保たれる。
+
+=begin original
+
+You may get and set properties in two ways.  The suggested
+way is to access properties directly via
+
+=end original
+
+二つの方法でプロパティを取得および設定できる。まず提示するのは
+次のようにして直接プロパティにアクセスするやり方：
+
+ my $val = $self->{server}->{key1};
+
+=begin original
+
+Accessing the properties directly will speed the
+server process.  A second way has been provided for object
+oriented types who believe in methods.  The second way
+consists of the following methods:
+
+=end original
+
+直接プロパティにアクセスすればサーバの処理を速めることが
+できるだろう。二番目の方法はメソッドを信頼する
+オブジェクト指向なタイプだ。二番目の方法は次のようなメソッドで
+行う：
+
+  my $val = $self->get_property( 'key1' );
+  my $self->set_property( key1 => 'val1' );
+
+=begin original
+
+Properties are allowed to be changed at any time with
+caution (please do not undef the sock property or you will
+close the client connection).
+
+=end original
+
+プロパティはいつでも変更できるが注意しなければならない
+（sockプロパティをundefしてはいけない。さもないとクライアント
+コネクションが閉じられてしまう）。
+
+
+=head1 設定ファイル
+
+=begin original
+
+C<Net::Server> allows for the use of a configuration file to
+read in server parameters.  The format of this conf file is
+simple key value pairs.  Comments and white space are
+ignored.
+
+=end original
+
+C<Net::Server>はserverパラメータを読み込むために設定ファイルを
+利用することができる。設定ファイルの書式は単純なキーと値の組だ。
+コメントと空白は無視される。
+
+
+  #-------------- file test.conf --------------
+
+  ### 変更されるuserとgroup
+  user        somebody
+  group       everybody
+
+  ### ログを記録？
+  log_file    /var/log/server.log
+  log_level   3
+  pid_file    /tmp/server.pid
+
+  ### syslogディレクティブのオプション
+  ### 上のlog_fileの代わりに使う場合
+  #log_file       Sys::Syslog
+  #syslog_logsock unix
+  #syslog_ident   myserver
+  #syslog_logopt  pid|cons
+
+  ### アクセスコントロール「
+  allow       .+\.(net|com)
+  allow       domain\.com
+  deny        a.+
+
+  ### プロセスをバックグランドで走らせるか？
+  background  1
+
+  ### bindするポート（こので例は
+  ### 127.0.0.1:20205とlocalhost:20204にbindする)
+  ### Net::Server::Protoを参照
+  host        127.0.0.1
+  port        localhost:20204
+  port        20205
+
+  ### 逆引き？
+  # reverse_lookups on
+
+  #-------------- file test.conf --------------
+
+=head1 処理の流れ
+
+=begin original
+
+The process flow is written in an open, easy to
+override, easy to hook, fashion.  The basic flow is
+shown below.
+
+=end original
+
+処理の流れはオープンで、オーバーライドしやすく
+hookしやすいような流儀で書かれている。基本的な流れは
+以下で示す通り。
+
+
+  $self->configure_hook;
+
+  $self->configure(@_);
+
+  $self->post_configure;
+
+  $self->post_configure_hook;
+
+  $self->pre_bind;
+
+  $self->bind;
+
+  $self->post_bind_hook;
+
+  $self->post_bind;
+
+  $self->pre_loop_hook;
+
+  $self->loop;
+
+  ### 標準的な$self->loop内部のルーチン
+  # $self->accept;
+  # $self->run_client_connection;
+  # $self->done;
+
+  $self->pre_server_close_hook;
+
+  $self->server_close;
+
+=begin original
+
+The server then exits.
+
+=end original
+
+そしてサーバは終了する。
+
+=begin original
+
+During the client processing phase
+(C<$self-E<gt>run_client_connection>), the following
+represents the program flow:
+
+=end original
+
+クライアント処理段階（C<$self-E<gt>run_client_connection>）では、
+次のようなプログラムの流れになる：
+
+  $self->post_accept;
+
+  $self->get_client_info;
+
+  $self->post_accept_hook;
+
+  if( $self->allow_deny
+
+      && $self->allow_deny_hook ){
+
+    $self->process_request;
+
+  }else{
+
+    $self->request_denied_hook;
+
+  }
+
+  $self->post_process_request_hook;
+
+  $self->post_process_request;
+
+=begin original
+
+The process then loops and waits for the next
+connection.  For a more in depth discussion, please
+read the code.
+
+=end original
+
+その後プロセスはループし、次の接続を待つ。さらに
+つっこんだ議論を望む向きは、ソースコードをご覧下あれ。
+
+=begin original
+
+During the server shutdown phase
+(C<$self-E<gt>server_close>), the following
+represents the program flow:
+
+=end original
+
+サーバがシャットダウンする段階（C<$self-E<gt>server_close>）では、
+次のようなプログラムの流れになる：
+
+  $self->close_children;  # もし子プロセスがあれば
+
+  $self->post_child_cleanup_hook;
+
+  if( Restarting server ){
+     $self->restart_close_hook();
+     $self->hup_server;
+  }
+
+  exit;
+
+=head1 HOOKS
+
+=begin original
+
+C<Net::Server> provides a number of "hooks" allowing for
+servers layered on top of C<Net::Server> to respond at
+different levels of execution.
+
+=end original
+
+C<Net::Server>は数多くの"hook"を提供する。これにより
+C<Net::Server>の上に形成されたサーバが様々な実行段階で応答する
+ことができる。
+
+=over 4
+
+=item C<$self-E<gt>configure_hook()>
+
+=begin original
+
+This hook takes place immediately after the C<-E<gt>run()>
+method is called.  This hook allows for setting up the
+object before any built in configuration takes place.
+This allows for custom configurability.
+
+=end original
+
+このhookはC<-E<gt>run()>メソッドが呼び出されるや直ちに発生する。
+これにより設定処理によって何かがビルトされる前にオブジェクトを
+セットアップすることができる。これを利用して設定処理をカスタマイズできる。
+
+=item C<$self-E<gt>post_configure_hook()>
+
+=begin original
+
+This hook occurs just after the reading of configuration
+parameters and initiation of logging and pid_file creation.
+It also occurs before the C<-E<gt>pre_bind()> and
+C<-E<gt>bind()> methods are called.  This hook allows for
+verifying configuration parameters.
+
+=end original
+
+このhookは設定用パラメータの読み込みと、初期化作業である
+ログ処理及びpid_file作成の直後に発生する。これはまた、
+C<-E<gt>pre_bind()>とC<-E<gt>pre_bind()>メソッド呼び出しの
+前にも発生する。このhookを使えば設定用パラメータのチェックを
+行うことができる。
+
+=item C<$self-E<gt>post_bind_hook()>
+
+=begin original
+
+This hook occurs just after the bind process and just before
+any chrooting, change of user, or change of group occurs.
+At this point the process will still be running as the user
+who started the server.
+
+=end original
+
+このhookはbindプロセスの直後、かつchroot、user変更、group変更
+の直前に発生する。この時点では、まだプロセスはサーバを起動した
+userで実行されている。
+
+=item C<$self-E<gt>pre_loop_hook()>
+
+=begin original
+
+This hook occurs after chroot, change of user, and change of
+group has occured.  It allows for preparation before looping
+begins.
+
+=end original
+
+このhookはchroot、user変更、group変更の後に発生する。
+ループが始まる前の準備に利用できる。
+
+=item C<$self-E<gt>post_accept_hook()>
+
+=begin original
+
+This hook occurs after a client has connected to the server.
+At this point STDIN and STDOUT are mapped to the client
+socket.  This hook occurs before the processing of the
+request.
+
+=end original
+
+このhookはクライアントがサーバに接続した後に発生する。
+この時点でSTDINとSTDOUTはクライアントのソケットに
+マッピングされる。このhookはリクエスト処理の前に発生する。
+
+=item C<$self-E<gt>allow_deny_hook()>
+
+=begin original
+
+This hook allows for the checking of ip and host information
+beyond the C<$self-E<gt>allow_deny()> routine.  If this hook
+returns 1, the client request will be processed,
+otherwise, the request will be denied processing.
+
+=end original
+
+このhookはC<$self-E<gt>allow_deny()>ルーチンを越えて
+ipとhost情報のチェックをすることができる。もしこのhookが
+1を返せば、クライアントのリクエストは処理され、そうでなければ
+リクエストは拒否時の処理に入る。
+
+=item C<$self-E<gt>request_denied_hook()>
+
+=begin original
+
+This hook occurs if either the C<$self-E<gt>allow_deny()> or
+C<$self-E<gt>allow_deny_hook()> have taken place.
+
+=end original
+
+このhookは、C<$self-E<gt>allow_deny()>か
+C<$self-E<gt>allow_deny_hook()>が生じたときに発生する。
+[訳注：どちらかが偽を返したときに発生する]
+
+=item C<$self-E<gt>post_process_request_hook()>
+
+=begin original
+
+This hook occurs after the processing of the request, but
+before the client connection has been closed.
+
+=end original
+
+このhookはリクエスト処理の後、ただしクライアント
+コネクションが閉じられてしまう前に発生する。
+
+=item C<$self-E<gt>pre_server_close_hook()>
+
+=begin original
+
+This hook occurs before the server begins shutting down.
+
+=end original
+
+このhookはサーバがシャットダウンに入る前に発生する。
+
+=item C<$self-E<gt>write_to_log_hook>
+
+=begin original
+
+This hook handles writing to log files.  The default hook
+is to write to STDERR, or to the filename contained in
+the parameter C<log_file>.  The arguments passed are a
+log level of 0 to 4 (4 being very verbose), and a log line.
+If log_file is equal to "Sys::Syslog", then logging will
+go to Sys::Syslog and will bypass the write_to_log_hook.
+
+=end original
+
+このhookはログファイルへの書き込みを制御する。デフォルトの
+hookはSTDERRかC<log_file>パラメータにあるファイル名に書き込む。
+渡される引数は0から4までのログレベルと、一行のログである。
+もしlog_fileが"Sys::Syslog"なら、ログ処理はSys::Syslogに移行し、
+write_to_log_hookは無視される。
+
+=item C<$self-E<gt>fatal_hook>
+
+=begin original
+
+This hook occurs when the server has encountered an
+unrecoverable error.  Arguments passed are the error
+message, the package, file, and line number.  The hook
+may close the server, but it is suggested that it simply
+return and use the built in shut down features.
+
+=end original
+
+このhookはサーバが回復不能なエラーに遭遇した際に発生する。
+渡される引数はエラーメッセージ、パッケージ名、ファイル名、
+そして行数である。このhookはサーバを閉じるかもしれないが、
+単にreturnし、組み込みのシャットダウン機能を利用するように
+指示することができる。
+
+=item C<$self-E<gt>post_child_cleanup_hook>
+
+=begin original
+
+This hook occurs in the parent server process after all
+children have been shut down and just before the server
+either restarts or exits.  It is intended for additional
+cleanup of information.  At this point pid_files and
+lockfiles still exist.
+
+=end original
+
+このhookは全ての子プロセスがシャットダウンされた後、かつ、
+サーバが再起動ないしは終了する直前に、親サーバのプロセスで
+発生する。追加的なクリーンアップ情報を意味する。この時点では
+まだpid_fileとlcokfileが存在する。
+
+=item C<$self-E<gt>restart_open_hook>
+
+=begin original
+
+This hook occurs if a server has been HUPed (restarted
+via the HUP signal.  It occurs just before reopening to
+the filenos of the sockets that were already opened.
+
+=end original
+
+このhookは、サーバがHUPされる（HUPシグナルを通じて再起動
+すること）際に発生する。これは既に開かれていたソケットの
+ファイル記述子（fileno）を再び開く直前に発生する。
+
+=item C<$self-E<gt>restart_close_hook>
+
+=begin original
+
+This hook occurs if a server has been HUPed (restarted
+via the HUP signal.  It occurs just before restarting the
+server via exec.
+
+=end original
+
+このhookは、サーバがHUPされる（HUPシグナルを通じて再起動
+すること）際に発生する。これはexecでもってサーバが再起動
+される直前に発生する。
+
+=back
+
+=head1 再起動
+
+=begin original
+
+Each of the server personalities (except for INET), support
+restarting via a HUP signal (see "kill -l").  When a HUP
+is received, the server will close children (if any), make
+sure that sockets are left open, and re-exec using
+the same commandline parameters that initially started the
+server.  (Note: for this reason it is important that @ARGV
+is not modified until C<-E<gt>run> is called.
+
+=end original
+
+サーバパーソナリティは（INETタイプを除いて）全てHUPシグナル
+（"kell -l" 参照）を通じて再起動をサポートしている。
+HUPを受け取ると、サーバは（もしいれば）子プロセスを閉じ、
+ソケットが開いたままであることを確認し、最初にサーバを起動
+したときと同じコマンドラインパラメータを利用して再びexecする。
+（注意：この理由から、C<-E<gt>run>が呼び出されるまで@ARGVを
+変更しないことが重要である。）
+
+
+=head1 TO DO
+
+=begin original
+
+There are several tasks to perform before the alpha label
+can be removed from this software:
+
+=end original
+
+このソフトウェアがアルファ版でなくなる前に行なうべき仕事がいくつかある。
+
+=over 4
+
+=item Use It
+
+=begin original
+
+The best way to further the status of this project is to use
+it.  There are immediate plans to use this as a base class
+in implementing some mail servers and banner servers on a
+high hit site.
+
+=end original
+
+この計画の状況を進めるもっともよい方法は、それ（it）を使う
+ことだ。これをアクセス数の多いサイト用のメールサーバと
+バナーサーバを実装するベースクラスとして利用する急ぎの計画がある。
+
+=item Other Personalities
+
+=begin original
+
+Explore any other personalities
+
+=end original
+
+他のパーソナリティの探求。
+
+=item Net::Server::HTTP, etc
+
+=begin original
+
+Create various types of servers.  Possibly, port exising
+servers to user Net::Server as a base layer.
+
+=end original
+
+様々なタイプのサーバをつくる。もしかしたら、既存のサーバを
+ベース層としてユーザーのNet::Serverにポートするかも。
+
+[訳注：このTODOは全般的に意味がわかりませんでした]
+
+
+=back
+
+=head1 ファイル
+
+=begin original
+
+  The following files are installed as part of this
+  distribution.
+
+=end original
+
+  このパッケージの一部として次のファイルがインストールされる。
+
+  Net/Server.pm
+  Net/Server/Fork.pm
+  Net/Server/INET.pm
+  Net/Server/MultiType.pm
+  Net/Server/PreForkSimple.pm
+  Net/Server/PreFork.pm
+  Net/Server/Single.pm
+  Net/Server/Daemonize.pm
+  Net/Server/SIG.pm
+  Net/Server/Proto.pm
+  Net/Server/Proto/*.pm
+
+=head1 インストール
+
+=begin original
+
+Download and extract tarball before running
+these commands in its base directory:
+
+=end original
+
+事前にtarballをダウンロードし、展開しておく。そして
+以下のコマンドをベースとなるディレクトリで実行する：
+
+  perl Makefile.PL
+  make
+  make test
+  make install
+
+=begin original
+
+For RPM installation, download tarball before
+running these commands in your _topdir:
+
+=end original
+
+RPMによるインストールなら、tarballをダウンロード
+してから、あなたの_topdirで以下のコマンドを実行：
+
+  rpm -ta SOURCES/Net-Server-*.tar.gz
+  rpm -ih RPMS/noarch/perl-Net-Server-*.rpm
+
+=head1 作者
+
+Paul T. Seamons <paul at seamons.com>
+
+=head1 謝辞
+
+=begin original
+
+Thanks to Rob Brown <rbrown at about-inc.com> for help with
+miscellaneous concepts such as tracking down the
+serialized select via flock ala Apache and the reference
+to IO::Select making multiport servers possible.  And for
+researching into allowing sockets to remain open upon
+exec (making HUP possible).
+
+=end original
+
+Rob Brown <rbrown at about-inc.com>には、
+Apache風のflockを使った直列化selectの追跡や、
+マルチポートサーバを可能にするIO::Selectのリファレンス
+など種々色々な概念に関して助けてもらった。
+そしてまた、execを使ってソケットを開いたままにしておく
+方法（HUPを可能にする）の調査でも助けられた。
+
+=begin original
+
+Thanks to Jonathan J. Miner <miner@doit.wisc.edu> for
+patching a blatant problem in the reverse lookups.
+
+=end original
+
+J. Miner <miner@doit.wisc.edu>のおかげで、逆引きにおける
+騒々しい問題の修正ができた。
+
+=begin original
+
+Thanks to Bennett Todd <bet at rahul.net> for
+pointing out a problem in Solaris 2.5.1 which does not
+allow multiple children to accept on the same port at
+the same time.  Also for showing some sample code
+from Viktor Duchovni which now represents the semaphore
+option of the serialize argument in the PreFork server.
+
+=end original
+
+Bennett Todd <bet at rahul.net>は
+Solaris 2.5.1では、一度に同じポートに対し複数の子プロセスが
+acceptできないという問題を指摘してくれた。また、
+Viktor Duchovniはいくつかのサンプルコードを提示してくれた。
+それは今、PreForkサーバの直列化でsemaphoreオプションとして
+実現している。
+
+=begin original
+
+Thanks to I<traveler> and I<merlyn> from http://perlmonks.org
+for pointing me in the right direction for determining
+the protocol used on a socket connection.
+
+=end original
+
+http://perlmonks.orgのI<traveler>とI<merlyn>は
+ソケット接続で利用するプロトコルを決定する際に正しい方向へと
+私を導いてくれた。
+
+=begin original
+
+Thanks to Jeremy Howard <j+daemonize at howard.fm> for
+numerous suggestions and for work on Net::Server::Daemonize.
+
+=end original
+
+Jeremy Howard <j+daemonize at howard.fm>には、多くの提案と
+Net::Server::Daemonizeの取り組みで助けられた。
+
+=begin original
+
+Thanks to Vadim <vadim at hardison.net> for patches to
+implement parent/child communication on PreFork.pm.
+
+=end original
+
+Vadim <vadim at hardison.net>のおかげで、PreFork.pmでの
+親子プロセス間通信の実装に対する修正ができた。
+
+=head1 参考
+
+=begin original
+
+Please see also
+
+=end original
+
+以下も参照されたし。
+
+L<Net::Server::Fork>,
+L<Net::Server::INET>,
+L<Net::Server::PreForkSimple>,
+L<Net::Server::PreFork>,
+L<Net::Server::MultiType>,
+L<Net::Server::Single>
+
+=head1 著作権
+
+  Copyright (C) 2001, Paul T Seamons
+                      paul at seamons.com
+                      http://seamons.com/
+
+  This package may be distributed under the terms of either the
+  GNU General Public License
+    or the
+  Perl Artistic License
+
+  All rights reserved.
+

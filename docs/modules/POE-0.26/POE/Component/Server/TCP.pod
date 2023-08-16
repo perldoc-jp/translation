@@ -1,0 +1,496 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+POE::Component::Server::TCP - a simplified TCP server
+
+POE::Component::Server::TCP - 単純化されたTCPサーバ
+
+=head1 SYNOPSIS
+
+  use POE qw(Component::Server::TCP);
+
+  # 第一の形式は接続を単にacceptします。
+
+  POE::Component::Server::TCP->new
+    ( Port     => $bind_port,
+      Address  => $bind_address,    # オプショナル。
+      Domain   => AF_INET,          # オプショナル。
+      Alias    => $session_alias,   # オプショナル。
+      Acceptor => \&accept_handler,
+      Error    => \&error_handler,  # オプショナル。
+    );
+
+  # 第二の形式は接続をacceptし処理します。
+
+  POE::Component::Server::TCP->new
+    ( Port     => $bind_port,
+      Address  => $bind_address,      # オプショナル。
+      Domain   => AF_INET,            # オプショナル。
+      Alias    => $session_alias,     # オプショナル。
+      Acceptor => \&accept_handler,   # オプショナル。
+      Error    => \&error_handler,    # オプショナル。
+      Args     => [ "arg0", "arg1" ], # オプショナル。
+
+      SessionType   => "POE::Session::Abc",           # オプショナル。
+      SessionParams => [ options => { debug => 1 } ], # オプショナル。
+
+      ClientInput        => \&handle_client_input,      # 必須。
+      ClientConnected    => \&handle_client_connect,    # オプショナル。
+      ClientDisconnected => \&handle_client_disconnect, # オプショナル。
+      ClientError        => \&handle_client_error,      # オプショナル。
+      ClientFlushed      => \&handle_client_flush,      # オプショナル。
+      ClientFilter       => "POE::Filter::Xyz",         # オプショナル。
+      ClientShutdownOnError => 0,                       # オプショナル。
+
+      # オプショナルでクライアントセッション用に他の状態を定義。
+      InlineStates  => { ... },
+      PackageStates => [ ... ],
+      ObjectStates  => [ ... ],
+    );
+
+  # ハンドラ用の呼び出しのシグネチャ。
+
+  sub accept_handler {
+    my ($socket, $remote_address, $remote_port) = @_[ARG0, ARG1, ARG2];
+  }
+
+  sub error_handler {
+    my ($syscall_name, $error_number, $error_string) = @_[ARG0, ARG1, ARG2];
+  }
+
+  sub handle_client_input {
+    my $input_record = $_[ARG0];
+  }
+
+  sub handle_client_error {
+    my ($syscall_name, $error_number, $error_string) = @_[ARG0, ARG1, ARG2];
+  }
+
+  sub handle_client_connect {
+    # 特別な引数は無し。
+  }
+
+  sub handle_client_disconnect {
+    # 特別な引数は無し。
+  }
+
+  sub handle_client_flush {
+    # 特別な引数は無し。
+  }
+
+  # 予約済みのHEAP変数:
+
+  $heap->{listener}    = SocketFactory (AcceptorとErrorのコールバックのみ)
+  $heap->{client}      = ReadWrite     (ClientXyzのコールバック内のみ)
+  $heap->{remote_ip}   = ドット区切り表記のリモートIPアドレス
+  $heap->{remote_port} = リモートポート
+  $heap->{remote_addr} = packされたリモートのアドレスとポート
+  $heap->{shutdown}    = 停止フラグ    (停止しようとしているかどうかの確認)
+  $heap->{shutdown_on_error} = エラー発生時に自動的に切断。
+
+  # 受け付けられるパブリックイベント。
+
+  $kernel->yield( "shutdown" )           # 接続内で停止を開始
+  $kernel->post( server => "shutdown" )  # 接続のlistenを停止
+
+  # クライアントへの応答。
+
+  $heap->{client}->put(@things_to_send);
+
+=head1 DESCRIPTION
+
+The TCP server component hides the steps needed to create a server
+using Wheel::SocketFactory.  The steps aren't many, but they're still
+tiresome after a while.
+
+TCPサーバコンポーネントはWheel::SocketFactoryを使用したサーバを作成する
+ために必要なステップを隠します。そのステップは多くはありませんが、それ
+でもやはりしばらくすると退屈になります。
+
+POE::Component::Server::TCP supplies common defaults for most
+callbacks and handlers.  The authors hope that servers can be created
+with as little work as possible.
+
+POE::Component::Server::TCPはほとんどのコールバックとハンドラに一般的な
+デフォルトを提供します。作者は可能な限り少ない作業でサーバを作成できる
+ことを期待します。
+
+Constructor parameters:
+
+コンストラクタの引数は以下の通りです。
+
+=over 2
+
+=item Acceptor
+
+Acceptor is a coderef which will be called to handle accepted sockets.
+The coderef receives its parameters directly from SocketFactory's
+SuccessEvent.  ARG0 is the accepted socket handle, suitable for giving
+to a ReadWrite wheel.  ARG1 and ARG2 contain the packed remote address
+and numeric port, respectively.  ARG3 is the SocketFactory wheel's ID.
+
+Acceptorはacceptされたソケットを扱うために呼ばれるコードリファレンスで
+す。そのコードリファレンスは直接SocketFactoryのSuccessEventから引数を受
+け取ります。ARG0はacceptされたソケットハンドルで、ReadWriteホイールに与
+えるのに適切です。ARG1とARG2はそれぞれpackされたリモートアドレスとポー
+ト番号を含みます。ARG3はSocketFactoryホイールのIDです。
+
+  Acceptor => \&accept_handler
+
+Acceptor lets programmers rewrite the guts of Server::TCP entirely.
+It disables the code that provides the /Client.*/ callbacks.
+
+AcceptorはプログラマがServer::TCPの中身を完全に書き換えることを許します。
+これは/Client.*/コールバックを提供するコードを無効にします。
+
+=item Address
+
+Address is the optional interface address the TCP server will bind to.
+It defaults to INADDR_ANY or INADDR6_ANY when using IPv4 or IPv6,
+respectively.
+
+AddressはTCPサーバが割り当てるインターフェースのアドレスで、オプショナ
+ルです。IPv4またはIPv6を使用しているときはそれぞれINADDR_ANYまたは
+INADDR6_ANYがデフォルトになります。
+
+  Address => '127.0.0.1'   # Localhost IPv4
+  Address => "::1"         # Localhost IPv6
+
+It's passed directly to SocketFactory's BindAddress parameter, so it
+can be in whatever form SocketFactory supports.  At the time of this
+writing, that's a dotted quad, an IPv6 address, a host name, or a
+packed Internet address.
+
+これは直接SocketFactoryのBindAddress引数に渡されるので、SocketFactoryが
+サポートしているどんな形式でも構いません。これを書いている時点では、そ
+れはドット区切り表記、IPv6アドレス、ホスト名、packされたインターネット
+アドレスです。
+
+=item Alias
+
+Alias is an optional name by which this server may be referenced.
+It's used to pass events to a TCP server from other sessions.
+
+Aliasはオプショナルの名前で、その名前によってこのサーバが参照されうるも
+のです。これは他のセッションからTCPサーバにイベントを渡すために使われま
+す。
+
+  Alias => 'chargen'
+
+Later on, the 'chargen' service can be shut down with:
+
+その後、'chargen'サービスは以下のように停止することができます。
+
+  $kernel->post( chargen => 'shutdown' );
+
+=item SessionType
+
+SessionType specifies what type of sessions will be created within
+the TCP server.  It must be a scalar value.
+
+SessionTypeはTCPサーバ内で生成されるセッションのタイプを指定します。こ
+れはスカラ値でなければなりません。
+
+  SessionType => "POE::Session::MultiDispatch"
+
+SessionType is optional.  The component will supply a "POE::Session"
+type if none is specified.
+
+SessionTypeはオプショナルです。もし何も指定されなければコンポーネントは
+"POE::Session"タイプを提供するでしょう。
+
+=item SessionParams
+
+Initialize parameters to be passed to the SessionType when it is created.
+This must be an array reference.
+
+SessionTypeを生成したときに渡される初期化引数。これは配列リファレンスで
+なければなりません。
+
+  SessionParams => [ options => { debug => 1, trace => 1 } ],
+
+It is important to realize that some of the arguments to SessionHandler
+may get clobbered when defining them for your SessionHandler.  It is
+advised that you stick to defining arguments in the "options" hash such
+as trace and debug. See L<POE::Session> for an example list of options.
+
+SessionHandlerへの引数のいくつかはあなたのSessionHandlerに定義するとき
+に破壊されてしまうかもしれないことを知っておくことは重要です。トレース
+やデバッグのような"オプション"ハッシュ内で定義用引数を守っておくことを
+考慮してください。オプションの例の一覧についてはL<POE::Session>を参照し
+てください。
+
+=item ClientConnected
+
+ClientConnected is a coderef that will be called for each new client
+connection.  ClientConnected callbacks receive the usual POE
+parameters, but nothing special is included.
+
+ClientConnectedは新しいクライアント接続の度に呼ばれるコードリファレンス
+です。ClientConnectedコールバックは通常のPOEの引数を受け取りますが、特
+別なものは何も含まれません。
+
+=item ClientDisconnected
+
+ClientDisconnected is a coderef that will be called for each client
+that disconnects.  ClientDisconnected callbacks receive the usual POE
+parameters, but nothing special is included.
+
+ClientDisconnectedはクライアントが切断する度に呼ばれるコードリファレン
+スです。ClientDisconnectedコールバックは通常のPOEの引数を受け取りますが、
+特別なものは何も含まれません。
+
+=item ClientError
+
+ClientError is a coderef that will be called whenever an error occurs
+on a socket.  It receives the usual error handler parameters: ARG0 is
+the name of the function that failed.  ARG1 is the numeric failure
+code ($! in numeric context).  ARG2 is the string failure code ($! in
+string context).
+
+ClientErrorはソケットでエラーが発生したときはいつでも呼ばれるコードリフ
+ァレンスです。これは通常のエラーハンドラの引数を受け取ります。ARG0は失
+敗した関数の名前です。ARG1は数字の失敗コード(数値コンテキストでの$!)で
+す。ARG2は文字列の失敗コード(文字列コンテキストでの$!)です。
+
+If ClientError is omitted, a default one will be provided.  The
+default error handler logs the error to STDERR and closes the
+connection.
+
+もしClientErrorが省略された場合、デフォルトのものが用意されます。デフォ
+ルトのエラーハンドラはSTDERRにエラーログを出力し接続を閉じます。
+
+=item ClientFilter
+
+ClientFilter specifies the type of filter that will parse input from
+each client.  It may either be a scalar or a list reference.  If it is
+a scalar, it will contain a POE::Filter class name.  If it is a list
+reference, the first item in the list will be a POE::Filter class
+name, and the remaining items will be constructor parameters for the
+filter.  For example, this changes the line separator to a vertical
+bar:
+
+ClientFilterは各クライアントからの入力をパースするフィルタのタイプを指
+定します。スカラでもリストリファレンスでもかまいません。もしスカラであ
+れば、それはPOE::Filterのクラス名を含むでしょう。もしリストリファレンス
+であれば、リストの最初の項目はPOE::Filterのクラス名であり、残りの項目は
+そのフィルタへのコンストラクタ引数でしょう。例えば、これはラインセパレ
+ータを縦線に変更します。
+
+  ClientFilter => [ "POE::Filter::Line", InputLiteral => "|" ],
+
+ClientFilter is optional.  The component will supply a
+"POE::Filter::Line" instance if none is specified.
+
+ClientFilterはオプショナルです。もし何も指定されなければコンポーネント
+は"POE::Filter::Line"インスタンスを提供するでしょう。
+
+=item ClientInput
+
+ClientInput is a coderef that will be called to handle client input.
+The callback receives its parameters directly from ReadWrite's
+InputEvent.  ARG0 is the input record, and ARG1 is the wheel's unique
+ID.
+
+ClientInputはクライアントの入力を扱うために呼ばれるコードリファレンスで
+す。そのコードリファレンスは直接ReadWriteのInputEventから引数を受け取り
+ます。ARG0は入力レコードで、ARG1はホイールの一意的なIDです。
+
+  ClientInput => \&input_handler
+
+ClientInput and Acceptor are mutually exclusive.  Enabling one
+prohibits the other.
+
+ClientInputとAcceptorは互いに排他的です。片方を有効にするともう一方が禁
+止されます。
+
+=item ClientShutdownOnError => BOOLEAN
+
+ClientShutdownOnError is a boolean value that determines whether
+client sessions shut down automatically on errors.  The default value
+is 1 (true).  Setting it to 0 or undef (false) turns this off.
+
+ClientShutdownOnErrorはクライアントセッションがエラー発生時に自動的に停
+止するかどうかを決定するブール値です。デフォルト値は1(真)です。これを0
+かundef(偽)に設定すると機能が働かなくなります。
+
+If client shutdown-on-error is turned off, it becomes your
+responsibility to deal with client errors properly.  Not handling
+them, or not closing wheels when they should be, will cause the
+component to spit out a constant stream of errors, eventually bogging
+down your application with dead connections that spin out of control.
+
+もしクライアントのエラー発生時停止機能が働かない場合、クライアントのエ
+ラーを適切に対処する責任はあなたにあることになります。それらを処理しな
+い、あるいはホイールを閉じるべきときに閉じないということは、コンポーネ
+ントが絶えずエラーを吐き出す原因になり、いずれは制御不能の死んだ接続の
+ためにアプリケーションは動きを取れなくなるでしょう。
+
+=item Domain
+
+Specifies the domain within which communication will take place.  It
+selects the protocol family which should be used.  Currently supported
+values are AF_INET, AF_INET6, PF_INET or PF_INET6.  This parameter is
+optional and will default to AF_INET if omitted.
+
+通信が行われるドメインを指定します。使用されるべきプロトコルファミリを
+選択します。現在サポートされている値はAF_INET、AF_INET6、PF_INET、
+PF_INET6です。この引数はオプショナルで、省略された場合はAF_INETがデフォ
+ルトになります。
+
+Note: AF_INET6 and PF_INET6 are supplied by the Socket6 module, which
+is available on the CPAN.  You must have Socket6 loaded before
+POE::Component::Server::TCP will create IPv6 sockets.
+
+注意: AF_INET6とPF_INET6はCPANで入手可能なSocket6モジュールによって提供
+されます。POE::Component::Client::TCPがIPv6ソケットを生成する前に
+Socket6をロードしておかなければなりません。
+
+=item Error
+
+Error is an optional coderef which will be called to handle server
+socket errors.  The coderef is used as POE::Wheel::SocketFactory's
+FailureEvent, so it accepts the same parameters.  If it is omitted, a
+default error handler will be provided.  The default handler will log
+the error to STDERR and shut down the server.
+
+Errorはサーバのソケットエラーを扱うために呼ばれるコードリファレンスで、
+オプショナルです。そのコードリファレンスはPOE::Wheel::SocketFactoryの
+FailureEventとし使われるので、同じ引数を受け付けます。もしこれが省略さ
+れた場合、デフォルトのエラーハンドラが用意されます。デフォルトのハンド
+ラはSTDERRにエラーログを出力しサーバを停止します。
+
+=item InlineStates
+
+InlineStates holds a hashref of inline coderefs to handle events.  The
+hashref is keyed on event name.  For more information, see
+POE::Session's create() method.
+
+InlineStatesはイベントを扱うためにインラインコードリファレンスのハッシ
+ュリファレンスを保持します。そのハッシュリファレンスはイベント名のキー
+を持ちます。より詳しい情報については、POE::Sessionのcreate()メソッドを
+参照してください。
+
+=item ObjectStates
+
+ObjectStates holds a list reference of objects and the events they
+handle.  For more information, see POE::Session's create() method.
+
+ObjectStatesはオブジェクトとそれらが扱うイベントのリストリファレンスを
+保持します。より詳しい情報については、POE::Sessionのcreate()メソッドを
+参照してください。
+
+=item PackageStates
+
+PackageStates holds a list reference of Perl package names and the
+events they handle.  For more information, see POE::Session's create()
+method.
+
+PackageStatesはPerlのパッケージ名とそれらが扱うイベントのリストリファレ
+ンスを保持します。より詳しい情報については、POE::Sessionのcreate()メソ
+ッドを参照してください。
+
+=item Args LISTREF
+
+Args passes the contents of a LISTREF to the ClientConnected callback via
+@_[ARG0..$#_].  It allows you to pass extra information to the session
+created to handle the client connection.
+
+ArgsはLISTREFの内容を@_[ARG0..$#_]を通してClientConnectedコールバックに
+渡します。これはクライアントコネクションを扱うために生成されたセッショ
+ンに特別な情報を渡すことを可能にします。
+
+=item Port
+
+Port is the port the listening socket will be bound to.  It defaults
+to INADDR_ANY, which usually lets the operating system pick a port.
+
+  Port => 30023
+
+Portはlistenするソケットが割り当てられるポートです。デフォルトは
+INADDR_ANYで、これは普通オペレーティングシステムにポートを選ばせます。
+
+=back
+
+=head1 EVENTS
+
+It's possible to manipulate a TCP server component from some other
+session.  This is useful for shutting them down, and little else so
+far.
+
+他のセッションからTCPサーバコンポーネントを操作することが可能です。これ
+はそれらを停止させるのに有用ですが、今のところ他にはほとんどありません。
+
+=over 2
+
+=item shutdown
+
+Shuts down the TCP server.  This entails destroying the SocketFactory
+that's listening for connections and removing the TCP server's alias,
+if one is set.
+
+TCPサーバを停止します。これは必然的に接続をlistenしているSocketFactory
+をデストロイし、もし設定されていればTCPサーバのエイリアスを削除すること
+を伴います。
+
+=back
+
+=head1 SEE ALSO
+
+POE::Component::Client::TCP, POE::Wheel::SocketFactory,
+POE::Wheel::ReadWrite, POE::Filter
+
+=head1 CAVEATS
+
+This is not suitable for complex tasks.  For example, you cannot
+engage in a challenge-response with the client-- you can only reply to
+the one message a client sends.
+
+これは複雑な仕事には適切ではありません。例えば、クライアントとチャレン
+ジ-レスポンスに携わることができません。クライアントが送信する一つのメッ
+セージに対して応答することしかできないからです。
+
+=head1 BUGS
+
+This looks nothing like what Ann envisioned.
+
+これはAnnが構想したものとは全く似ていないように見えます。
+
+This component currently does not accept many of the options that
+POE::Wheel::SocketFactory does.
+
+このコンポーネントは現在POE::Wheel::SocketFactoryが受け付けるオプション
+の多くを受け付けません。
+
+This component will not bind to several addresses.  This may be a
+limitation in SocketFactory.
+
+このコンポーネントは複数のアドレスに割り当てません。これはSocketFactory
+の制限かもしれません。
+
+This component needs more complex error handling which appends for
+construction errors and replaces for runtime errors, instead of
+replacing for all.
+
+このコンポーネントは、全てに対して置換をするのではなく、コンストラクシ
+ョンエラーに対して付加したり実行時エラーに対して置換したりする、より複
+雑なエラー処理を必要としています。
+
+=head1 AUTHORS & COPYRIGHTS
+
+POE::Component::Server::TCP is Copyright 2000-2001 by Rocco Caputo.
+All rights are reserved.  POE::Component::Server::TCP is free
+software, and it may be redistributed and/or modified under the same
+terms as Perl itself.
+
+POE::Component::Server::TCP is based on code, used with permission,
+from Ann Barcomb E<lt>kudra@domaintje.comE<gt>.
+
+POE::Component::Server::TCP is based on code, used with permission,
+from Jos Boumans E<lt>kane@cpan.orgE<gt>.
+
+=head1 Translators
+
+井上 謙次 <deq@oct.zaq.ne.jp>

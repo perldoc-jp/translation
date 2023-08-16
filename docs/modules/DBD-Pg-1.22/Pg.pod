@@ -1,0 +1,832 @@
+
+=encoding euc-jp
+
+=head1 名前
+
+DBD::Pg - DBIモジュールのためのPostgreSQL データベース・ドライバ
+
+=head1 概要
+
+  use DBI;
+
+  $dbh = DBI->connect("dbi:Pg:dbname=$dbname", "", "");
+
+  # より高度な使い方のためにはPostgreSQLのデータ型の値が必要かもしれません:
+  use DBD::Oracle qw(:pg_types);
+
+  # 完全な詳細についてはDBIモジュールのドキュメントをご覧ください
+
+=head1 説明
+
+DBD::Pg はDBIモジュールと一緒に機能し、PostgreSQLデータベースへのアクセスを
+提供するPerl モジュールです。
+
+=head1 モジュール・ドキュメント
+
+このドキュメントはドライバ独自の動きおよび制限を説明します。ユーザのための
+唯一のリファレンスとして使われることを想定していません。いかなる場合でも、
+まずDBIのドキュメントを調べてください。
+
+=head1 DBIクラス
+
+=head2 DBIクラス・メソッド
+
+=over 4
+
+=item B<connect>
+
+最小限のパラメータでデータベースに接続するには、以下のように書きます：
+
+  $dbh = DBI->connect("dbi:Pg:dbname=$dbname", "", "");
+
+これはローカルにあるデータベース$dbnameに、ユーザの認証なしに接続します。
+PostgreSQLのデフォルトには、これで十分です。
+
+以下のconnectステートメントは、すべての使用可能なパラメータを表しています：
+
+  $dbh = DBI->connect("dbi:Pg:dbname=$dbname;host=$host;port=$port;" .
+                      "options=$options;tty=$tty", "$username", "$password");
+
+パラメータが未定義であれば、PostgreSQLはまず特定の環境変数を探し、それから
+ハード・コードされたデフォルトを使います:
+
+    パラメータ 環境変数　　　　　    ハード・コードされたデフォルト
+    --------------------------------------------------
+    dbname     PGDATABASE            現在のユーザID
+    host       PGHOST                localhost
+    port       PGPORT                5432
+    options    PGOPTIONS             ""
+    tty        PGTTY                 ""
+    username   PGUSER                現在のユーザID
+    password   PGPASSWORD            ""
+
+hostが指定されている場合、そのホストのpostmasterはC<-i>オプション
+(TCP/IPソケット）で開始されている必要があります。
+
+optionパラメータは、Postgresバックエンドのための実行時(runtime)オプションを
+指定します。よく使われるのはC<-B>オプションでバッファの数を増加させることです。
+同様に重要なのはC<-F>オプションで、これは各トランザクションの後、
+自動的なfsync()呼び出しを無効にします。さらに詳細なことについては、L<postgres>を
+参照してください。
+
+ユーザ名とパスワードによる認証のために、適切なエントリがpg_hba.confで作られている
+必要があります。異なるタイプの認証に付いては、L<pg_hba.conf>とL<pg_passwd>を
+参照して下さい。これら２つのパラメータについて、DBIは空と未定義を区別することに
+注意してください。DBIは、これらのパラメータが未定義であれば、もしあれば
+環境変数DBI_USERとDBI_PASSの値で置き換えます。
+
+=item B<available_drivers>
+
+  @driver_names = DBI->available_drivers;
+
+DBIによって実装されており、ドライバ独自の影響はありません。
+
+=item B<data_sources>
+
+  @data_sources = DBI->data_sources('Pg');
+
+ドライバはこのメソッドをサポートしています。データベースtemplate1への必要な
+データベース接続が、ローカルホストへ、ユーザ認証なしに行われることに注意
+してください。その他の選択は環境変数PGHOST、DBI_USER、DBI_PASS.を設定する
+ことによってのみ可能です。
+
+=item B<trace>
+
+  DBI->trace($trace_level, $trace_file)
+
+DBIによって実装されており、ドライバ特有の影響はありません。
+
+=back
+
+=head2 DBI動的属性
+
+共通のメソッドをご覧下さい。
+
+=head1 すべてのハンドルに共通のメソッド
+
+=over 4
+
+=item B<err>
+
+  $rv = $h->err;
+
+DBIで提案されているよう、ドライバによってサポートされています。
+connectメソッドでは、これはPQstatusを返します。その他の場合には、これは
+現在のハンドルのPQresultStatusを返します。
+
+=item B<errstr>
+
+  $str = $h->errstr;
+
+DBIで提案されているよう、ドライバによってサポートされています。
+現在のハンドルに関連しているPQerrorMessageを返します。
+
+=item B<state>
+
+  $str = $h->state;
+
+このドライバは（まだ）stateメソッドをサポートしていません。
+
+=item B<trace>
+
+  $h->trace($trace_level, $trace_filename);
+
+DBIによって実装されており、ドライバ特有の影響はありません。
+
+=item B<trace_msg>
+
+  $h->trace_msg($message_text);
+
+DBIによって実装されており、ドライバ特有の影響はありません。
+
+=item B<func>
+
+このドライバはfuncインターフェースを通してアクセスすることができる
+各種のドライバ独自の関数をサポートしています：
+
+  $attrs = $dbh->func($table, 'table_attributes');
+
+このメソッドは指定されたテーブルについてのハッシュの配列へのリファレンスを返します：
+
+  NAME        属性名
+  TYPE        属性データ型
+  SIZE        属性の大きさ (可変長では-1)
+  NULLABLE    NULLが可能であるか(nullable)のフラグ
+  DEFAULT     デフォルト値
+  CONSTRAINT  制約
+  PRIMARY_KEY プライマリキーであるか(is_primary_key)のフラグ
+
+  $lobjId = $dbh->func($mode, 'lo_creat');
+
+これは新しくラージ・オブジェクトを作成し、そのオブジェクトIDを返します。
+$modeは新しいオブジェクトの異なる属性を記述するビット・マスクです。
+以下の定数を使ってください： 
+
+  $dbh->{pg_INV_WRITE}
+  $dbh->{pg_INV_READ}
+
+失敗した場合には、undefを返します。
+
+  $lobj_fd = $dbh->func($lobjId, $mode, 'lo_open');
+
+既存のラージ・オブジェクトをオープンし、後のlo_*で利用するための
+オブジェクト記述子を返します。modeのビットについてはlo_createをご覧下さい。
+失敗したときにはundefを返します。0はオブジェクト記述子としては完全に
+正しいことに注意してください。
+
+  $nbytes = $dbh->func($lobj_fd, $buf, $len, 'lo_write');
+
+ラージ・オブジェクト$lobj_fdに$bufの$lenバイトを書き込みます。書き込まれた
+バイト数を返し、失敗したときにはundefを返します。
+
+  $nbytes = $dbh->func($lobj_fd, $buf, $len, 'lo_read');
+
+ラージ・オブジェクト$lobj_fdから$bufに$lenバイト読み込みます。読み込んだ
+バイト数を返し、失敗したときにはundefを返します。
+
+  $loc = $dbh->func($lobj_fd, $offset, $whence, 'lo_lseek');
+
+ラージ・オブジェクト$obj_idでの読み込みあるいは書き込み位置を変更します。
+現在、$whenceには0（L_SET）だけが指定できます。現在の位置を返し、
+失敗したときにはundefを返します。
+
+  $loc = $dbh->func($lobj_fd, 'lo_tell');
+
+ラージ・オブジェクト$obj_ｆdでの読み込みあるいは書き込み位置を返します。
+失敗したときにはundefを返します。
+
+  $lobj_fd = $dbh->func($lobj_fd, 'lo_close');
+
+既にあるラージ・オブジェクトをクローズします。成功すればtrue、
+失敗すればfalseを返します。
+
+  $lobj_fd = $dbh->func($lobj_fd, 'lo_unlink');
+
+既存のラージ・オブジェクトを削除します。成功すればtrue、失敗すれば
+falseを返します。
+
+  $lobjId = $dbh->func($filename, 'lo_import');
+
+UNIXファイルをラージ・オブジェクトとしてインポートし、新しいオブジェクトの
+オブジェクトIDを返します。失敗したときにはundefを返します。
+
+  $ret = $dbh->func($lobjId, 'lo_export', 'filename');
+
+ラージ・オブジェクトをUNIXファイルにエキスポートします。失敗すればfalseを、
+そうでなければtrueを返します。
+
+  $ret = $dbh->func($line, 'putline');
+
+単発のinsertコマンドを使ったオーバーヘッドなく、テーブルに大量のデータを
+コピーするために、SQL-コマンド 'COPY table FROM STDIN' と一緒に使われます。
+アプリケーションは、そのデータの送信が完了したことをバックエンドに示すため
+明示的に"\."という2文字を送信しなければいけません。この関数の使い方の例に
+ついてはtest.plをご覧ください。
+
+  $ret = $dbh->func($buffer, length, 'getline');
+
+テーブル全体をダンプするために、SQL-コマンド 'COPY table TO STDOUT'と一緒に
+使われます。この関数の使い方の例についてはtest.plをご覧ください。
+
+  $ret = $dbh->func('pg_notifies');
+
+undefあるいは、非同期通知を受け取る[ $table, $backend_pid ]という２つの要素の
+配列へのリファレンスを返します。
+
+  $fd = $dbh->func('getfd');
+
+サーバーへの実際の接続のfdを返します。select() と func('pg_notifies')と一緒に
+使うことができます。
+
+=back
+
+=head1 すべてのハンドルに共通の属性
+
+=over 4
+
+=item B<Warn> (boolean, inherited)
+
+DBIによって実装されており、ドライバ特有の影響はありません。 
+
+=item B<Active> (boolean, read-only)
+
+DBIで提案されているように、ドライバによってサポートされています。
+データベース・ハンドルは、それが接続されていればアクティブであり、
+ステートメント・ハンドルはそれがfinishするまではアクティブです。 
+
+=item B<Kids> (integer, read-only)
+
+DBIによって実装されており、ドライバ特有の影響はありません。 
+
+=item B<ActiveKids> (integer, read-only)
+
+DBIによって実装されており、ドライバ特有の影響はありません。 
+
+=item B<CachedKids> (hash ref)
+
+DBIによって実装されており、ドライバ特有の影響はありません。 
+
+=item B<CompatMode> (boolean, inherited)
+
+このドライバでは使われません。
+
+=item B<InactiveDestroy> (boolean)
+
+DBIによって実装されており、ドライバ特有の影響はありません。 
+
+=item B<PrintError> (boolean, inherited)
+
+DBIによって実装されており、ドライバ特有の影響はありません。 
+
+=item B<RaiseError> (boolean, inherited)
+
+DBIによって実装されており、ドライバ特有の影響はありません。 
+
+=item B<HandleError> (boolean, inherited)
+
+DBIによって実装されており、ドライバ特有の影響はありません。 
+
+=item B<ChopBlanks> (boolean, inherited)
+
+DBIで提案されているように、ドライバによってサポートされています。
+このメソッドはSQL関数RTRIMと同じです。 
+
+=item B<LongReadLen> (integer, inherited)
+
+DBIによって実装されており、ドライバ特有の影響はありません。 
+
+=item B<LongTruncOk> (boolean, inherited)
+
+DBIによって実装されており、ドライバ特有の影響はありません。 
+
+=item B<Taint> (boolean, inherited)
+
+DBIによって実装されており、ドライバ特有の影響はありません。 
+
+=item B<private_*>
+
+DBIによって実装されており、ドライバ特有の影響はありません。 
+
+=back
+
+=head1 DBIデータベース・ハンドル・オブジェクト
+
+=head2 データベース・ハンドル・メソッド
+
+=over 4
+
+=item B<selectrow_array>
+
+  @row_ary = $dbh->selectrow_array($statement, \%attr, @bind_values);
+
+DBIによって実装されており、ドライバ特有の影響はありません。
+
+=item B<selectrow_arrayref>
+
+  $ary_ref = $dbh->selectrow_arrayref($statement, \%attr, @bind_values);
+
+DBIによって実装されており、ドライバ特有の影響はありません。
+
+=item B<selectrow_hashref>
+
+  $hash_ref = $dbh->selectrow_hashref($statement, \%attr, @bind_values);
+
+DBIによって実装されており、ドライバ特有の影響はありません。
+
+=item B<selectall_arrayref>
+
+  $ary_ref = $dbh->selectall_arrayref($statement, \%attr, @bind_values);
+
+DBIによって実装されており、ドライバ特有の影響はありません。
+
+=item B<selectall_hashref>
+
+  $hash_ref = $dbh->selectall_hashref($statement, $key_field);
+
+DBIによって実装されており、ドライバ特有の影響はありません。
+
+=item B<selectcol_arrayref>
+
+  $ary_ref = $dbh->selectcol_arrayref($statement, \%attr, @bind_values);
+
+DBIによって実装されており、ドライバ特有の影響はありません。
+
+=item B<prepare>
+
+  $sth = $dbh->prepare($statement, \%attr);
+
+PostgreSQLはステートメントをprepareするという概念を持っていません。
+このためprepareメソッドは単にプレースホルダをチェックしたあとに、
+そのステートメントを格納するだけです。prepareした後、利用可能な
+ステートメントに関する情報はありません。
+
+=item B<prepare_cached>
+
+  $sth = $dbh->prepare_cached($statement, \%attr);
+
+DBIによって実装されており、ドライバ特有の影響はありません。
+このメソッドは、ステートメントをprepareすることが、データベースとの相互関係を
+持っていないために、このドライバにとっては有効ではありません。
+
+=item B<do>
+
+  $rv  = $dbh->do($statement, \%attr, @bind_values);
+
+DBIによって実装されており、ドライバ特有の影響はありません。このドキュメントの
+別の場所にあるexecuteメソッドの注意をご覧下さい。
+
+=item B<commit>
+
+  $rc  = $dbh->commit;
+
+DBIで提案されているように、ドライバによってサポートされています。
+このドキュメントの別の場所にあるB<トランザクション>についての注意もご覧下さい。
+
+=item B<rollback>
+
+  $rc  = $dbh->rollback;
+
+DBIで提案されているように、ドライバによってサポートされています。
+このドキュメントの別の場所にあるB<トランザクション>についての注意もご覧下さい。
+
+=item B<disconnect>
+
+  $rc  = $dbh->disconnect;
+
+DBIで提案されているように、ドライバによってサポートされています。
+
+=item B<ping>
+
+  $rc = $dbh->ping;
+
+このドライバはpingメソッドをサポートしています、これはデータベース・ハンドルの
+妥当性をチェックするために使うことができます。pingメソッドは空の問い合わせを
+発行し、結果ステータスをチェックします。
+
+=item B<table_info>
+
+  $sth = $dbh->table_info;
+
+DBIで提案されているように、ドライバによってサポートされています。
+このメソッドは、現在のユーザによって所有されているすべてのテーブルとビューを
+返します。インデックスとシーケンスはセレクトしません。同様にシステムテーブルも
+セレクトされません。TABLE_QUALIFIERと同様に、reltype属性が返され、REMARKSは未定義です。
+
+=item B<foreign_key_info>
+
+  $sth = $dbh->foreign_key_info( $pk_catalog, $pk_schema, $pk_table,
+                                 $fk_catalog, $fk_schema, $fk_table );
+
+DBIで提案されているように、ドライバによってサポートされています。
+Postgresサーバー 7.3以前では実装されていません(undefを返します）。現在は
+複数カラムのキーの先頭のカラムについての情報だけを返します。
+
+=item B<tables>
+
+  @names = $dbh->tables;
+
+DBIで提案されているように、ドライバによってサポートされています。このメソッドは、
+現在のユーザによって所有されているすべてのテーブルとビューを返します。
+インデックスとシーケンスはセレクトしません。同様にシステムテーブルもセレクトされません。
+
+=item B<type_info_all>
+
+  $type_info_all = $dbh->type_info_all;
+
+DBIで提案されているように、ドライバによってサポートされています。
+SQLデータ型と、よく使われるデータ型の情報だけが提供されます。
+PostgreSQL型名とSQL92データ型（可能であれば）とのマッピングは以下の
+表のように行われます：
+
+        +---------------+------------------------------------+
+        | データ型名    | SQL92                              |
+        |---------------+------------------------------------|
+        | bool          | BOOL                               |
+        | text          | /                                  |
+        | bpchar        | CHAR(n)                            |
+        | varchar       | VARCHAR(n)                         |
+        | int2          | SMALLINT                           |
+        | int4          | INT                                |
+        | int8          | /                                  |
+        | money         | /                                  |
+        | float4        | FLOAT(p)   p<7=float4, p<16=float8 |
+        | float8        | REAL                               |
+        | abstime       | /                                  |
+        | reltime       | /                                  |
+        | tinterval     | /                                  |
+        | date          | /                                  |
+        | time          | /                                  |
+        | datetime      | /                                  |
+        | timespan      | TINTERVAL                          |
+        | timestamp     | TIMESTAMP                          |
+        +---------------+------------------------------------+
+
+PostgreSQL特有のデータ型に関する、さらに詳細についてはL<pgbuiltin>を
+お読みください。
+
+=item B<type_info>
+
+  @type_info = $dbh->type_info($data_type);
+
+DBIによって実装されており、ドライバ特有の影響はありません。
+
+=item B<quote>
+
+  $sql = $dbh->quote($value, $data_type);
+
+このモジュールはそれ自身のquoteメソッドを実装しています。DBIメソッドに加えて、
+PostgreSQLがバックスラッシュをエスケープ文字として扱うのでバックスラッシュも
+二重化します。
+
+B<注意:> 公式にはC<SQL_BINARY>データ型のドキュメント化されていない
+（そして不正な）サポートは反対されています。代わりにC<bind_param()>で
+C<PG_BYTEA>を使ってください:
+
+  $rv = $sth->bind_param($param_num, $bind_value,
+                         { pg_type => DBD::Pg::PG_BYTEA });
+
+=back
+
+=head2 データベース・ハンドル属性
+
+=over 4
+
+=item B<AutoCommit>  (boolean)
+
+DBIで提案されているように、ドライバによってサポートされています。
+DBIの分類に従えば、PostgreSQLはトランザクションが明示的に開始されなければ
+ならないデータベースです。トランザクションを開始しなければ、すべての変更は
+そのまま永続化します。AutoCommitのデフォルトはオンで、これはPostgreSQLの
+デフォルトの動きに対応しています。AutoCommitをオフにすると、トランザクションは
+開始され、各コミットまたはロールバックが自動的に新しいトランザクションを
+開始します。詳細については、このドキュメントのB<トランザクション>をご覧ください。 
+
+=item B<Driver>  (handle)
+
+DBIによって実装されており、ドライバ特有の影響はありません。 
+
+=item B<Name>  (string, read-only)
+
+DBIのデフォルトのメソッドはドライバ独自のメソッドで置き換えられています。
+それはデータベース名だけを返します。接続文字列からのそれ以外のものは、
+すべて切り捨てられます。このメソッドはDBI仕様に反して、読み込みのみで
+あることに注意してください。 
+
+=item B<RowCacheSize>  (integer)
+
+DBIによって実装されており、ドライバによって使われていません。. 
+
+=item B<pg_auto_escape> (boolean)
+
+PostgreSQL独自の属性。もしTrueであれば、すべてのパラメータのクォートと
+バックスラッシュは以下のような方法でエスケープされます:
+
+  クォートはquote(SQL)でエスケープ
+  バックスラッシュはバックシュラッシュでエスケープ
+
+デフォルトはオンです。PostgreSQLはクォートも受け付けることに注意してください。
+それらはバックスラッシュでエスケープされます。他のASCIIは文字列定数で
+直接使うことができます。
+
+=item B<pg_enable_utf8> (boolean)
+
+PostgreSQL独自の属性。もしtrueであれば、（もしデータが正しいutf8であれば）
+返される文字データのためのutf8フラグが設定されます。utf8フラグの詳細に
+ついては、L<Encode>をご覧ください。これはperl 5.8以上にもに関連があります。
+
+B<NB>: This attribute is experimental and may be subject to change.
+
+=item B<pg_INV_READ> (integer, read-only)
+
+lo_creat と lo_openでのモードとして使われる定数。 
+
+=item B<pg_INV_WRITE> (integer, read-only)
+
+lo_creat と lo_openでのモードとして使われる定数。 
+
+=back
+
+=head1 DBI ステートメント・ハンドル・オブジェクト
+
+=head2 ステートメント・ハンドル・メソッド
+
+=over 4
+
+=item B<bind_param>
+
+  $rv = $sth->bind_param($param_num, $bind_value, \%attr);
+
+DBIで提案されているように、ドライバによってサポートされています。
+
+B<注意:> C<SQL_BINARY>SQLデータ型のドキュメント化されていない
+（そして不正な）サポートは公式には反対されています。代わりに
+C<PG_BYTEA>を使ってください:
+
+  $rv = $sth->bind_param($param_num, $bind_value,
+                         { pg_type => DBD::Pg::PG_BYTEA });
+
+=item B<bind_param_inout>
+
+このドライバではサポートされていません。
+
+=item B<execute>
+
+  $rv = $sth->execute(@bind_values);
+
+DBIで提案されているように、ドライバによってサポートされています。
+'UPDATE', 'DELETE', 'INSERT' ステートメントという、常に影響を受けた行を
+返すものに加えて、executeメソッドを'SELECT ... INTO table'　ステートメントの
+ためにも使うことができます。
+
+=item B<fetchrow_arrayref>
+
+  $ary_ref = $sth->fetchrow_arrayref;
+
+DBIで提案されているように、ドライバによってサポートされています。
+
+=item B<fetchrow_array>
+
+  @ary = $sth->fetchrow_array;
+
+DBIで提案されているように、ドライバによってサポートされています。
+
+=item B<fetchrow_hashref>
+
+  $hash_ref = $sth->fetchrow_hashref;
+
+DBIで提案されているように、ドライバによってサポートされています。
+
+=item B<fetchall_arrayref>
+
+  $tbl_ary_ref = $sth->fetchall_arrayref;
+
+DBIによって実装されており、ドライバ特有の影響はありません。
+
+=item B<finish>
+
+  $rc = $sth->finish;
+
+DBIで提案されているように、ドライバによってサポートされています。
+
+=item B<rows>
+
+  $rv = $sth->rows;
+
+DBIで提案されているように、ドライバによってサポートされています。
+他の多くのドライバとは異なり、ステートメントを実行した直後に行の数が利用可能です。
+
+=item B<bind_col>
+
+  $rc = $sth->bind_col($column_number, \$var_to_bind, \%attr);
+
+DBIで提案されているように、ドライバによってサポートされています。
+
+=item B<bind_columns>
+
+  $rc = $sth->bind_columns(\%attr, @list_of_refs_to_vars_to_bind);
+
+DBIで提案されているように、ドライバによってサポートされています。
+
+=item B<dump_results>
+
+  $rows = $sth->dump_results($maxlen, $lsep, $fsep, $fh);
+
+DBIによって実装されており、ドライバ特有の影響はありません。
+
+=item B<blob_read>
+
+  $blob = $sth->blob_read($id, $offset, $len);
+
+DBI実装によって提案されているようにドライバがサポートしています。
+DBIによって実装されていますが、ドキュメントにはありません。
+そのため、このメソッドは変更されるかもしれません。
+
+このメソッドはOracleでのblobの現在の実装によって大きな影響を受けているように
+見えます。それでもできる限り互換性を保つようにします。blobがテーブルに関連し、
+テーブルは１つしかblobを持つことができない(データ型LONG)という制限によって
+Oracleは苦しめられていますが、PostgreSQLは、いわゆるオブジェクト識別子を
+使うことによって、そのblobを各テーブルとは独立に扱います。これにより、
+なぜblob_readメソッドがSTATEMENTパッケージに入れられ、DATABASEパッケージの
+一部でなかったかを説明できます。fieldパラメータ（訳者注：idの間違い？）は
+このオブジェクト識別子を扱うために使われています。offsetとlenパラメータは、
+ドライバが一度にblob全体を取り出す場合には、0にすることができます。
+
+PostgreSQL-6.5で開始すると、blobへのすべてのアクセスはトランザクションのなかで
+行わなければなりません。これは読み込みのみのアクセスでも維持されます。
+
+funcインターフェースを通して利用できるblob関連のPostgreSQL特有の関数も
+ご覧ください。
+
+blobについてのさらに詳細な情報と例は、PostgreSQLプログラマーズ・ガイドの
+ラージ・オブジェクト(Large Object)の章を読んでください
+
+=back
+
+=head2 ステートメント・ハンドル属性
+
+=over 4
+
+=item B<NUM_OF_FIELDS>  (integer, read-only)
+
+DBIによって実装されており、ドライバ特有の影響はありません。 
+
+=item B<NUM_OF_PARAMS>  (integer, read-only)
+
+DBIによって実装されており、ドライバ特有の影響はありません。 
+
+=item B<NAME>  (array-ref, read-only)
+
+DBIで提案されているように、ドライバによってサポートされています。 
+
+=item B<NAME_lc>  (array-ref, read-only)
+
+DBIによって実装されており、ドライバ特有の影響はありません。 
+
+=item B<NAME_uc>  (array-ref, read-only)
+
+DBIによって実装されており、ドライバ特有の影響はありません。 
+
+=item B<TYPE>  (array-ref, read-only)
+
+DBIで提案されているようにドライバがサポートしています。
+国際標準に対応しないPostgreSQL特有のデータ型は、制限されます。
+
+=item B<PRECISION>  (array-ref, read-only)
+
+このドライバはサポートしていません。
+
+=item B<SCALE>  (array-ref, read-only)
+
+このドライバはサポートしていません。
+
+=item B<NULLABLE>  (array-ref, read-only)
+
+このドライバはサポートしていません。
+
+=item B<CursorName>  (string, read-only)
+
+このドライバはサポートしていません。このドキュメントでのB<カーソル>に
+ついての注意をご覧ください。 
+
+=item B<Statement>  (string, read-only)
+
+DBIで提案されているように、ドライバによってサポートされています。
+
+=item B<RowCache>  (integer, read-only)
+
+このドライバはサポートしていません。
+
+=item B<pg_size>  (array-ref, read-only)
+
+PostgreSQL独自の属性。 各カラムの整数値の配列へのリファレンスを返します。
+整数値はカラムのバイトでの大きさをあらわします。可変長のカラムは-1で
+あらわされます。 
+
+=item B<pg_type>  (hash-ref, read-only)
+
+PostgreSQL独自の属性。 各カラムのための文字列の配列へのリファレンスを
+返します。文字列はデータ型の名前を表します。 
+
+=item B<pg_oid_status> (integer, read-only)
+
+PostgreSQL独自の属性。 最後のINSERTコマンドのOIDを返します。 
+
+=item B<pg_cmd_status> (integer, read-only)
+
+PostgreSQL特有の属性。最後のコマンドのタイプを返します。
+可能なタイプは以下のものがあります： INSERT, DELETE, UPDATE, SELECT. 
+
+=back
+
+=head1 詳細な情報
+
+=head2 トランザクション
+
+トランザクションの動きは、今やAutoCommit属性で制御されます。AutoCommitの完全な
+定義はDBIのドキュメントを参照してください。
+
+DBIの仕様にしたがって、AutoCommitのデフォルトはTRUEです。このモードでは、
+データベースへのいかなる変更もすぐに適用されます。 'begin', 'commit' または 
+'rollback'　ステートメントは、すべて拒否されます。
+
+AutoCommitがオフであれば、トランザクションは'begin'ステートメントを発行する
+ことによって直ちに開始されます。'commit'や'rollback'は新しいトランザクションを
+開始します。disconnectは'rollback'ステートメントを発行します。
+
+=head2 ラージ・オブジェクト
+
+ドライバは、funcインターフェースを通したlibpqによって実行される関数に関連する
+全てのラージ・オブジェクト(large-object)をサポートします。PostgreSQL 6.5からで
+あることにどうぞご注意ください。ラージ・オブジェクトへのアクセスは−たとえ
+読みこみのみであっても−トランザクションの中でなければなりません。
+
+=head2 カーソル
+
+PostgreSQLはカーソルという概念を持っていますが、現在の実装ではこれは使われて
+いません。PostgreSQLでのカーソルはトランザクション・ブロックの内側でのみ
+使うことができます。一時には１つのトランザクション・ブロックだけが許されるので、
+これは暗黙のうちに、ネストしたSELECTステートメントの使用が制限されます。
+このためexecuteメソッドはすべてのデータをフロント・エンド・アプリケーションに
+置かれるデータ構造体に取り出します。これは大量のデータをセレクトするときに
+注意しなければなりません！
+
+=head2 データ型 bool
+
+PostgreSQLの現在の実装は、trueならば't'、falseならば'f'を返します。
+Perlの視点からはどちらかといえば不幸な選択です。DBD-Pgモジュールはデータ型
+boolの結果をPerl的な方法：'f'-> '0'、't'->'1'　に変換します。この方法では
+Perlは'0'をfalseに'1'をtrueに扱うため、データ型boolのためにデータベース特有の
+戻り値をチェックする必要がありません。
+
+ブール値はPostgreSQLに、 trueとしてTRUE,'t', 'true', 'y', 'yes' あるいは '1'で、
+falseとしてFALSE, 'f', 'false', 'n', 'no' あるいは '0'で渡すことができます。
+
+=head2 スキーマ・サポート
+
+PostgreSQLバージョン7.3はスキーマ・サポートを堂給しました。PostgreSQLスキーマ
+の概念は他のデータベースとは違うかもしれないことに注意してください。さらなる
+詳細についてはPostgreSQLドキュメントを参照してください。
+
+現在、DBD::PgはPostgreSQLスキーマの明確なサポートを提供していません。
+しかしスキーマの機能は、スキーマ・オブジェクトについて明示的に記述する
+何も制限なく使うことが出来ます。例えば
+
+  my $res = $dbh->selectall_arrayref("SELECT * FROM my_schema.my_table");
+
+あるいはSET search_pathでスキーマ検索パスを扱うことによって、例えば
+
+  $dbh->do("SET search_path TO my_schema, public");
+
+B<注意:> (pg_catalogスキーマに含まれているような)PostgreSQLシステム・オブジェクトと
+同じ名前のオブジェクトを生成し、明示的に検索パスをpg_calalogが新しいオブジェクトの
+スキーマの後に来るよう設定すると、いくつかのDBD::Pgメソッド（特にPostgreSQLシステム
+オブジェクトを問い合わせるようなもの）は失敗するかもしれません。
+この問題はDBD::Pgの将来のリリースでは修正されるはずです。システム・オブジェクトと
+同じ名前を持った（あるいは'pg_'で始まる）オブジェクトの生成は、推奨されませんし、
+いかなる場合であっても避けるべきです。
+
+=head1 参考資料
+
+L<DBI>
+
+=head1 作者
+
+DBI and DBD-Oracle by Tim Bunce (Tim.Bunce@ig.co.uk)
+
+DBD-Pg by Edmund Mergl (E.Mergl@bawue.de) and Jeffrey W. Baker
+(jwbaker@acm.org). By David Wheeler <david@wheeler.net>, Jason
+Stewart <jason@openinformatics.com> and Bruce Momjian
+<pgman@candle.pha.pa.us> after v1.13.
+
+Major parts of this package have been copied from DBI and DBD-Oracle.
+
+=head1 著作権(=COPYRIGHT)
+
+The DBD::Pg module is free software. You may distribute under the terms of
+either the GNU General Public License or the Artistic License, as specified in
+the Perl README file.
+
+=head1 謝辞
+
+B<DBI/ACKNOWLEDGMENTS>をご覧ください。
+

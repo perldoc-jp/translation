@@ -1,0 +1,521 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+POE::Component::Client::TCP - a simplified TCP client
+
+POE::Component::Client::TCP - 単純化されたTCPクライアント
+
+=head1 SYNOPSIS
+
+  use POE qw(Component::Client::TCP);
+
+  # 基本的な使用方法。
+
+  POE::Component::Client::TCP->new
+    ( RemoteAddress => "127.0.0.1",
+      RemotePort    => "chargen",
+      Domain        => AF_INET,        # オプショナル。
+      Alias         => $session_alias  # オプショナル。
+      ServerInput   => sub {
+        my $input = $_[ARG0];
+        print "from server: $input\n";
+      }
+    );
+
+  # 完全な使用方法。
+
+  POE::Component::Client::TCP->new
+    ( RemoteAddress  => "127.0.0.1",
+      RemotePort     => "chargen",
+      BindAddress    => "127.0.0.1",
+      BindPort       => 8192,
+      Domain         => AF_INET,        # オプショナル。
+      Alias          => $session_alias  # オプショナル。
+      ConnectTimeout => 5,              # 秒指定。オプショナル。
+      SessionType   => "POE::Session::Abc",           # オプショナル。
+      SessionParams => [ options => { debug => 1 } ], # オプショナル。
+
+      Started        => \&handle_starting,   # オプショナル。
+      Args           => [ "arg0", "arg1" ],  # オプショナル。Startedの引数。
+
+      Connected      => \&handle_connect,
+      ConnectError   => \&handle_connect_error,
+      Disconnected   => \&handle_disconnect,
+
+      ServerInput    => \&handle_server_input,
+      ServerError    => \&handle_server_error,
+      ServerFlushed  => \&handle_server_flush,
+
+      Filter         => "POE::Filter::Something",
+
+      InlineStates   => { ... },
+      PackageStates  => [ ... ],
+      ObjectStates   => [ ... ],
+    );
+
+  # コールバックの例。
+
+  sub handle_start {
+    my @args = @_[ARG0..$#_];
+  }
+
+  sub handle_connect {
+    my ($socket, $peer_address, $peer_port) = @_[ARG0, ARG1, ARG2];
+  }
+
+  sub handle_connect_error {
+    my ($syscall_name, $error_number, $error_string) = @_[ARG0, ARG1, ARG2];
+  }
+
+  sub handle_disconnect {
+    # no special parameters
+  }
+
+  sub handle_server_input {
+    my $input_record = $_[ARG0];
+  }
+
+  sub handle_server_error {
+    my ($syscall_name, $error_number, $error_string) = @_[ARG0, ARG1, ARG2];
+  }
+
+  sub handle_server_flush {
+    # no special parameters
+  }
+
+  # 予約済みのHEAP変数:
+
+  $heap->{server}    = サーバを表すReadWriteホイール。
+  $heap->{shutdown}  = 停止フラグ(停止しようとしているかどうかの確認)。
+  $heap->{connected} = 接続フラグ(セッションが接続されているかどうかの確認)。
+  $heap->{shutdown_on_error} = エラー発生時に自動的に切断。
+
+  # 受け付けられるパブリックイベント。
+
+  $kernel->yield( "shutdown" )   # 接続を切断
+  $kernel->yield( "reconnect" )  # サーバに再接続
+
+  # サーバへの応答。
+
+  $heap->{server}->put(@things_to_send);
+
+=head1 DESCRIPTION
+
+The TCP client component hides the steps needed to create a client
+using Wheel::SocketFactory and Wheel::ReadWrite.  The steps aren't
+many, but they're still tiresome after a while.
+
+TCPクライアントコンポーネントはWheel::SocketFactoryとWheel::ReadWriteを
+使用したクライアントを作成するために必要なステップを隠します。そのステ
+ップは多くはありませんが、それでもやはりしばらくすると退屈になります。
+
+POE::Component::Client::TCP supplies common defaults for most
+callbacks and handlers.  The authors hope that clients can be created
+with as little work as possible.
+
+POE::Component::Client::TCPはほとんどのコールバックとハンドラに一般的な
+デフォルトを提供します。作者は可能な限り少ない作業でクライアントを作成
+できることを期待します。
+
+=head1 Constructor Parameters
+
+=over 2
+
+=item Alias
+
+Alias is an optional component alias.  It's used to post events to the
+TCP client component from other sessions.  The most common use of
+Alias is to allow a client component to receive "shutdown" and
+"reconnect" events from a user interface session.
+
+Aliasはオプショナルのコンポーネントエイリアスです。他のセッションから
+TCPクライアントコンポーネントにイベントを通知するために使われます。
+Aliasの最も基本的な用途はクライアントコンポーネントがユーザインタフェー
+スセッションから"shutdown"と"reconnect"イベントを受け取ることを可能にす
+ることです。
+
+=item SessionType
+
+SessionType specifies what type of sessions will be created within
+the TCP server.  It must be a scalar value.
+
+SessionTypeはTCPクライアント内で生成されるセッションのタイプを指定しま
+す。これはスカラ値でなければなりません。
+
+  SessionType => "POE::Session::MultiDispatch"
+
+SessionType is optional.  The component will supply a "POE::Session"
+type if none is specified.
+
+SessionTypeはオプショナルです。もし何も指定されなければコンポーネントは
+"POE::Session"タイプを提供するでしょう。
+
+=item SessionParams
+
+Initialize parameters to be passed to the SessionType when it is created.
+This must be an array reference.
+
+SessionTypeを生成したときに渡される初期化引数。これは配列リファレンスで
+なければなりません。
+
+  SessionParams => [ options => { debug => 1, trace => 1 } ],
+
+It is important to realize that some of the arguments to SessionHandler
+may get clobbered when defining them for your SessionHandler.  It is
+advised that you stick to defining arguments in the "options" hash such
+as trace and debug. See L<POE::Session> for an example list of options.
+
+SessionHandlerへの引数のいくつかはあなたのSessionHandlerに定義するとき
+に破壊されてしまうかもしれないことを知っておくことは重要です。トレース
+やデバッグのような"オプション"ハッシュ内で定義用引数を守っておくことを
+考慮してください。オプションの例の一覧についてはL<POE::Session>を参照し
+てください。
+
+=item Args LISTREF
+
+Args passes the contents of a LISTREF to the Started callback via
+@_[ARG0..$#_].  It allows you to pass extra information to the session
+created to handle the client connection.
+
+ArgsはLISTREFの内容を@_[ARG0..$#_]を通してStartedコールバックに渡します。
+これはクライアントコネクションを扱うために生成されたセッションに特別な
+情報を渡すことを可能にします。
+
+=item BindAddress
+
+=item BindPort
+
+Specifies the local interface address and/or port to bind to before
+connecting.  This allows the client's connection to come from specific
+addresses on a multi-host system.
+
+接続前に割り当てるローカルインターフェースのアドレスやポートを指定しま
+す。これはマルチホストシステムで特定のアドレスからクライアントのコネク
+ションが来るようにすることを可能にします。
+
+=item ConnectError
+
+ConnectError is an optional callback to handle SocketFactory errors.
+These errors happen when a socket can't be created or connected to a
+remote host.
+
+ConnectErrorはSocketFactoryのエラーを扱うオプショナルのコールバックです。
+これらのエラーはソケットが生成されることやリモートホストに接続すること
+ができない場合に発生します。
+
+ConnectError must contain a subroutine reference.  The subroutine will
+be called as a SocketFactory error handler.  In addition to the usual
+POE event parameters, ARG0 will contain the name of the syscall that
+failed.  ARG1 will contain the numeric version of $! after the
+failure, and ARG2 will contain $!'s string version.
+
+ConnectErrorはサブルーチンリファレンスを含まなければなりません。そのサ
+ブルーチンはSocketFactoryのエラーハンドラとして呼ばれるでしょう。通常の
+POEのイベントパラメータに加えて、ARG0は失敗したシステムコールの名前を含
+みます。ARG1は失敗後の$!の数字版を含み、ARG2は$!の文字列版を含みます。
+
+Depending on the nature of the error and the type of client, it may be
+useful to post a reconnect event from ConnectError's callback.
+
+エラーの性質やクライアントの種類によっては、ConnectErrorのコールバック
+からreconnect(再接続)イベントを通知するのも有用かもしれません。
+
+  sub handle_connect_error {
+    $_[KERNEL]->delay( reconnect => 60 );
+  }
+
+The component will shut down after ConnectError if a reconnect isn't
+requested.
+
+もし再接続が要求されない場合、コンポーネントはConnectErrorの後に停止す
+るでしょう。
+
+=item Connected
+
+Connected is an optional callback to notify a program that
+SocketFactory succeeded.  This is an advisory callback, and it should
+not create a ReadWrite wheel itself.  The component will handle
+setting up ReadWrite.
+
+ConnectedはSocketFactoryが成功したことをプログラムに知らせるためのオプ
+ショナルのコールバックです。これは報告用のコールバックであり、ReadWrite
+ホイール自身を生成すべきではありません。コンポーネントがReadWriteの組み
+立てを扱います。
+
+ARG0 contains a socket handle.  It's not necessary to save this under
+most circumstances.  ARG1 and ARG2 contain the peer address and port
+as returned from getpeername().
+
+ARG0はソケットハンドルを含みます。たいていの状況下ではこれを保存する必
+要はありません。ARG1とARG2はgetpeername()から返されるようなピアアドレス
+とポートを含みます。
+
+=item ConnectTimeout
+
+ConnectTimeout is the maximum time in seconds to wait for a connection
+to be established.  If it is omitted, Client::TCP relies on the
+operating system to abort stalled connect() calls.
+
+ConnectTimeoutは接続が確立されるまでに待つ秒指定の最大時間です。もし省
+略された場合、Client::TCPはオペレーティングシステムに頼って行き詰まった
+connect()呼び出しを中断します。
+
+Upon a connection timeout, Client::TCP will send a ConnectError event.
+Its ARG0 will be 'connect' and ARG1 will be the POSIX ETIMEDOUT value.
+
+接続のタイムアウトにおいて、Client::TCPはConnectErrorイベントを送ります。
+そのARG0は'connect'で、ARG1はPOSIXのETIMEDOUT値です。
+
+=item Disconnected
+
+Disconnected is an optional callback to notify a program that an
+established server connection has shut down.  It has no special
+parameters.
+
+Disconnectedは確立されたサーバコネクションが切断したことをプログラムに
+知らせるためのオプショナルのコールバックです。特別な引数はありません。
+
+For persistent connections, such as MUD bots or long-running services,
+a useful thing to do from a Disconnected handler is reconnect.  For
+example, this reconnects after waiting a minute:
+
+MUDのボットや長期間のサービスのような永続的な接続のためにDisconnectedハ
+ンドラから行うことができる有用なことは再接続です。例えば、これは1分間待
+ってから再接続します。
+
+  sub handle_disconnect {
+    $_[KERNEL]->delay( reconnect => 60 );
+  }
+
+The component will shut down after disconnecting if a reconnect isn't
+requested.
+
+もし再接続が要求されない場合、コンポーネントは接続が切れた後に停止する
+でしょう。
+
+=item Domain
+
+Specifies the domain within which communication will take place.  It
+selects the protocol family which should be used.  Currently supported
+values are AF_INET, AF_INET6, PF_INET or PF_INET6.  This parameter is
+optional and will default to AF_INET if omitted.
+
+通信が行われるドメインを指定します。使用されるべきプロトコルファミリを
+選択します。現在サポートされている値はAF_INET、AF_INET6、PF_INET、
+PF_INET6です。この引数はオプショナルで、省略された場合はAF_INETがデフォ
+ルトになります。
+
+Note: AF_INET6 and PF_INET6 are supplied by the Socket6 module, which
+is available on the CPAN.  You must have Socket6 loaded before
+POE::Component::Server::TCP will create IPv6 sockets.
+
+注意: AF_INET6とPF_INET6はCPANで入手可能なSocket6モジュールによって提供
+されます。POE::Component::Client::TCPがIPv6ソケットを生成する前に
+Socket6をロードしておかなければなりません。
+
+=item Filter
+
+Filter specifies the type of filter that will parse input from a
+server.  It may either be a scalar or a list reference.  If it is a
+scalar, it will contain a POE::Filter class name.  If it is a list
+reference, the first item in the list will be a POE::Filter class
+name, and the remaining items will be constructor parameters for the
+filter.  For example, this changes the line separator to a vertical
+pipe:
+
+Filterはサーバからの入力をパースするフィルタのタイプを指定します。スカ
+ラでもリストリファレンスでもかまいません。もしスカラであれば、それは
+POE::Filterのクラス名を含むでしょう。もしリストリファレンスであれば、リ
+ストの最初の項目はPOE::Filterのクラス名であり、残りの項目はそのフィルタ
+へのコンストラクタ引数でしょう。例えば、これはラインセパレータを縦線に
+変更します。
+
+  Filter => [ "POE::Filter::Line", InputLiteral => "|" ],
+
+Filter is optional.  The component will supply a "POE::Filter::Line"
+instance none is specified.
+
+Filterはオプショナルです。もし何も指定されなければコンポーネントは
+"POE::Filter::Line"インスタンスを提供するでしょう。
+
+=item InlineStates
+
+InlineStates holds a hashref of inline coderefs to handle events.  The
+hashref is keyed on event name.  For more information, see
+POE::Session's create() method.
+
+InlineStatesはイベントを扱うためにインラインコードリファレンスのハッシ
+ュリファレンスを保持します。そのハッシュリファレンスはイベント名のキー
+を持ちます。より詳しい情報については、POE::Sessionのcreate()メソッドを
+参照してください。
+
+=item ObjectStates
+
+ObjectStates holds a list reference of objects and the events they
+handle.  For more information, see POE::Session's create() method.
+
+ObjectStatesはオブジェクトとそれらが扱うイベントのリストリファレンスを
+保持します。より詳しい情報については、POE::Sessionのcreate()メソッドを
+参照してください。
+
+=item PackageStates
+
+PackageStates holds a list reference of Perl package names and the
+events they handle.  For more information, see POE::Session's create()
+method.
+
+PackageStatesはPerlのパッケージ名とそれらが扱うイベントのリストリファレ
+ンスを保持します。より詳しい情報については、POE::Sessionのcreate()メソ
+ッドを参照してください。
+
+=item RemoteAddress
+
+RemoteAddress contains the address to connect to.  It is required and
+may be a host name ("poe.perl.org") a dotted quad ("127.0.0.1") or a
+packed socket address.
+
+RemoteAddressは接続するアドレスを含みます。これは必須です。ホスト名
+("poe.perl.org")、ドット区切り表記("127.0.0.1")、packされたソケットアド
+レスが許されます。
+
+=item RemotePort
+
+RemotePort contains the port to connect to.  It is required and may be
+a service name ("echo") or number (7).
+
+RemotePortは接続するポートを含みます。これは必須です。サービス名
+("echo")または番号(7)が許されます。
+
+=item ServerError
+
+ServerError is an optional callback to notify a program that an
+established server connection has encountered some kind of error.
+Like with ConnectError, it accepts the traditional error parameters:
+
+ServerErrorは確立されたサーバコネクションが何らかのエラーに遭遇したこと
+をプログラムに知らせるためのオプショナルのコールバックです。
+ConnectErrorのように、慣習に従ったエラー引数を受け取ります:
+
+ARG0 contains the name of the syscall that failed.  ARG1 contains the
+numeric failure code from $!.  ARG2 contains the string version of $!.
+
+ARG0は失敗したシステムコールの名前を含みます。ARG1は$!の数字の失敗コー
+ドを含み、ARG2は$!の文字列版を含みます。
+
+The component will shut down after a server error if a reconnect isn't
+requested.
+
+もし再接続が要求されない場合、コンポーネントはサーバエラーの後に停止す
+るでしょう。
+
+=item ServerFlushed
+
+ServerFlushed is an optional callback to notify a program that
+ReadWrite's output buffers have completely flushed.  It has no special
+parameters.
+
+ServerFlushedはReadWriteの出力バッファが完全にフラッシュしたことをプロ
+グラムに知らせるためのオプショナルのコールバックです。特別な引数はあり
+ません。
+
+The component will shut down after a server flush if $heap->{shutdown}
+is set.
+
+もし$heap->{shutdown}が設定されている場合、コンポーネントはサーバフラッ
+シュの後に停止するでしょう。
+
+=item ServerInput
+
+ServerInput is a required callback.  It is called for each input
+record received from a server.  ARG0 contains the input record, the
+format of which is determined by POE::Component::Client::TCP's Filter
+parameter.
+
+ServerInputは必須のコールバックです。それはサーバから受け取ったそれぞれ
+の入力コードに対して呼ばれます。ARG0はPOE::Component::Client::TCPの
+Filterパラメータによって決定されるフォーマットの入力レコードを含みます。
+
+The ServerInput function will stop being called when $heap->{shutdown}
+is true.
+
+$heap->{shutdown}が真である場合、ServerInput関数は呼び出しを停止するで
+しょう。
+
+=item Started
+
+Started is an optional callback.  It is called after Client::TCP is
+initialized but before a connection has been established.
+
+Startedはオプショナルのコールバックです。これはClient::TCPが初期化され
+た後で接続が確立される前に呼ばれます。
+
+The Args parameter can be used to pass initialization values to the
+Started callback, eliminating the need for closures to get values into
+the component.
+
+Startedコールバックに初期化値を渡すためにArgsパラメータを使うことができ、
+コンポーネントに値を入れるためのクロージャの必要性を除去します。
+
+=back
+
+=head1 Public Events
+
+=over 2
+
+=item reconnect
+
+Instruct the TCP client component to reconnect to the server.  If it's
+already connected, it will disconnect harshly, discarding any pending
+input or output data.
+
+サーバに再接続するようにTCPクライアントコンポーネントに指示します。もし
+すでに接続している場合、保留されている入力や出力データを放棄して厳正に
+切断するでしょう。
+
+=item shutdown
+
+When a Client::TCP component receives a shutdown event, it initiates a
+graceful shutdown.  Any subsequent server input will be ignored, and
+any pending output data will be flushed.  Once the connection is dealt
+with, the component will self-destruct.
+
+Client::TCPコンポーネントがshutdownイベントを受け取ると、上品な停止を開
+始します。その後のサーバ入力は全て無視され、保留されている出力データは
+全てフラッシュされるでしょう。接続が処理されるとすぐにコンポーネントは
+自らデストラクトします。
+
+=back
+
+=head1 SEE ALSO
+
+POE::Component::Server::TCP, POE::Wheel::SocketFactory,
+POE::Wheel::ReadWrite, POE::Filter
+
+=head1 CAVEATS
+
+This may not be suitable for complex client tasks.
+
+これは複雑なクライアントの仕事には適切ではないかもしれません。
+
+This looks nothing like what Ann envisioned.
+
+これはAnnが構想したものとは全く似ていないように見えます。
+
+=head1 AUTHORS & COPYRIGHTS
+
+POE::Component::Client::TCP is Copyright 2001 by Rocco Caputo.  All
+rights are reserved.  POE::Component::Client::TCP is free software,
+and it may be redistributed and/or modified under the same terms as
+Perl itself.
+
+POE::Component::Client::TCP is based on code, used with permission,
+from Ann Barcomb E<lt>kudra@domaintje.comE<gt>.
+
+POE::Component::Client::TCP is based on code, used with permission,
+from Jos Boumans E<lt>kane@cpan.orgE<gt>.
+
+=head1 Translators
+
+井上 謙次 <deq@oct.zaq.ne.jp>

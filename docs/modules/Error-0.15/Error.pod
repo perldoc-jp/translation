@@ -1,0 +1,277 @@
+
+=encoding euc-jp
+
+=head1 名前
+
+Error - エラーや例外をオブジェクト指向的に扱う
+
+=head1 概要
+
+    use Error qw(:try);
+
+    throw Error::Simple( "A simple error");
+
+    sub xyz {
+        ...
+	record Error::Simple("A simple error")
+	    and return;
+    }
+ 
+    unlink($file) or throw Error::Simple("$file: $!",$!);
+
+    try {
+	do_some_stuff();
+	die "error!" if $condition;
+	throw Error::Simple -text => "Oops!" if $other_condition;
+    }
+    catch Error::IO with {
+	my $E = shift;
+	print STDERR "File ", $E->{'-file'}, " had a problem\n";
+    }
+    except {
+	my $E = shift;
+	my $general_handler=sub {send_message $E->{-description}};
+	return {
+	    UserException1 => $general_handler,
+	    UserException2 => $general_handler
+	};
+    }
+    otherwise {
+	print STDERR "Well I don't know what to say\n";
+    }
+    finally {
+	close_the_garage_door_already(); # ここには信頼できるものを
+    }; # 最後の ; を忘れないように。びっくりしてしまうと思うので
+
+=head1 説明
+
+C<Error>パッケージはふたつのインターフェースを提供します。まず、C<Error>は
+例外を扱うための手続き型インターフェースを提供します。またC<Error>は、throw
+したり、あとでcatchしたり、もしくは単にrecordしたりするための、エラーや例外の
+ベースクラスとなることができます。
+
+C<Error>クラスのエラーを直接throwするべきではありません。C<Error>のサブクラス
+を使ってエラーを投げるようにしてください。
+
+=head1 手続き型インターフェース
+
+C<Error>は例外を扱うためのサブルーチンをエクスポートします。これらの
+サブルーチンをエクスポートするには、C<use>での宣言時にC<:try>タグを
+指定してください。
+
+=over 4
+
+=item try BLOCK CLAUSES
+
+C<try>はユーザーから呼ばれるメインのサブルーチンです。エクスポートされた
+他のすべてのサブルーチンは、tryサブルーチンの節になります。
+
+tryはBLOCKを評価し、その結果エラーが投げられることがなければ、そのブロック
+の実行結果を返します。
+
+C<CLAUSES>は後に続くサブルーチンで、BLOCK内でエラーが投げられた場合何を行うのか
+について記述してあります。
+
+=item catch CLASS with BLOCK
+
+C<BLOCK>を評価しているときにcatchされたエラーがC<$err-E<gt>isa(CLASS)>を満たす
+場合、この節が呼び出されます。
+
+C<BLOCK>にはふたつの引数が渡されます。ひとつ目はthrowされたエラーです。
+ふたつ目はスカラー変数へのリファレンスです。もしこの変数がcatchブロックで
+セットされると、catchブロックから返るときに、tryはあたかもcatchブロックが
+見つからなかったかのように処理を継続します。
+
+再度エラーを投げるにはcatchブロック内でC<$err-E<gt>throw>を呼び出します。
+
+第2引数のスカラーリファレンスがセットされていない場合、エラーが投げられません。
+そして現在実行中のtryブロックは、catchブロックの結果をそのまま返します。
+
+=item except BLOCK
+
+C<try>がハンドラを見つけられなかった場合、except節が見つかるとC<BLOCK>が
+評価されます。このブロックからの戻り値は、キーがクラス名で、値がそのタイプの
+エラーをハンドルするCODEリファレンスであるHASHREFか、同様のキーと値のペアの
+リストである必要があります。
+
+=item otherwise BLOCK
+
+どんなエラーであろうと補足しC<BLOCK>中のコードを実行します。
+
+C<BLOCK>が評価される際に引数がひとつ渡されますが、これは現在処理されている
+エラーです。
+
+otherwiseブロックはtryブロックひとつにつきひとつしか指定できません。
+
+=item finally BLOCK
+
+tryブロック中のコードの実行が成功した場合、C<BLOCK>にあるコードが実行されます。
+tryブロックがエラーを投げた場合は、エラーハンドラが終了したあとでC<BLOCK>中の
+コードが実行されます。
+
+エラーハンドラがエラーを投げた場合そのエラーは補足され、finallyブロックが実行
+されたあと再度そのエラーが投げられます。
+
+finallyブロックはtryブロックひとつにつきひとつしか指定できません。
+
+=back
+
+=head1 クラスインターフェース
+
+=head2 コンストラクタ
+
+C<Error>オブジェクトはハッシュとして実装されています。このハッシュは
+コンストラクタに渡される引数で初期化されます。使用できる引数、つまり
+C<Error>クラスから利用できる要素は以下の通りです。ただし、他のクラスが
+他の要素を追加しても構いません。
+
+	-file
+	-line
+	-text
+	-value
+	-object
+
+C<-file>やC<-line>がコンストラクタの引数に指定されていなかった場合、これらは
+コンストラクタの呼び出し元のファイル名や行番号で初期化されます。
+
+エラーが特定のオブジェクトと関連を持っているようなら、そのオブジェクトを
+C<-object>引数で渡してください。こうするとC<Error>パッケージはそのオブジェクト
+と関連を持つことができます。
+
+C<Error>パッケージは、最後に生成されたエラーを覚えているだけではなく、
+あるパッケージに関連した最後のエラーについても覚えています。このエラーは、
+そのパッケージ中のサブルーチンで作られた最後のエラーである場合もあれば、
+blessされたオブジェクトをC<-object>引数でそのパッケージに渡した最後のエラー
+である場合もあります。
+
+=over 4
+
+=item throw ( [ ARGS ] )
+
+新しいC<Error>オブジェクトを生成し、エラーを投げます。このエラーは、外側に
+C<try>ブロックがあればcatchされ、なければプログラムを終了させます。
+
+C<throw>は既存のエラーを再度投げるときにも呼び出されます。
+
+=item with ( [ ARGS ] )
+
+新しいC<Error>オブジェクトを生成して返します。これは以下のような場合の
+シンタックスシュガーのため定義されています。
+
+    die with Some::Error ( ... );
+
+=item record ( [ ARGS ] )
+
+新しいC<Error>オブジェクトを生成して返します。これは以下のような場合の
+シンタックスシュガーのため定義されています。
+
+    record Some::Error ( ... )
+	and return;
+
+=back
+
+=head2 スタティックメソッド
+
+=over 4
+
+=item prior ( [ PACKAGE ] )
+
+最後に生成されたエラー、もしくはC<PACKAGE>に関連する最後のエラーを返します。
+
+=back
+
+=head2 オブジェクトメソッド
+
+=over 4
+
+=item stacktrace
+
+エラーが生成された際にC<$Error::Debug>変数が0でない場合、C<stacktrace>は
+C<Carp::longmess>を呼び出した結果の文字列を返します。もし変数が0なら、
+C<stacktrace>はエラーの文字列に、そのエラーが生成されたファイルのファイル名と
+行番号を追加した文字列(最後に改行は付かない)を返します。
+
+=item object
+
+このエラーと関連付けられているオブジェクト。
+
+=item file
+
+このエラーのコンストラクタが呼び出されたファイル。
+
+=item line
+
+このエラーのコンストラクタが呼び出された行番号。
+
+=item text
+
+エラーのテキスト。
+
+=back
+
+=head2 オーバーロードされたメソッド
+
+=over 4
+
+=item stringify
+
+オブジェクトを文字列に変換するメソッド。このメソッドは、単純にC<text>メソッド
+と同じものを返すか、たとえばファイル名や行番号など、もう少し情報が付加された
+ものを返します。
+
+デフォルトでは、このメソッドはコンストラクタに渡されたC<-text>引数を返します。
+何も渡されなかった場合はC<"Died">を返します。
+
+=item value
+
+エラーと関連する値を返すメソッド。たとえばシステムコールのせいでエラーが
+生成された場合は、そのときのC<$!>の数値を返すことでしょう。
+
+デフォルトでは、このメソッドはコンストラクタに渡されたC<-value>引数の値を
+返します。
+
+=back
+
+=head1 定義済みのエラークラス
+
+=over 4
+
+=item Error::Simple
+
+このクラスは単純なエラー文字列や値を保持したいときに使われます。
+コンストラクタはふたつの引数を取ります。最初の引数はテキストの値で、
+次の引数は数字の値です。これらの値はオーバーロードされたメソッドによって
+返されます。
+
+もしテキストの値が$@の文字列のようにC<at file line 1>という風に終わるなら、
+この情報はエラーオブジェクトのC<-file>引数とC<-line>引数をセットするのに
+使われるでしょう。
+
+このクラスはevalされたブロックが単純な文字列のエラーでdieしたときに、内部的に
+使われます。
+
+=back
+
+=head1 既知のバグ
+
+いまのところはありません。が、本当にバグ無いという意味ではありません。
+
+=head1 作者(=AUTHORS)
+
+Graham Barr <gbarr@pobox.com>
+
+The code that inspired me to write this was originally written by
+Peter Seibel <peter@weblogic.com> and adapted by Jesse Glick
+<jglick@sig.bsh.com>.
+
+このコードはもともとPeter Seibel <peter@weblogic.com>が書き、その後
+Jesse Glick <jglick@sig.bsh.com>により引き継がれたコードによってインスパイア
+されました。
+
+=head1 メンテナ
+
+Arun Kumar U <u_arunkumar@yahoo.com>
+
+=head1 翻訳者
+
+萩原佳明 (hagi@p1d.com)

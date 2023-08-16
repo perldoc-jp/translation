@@ -1,0 +1,3181 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+perlipc - Perl interprocess communication (signals, fifos, pipes, safe subprocesses, sockets, and semaphores)
+
+=end original
+
+perlipc - Perl のプロセス間通信 (シグナル, fifo, パイプ, 安全な副プロセス, ソケット, セマフォ)
+
+=head1 DESCRIPTION
+
+=begin original
+
+The basic IPC facilities of Perl are built out of the good old Unix
+signals, named pipes, pipe opens, the Berkeley socket routines, and SysV
+IPC calls.  Each is used in slightly different situations.
+
+=end original
+
+Perl の基本的な IPC 機能は、古きよき UNIX のシグナル、名前付きパイプ、
+パイプ、Berkeley ソケットルーチン、 SysV IPC コールから構成されています。
+これら各々ははっきりと異なる状況で使われます。
+
+=head1 Signals
+
+(シグナル)
+
+=begin original
+
+Perl uses a simple signal handling model: the %SIG hash contains names
+or references of user-installed signal handlers.  These handlers will
+be called with an argument which is the name of the signal that
+triggered it.  A signal may be generated intentionally from a
+particular keyboard sequence like control-C or control-Z, sent to you
+from another process, or triggered automatically by the kernel when
+special events transpire, like a child process exiting, your process
+running out of stack space, or hitting file size limit.
+
+=end original
+
+Perl は単純なシグナルハンドリングモデルを使っています: %SIG という
+ハッシュは、ユーザーがインストールしたシグナルハンドラの名前、
+もしくはハンドラに対するリファレンスを保持します。
+これらのハンドラは、起動されたシグナルの名前を引数として呼び出されます。
+シグナルは control-C や control-Z のような特定のキーボードシーケンスで
+意識的に生成することもできますし、他のプロセスがシグナルを
+送ることもあります。
+あるいは子プロセスが終了したとか、プロセスがスタックを使いきった、
+ファイルサイズ制限に引っ掛かったといった特殊なイベントが発生したときに、
+カーネルが自動的にシグナルを発生させることもあります。
+
+=begin original
+
+For example, to trap an interrupt signal, set up a handler like this:
+
+=end original
+
+例えば割り込みシグナル(interrupt signal)をトラップするには、
+以下の例のようにハンドラを設定します:
+
+    sub catch_zap {
+	my $signame = shift;
+	$shucks++;
+	die "Somebody sent me a SIG$signame";
+    }
+    $SIG{INT} = 'catch_zap';  # could fail in modules
+    $SIG{INT} = \&catch_zap;  # best strategy
+
+=begin original
+
+Prior to Perl 5.7.3 it was necessary to do as little as you possibly
+could in your handler; notice how all we do is set a global variable
+and then raise an exception.  That's because on most systems,
+libraries are not re-entrant; particularly, memory allocation and I/O
+routines are not.  That meant that doing nearly I<anything> in your
+handler could in theory trigger a memory fault and subsequent core
+dump - see L</Deferred Signals (Safe Signals)> below.
+
+=end original
+
+Perl 5.7.3 以前では、自分のハンドラの中を使うことができます。
+私たちが認識していることは、グローバル変数に設定した後で例外を
+引き起こすということだけであることに注意してください。
+これは、ほとんどのシステム上ではライブラリ、とくにメモリ割り付けや
+入出力に関するものは再入可能ではないためです。
+これは、あなたのハンドラ内のほとんど I<あらゆること> が理論的には
+メモリフォールトやそれに続くコアダンブを引き起こす可能性が
+あるということです - 以下の L</Deferred Signals (Safe Signals)> を
+参照してください。
+
+=begin original
+
+The names of the signals are the ones listed out by C<kill -l> on your
+system, or you can retrieve them from the Config module.  Set up an
+@signame list indexed by number to get the name and a %signo table
+indexed by name to get the number:
+
+=end original
+
+あなたの使っているシステムにおけるシグナルの名称は C<kill -l> に
+よってリストアップされます。
+あるいはコンフィグモジュールから取得することもできます。
+名前を得るための番号によって添え字づけされる @signame というリストと
+番号を得るための名前によって添え字づけされる %signo というテーブルを
+セットアップします。
+
+    use Config;
+    defined $Config{sig_name} || die "No sigs?";
+    foreach $name (split(' ', $Config{sig_name})) {
+	$signo{$name} = $i;
+	$signame[$i] = $name;
+	$i++;
+    }
+
+=begin original
+
+So to check whether signal 17 and SIGALRM were the same, do just this:
+
+=end original
+
+ですから、17 番のシグナルと SIGALRM が同一であるかどうかは以下のようにして
+チェックできます:
+
+    print "signal #17 = $signame[17]\n";
+    if ($signo{ALRM}) {
+	print "SIGALRM is $signo{ALRM}\n";
+    }
+
+=begin original
+
+You may also choose to assign the strings C<'IGNORE'> or C<'DEFAULT'> as
+the handler, in which case Perl will try to discard the signal or do the
+default thing.
+
+=end original
+
+ハンドラとして C<'IGNORE'> や C<'DEFAULT'> といった文字列を
+代入することも選択できます。
+これらのハンドラは、perl がシグナルを破棄させるようにしたり
+デフォルトの動作を行うようにさせるものです。
+
+=begin original
+
+On most Unix platforms, the C<CHLD> (sometimes also known as C<CLD>) signal
+has special behavior with respect to a value of C<'IGNORE'>.
+Setting C<$SIG{CHLD}> to C<'IGNORE'> on such a platform has the effect of
+not creating zombie processes when the parent process fails to C<wait()>
+on its child processes (i.e. child processes are automatically reaped).
+Calling C<wait()> with C<$SIG{CHLD}> set to C<'IGNORE'> usually returns
+C<-1> on such platforms.
+
+=end original
+
+ほとんどの UNIX プラットフォームでは、C<CHLD>(C<CLD> の場合もあり)
+シグナルは C<'IGNORE'> の値に対応するような特別な振る舞いをします。
+そのようなプラットフォームでは C<'IGNORE'> に C<$SIG{CHLD}> を
+設定することによって、親プロセスが C<wait()> に失敗したようなときに
+ゾンビプロセスができることを防ぎます(子プロセスは自動的に
+刈り取られます)。
+C<$SIG{CHLD}> を C<'IGNORE'> を設定して C<wait()> を呼び出すことによって、
+このようなプラットフォームでは C<-1> が通常返されます。
+
+=begin original
+
+Some signals can be neither trapped nor ignored, such as
+the KILL and STOP (but not the TSTP) signals.  One strategy for
+temporarily ignoring signals is to use a local() statement, which will be
+automatically restored once your block is exited.  (Remember that local()
+values are "inherited" by functions called from within that block.)
+
+=end original
+
+KILL シグナルや STOP シグナル(TSTP ではない)のような幾つかのシグナルは、
+トラップすることも無視することもできません。
+一時的にシグナルを無視するための戦略は local() 文を使うというものです。
+これはその local() 文を囲むブロックから出たときに、自動的に元の状態に
+復帰します。
+(local() による値は ブロックの内側から呼び出された関数に
+“引き継がれる”(inherited) ことを忘れないでください)。
+
+    sub precious {
+	local $SIG{INT} = 'IGNORE';
+	&more_functions;
+    }
+    sub more_functions {
+	# interrupts still ignored, for now...
+    }
+
+=begin original
+
+Sending a signal to a negative process ID means that you send the signal
+to the entire Unix process-group.  This code sends a hang-up signal to all
+processes in the current process group (and sets $SIG{HUP} to IGNORE so
+it doesn't kill itself):
+
+=end original
+
+負のプロセス ID に対してシグナルを送ることは、UNIX プロセスグループ
+全体にシグナルを送ることになります。
+以下のコードは、カレントのプロセスグループに属する全てのプロセスに
+hang-up シグナルを送出します(そして、$SIG{HUP} に IGNORE を設定するので、
+自分自身を kill することはありません)。
+
+    {
+	local $SIG{HUP} = 'IGNORE';
+	kill HUP => -$$;
+	# snazzy writing of: kill('HUP', -$$)
+    }
+
+=begin original
+
+Another interesting signal to send is signal number zero.  This doesn't
+actually affect a child process, but instead checks whether it's alive
+or has changed its UID.
+
+=end original
+
+この他の興味深いシグナルは、シグナル番号 0 です。
+これは実際には子プロセスに影響を及ぼすことはありませんが、UID が
+生きているのか、あるいは変更されたのかのチェックを行います。
+
+    unless (kill 0 => $kid_pid) {
+	warn "something wicked happened to $kid_pid";
+    }
+
+=begin original
+
+When directed at a process whose UID is not identical to that
+of the sending process, signal number zero may fail because
+you lack permission to send the signal, even though the process is alive.
+You may be able to determine the cause of failure using C<%!>.
+
+=end original
+
+送り先のプロセスの UID が、送り元と同じではない場合、たとえプロセスが
+生きていても、シグナルを送る権限がないので、シグナル番号 0 は失敗します。
+失敗の原因は、C<%!> を使って決定できます。
+
+    unless (kill 0 => $pid or $!{EPERM}) {
+	warn "$pid looks dead";
+    }
+
+=begin original
+
+You might also want to employ anonymous functions for simple signal
+handlers:
+
+=end original
+
+単純なシグナルハンドラには無名関数を使いたくなるかもしれません:
+
+    $SIG{INT} = sub { die "\nOutta here!\n" };
+
+=begin original
+
+But that will be problematic for the more complicated handlers that need
+to reinstall themselves.  Because Perl's signal mechanism is currently
+based on the signal(3) function from the C library, you may sometimes be so
+misfortunate as to run on systems where that function is "broken", that
+is, it behaves in the old unreliable SysV way rather than the newer, more
+reasonable BSD and POSIX fashion.  So you'll see defensive people writing
+signal handlers like this:
+
+=end original
+
+しかしこれは、自分自身を再インストールする必要があるような、もっと複雑な
+ハンドラに対しては問題になる可能性があります。
+Perl のシグナル機構は現在のところ C ライブラリの  signal(3) 関数に基づいた
+ものなので、関数が“ぶっ壊れた”ような、つまり、より新しくて信頼性のある
+BSD 形式や POSIX 形式ではなく古くて信用できない SysV 方式の振る舞いを
+するようなものシステムで実行するような不運な立場になるかもしれません。
+そのため、以下のようにシグナルハンドラを書いて人を守っているものを
+見るでしょう:
+
+    sub REAPER {
+	$waitedpid = wait;
+	# loathe sysV: it makes us not only reinstate
+	# the handler, but place it after the wait
+	$SIG{CHLD} = \&REAPER;
+    }
+    $SIG{CHLD} = \&REAPER;
+    # now do something that forks...
+
+=begin original
+
+or better still:
+
+=end original
+
+あるいはもっとましなように:
+
+    use POSIX ":sys_wait_h";
+    sub REAPER {
+	my $child;
+	# If a second child dies while in the signal handler caused by the
+	# first death, we won't get another signal. So must loop here else
+	# we will leave the unreaped child as a zombie. And the next time
+	# two children die we get another zombie. And so on.
+        while (($child = waitpid(-1,WNOHANG)) > 0) {
+	    $Kid_Status{$child} = $?;
+	}
+	$SIG{CHLD} = \&REAPER;  # still loathe sysV
+    }
+    $SIG{CHLD} = \&REAPER;
+    # do something that forks...
+
+=begin original
+
+Signal handling is also used for timeouts in Unix,   While safely
+protected within an C<eval{}> block, you set a signal handler to trap
+alarm signals and then schedule to have one delivered to you in some
+number of seconds.  Then try your blocking operation, clearing the alarm
+when it's done but not before you've exited your C<eval{}> block.  If it
+goes off, you'll use die() to jump out of the block, much as you might
+using longjmp() or throw() in other languages.
+
+=end original
+
+UNIX では、シグナルハンドラはタイムアウトのためにも使われます。
+C<eval{}> ブロックの中では安全に保護されいる間に、alarm シグナルを
+トラップするためにシグナルハンドラを設定して、その後で解放される
+秒数をスケジューリングします。
+それからブロッキング操作を試して、
+それが完了したら C<eval{}> ブロックを抜ける前に alarm をクリアーします。
+設定した時間が経ってしまった場合には、他の言語における longjmp() や
+throw() を使ったときと同じようにブロックを抜けるために die() を
+使います。
+
+=begin original
+
+Here's an example:
+
+=end original
+
+例を挙げましょう:
+
+    eval {
+        local $SIG{ALRM} = sub { die "alarm clock restart" };
+        alarm 10;
+        flock(FH, 2);   # blocking write lock
+        alarm 0;
+    };
+    if ($@ and $@ !~ /alarm clock restart/) { die }
+
+=begin original
+
+If the operation being timed out is system() or qx(), this technique
+is liable to generate zombies.    If this matters to you, you'll
+need to do your own fork() and exec(), and kill the errant child process.
+
+=end original
+
+時間切れを起こした操作が system() か qx() なら、このテクニックはゾンビを
+生成する傾向があります。
+もしそれが問題なら、自力で fork() と exec() を行って、エラーの起きた
+子プロセスを kill する必要があるでしょう。
+
+=begin original
+
+For more complex signal handling, you might see the standard POSIX
+module.  Lamentably, this is almost entirely undocumented, but
+the F<t/lib/posix.t> file from the Perl source distribution has some
+examples in it.
+
+=end original
+
+より複雑なシグナル処理のためには、標準の POSIX モジュールを確かめると
+よいかもしれません。
+嘆かわしいことにこれはほとんどアンドキュメントな状態ですが、Perl の
+ソース配布キットにある F<t/lib/posix.t> というファイルには幾つかの
+サンプルがあります。
+
+=head2 Handling the SIGHUP Signal in Daemons
+
+(デーモンで SIGHUP シグナルを扱う)
+
+=begin original
+
+A process that usually starts when the system boots and shuts down
+when the system is shut down is called a daemon (Disk And Execution
+MONitor). If a daemon process has a configuration file which is
+modified after the process has been started, there should be a way to
+tell that process to re-read its configuration file, without stopping
+the process. Many daemons provide this mechanism using the C<SIGHUP>
+signal handler. When you want to tell the daemon to re-read the file
+you simply send it the C<SIGHUP> signal.
+
+=end original
+
+普通システムブート時に起動し、システムシャットダウン時に終了するプロセスの
+ことをデーモン(daemon: Disk And Execution MONitor)と呼びます。
+もしデーモンプロセスに設定ファイルがあり、それがプロセスが開始してから
+変更された場合、プロセスを止めることなく、プロセスに設定ファイルを
+再読み込みすることを知らせる方法があるべきです。
+多くのデーモンはこの機構を C<SIGHUP> シグナルハンドラを使って
+提供しています。
+デーモンにファイルを再読み込みしてほしい場合、単にデーモンに
+C<SIGHUP> シグナルを送ります。
+
+=begin original
+
+Not all platforms automatically reinstall their (native) signal
+handlers after a signal delivery.  This means that the handler works
+only the first time the signal is sent. The solution to this problem
+is to use C<POSIX> signal handlers if available, their behaviour
+is well-defined.
+
+=end original
+
+全てのプラットフォームにおいて、シグナル配送の後自動的に(ネイティブな)
+シグナルハンドラを再設定するわけではありません。
+これは、ハンドラは最初にシグナルが送られたときにのみ動作することを
+意味します。
+この問題の解決策は、もし利用可能であれば、振る舞いが明確である
+C<POSIX> シグナルハンドラを使うことです。
+
+=begin original
+
+The following example implements a simple daemon, which restarts
+itself every time the C<SIGHUP> signal is received. The actual code is
+located in the subroutine C<code()>, which simply prints some debug
+info to show that it works and should be replaced with the real code.
+
+=end original
+
+以下の例は、C<SIGHUP> を受け取る毎に再起動するという単純なデーモンを
+実装しています。
+実際のコードはサブルーチン C<code()> に置かれていて、どのように動作するかを
+示し、実際のコードと置き換えられるように、単にデバッグ情報を出力します。
+
+  #!/usr/bin/perl -w
+
+  use POSIX ();
+  use FindBin ();
+  use File::Basename ();
+  use File::Spec::Functions;
+
+  $|=1;
+
+  # make the daemon cross-platform, so exec always calls the script
+  # itself with the right path, no matter how the script was invoked.
+  my $script = File::Basename::basename($0);
+  my $SELF = catfile $FindBin::Bin, $script;
+
+  # POSIX unmasks the sigprocmask properly
+  my $sigset = POSIX::SigSet->new();
+  my $action = POSIX::SigAction->new('sigHUP_handler',
+                                     $sigset,
+                                     &POSIX::SA_NODEFER);
+  POSIX::sigaction(&POSIX::SIGHUP, $action);
+
+  sub sigHUP_handler {
+      print "got SIGHUP\n";
+      exec($SELF, @ARGV) or die "Couldn't restart: $!\n";
+  }
+
+  code();
+
+  sub code {
+      print "PID: $$\n";
+      print "ARGV: @ARGV\n";
+      my $c = 0;
+      while (++$c) {
+          sleep 2;
+          print "$c\n";
+      }
+  }
+  __END__
+
+
+=head1 Named Pipes
+
+(名前付きパイプ)
+
+=begin original
+
+A named pipe (often referred to as a FIFO) is an old Unix IPC
+mechanism for processes communicating on the same machine.  It works
+just like a regular, connected anonymous pipes, except that the
+processes rendezvous using a filename and don't have to be related.
+
+=end original
+
+名前付きパイプ(しばしば FIFO として参照されます)は、同じマシン上での
+プロセス間通信のための古い UNIX IPC 機構です。
+これは通常の無名パイプの接続と同様に動作しますが、ファイル名を使って
+プロセスのランデブーが行われ、関連づける必要がないという点が異なります。
+
+=begin original
+
+To create a named pipe, use the C<POSIX::mkfifo()> function.
+
+=end original
+
+名前付きパイプを生成するには、C<POSIX::mkfifo()> 関数を使ってください。
+
+    use POSIX qw(mkfifo);
+    mkfifo($path, 0700) or die "mkfifo $path failed: $!";
+
+=begin original
+
+You can also use the Unix command mknod(1) or on some
+systems, mkfifo(1).  These may not be in your normal path.
+
+=end original
+
+一部のシステムでは Unix コマンド mknod(1) か、システムによっては
+mkfifo(1) を使えます。
+これらはあなたの通常パス(normal path)に置くことはできません。
+
+    # system return val is backwards, so && not ||
+    #
+    $ENV{PATH} .= ":/etc:/usr/etc";
+    if  (      system('mknod',  $path, 'p')
+	    && system('mkfifo', $path) )
+    {
+	die "mk{nod,fifo} $path failed";
+    }
+
+
+=begin original
+
+A fifo is convenient when you want to connect a process to an unrelated
+one.  When you open a fifo, the program will block until there's something
+on the other end.
+
+=end original
+
+fifo は、あるプロセスをそれとは関係ない別のプロセスに接続したいときに
+便利です。
+fifo をオープンしたとき、プログラムはもう一方の端点に何かが
+置かれるまでブロックされます。
+
+=begin original
+
+For example, let's say you'd like to have your F<.signature> file be a
+named pipe that has a Perl program on the other end.  Now every time any
+program (like a mailer, news reader, finger program, etc.) tries to read
+from that file, the reading program will block and your program will
+supply the new signature.  We'll use the pipe-checking file test B<-p>
+to find out whether anyone (or anything) has accidentally removed our fifo.
+
+=end original
+
+たとえば、F<.signature> というファイルを、もう一方の端点に Perl
+プログラムが置かれている名前付きパイプに接続したいとしましょう。
+このとき、任意のプログラムが任意の時点で(メイラー、ニューズリーダー、
+finger プログラムなどのように)そのファイルを読み出そうとしますから、
+読み出しプログラムはブロックをしてからあなたのプログラムが新しい
+シグネチャーを提供するようにしなければなりません。
+誰か(もしくは何か)が間違って私たちのfifoを削除したりしないかどうかを
+監視するために B<-p> という pipe-cheching ファイルテストを使用します。
+
+    chdir; # go home
+    $FIFO = '.signature';
+
+    while (1) {
+	unless (-p $FIFO) {
+	    unlink $FIFO;
+	    require POSIX;
+	    POSIX::mkfifo($FIFO, 0700)
+		or die "can't mkfifo $FIFO: $!";
+	}
+
+	# next line blocks until there's a reader
+	open (FIFO, "> $FIFO") || die "can't write $FIFO: $!";
+	print FIFO "John Smith (smith\@host.org)\n", `fortune -s`;
+	close FIFO;
+	sleep 2;    # to avoid dup signals
+    }
+
+=head2 Deferred Signals (Safe Signals)
+
+(保留シグナル(安全なシグナル))
+
+=begin original
+
+In Perls before Perl 5.7.3 by installing Perl code to deal with
+signals, you were exposing yourself to danger from two things.  First,
+few system library functions are re-entrant.  If the signal interrupts
+while Perl is executing one function (like malloc(3) or printf(3)),
+and your signal handler then calls the same function again, you could
+get unpredictable behavior--often, a core dump.  Second, Perl isn't
+itself re-entrant at the lowest levels.  If the signal interrupts Perl
+while Perl is changing its own internal data structures, similarly
+unpredictable behaviour may result.
+
+=end original
+
+Perl 5.7.3 以前の Perl では、シグナルを取り扱う Perl プログラムを
+インストールすることによって、あなたは二つの危険性に直面することに
+なりました。
+第一に、再入可能なライブラリ関数を備えたシステムは数少ないこと。
+Perl がある関数(malloc(3) や printf(3) など)を実行中にシグナル割り込みが
+あったとすると、あなたのシグナルハンドラは同じ関数を
+再度呼び出し、結果として予測のつかない動作になる可能性があります。
+第二に、Perl 自身も最低レベルにおいては再入可能に
+なっていないということです。
+Perl が自分の内部構造を操作しているときにシグナル割り込みが
+あったとすると、これもまた予測のつかない動作になるでしょう。
+
+=begin original
+
+There were two things you could do, knowing this: be paranoid or be
+pragmatic.  The paranoid approach was to do as little as possible in your
+signal handler.  Set an existing integer variable that already has a
+value, and return.  This doesn't help you if you're in a slow system call,
+which will just restart.  That means you have to C<die> to longjump(3) out
+of the handler.  Even this is a little cavalier for the true paranoiac,
+who avoids C<die> in a handler because the system I<is> out to get you.
+The pragmatic approach was to say "I know the risks, but prefer the
+convenience", and to do anything you wanted in your signal handler,
+and be prepared to clean up core dumps now and again.
+
+=end original
+
+あなたの取りうる手段が二つありました:
+偏執狂的になるか現実的になるかです。
+偏執狂的アプローチは、あなたのシグナルハンドラの中でできるだけ
+少ないことを行うというものでした。
+既に値をもって存在している整数変数に値を設定してリターンします。
+これは単にリスタートするような遅いシステムコールの中にいるときには
+助けになりません。
+これはつまり、ハンドラの外に longjump(3) するには C<die> する必要が
+あるということです。
+これは本当の偏執狂というのにはちょっとおおげさですが、ハンドラ中で
+C<die> を排除します。
+現実的なアプローチは「リスクがあるのは分かってるけどさ、便利なら
+いいじゃない」というもので、シグナルハンドラ中で行いたいことを
+全て行い、コアダンプを掃除する準備をしてから再度行うというものでした。
+
+=begin original
+
+In Perl 5.7.3 and later to avoid these problems signals are
+"deferred"-- that is when the signal is delivered to the process by
+the system (to the C code that implements Perl) a flag is set, and the
+handler returns immediately. Then at strategic "safe" points in the
+Perl interpreter (e.g. when it is about to execute a new opcode) the
+flags are checked and the Perl level handler from %SIG is
+executed. The "deferred" scheme allows much more flexibility in the
+coding of signal handler as we know Perl interpreter is in a safe
+state, and that we are not in a system library function when the
+handler is called.  However the implementation does differ from
+previous Perls in the following ways:
+
+=end original
+
+Perl 5.7.3 以降では、この問題を避けるために、シグナルは「保留」されます --
+これは、システムによってシグナルが (Perl を実装している C コードに)
+配送されると、フラグをセットして、ハンドラは直ちに返ります。
+それから、Perl インタプリタの戦略的に「安全な」地点
+(例えば、新しいオペコードを実行しようとしている時点) で、
+フラグをチェックして、%SIG の Perl レベルハンドラを実行します。
+「保留」スキームは、Perl インタプリタが安全な状態にあって、ハンドラが
+呼び出されたときにシステムライブラリの中ではないことが分かっているので、
+シグナルハンドラのコーディングが遥かに柔軟になります。
+しかし、実装は以下の方向で以前の Perl と異なります:
+
+=over 4
+
+=item Long running opcodes
+
+(長時間実行されるオペコード)
+
+=begin original
+
+As Perl interpreter only looks at the signal flags when it about to
+execute a new opcode if a signal arrives during a long running opcode
+(e.g. a regular expression operation on a very large string) then
+signal will not be seen until operation completes.
+
+=end original
+
+Perl インタプリタは、もし長時間実行されるオペコード
+(例えばとても長い文字列での正規表現操作)の途中でシグナルが
+到着すると、新しいオペコードを実行しようとする時にのみシグナルフラグを
+見るので、シグナルは処理が完了するまで現れません。
+
+=item Interrupting IO
+
+(I/O 割り込み)
+
+=begin original
+
+When a signal is delivered (e.g. INT control-C) the operating system
+breaks into IO operations like C<read> (used to implement Perls
+E<lt>E<gt> operator). On older Perls the handler was called
+immediately (and as C<read> is not "unsafe" this worked well). With
+the "deferred" scheme the handler is not called immediately, and if
+Perl is using system's C<stdio> library that library may re-start the
+C<read> without returning to Perl and giving it a chance to call the
+%SIG handler. If this happens on your system the solution is to use
+C<:perlio> layer to do IO - at least on those handles which you want
+to be able to break into with signals. (The C<:perlio> layer checks
+the signal flags and calls %SIG handlers before resuming IO operation.)
+
+=end original
+
+(INT control-C などで) シグナルが配送されると、
+OS は (Perl E<lt>E<gt> 演算子の実装で使われている) C<read> のような
+I/O 操作を中断します。
+古い Perl ではハンドラをすぐに呼び出します
+(そして C<read> はうまく動くので「安全ではない」ことはありません)。
+「保留」スキームではハンドラはすぐに呼び出されず、
+もし Perl がシステムの C<stdio> ライブラリを使っていると、ライブラリは
+Perl に返って %SIG ハンドラを呼び出しする機会なしに C<read> を
+再起動します。
+もしこれが起きた場合、解決法は、I/O を行うときにー
+- 少なくともシグナルで中断できるようにしたいハンドルで -
+C<:perlio> 層を使うことです 
+(C<:perlio> 層はシグナルフラグをチェックして、I/O 操作を続行する前に
+%SIG ハンドラを呼び出します。)
+
+=begin original
+
+Note that the default in Perl 5.7.3 and later is to automatically use
+the C<:perlio> layer.
+
+=end original
+
+Perl 5.7.3 以降ではデフォルトでは自動的に C<:perlio> 層が使われることに
+注意してください。
+
+=begin original
+
+Note that some networking library functions like gethostbyname() are
+known to have their own implementations of timeouts which may conflict
+with your timeouts.  If you are having problems with such functions,
+you can try using the POSIX sigaction() function, which bypasses the
+Perl safe signals (note that this means subjecting yourself to
+possible memory corruption, as described above).  Instead of setting
+C<$SIG{ALRM}>:
+
+=end original
+
+gethostbyname() のようなネットワークライブラリ関数は独自のタイムアウト
+実装を持っていることが知られているので、あなたのタイムアウトと
+競合するかもしれないことに注意してください。
+もしこのような関数で問題が起きた場合は、Perl の安全なシグナルを回避する
+POSIX sigaction() 関数を試すことができます
+(これは上述の、メモリ破壊の可能性があるということに注意してください)。
+C<$SIG{ALRM}> をセットする代わりに:
+
+   local $SIG{ALRM} = sub { die "alarm" };
+
+=begin original
+
+try something like the following:
+
+=end original
+
+以下のようなことを試してみてください:
+
+    use POSIX qw(SIGALRM);
+    POSIX::sigaction(SIGALRM,
+                     POSIX::SigAction->new(sub { die "alarm" }))
+          or die "Error setting SIGALRM handler: $!\n";
+
+=item Restartable system calls
+
+(再起動可能なシステムコール)
+
+=begin original
+
+On systems that supported it, older versions of Perl used the
+SA_RESTART flag when installing %SIG handlers.  This meant that
+restartable system calls would continue rather than returning when
+a signal arrived.  In order to deliver deferred signals promptly,
+Perl 5.7.3 and later do I<not> use SA_RESTART.  Consequently, 
+restartable system calls can fail (with $! set to C<EINTR>) in places
+where they previously would have succeeded.
+
+=end original
+
+これに対応しているシステムでは、より古いバージョンの Perl では %SIG
+ハンドラを設定するときに SA_RESTART フラグを使います。
+これは、再起動可能なシステムコールではシグナルが配送されたときに
+戻るのではなく続行することを意味します。
+保留シグナルを素早く配送するために、
+Perl 5.7.3 以降では SA_RESTART を I<使っていません>。
+結果として、再起動可能なシステムコールは、いままで成功していたところでも
+($! に C<EINTR> をセットして) 失敗することがあります。
+
+=begin original
+
+Note that the default C<:perlio> layer will retry C<read>, C<write>
+and C<close> as described above and that interrupted C<wait> and 
+C<waitpid> calls will always be retried.
+
+=end original
+
+デフォルトの C<:perlio> 層では C<read>, C<write>, C<close> は上述したように
+再試行し、中断された C<wait> と C<waitpid> の呼び出しは常に
+再試行されることに注意してください。
+
+=item Signals as "faults"
+
+(「障害」としてのシグナル)
+
+=begin original
+
+Certain signals e.g. SEGV, ILL, BUS are generated as a result of
+virtual memory or other "faults". These are normally fatal and there
+is little a Perl-level handler can do with them. (In particular the
+old signal scheme was particularly unsafe in such cases.)  However if
+a %SIG handler is set the new scheme simply sets a flag and returns as
+described above. This may cause the operating system to try the
+offending machine instruction again and - as nothing has changed - it
+will generate the signal again. The result of this is a rather odd
+"loop". In future Perl's signal mechanism may be changed to avoid this
+- perhaps by simply disallowing %SIG handlers on signals of that
+type. Until then the work-round is not to set a %SIG handler on those
+signals. (Which signals they are is operating system dependent.)
+
+=end original
+
+SEGV, ILL, BUS のようなシグナルは、仮想メモリやその他の「障害」の結果として
+生成されます。
+これらは普通致命的で、Perl-レベルのハンドラができることはほとんどありません。
+(特に、古いシグナルスキームではこのような場合では特に安全ではありません。)
+しかし、%SIG ハンドラがセットされると、新しいスキームは上述のように、
+単にフラグをセットして返ります。
+これによって OS が問題のあるコードを再び実行して
+- 何も変わっていないので - 再びシグナルを生成します。
+この結果はおかしな「ループ」となります。
+将来の Perl のシグナル機構はこれを避けるために変更されるでしょう -
+おそらく単にこの種類のシグナルに関する %SIG ハンドラを無効にするでしょう。
+それまでの回避策としては、これらのシグナル(どのシグナルかは OS 依存です)
+の %SIG ハンドラをセットしないことです。
+
+=item Signals triggered by operating system state
+
+(OS の状態によって発生するシグナル)
+
+=begin original
+
+On some operating systems certain signal handlers are supposed to "do
+something" before returning. One example can be CHLD or CLD which
+indicates a child process has completed. On some operating systems the
+signal handler is expected to C<wait> for the completed child
+process. On such systems the deferred signal scheme will not work for
+those signals (it does not do the C<wait>). Again the failure will
+look like a loop as the operating system will re-issue the signal as
+there are un-waited-for completed child processes.
+
+=end original
+
+OS によっては、ある種のシグナルハンドラは返る前に「何かをする」ことに
+なっているものもあります。
+1 つの例としては、CHLD や CLD は子プロセスが完了したことを示しています。
+OS によっては、シグナルハンドルは完了した子プロセスのために
+C<wait> することを想定されているものもあります。
+このようなシステムでは保留シグナルスキームはこれらのシグナルでは
+動作しません(C<wait> しません)。
+再び、問題は、wait していない完了した子プロセスがあるかのようにシグナルが
+再び発生することでループのように見えます。
+
+=back
+
+=begin original
+
+If you want the old signal behaviour back regardless of possible
+memory corruption, set the environment variable C<PERL_SIGNALS> to
+C<"unsafe"> (a new feature since Perl 5.8.1).
+
+=end original
+
+もし、メモリ破壊の可能性にもかかわらず、古いシグナルの振る舞いが
+ほしいなら、環境変数 C<PERL_SIGNALS> を C<"unsafe"> に設定してください
+(Perl 5.8.1 からの新機能です)。
+
+=head1 Using open() for IPC
+
+(IPC のために open() を使う)
+
+=begin original
+
+Perl's basic open() statement can also be used for unidirectional
+interprocess communication by either appending or prepending a pipe
+symbol to the second argument to open().  Here's how to start
+something up in a child process you intend to write to:
+
+=end original
+
+Perlの open() 文は、その第二引数でパイプシンボルを前置するか末尾に
+付加することによって、一方向のプロセス間通信のために使うことができます。
+以下の例は、書き込みを行いたい子プロセスを起動させるやり方です:
+
+    open(SPOOLER, "| cat -v | lpr -h 2>/dev/null")
+		    || die "can't fork: $!";
+    local $SIG{PIPE} = sub { die "spooler pipe broke" };
+    print SPOOLER "stuff\n";
+    close SPOOLER || die "bad spool: $! $?";
+
+=begin original
+
+And here's how to start up a child process you intend to read from:
+
+=end original
+
+そして以下の例はそこから読み込みを行いたい子プロセスを起動する方法です:
+
+    open(STATUS, "netstat -an 2>&1 |")
+		    || die "can't fork: $!";
+    while (<STATUS>) {
+	next if /^(tcp|udp)/;
+	print;
+    }
+    close STATUS || die "bad netstat: $! $?";
+
+=begin original
+
+If one can be sure that a particular program is a Perl script that is
+expecting filenames in @ARGV, the clever programmer can write something
+like this:
+
+=end original
+
+特定のプログラムの一つが @ARGV にあるファイル名を期待している
+Perl スクリプトであっていいのなら、賢いプログラマは以下のように
+書くこともできます:
+
+    % program f1 "cmd1|" - f2 "cmd2|" f3 < tmpfile
+
+=begin original
+
+and irrespective of which shell it's called from, the Perl program will
+read from the file F<f1>, the process F<cmd1>, standard input (F<tmpfile>
+in this case), the F<f2> file, the F<cmd2> command, and finally the F<f3>
+file.  Pretty nifty, eh?
+
+=end original
+
+そしてそれを呼んだシェルには関係なく、この Perl プログラムは F<f1> という
+ファイル、F<cmd1> というプロセス、標準入力(この例では F<tmpfile>)、
+F<f2> というファイル、F<cmd2> というコマンド、F<f3> というファイルから
+読み込みを行います。
+すごくいいよね?
+
+=begin original
+
+You might notice that you could use backticks for much the
+same effect as opening a pipe for reading:
+
+=end original
+
+読み込みのためのパイプを開くために、逆クォートを使って同じことが
+できることに気がつくかもしれません:
+
+    print grep { !/^(tcp|udp)/ } `netstat -an 2>&1`;
+    die "bad netstat" if $?;
+
+=begin original
+
+While this is true on the surface, it's much more efficient to process the
+file one line or record at a time because then you don't have to read the
+whole thing into memory at once.  It also gives you finer control of the
+whole process, letting you to kill off the child process early if you'd
+like.
+
+=end original
+
+その推測は表面的には正しいことのように見えるかも知れませんが、一度に
+メモリにすべてを読み込む必要がないので、一度にファイルの一行や
+一レコードを処理するには(最初の例のほうが)より効率的なのです。
+同様にプロセス全体の制御を与えるので、あなたが望めば早い時期に
+子プロセスを kill することができます。
+
+=begin original
+
+Be careful to check both the open() and the close() return values.  If
+you're I<writing> to a pipe, you should also trap SIGPIPE.  Otherwise,
+think of what happens when you start up a pipe to a command that doesn't
+exist: the open() will in all likelihood succeed (it only reflects the
+fork()'s success), but then your output will fail--spectacularly.  Perl
+can't know whether the command worked because your command is actually
+running in a separate process whose exec() might have failed.  Therefore,
+while readers of bogus commands return just a quick end of file, writers
+to bogus command will trigger a signal they'd better be prepared to
+handle.  Consider:
+
+=end original
+
+open() と close() の戻り値をチェックするときは注意してください。
+パイプに対して B<書き込み> をしたのなら、SIGPIPE をトラップすべきです。
+そうしなければ、存在しないコマンドに対するパイプを起動したときに
+起こることについて考え込むことになるでしょう: open() はほとんどの
+場合成功すると見込まれるでしょうが(これは fork() の成功だけを
+反映します)、あなたの出力はその後で壮観に(spectacularly)失敗するでしょう。
+コマンドは、実際には exec() が失敗している別のプロセスで
+実行されているので、Perl はコマンドがうまく動いているかどうかを
+知ることはできません。
+したがって、偽のコマンド(bugus command)の読み手はすぐに end of file を
+受け取り、偽のコマンドに対する書き手は事前に取り扱っておくべき
+シグナルを発生させるでしょう。
+以下の例を考えてみましょう:
+
+    open(FH, "|bogus")	or die "can't fork: $!";
+    print FH "bang\n"	or die "can't write: $!";
+    close FH		or die "can't close: $!";
+
+=begin original
+
+That won't blow up until the close, and it will blow up with a SIGPIPE.
+To catch it, you could use this:
+
+=end original
+
+これはクローズするまで爆発せず、爆発すると SIGPIPE を発生させます。
+これを捕らえるには、以下のようにします:
+
+    $SIG{PIPE} = 'IGNORE';
+    open(FH, "|bogus")  or die "can't fork: $!";
+    print FH "bang\n"   or die "can't write: $!";
+    close FH            or die "can't close: status=$?";
+
+=head2 Filehandles
+
+(ファイルハンドル)
+
+=begin original
+
+Both the main process and any child processes it forks share the same
+STDIN, STDOUT, and STDERR filehandles.  If both processes try to access
+them at once, strange things can happen.  You may also want to close
+or reopen the filehandles for the child.  You can get around this by
+opening your pipe with open(), but on some systems this means that the
+child process cannot outlive the parent.
+
+=end original
+
+メインプロセスと子プロセスで同じファイルハンドル STDIN, STDOUT, 
+STDERR を共有します。
+両方のプロセスが同時にそれらのハンドルにアクセスしようとした場合、
+おかしな事が発生する可能性があります。
+あなたは子プロセスのためにファイルハンドルのクローズと再オープンにしたいと
+考えるかもしれません。
+これは、open() を使ってパイプをオープンすることによって対処することが
+できますが、一部のシステムにおいては子プロセスはその親プロセスよりも
+長生きすることはできません。
+
+=head2 Background Processes
+
+(バックグラウンドプロセス)
+
+=begin original
+
+You can run a command in the background with:
+
+=end original
+
+以下のようにしてコマンドをバックグラウンドで実行することができます:
+
+    system("cmd &");
+
+=begin original
+
+The command's STDOUT and STDERR (and possibly STDIN, depending on your
+shell) will be the same as the parent's.  You won't need to catch
+SIGCHLD because of the double-fork taking place (see below for more
+details).
+
+=end original
+
+コマンドの STDOUT と STDERR (とあなたの使うシェルによっては STDIN も)は
+その親プロセスのものと同一になります。
+double-fork の実行によって、SIGCHLD を捕捉する必要はありません
+(詳しくは後述します)。
+
+=head2 Complete Dissociation of Child from Parent
+
+(子の親からの完全な分離)
+
+=begin original
+
+In some cases (starting server processes, for instance) you'll want to
+completely dissociate the child process from the parent.  This is
+often called daemonization.  A well behaved daemon will also chdir()
+to the root directory (so it doesn't prevent unmounting the filesystem
+containing the directory from which it was launched) and redirect its
+standard file descriptors from and to F</dev/null> (so that random
+output doesn't wind up on the user's terminal).
+
+=end original
+
+一部の場合(例えばサーバープロセスのスタート)、親プロセスと子プロセスを
+完全に無関係のものにしたいことがあるでしょう。
+これはしばしばデーモン化と呼ばれます。
+礼儀正しいデーモンはルートディレクトリに chdir() (そのため実行ファイルの
+あったディレクトリを含むファイルシステムのアンマウントを邪魔することが
+ありません)し、その標準ファイル記述子を F</fdev/null> に
+リダイレクトします。
+
+    use POSIX 'setsid';
+
+    sub daemonize {
+	chdir '/'		or die "Can't chdir to /: $!";
+	open STDIN, '/dev/null' or die "Can't read /dev/null: $!";
+	open STDOUT, '>/dev/null'
+				or die "Can't write to /dev/null: $!";
+	defined(my $pid = fork)	or die "Can't fork: $!";
+	exit if $pid;
+	setsid			or die "Can't start a new session: $!";
+	open STDERR, '>&STDOUT'	or die "Can't dup stdout: $!";
+    }
+
+=begin original
+
+The fork() has to come before the setsid() to ensure that you aren't a
+process group leader (the setsid() will fail if you are).  If your
+system doesn't have the setsid() function, open F</dev/tty> and use the
+C<TIOCNOTTY> ioctl() on it instead.  See L<tty(4)> for details.
+
+=end original
+
+fork() はプロセスグループリーダー(もしそうなら setsid() は
+失敗するでしょう)でないことを保証するために
+setsid() の前になければなりません。
+あなたの使っているシステムが sesid() 関数を持っていないのであれば、
+F</dev/tty> をオープンして C<TIONCNOTTY> ioctl() を代わりに使います。
+詳しくは L<tty(4)> を参照してください。
+
+=begin original
+
+Non-Unix users should check their Your_OS::Process module for other
+solutions.
+
+=end original
+
+非 UNIX ユーザーはあなたの OS の Process モジュールをチェックして
+他の解決策を探しましょう。
+
+=head2 Safe Pipe Opens
+
+(安全なパイプオープン)
+
+=begin original
+
+Another interesting approach to IPC is making your single program go
+multiprocess and communicate between (or even amongst) yourselves.  The
+open() function will accept a file argument of either C<"-|"> or C<"|-">
+to do a very interesting thing: it forks a child connected to the
+filehandle you've opened.  The child is running the same program as the
+parent.  This is useful for safely opening a file when running under an
+assumed UID or GID, for example.  If you open a pipe I<to> minus, you can
+write to the filehandle you opened and your kid will find it in his
+STDIN.  If you open a pipe I<from> minus, you can read from the filehandle
+you opened whatever your kid writes to his STDOUT.
+
+=end original
+
+もう一つの、IPC のための興味深いアプローチはマルチプロセスになって
+それぞれの間で通信を行う単一のプログラムを作るというものです。
+open() 関数は C<"-|"> や C<"|-"> といったファイル引数を非常に
+おもしろいことを行うために受け付けます: これはあなたがオープンした
+ファイルハンドのための子プロセスをfork()するのです。
+その子プロセスは親プロセスと同じプログラムを実行します。
+これはたとえば、仮定された UID や GID のもとで実行する際に安全にファイルを
+オープンするのに便利です。
+マイナスにB<対する>パイプをオープンすると、あなたはオープンした
+ファイルハンドルに書き込みができ、子プロセスはそれを自分の STDIN に
+見いだします。
+マイナス B<からの> パイプをオープンした場合には、子プロセスがその
+STDOUT に書き出したものがオープンしたファイルハンドルから
+読みだしすることができるのです。
+
+    use English '-no_match_vars';
+    my $sleep_count = 0;
+
+    do {
+	$pid = open(KID_TO_WRITE, "|-");
+	unless (defined $pid) {
+	    warn "cannot fork: $!";
+	    die "bailing out" if $sleep_count++ > 6;
+	    sleep 10;
+	}
+    } until defined $pid;
+
+    if ($pid) {  # parent
+	print KID_TO_WRITE @some_data;
+	close(KID_TO_WRITE) || warn "kid exited $?";
+    } else {     # child
+	($EUID, $EGID) = ($UID, $GID); # suid progs only
+	open (FILE, "> /safe/file")
+	    || die "can't open /safe/file: $!";
+	while (<STDIN>) {
+	    print FILE; # child's STDIN is parent's KID
+	}
+	exit;  # don't forget this
+    }
+
+=begin original
+
+Another common use for this construct is when you need to execute
+something without the shell's interference.  With system(), it's
+straightforward, but you can't use a pipe open or backticks safely.
+That's because there's no way to stop the shell from getting its hands on
+your arguments.   Instead, use lower-level control to call exec() directly.
+
+=end original
+
+このやり方を行うもう一つの一般的な例は、シェルのインターフェース抜きで
+何かを実行する必要があるときでしょう。
+system() を使うとそれは直接的なものですが、パイプのオープンや
+バッククォートを安全に使うことができません。
+これはシェルがあなたの引数を触るのを止める方法がないからです。
+代わりに、exec() を直接呼び出す低レベルな制御を使います。
+
+=begin original
+
+Here's a safe backtick or pipe open for read:
+
+=end original
+
+以下の例は、読み込み用の安全なバッククォートやパイプオープンのものです:
+
+    # add error processing as above
+    $pid = open(KID_TO_READ, "-|");
+
+    if ($pid) {   # parent
+	while (<KID_TO_READ>) {
+	    # do something interesting
+	}
+	close(KID_TO_READ) || warn "kid exited $?";
+
+    } else {      # child
+	($EUID, $EGID) = ($UID, $GID); # suid only
+	exec($program, @options, @args)
+	    || die "can't exec program: $!";
+	# NOTREACHED
+    }
+
+
+=begin original
+
+And here's a safe pipe open for writing:
+
+=end original
+
+そして以下の例は、書き込み用の安全なバッククォートや
+パイプオープンのものです:
+
+    # add error processing as above
+    $pid = open(KID_TO_WRITE, "|-");
+    $SIG{PIPE} = sub { die "whoops, $program pipe broke" };
+
+    if ($pid) {  # parent
+	for (@data) {
+	    print KID_TO_WRITE;
+	}
+	close(KID_TO_WRITE) || warn "kid exited $?";
+
+    } else {     # child
+	($EUID, $EGID) = ($UID, $GID);
+	exec($program, @options, @args)
+	    || die "can't exec program: $!";
+	# NOTREACHED
+    }
+
+=begin original
+
+Since Perl 5.8.0, you can also use the list form of C<open> for pipes :
+the syntax
+
+=end original
+
+Perl 5.8.0 から パイプのために C<open> のリスト形式を使えます;
+以下のような文法で:
+
+    open KID_PS, "-|", "ps", "aux" or die $!;
+
+=begin original
+
+forks the ps(1) command (without spawning a shell, as there are more than
+three arguments to open()), and reads its standard output via the
+C<KID_PS> filehandle.  The corresponding syntax to write to command
+pipes (with C<"|-"> in place of C<"-|">) is also implemented.
+
+=end original
+
+ps(1) コマンドを fork し(3 以上の引数の open() のようにシェルを
+起動することなく)、C<KID_PS> ファイルハンドル経由で標準出力を読み込みます。
+コマンドパイプに書き込むための対応する文法 (C<"-|"> の代わりに
+C<"|-">) も実装されています。
+
+=begin original
+
+Note that these operations are full Unix forks, which means they may not be
+correctly implemented on alien systems.  Additionally, these are not true
+multithreading.  If you'd like to learn more about threading, see the
+F<modules> file mentioned below in the SEE ALSO section.
+
+=end original
+
+これらの操作は UNIX の fork でいっぱいで、その fork が他のシステムでは
+適切に実装されていない可能性があるのだということに注意してください。
+それに加えて、これらのやり方は本当のマルチスレッドではありません。
+スレッドについてより学びたいのであれば、後述する SEE ALSO の章で
+言及されている F<modules> ファイルを参照してください。
+
+=head2 Bidirectional Communication with Another Process
+
+(他のプロセスとの双方向通信)
+
+=begin original
+
+While this works reasonably well for unidirectional communication, what
+about bidirectional communication?  The obvious thing you'd like to do
+doesn't actually work:
+
+=end original
+
+これは、片方向通信に対してうまく働きます。
+では双方向通信は?
+あなたがやりたいだろうとまず考えることは、実際にはうまくいきません:
+
+    open(PROG_FOR_READING_AND_WRITING, "| some program |")
+
+=begin original
+
+and if you forget to use the C<use warnings> pragma or the B<-w> flag,
+then you'll miss out entirely on the diagnostic message:
+
+=end original
+
+この状態で C<use warnings> プラグマか B<-w> フラグを使うのを忘れてしまうと、
+以下のような診断メッセージを得る機会を逃すことになるでしょう。
+
+    Can't do bidirectional pipe at -e line 1.
+
+=begin original
+
+If you really want to, you can use the standard open2() library function
+to catch both ends.  There's also an open3() for tridirectional I/O so you
+can also catch your child's STDERR, but doing so would then require an
+awkward select() loop and wouldn't allow you to use normal Perl input
+operations.
+
+=end original
+
+本当にこういったことをしたいのなら、標準の open2() というライブラリ関数を
+使うことで、パイプの両方の端点を得ることができます。
+三方向(tridirectional)の入出力のための open3() もあるので、子プロセスの
+STDERR を捕捉することもできるのですが、そのためには 不格好な
+select() ループが必要となり、Perl の通常の入力操作を行うことが
+できません。
+
+=begin original
+
+If you look at its source, you'll see that open2() uses low-level
+primitives like Unix pipe() and exec() calls to create all the connections.
+While it might have been slightly more efficient by using socketpair(), it
+would have then been even less portable than it already is.  The open2()
+and open3() functions are  unlikely to work anywhere except on a Unix
+system or some other one purporting to be POSIX compliant.
+
+=end original
+
+open2() のソースを見てみれば、それが全ての接続を生成するために
+UNIX での pipe() と exec() のような低水準のプリミティブを使っていることに
+気がつくでしょう。
+これは socketpair() を使うより効率が格段に良いのですが、移植性という面では
+見劣りします。
+open2() と open3() は UNIX システムやその他の POSIX に従ったシステムを
+除いてはおそらく動作しないでしょう。
+
+=begin original
+
+Here's an example of using open2():
+
+=end original
+
+以下は open2() を使った例です:
+
+    use FileHandle;
+    use IPC::Open2;
+    $pid = open2(*Reader, *Writer, "cat -u -n" );
+    print Writer "stuff\n";
+    $got = <Reader>;
+
+=begin original
+
+The problem with this is that Unix buffering is really going to
+ruin your day.  Even though your C<Writer> filehandle is auto-flushed,
+and the process on the other end will get your data in a timely manner,
+you can't usually do anything to force it to give it back to you
+in a similarly quick fashion.  In this case, we could, because we
+gave I<cat> a B<-u> flag to make it unbuffered.  But very few Unix
+commands are designed to operate over pipes, so this seldom works
+unless you yourself wrote the program on the other end of the
+double-ended pipe.
+
+=end original
+
+これに関する問題は、UNIX のバッファリングが実際にはある時点に至るまで
+留まるということにあります。
+ファイルハンドル C<Writer> を自動フラッシュにしたとしても、もう一方の
+端点にあるプロセスは送られたデータを適当なタイミングで
+受け取ることになります; 一般的に云って、全てのことに関して即座に
+反応するように強制することはできません。
+上記の例では、バッファリングをしないようにするために B<-u> フラグを
+I<cat> に与えることができたのでそれができました。
+パイプ越しに使われることを想定して設計された UNIX コマンドは非常に
+少数なので、この例のようなことは、両端のあるパイプのもう一方の端点にある
+プログラムを自分自身で書かない限りはほとんどできないのです。
+
+=begin original
+
+A solution to this is the nonstandard F<Comm.pl> library.  It uses
+pseudo-ttys to make your program behave more reasonably:
+
+=end original
+
+この解決策は非標準の F<Comm.pl> ライブラリです。
+これはあなたのプログラムをより信頼性のあるものとするために
+擬似 TTY を使います:
+
+    require 'Comm.pl';
+    $ph = open_proc('cat -n');
+    for (1..10) {
+	print $ph "a line\n";
+	print "got back ", scalar <$ph>;
+    }
+
+=begin original
+
+This way you don't have to have control over the source code of the
+program you're using.  The F<Comm> library also has expect()
+and interact() functions.  Find the library (and we hope its
+successor F<IPC::Chat>) at your nearest CPAN archive as detailed
+in the SEE ALSO section below.
+
+=end original
+
+このやり方では、あなたが使おうとしているプログラムのソースコードを
+いじくりまわすような必要はありません。
+F<Comm> ライブラリには他にも expect() や interact() といった関数もあります。
+後述する SEE ALSO の章にある説明の最寄りの CPAN で、このライブラリ(と
+その後継者と期待している F<IPC::Chat>) を見つけてください。
+
+=begin original
+
+The newer Expect.pm module from CPAN also addresses this kind of thing.
+This module requires two other modules from CPAN: IO::Pty and IO::Stty.
+It sets up a pseudo-terminal to interact with programs that insist on
+using talking to the terminal device driver.  If your system is
+amongst those supported, this may be your best bet.
+
+=end original
+
+CPAN にあるより新しいモジュール Expect.pm はこの問題に対処するものです。
+このモジュールは他に IO:Pty、IO::Stty という二つの CPAN モジュールを
+必要とします。
+このモジュールは、ターミナルデバイスドライバと応答するような
+プログラムと対話するために、擬似端末をセットアップします。
+もしあなたの使っているシステムがこういったものをサポートしているのであれば、
+そちらを使った方が良いでしょう。
+
+=head2 Bidirectional Communication with Yourself
+
+(自分で双方向通信する)
+
+=begin original
+
+If you want, you may make low-level pipe() and fork()
+to stitch this together by hand.  This example only
+talks to itself, but you could reopen the appropriate
+handles to STDIN and STDOUT and call other processes.
+
+=end original
+
+もし望むのなら、低レベルなシステムコール pipe() や fork() を
+手作業で行うために使うことができます。
+以下の例は単に説明のためのものですが、STDIN や STDOOUT に対する
+適切なハンドルを再オープンすることができ、さらに別のプロセスを
+呼び出すことができます。
+
+    #!/usr/bin/perl -w
+    # pipe1 - bidirectional communication using two pipe pairs
+    #         designed for the socketpair-challenged
+    use IO::Handle;	# thousands of lines just for autoflush :-(
+    pipe(PARENT_RDR, CHILD_WTR);		# XXX: failure?
+    pipe(CHILD_RDR,  PARENT_WTR);		# XXX: failure?
+    CHILD_WTR->autoflush(1);
+    PARENT_WTR->autoflush(1);
+
+    if ($pid = fork) {
+	close PARENT_RDR; close PARENT_WTR;
+	print CHILD_WTR "Parent Pid $$ is sending this\n";
+	chomp($line = <CHILD_RDR>);
+	print "Parent Pid $$ just read this: `$line'\n";
+	close CHILD_RDR; close CHILD_WTR;
+	waitpid($pid,0);
+    } else {
+	die "cannot fork: $!" unless defined $pid;
+	close CHILD_RDR; close CHILD_WTR;
+	chomp($line = <PARENT_RDR>);
+	print "Child Pid $$ just read this: `$line'\n";
+	print PARENT_WTR "Child Pid $$ is sending this\n";
+	close PARENT_RDR; close PARENT_WTR;
+	exit;
+    }
+
+=begin original
+
+But you don't actually have to make two pipe calls.  If you
+have the socketpair() system call, it will do this all for you.
+
+=end original
+
+しかし実際に二つの pipe の呼び出しを行う必要はありません。
+あなたの使っているシステムが socketpair() システムコールを
+サポートしていれば、それがあなたの代わりに作業を行ってくれます。
+
+    #!/usr/bin/perl -w
+    # pipe2 - bidirectional communication using socketpair
+    #   "the best ones always go both ways"
+
+    use Socket;
+    use IO::Handle;	# thousands of lines just for autoflush :-(
+    # We say AF_UNIX because although *_LOCAL is the
+    # POSIX 1003.1g form of the constant, many machines
+    # still don't have it.
+    socketpair(CHILD, PARENT, AF_UNIX, SOCK_STREAM, PF_UNSPEC)
+				or  die "socketpair: $!";
+
+    CHILD->autoflush(1);
+    PARENT->autoflush(1);
+
+    if ($pid = fork) {
+	close PARENT;
+	print CHILD "Parent Pid $$ is sending this\n";
+	chomp($line = <CHILD>);
+	print "Parent Pid $$ just read this: `$line'\n";
+	close CHILD;
+	waitpid($pid,0);
+    } else {
+	die "cannot fork: $!" unless defined $pid;
+	close CHILD;
+	chomp($line = <PARENT>);
+	print "Child Pid $$ just read this: `$line'\n";
+	print PARENT "Child Pid $$ is sending this\n";
+	close PARENT;
+	exit;
+    }
+
+=head1 Sockets: Client/Server Communication
+
+(ソケット: クライアント/サーバー通信)
+
+=begin original
+
+While not limited to Unix-derived operating systems (e.g., WinSock on PCs
+provides socket support, as do some VMS libraries), you may not have
+sockets on your system, in which case this section probably isn't going to do
+you much good.  With sockets, you can do both virtual circuits (i.e., TCP
+streams) and datagrams (i.e., UDP packets).  You may be able to do even more
+depending on your system.
+
+=end original
+
+UNIX から派生したオペレーティングシステムに限定されることはない
+(例えば PC では WinSock が(幾つかの VMS ライブラリのように)
+ソケットサポートを提供しています)にも関らず、あなたが使っている
+システムではソケットが使えないかもしれません。
+その場合、この項に書かれていることはあなたの役には立たないでしょう。
+ソケットを使えば、仮想回路(つまり TCP ストリーム)やデータグラム(UDP
+パケット)の両方が可能になります。
+使っているシステムに、より一層依存することになるかもしれません。
+
+=begin original
+
+The Perl function calls for dealing with sockets have the same names as
+the corresponding system calls in C, but their arguments tend to differ
+for two reasons: first, Perl filehandles work differently than C file
+descriptors.  Second, Perl already knows the length of its strings, so you
+don't need to pass that information.
+
+=end original
+
+ソケットを扱うための Perl の関数呼び出しは対応する C でのシステムコールと
+同じ名前を持っています。
+しかし、引数に関しては二つの理由によって異なるものとなっています:
+第一に、Perl のファイルハンドルは C のファイル記述子とは
+異なる働きをするものである。
+第二に、Perl はすでに文字列の長さを知っているので、その情報を渡す
+必要がない、というものです。
+
+=begin original
+
+One of the major problems with old socket code in Perl was that it used
+hard-coded values for some of the constants, which severely hurt
+portability.  If you ever see code that does anything like explicitly
+setting C<$AF_INET = 2>, you know you're in for big trouble:  An
+immeasurably superior approach is to use the C<Socket> module, which more
+reliably grants access to various constants and functions you'll need.
+
+=end original
+
+Perl における古いソケットプログラムに関連する大きな問題とは、一部の
+定数の値として(著しく移植性を損なってしまう)ハードコードされたものが
+使われていたということです。
+C<$AF_INET = 2> のように陽に何かを設定しているプログラムを見た事があれば、
+あなたはそれが大きなトラブルになるということを知っているでしょう:
+より優れたやり方は C<Socket> モジュールを使うというものです。
+これは、あなたが必要とするであろう様々な定数や関数に対するより信頼の置ける
+アクセスを提供します。
+
+=begin original
+
+If you're not writing a server/client for an existing protocol like
+NNTP or SMTP, you should give some thought to how your server will
+know when the client has finished talking, and vice-versa.  Most
+protocols are based on one-line messages and responses (so one party
+knows the other has finished when a "\n" is received) or multi-line
+messages and responses that end with a period on an empty line
+("\n.\n" terminates a message/response).
+
+=end original
+
+NNTP や SMTP のように既に存在しているプロトコルのためにサーバー/
+クライアントを書くのでなければ、あなたの作るサーバーがどのようにして
+クライアントが通話を終えたときを知ったり、その反対のことを
+知るのかということを考えておくべきでしょう。
+ほとんどのプロトコルは一行のメッセージと返事(片方のプロセスは、
+“\n”を受け取ったときにもう一つのプロセスでの処理が終了したことを
+知ります)か、空行に置かれたピリオドで終端される("\n.\n" がメッセージ/返事を
+終端する)複数行メッセージと返事に基づいています。
+
+=head2 Internet Line Terminators
+
+(インターネットの行終端子)
+
+=begin original
+
+The Internet line terminator is "\015\012".  Under ASCII variants of
+Unix, that could usually be written as "\r\n", but under other systems,
+"\r\n" might at times be "\015\015\012", "\012\012\015", or something
+completely different.  The standards specify writing "\015\012" to be
+conformant (be strict in what you provide), but they also recommend
+accepting a lone "\012" on input (but be lenient in what you require).
+We haven't always been very good about that in the code in this manpage,
+but unless you're on a Mac, you'll probably be ok.
+
+=end original
+
+インターネットでの行終端子は "\015\012" です。
+UNIX で使われる ASCII のバリエーションでは、通常は“\r\n”のように
+記述しますが、他のシステムでは、“\r\n”は"\015\015\012" だったり、
+"\012\012\015" だったりあるいはまったく違うものであったりします。
+“\015\012”は標準的な書き方(あなたが書いたままのものになります)ですが、
+入力中にある独立した“\012”を受け付けることも推奨されています(が、
+あなたが要求するときにはそれを穏やかなものにしましょう)。
+このマニュアルページにあるプログラムについて、常に最善のものを
+使ってはいませんが、あなたが Mac を使っているのでなければ
+気にすることはないでしょう。
+
+=head2 Internet TCP Clients and Servers
+
+(インターネットの TCP クライアントとサーバー)
+
+=begin original
+
+Use Internet-domain sockets when you want to do client-server
+communication that might extend to machines outside of your own system.
+
+=end original
+
+自分の使っているシステムの外側にあるもマシンにまでクライアント-
+サーバーの通信を広げたい場合には Internet-domain ソケットを使います。
+
+=begin original
+
+Here's a sample TCP client using Internet-domain sockets:
+
+=end original
+
+以下のプログラムは、Internet-domain ソケットを使った TCP クライアントの
+例です:
+
+    #!/usr/bin/perl -w
+    use strict;
+    use Socket;
+    my ($remote,$port, $iaddr, $paddr, $proto, $line);
+
+    $remote  = shift || 'localhost';
+    $port    = shift || 2345;  # random port
+    if ($port =~ /\D/) { $port = getservbyname($port, 'tcp') }
+    die "No port" unless $port;
+    $iaddr   = inet_aton($remote) 		|| die "no host: $remote";
+    $paddr   = sockaddr_in($port, $iaddr);
+
+    $proto   = getprotobyname('tcp');
+    socket(SOCK, PF_INET, SOCK_STREAM, $proto)	|| die "socket: $!";
+    connect(SOCK, $paddr)    || die "connect: $!";
+    while (defined($line = <SOCK>)) {
+	print $line;
+    }
+
+    close (SOCK)	    || die "close: $!";
+    exit;
+
+=begin original
+
+And here's a corresponding server to go along with it.  We'll
+leave the address as INADDR_ANY so that the kernel can choose
+the appropriate interface on multihomed hosts.  If you want sit
+on a particular interface (like the external side of a gateway
+or firewall machine), you should fill this in with your real address
+instead.
+
+=end original
+
+そして以下に挙げるのが上記のクライアントと対応するサーバーです。
+ここではアドレスを INADDR_ANY としているので、カーネルは multihomed
+hosts 上の適切なインターフェースを選択することができます。
+(ファイヤーウォールやゲイトウェイの外側のように)特定のインターフェースを
+使いたいのであれば、この部分を、自分の使いたい本当のアドレスで
+埋めるようにすべきです。
+
+    #!/usr/bin/perl -Tw
+    use strict;
+    BEGIN { $ENV{PATH} = '/usr/ucb:/bin' }
+    use Socket;
+    use Carp;
+    my $EOL = "\015\012";
+
+    sub logmsg { print "$0 $$: @_ at ", scalar localtime, "\n" }
+
+    my $port = shift || 2345;
+    my $proto = getprotobyname('tcp');
+
+    ($port) = $port =~ /^(\d+)$/                        or die "invalid port";
+
+    socket(Server, PF_INET, SOCK_STREAM, $proto)	|| die "socket: $!";
+    setsockopt(Server, SOL_SOCKET, SO_REUSEADDR,
+					pack("l", 1)) 	|| die "setsockopt: $!";
+    bind(Server, sockaddr_in($port, INADDR_ANY))	|| die "bind: $!";
+    listen(Server,SOMAXCONN) 				|| die "listen: $!";
+
+    logmsg "server started on port $port";
+
+    my $paddr;
+
+    $SIG{CHLD} = \&REAPER;
+
+    for ( ; $paddr = accept(Client,Server); close Client) {
+	my($port,$iaddr) = sockaddr_in($paddr);
+	my $name = gethostbyaddr($iaddr,AF_INET);
+
+	logmsg "connection from $name [",
+		inet_ntoa($iaddr), "]
+		at port $port";
+
+	print Client "Hello there, $name, it's now ",
+			scalar localtime, $EOL;
+    }
+
+=begin original
+
+And here's a multithreaded version.  It's multithreaded in that
+like most typical servers, it spawns (forks) a slave server to
+handle the client request so that the master server can quickly
+go back to service a new client.
+
+=end original
+
+以下の例はマルチスレッドバージョンです。
+これはほとんどの典型的なサーバーがそうであるようにマルチスレッドに
+なっていて、クライアントのリクエストを処理するためにスレイブサーバーを
+spawn(fork) します。
+このため、マスターサーバーは新しいクライアントに対してサービスするために
+即座に復帰できます。
+
+    #!/usr/bin/perl -Tw
+    use strict;
+    BEGIN { $ENV{PATH} = '/usr/ucb:/bin' }
+    use Socket;
+    use Carp;
+    my $EOL = "\015\012";
+
+    sub spawn;  # forward declaration
+    sub logmsg { print "$0 $$: @_ at ", scalar localtime, "\n" }
+
+    my $port = shift || 2345;
+    my $proto = getprotobyname('tcp');
+
+    ($port) = $port =~ /^(\d+)$/                        or die "invalid port";
+
+    socket(Server, PF_INET, SOCK_STREAM, $proto)	|| die "socket: $!";
+    setsockopt(Server, SOL_SOCKET, SO_REUSEADDR,
+					pack("l", 1)) 	|| die "setsockopt: $!";
+    bind(Server, sockaddr_in($port, INADDR_ANY))	|| die "bind: $!";
+    listen(Server,SOMAXCONN) 				|| die "listen: $!";
+
+    logmsg "server started on port $port";
+
+    my $waitedpid = 0;
+    my $paddr;
+
+    use POSIX ":sys_wait_h";
+    sub REAPER {
+	my $child;
+        while (($waitedpid = waitpid(-1,WNOHANG)) > 0) {
+	    logmsg "reaped $waitedpid" . ($? ? " with exit $?" : '');
+	}
+	$SIG{CHLD} = \&REAPER;  # loathe sysV
+    }
+
+    $SIG{CHLD} = \&REAPER;
+
+    for ( $waitedpid = 0;
+	  ($paddr = accept(Client,Server)) || $waitedpid;
+	  $waitedpid = 0, close Client)
+    {
+	next if $waitedpid and not $paddr;
+	my($port,$iaddr) = sockaddr_in($paddr);
+	my $name = gethostbyaddr($iaddr,AF_INET);
+
+	logmsg "connection from $name [",
+		inet_ntoa($iaddr), "]
+		at port $port";
+
+	spawn sub {
+	    $|=1;
+	    print "Hello there, $name, it's now ", scalar localtime, $EOL;
+	    exec '/usr/games/fortune'		# XXX: `wrong' line terminators
+		or confess "can't exec fortune: $!";
+	};
+
+    }
+
+    sub spawn {
+	my $coderef = shift;
+
+	unless (@_ == 0 && $coderef && ref($coderef) eq 'CODE') {
+	    confess "usage: spawn CODEREF";
+	}
+
+	my $pid;
+	if (!defined($pid = fork)) {
+	    logmsg "cannot fork: $!";
+	    return;
+	} elsif ($pid) {
+	    logmsg "begat $pid";
+	    return; # I'm the parent
+	}
+	# else I'm the child -- go spawn
+
+	open(STDIN,  "<&Client")   || die "can't dup client to stdin";
+	open(STDOUT, ">&Client")   || die "can't dup client to stdout";
+	## open(STDERR, ">&STDOUT") || die "can't dup stdout to stderr";
+	exit &$coderef();
+    }
+
+=begin original
+
+This server takes the trouble to clone off a child version via fork() for
+each incoming request.  That way it can handle many requests at once,
+which you might not always want.  Even if you don't fork(), the listen()
+will allow that many pending connections.  Forking servers have to be
+particularly careful about cleaning up their dead children (called
+"zombies" in Unix parlance), because otherwise you'll quickly fill up your
+process table.
+
+=end original
+
+このサーバーはリクエストがくる度に fork() を使って子バージョンの複製を
+行うので、問題を取り除きます。
+このやり方は、あなたが常に望んではいないかもしれませんが、一度に多くの
+リクエストを処理することができます。
+fork()を使わなかったとしても、listen() は多くの一時停止した
+コネクション(pending connections) を扱えます。
+サーバーを fork するので、死んだ子供(UNIX 世界ではゾンビと呼ばれるもの)の
+後始末に関して注意深くする必要があります。
+なぜなら、そうしなければプロセステーブルがすぐに埋めつくされることに
+なるからです。
+
+=begin original
+
+We suggest that you use the B<-T> flag to use taint checking (see L<perlsec>)
+even if we aren't running setuid or setgid.  This is always a good idea
+for servers and other programs run on behalf of someone else (like CGI
+scripts), because it lessens the chances that people from the outside will
+be able to compromise your system.
+
+=end original
+
+setuid やsetgid をされていない状態で実行されているとしても、汚染検査
+(L<perlsec> を参照)をするために B<-T> フラグを使うことをお勧めします。
+これは、サーバーやその他の他の誰かのために実行される(CGI スクリプトのような)
+プログラムに対しては常に良い考えになります。
+なぜならそうすることによって、外部の人間があなたのシステムに入ってくる
+ことができる可能性を減らすからです。
+
+=begin original
+
+Let's look at another TCP client.  This one connects to the TCP "time"
+service on a number of different machines and shows how far their clocks
+differ from the system on which it's being run:
+
+=end original
+
+もう一つの TCP クライアントを見てみましょう。
+これは複数の異なるマシン上の TCP の“time”サービスに接続してクライアントが
+走っているシステムと時計がどれくらい違っているのを出力します:
+
+    #!/usr/bin/perl  -w
+    use strict;
+    use Socket;
+
+    my $SECS_of_70_YEARS = 2208988800;
+    sub ctime { scalar localtime(shift) }
+
+    my $iaddr = gethostbyname('localhost');
+    my $proto = getprotobyname('tcp');
+    my $port = getservbyname('time', 'tcp');
+    my $paddr = sockaddr_in(0, $iaddr);
+    my($host);
+
+    $| = 1;
+    printf "%-24s %8s %s\n",  "localhost", 0, ctime(time());
+
+    foreach $host (@ARGV) {
+	printf "%-24s ", $host;
+	my $hisiaddr = inet_aton($host)     || die "unknown host";
+	my $hispaddr = sockaddr_in($port, $hisiaddr);
+	socket(SOCKET, PF_INET, SOCK_STREAM, $proto)   || die "socket: $!";
+	connect(SOCKET, $hispaddr)          || die "bind: $!";
+	my $rtime = '    ';
+	read(SOCKET, $rtime, 4);
+	close(SOCKET);
+	my $histime = unpack("N", $rtime) - $SECS_of_70_YEARS;
+	printf "%8d %s\n", $histime - time, ctime($histime);
+    }
+
+=head2 Unix-Domain TCP Clients and Servers
+
+(UNIX ドメインの TCP クライアントとサーバー)
+
+=begin original
+
+That's fine for Internet-domain clients and servers, but what about local
+communications?  While you can use the same setup, sometimes you don't
+want to.  Unix-domain sockets are local to the current host, and are often
+used internally to implement pipes.  Unlike Internet domain sockets, Unix
+domain sockets can show up in the file system with an ls(1) listing.
+
+=end original
+
+Internet-domain のサーバーとクライアントは良いものですが、ローカル
+コミュニケーションに関してはどうでしょうか?
+同じようにセットアップすることができますが、同じ様に(通信を)行うことは
+できません。
+UNIX ドメインソケットはカレントホストにローカルで、しばしばパイプを
+実装するために内部的に使われています。
+Internet ドメインソケットとは異なり、UNIX ドメインソケットは、
+ls(1) を使ってファイルシステムの中で見つけることができます。
+
+    % ls -l /dev/log
+    srw-rw-rw-  1 root            0 Oct 31 07:23 /dev/log
+
+=begin original
+
+You can test for these with Perl's B<-S> file test:
+
+=end original
+
+これを、Perl のファイルテスト B<-S> を使って行えます:
+
+    unless ( -S '/dev/log' ) {
+	die "something's wicked with the log system";
+    }
+
+=begin original
+
+Here's a sample Unix-domain client:
+
+=end original
+
+UNIX ドメインクライアントの例です:
+
+    #!/usr/bin/perl -w
+    use Socket;
+    use strict;
+    my ($rendezvous, $line);
+
+    $rendezvous = shift || 'catsock';
+    socket(SOCK, PF_UNIX, SOCK_STREAM, 0)	|| die "socket: $!";
+    connect(SOCK, sockaddr_un($rendezvous))	|| die "connect: $!";
+    while (defined($line = <SOCK>)) {
+	print $line;
+    }
+    exit;
+
+=begin original
+
+And here's a corresponding server.  You don't have to worry about silly
+network terminators here because Unix domain sockets are guaranteed
+to be on the localhost, and thus everything works right.
+
+=end original
+
+そして対応するサーバーです。
+ここで、あなたはやっかいなネットワーク終端子について思い煩う
+必要はありません。
+なぜなら、UNIX のドメインソケットはローカルホストにおいて完全に
+満たされるものであって、そのため、全てはうまくいくのです。
+
+    #!/usr/bin/perl -Tw
+    use strict;
+    use Socket;
+    use Carp;
+
+    BEGIN { $ENV{PATH} = '/usr/ucb:/bin' }
+    sub spawn;  # forward declaration
+    sub logmsg { print "$0 $$: @_ at ", scalar localtime, "\n" }
+
+    my $NAME = 'catsock';
+    my $uaddr = sockaddr_un($NAME);
+    my $proto = getprotobyname('tcp');
+
+    socket(Server,PF_UNIX,SOCK_STREAM,0) 	|| die "socket: $!";
+    unlink($NAME);
+    bind  (Server, $uaddr) 			|| die "bind: $!";
+    listen(Server,SOMAXCONN)			|| die "listen: $!";
+
+    logmsg "server started on $NAME";
+
+    my $waitedpid;
+
+    use POSIX ":sys_wait_h";
+    sub REAPER {
+	my $child;
+        while (($waitedpid = waitpid(-1,WNOHANG)) > 0) {
+	    logmsg "reaped $waitedpid" . ($? ? " with exit $?" : '');
+	}
+	$SIG{CHLD} = \&REAPER;  # loathe sysV
+    }
+
+    $SIG{CHLD} = \&REAPER;
+
+
+    for ( $waitedpid = 0;
+	  accept(Client,Server) || $waitedpid;
+	  $waitedpid = 0, close Client)
+    {
+	next if $waitedpid;
+	logmsg "connection on $NAME";
+	spawn sub {
+	    print "Hello there, it's now ", scalar localtime, "\n";
+	    exec '/usr/games/fortune' or die "can't exec fortune: $!";
+	};
+    }
+
+    sub spawn {
+	my $coderef = shift;
+
+	unless (@_ == 0 && $coderef && ref($coderef) eq 'CODE') {
+	    confess "usage: spawn CODEREF";
+	}
+
+	my $pid;
+	if (!defined($pid = fork)) {
+	    logmsg "cannot fork: $!";
+	    return;
+	} elsif ($pid) {
+	    logmsg "begat $pid";
+	    return; # I'm the parent
+	}
+	# else I'm the child -- go spawn
+
+	open(STDIN,  "<&Client")   || die "can't dup client to stdin";
+	open(STDOUT, ">&Client")   || die "can't dup client to stdout";
+	## open(STDERR, ">&STDOUT") || die "can't dup stdout to stderr";
+	exit &$coderef();
+    }
+
+=begin original
+
+As you see, it's remarkably similar to the Internet domain TCP server, so
+much so, in fact, that we've omitted several duplicate functions--spawn(),
+logmsg(), ctime(), and REAPER()--which are exactly the same as in the
+other server.
+
+=end original
+
+見てわかるように、Internet domain TCP サーバーとほとんど同じです。
+実際には、まったく変っていない幾つかの重複した関数 spawn(), 
+logmsg(), ctime(), REAPER() を取り除いてあります。
+
+=begin original
+
+So why would you ever want to use a Unix domain socket instead of a
+simpler named pipe?  Because a named pipe doesn't give you sessions.  You
+can't tell one process's data from another's.  With socket programming,
+you get a separate session for each client: that's why accept() takes two
+arguments.
+
+=end original
+
+ではなぜ、単純な名前付きパイプではなく UNIX ドメインソケットを
+使いたがるのでしょうか?
+その理由は、名前付きパイプがあなたにセッションを与えないからです。
+あなたはあるプロセスから来たデータと、それとは別のプロセスからきた
+データとを区別することができません。
+ソケットプログラミングを行うことで、クライアント毎に別々のセッションを
+持てるようになります: これが accept() が二つの引数を取る理由です。
+
+=begin original
+
+For example, let's say that you have a long running database server daemon
+that you want folks from the World Wide Web to be able to access, but only
+if they go through a CGI interface.  You'd have a small, simple CGI
+program that does whatever checks and logging you feel like, and then acts
+as a Unix-domain client and connects to your private server.
+
+=end original
+
+例えば、CGI インターフェースを通してのみ World Wide Web からアクセスされる、
+長時間実行されているデータベースサーバーデーモンを持っているとしましょう。
+この場合、あなたの好きなようにチェックやログの記録を実行するような小さく、
+単純な CGI プログラムを持って、UNIX ドメインクライアントとして振る舞う
+プライベートなサーバーに接続させるといったことができるでしょう。
+
+=head1 TCP Clients with IO::Socket
+
+(IO::Socket を使った TCP クライアント)
+
+=begin original
+
+For those preferring a higher-level interface to socket programming, the
+IO::Socket module provides an object-oriented approach.  IO::Socket is
+included as part of the standard Perl distribution as of the 5.004
+release.  If you're running an earlier version of Perl, just fetch
+IO::Socket from CPAN, where you'll also find modules providing easy
+interfaces to the following systems: DNS, FTP, Ident (RFC 931), NIS and
+NISPlus, NNTP, Ping, POP3, SMTP, SNMP, SSLeay, Telnet, and Time--just
+to name a few.
+
+=end original
+
+ソケットプログラミングに対する高水準インターフェースのために、IO::Socket
+モジュールはオブジェクト指向アプローチを提供します。
+IO::Socket モジュールはリリース 5.004 の標準 Perl 配布キットの一部として
+含まれています。
+あなたが以前のバージョンの Perl を使っているのであれば、
+CPAN から IO::Socket を入手します。
+そこでは、以下に挙げるようなシステムに対する簡単なインターフェースを
+提供するシステムも見つけることができるでしょう: DNS, FTP, Ident (RFC 931),
+NIS, NISPlus, NNTP, Ping, POP3, SMTP, SNMP, SSLeay, Telnet, Time など。
+
+=head2 A Simple Client
+
+(単純なクライアント)
+
+=begin original
+
+Here's a client that creates a TCP connection to the "daytime"
+service at port 13 of the host name "localhost" and prints out everything
+that the server there cares to provide.
+
+=end original
+
+以下の例は“localhost”というホスト名の 13 番ポートにある“dyatime”
+サービスに対する TCP コネクションを作成するクライアントで、そのサーバーが
+提供するデータをすべて出力します。
+
+    #!/usr/bin/perl -w
+    use IO::Socket;
+    $remote = IO::Socket::INET->new(
+			Proto    => "tcp",
+			PeerAddr => "localhost",
+			PeerPort => "daytime(13)",
+		    )
+		  or die "cannot connect to daytime port at localhost";
+    while ( <$remote> ) { print }
+
+=begin original
+
+When you run this program, you should get something back that
+looks like this:
+
+=end original
+
+このプログラムを実行すると、以下のような返事が返ってくるでしょう:
+
+    Wed May 14 08:40:46 MDT 1997
+
+=begin original
+
+Here are what those parameters to the C<new> constructor mean:
+
+=end original
+
+C<new> コンストラクターに対するパラメーターの意味を説明します:
+
+=over 4
+
+=item C<Proto>
+
+=begin original
+
+This is which protocol to use.  In this case, the socket handle returned
+will be connected to a TCP socket, because we want a stream-oriented
+connection, that is, one that acts pretty much like a plain old file.
+Not all sockets are this of this type.  For example, the UDP protocol
+can be used to make a datagram socket, used for message-passing.
+
+=end original
+
+これは使用するプロトコルです。
+この例では、私たちはストリーム指向のコネクション、つまり、昔ながらの普通の
+ファイルのように振る舞うものを使いたいので、ソケットは TCP ソケットに
+接続されたものを扱います。
+ソケットにはこれ以外のタイプもあることに注意してください。
+たとえば、UDP プロトコルは(メッセージ送信に使われている)
+データグラムソケットを作成するために使うことができます。
+
+=item C<PeerAddr>
+
+=begin original
+
+This is the name or Internet address of the remote host the server is
+running on.  We could have specified a longer name like C<"www.perl.com">,
+or an address like C<"204.148.40.9">.  For demonstration purposes, we've
+used the special hostname C<"localhost">, which should always mean the
+current machine you're running on.  The corresponding Internet address
+for localhost is C<"127.1">, if you'd rather use that.
+
+=end original
+
+これはサーバーが実行されているリモートホストの、インターネットアドレス
+もしくは名前です。
+これを C<"www.perl.com"> のような長い名前で指定することも
+C<"204.148.40.9"> のようなアドレスで指定することもできます。
+先の例で使った C<"localhost"> は、常に自分が使用している現在のマシンを
+意味する特別なホスト名です。
+ローカルホストに対するインターネットアドレスは C<"127.1"> で、こちらを
+使うこともできます。
+
+=item C<PeerPort>
+
+=begin original
+
+This is the service name or port number we'd like to connect to.
+We could have gotten away with using just C<"daytime"> on systems with a
+well-configured system services file,[FOOTNOTE: The system services file
+is in I</etc/services> under Unix] but just in case, we've specified the
+port number (13) in parentheses.  Using just the number would also have
+worked, but constant numbers make careful programmers nervous.
+
+=end original
+
+これは接続したいサービスの名称、もしくはポート番号です。
+私たちは先の例で、きちんと設定されたシステムサービスの使える
+システムでなら C<"daytime"> を使うこともできました
+[FOOTNOTE: UNIXでは I</etc/services> にシステムサービスファイルがあります]。
+しかし、実際には括弧でくくって (13) というポート番号の指定を行っていました。
+単に番号を使っても同様に動作するのですが、定数は注意深いプログラマを
+神経質にさせてしまいます。
+
+=back
+
+=begin original
+
+Notice how the return value from the C<new> constructor is used as
+a filehandle in the C<while> loop?  That's what's called an indirect
+filehandle, a scalar variable containing a filehandle.  You can use
+it the same way you would a normal filehandle.  For example, you
+can read one line from it this way:
+
+=end original
+
+コンストラクター C<new> の戻り値が、C<while> ループの中のファイル
+ハンドルとしてどのように使われているかということに気がつきましたか?
+これは間接ファイルハンドルと呼ばれるもので、ファイルハンドルを保持している
+スカラー変数です。
+これは、通常のファイルハンドルと同様のやり方で使うことができます。
+例えば、以下のようにすれば一行読み込みができます:
+
+    $line = <$handle>;
+
+=begin original
+
+all remaining lines from is this way:
+
+=end original
+
+残りの行全ての読み込みは以下のようにします:
+
+    @lines = <$handle>;
+
+=begin original
+
+and send a line of data to it this way:
+
+=end original
+
+データを一行送るには以下のようにします:
+
+    print $handle "some data\n";
+
+=head2 A Webget Client
+
+(Webget クライアント)
+
+=begin original
+
+Here's a simple client that takes a remote host to fetch a document
+from, and then a list of documents to get from that host.  This is a
+more interesting client than the previous one because it first sends
+something to the server before fetching the server's response.
+
+=end original
+
+以下の例は、ドキュメントをそこから取るリモートホストと、そのホストから
+取得するドキュメントのリストを引数に取る単純なクライアントです。
+これは先の例よりも興味深いものです。
+なぜなら、この例においてはサーバーの反応をフェッチする前に最初に何かを
+サーバーに送信するからです。
+
+    #!/usr/bin/perl -w
+    use IO::Socket;
+    unless (@ARGV > 1) { die "usage: $0 host document ..." }
+    $host = shift(@ARGV);
+    $EOL = "\015\012";
+    $BLANK = $EOL x 2;
+    foreach $document ( @ARGV ) {
+	$remote = IO::Socket::INET->new( Proto     => "tcp",
+					 PeerAddr  => $host,
+					 PeerPort  => "http(80)",
+				        );
+	unless ($remote) { die "cannot connect to http daemon on $host" }
+	$remote->autoflush(1);
+	print $remote "GET $document HTTP/1.0" . $BLANK;
+	while ( <$remote> ) { print }
+	close $remote;
+    }
+
+=begin original
+
+The web server handing the "http" service, which is assumed to be at
+its standard port, number 80.  If the web server you're trying to
+connect to is at a different port (like 1080 or 8080), you should specify
+as the named-parameter pair, C<< PeerPort => 8080 >>.  The C<autoflush>
+method is used on the socket because otherwise the system would buffer
+up the output we sent it.  (If you're on a Mac, you'll also need to
+change every C<"\n"> in your code that sends data over the network to
+be a C<"\015\012"> instead.)
+
+=end original
+
+ここでは、“http”サービスを提供する web サーバーがその標準ポートである
+80 番ポートを使っていると仮定しています。
+あなたの使っている web サーバーが異なるポート(例えば 1080 とか 8080 とか)を
+使用しているのであれば、名前付きパラメータペアにしてC<< PeerPort => 8080 >>
+のような形式で指定すべきでしょう。
+C<autoflush> メソッドがソケットに対して使われます。
+そうしなければシステムは私たちが送信した出力を
+バッファリングしてしまうでしょう(あなたが Mac を使っているのであれば、
+ネットワーク越しにデータを送信するプログラム中にあるすべての
+C<"\n"> を C<"\015\012"> に変更する必要もあります)。
+
+=begin original
+
+Connecting to the server is only the first part of the process: once you
+have the connection, you have to use the server's language.  Each server
+on the network has its own little command language that it expects as
+input.  The string that we send to the server starting with "GET" is in
+HTTP syntax.  In this case, we simply request each specified document.
+Yes, we really are making a new connection for each document, even though
+it's the same host.  That's the way you always used to have to speak HTTP.
+Recent versions of web browsers may request that the remote server leave
+the connection open a little while, but the server doesn't have to honor
+such a request.
+
+=end original
+
+サーバーへの接続は、このプロセスの最初の一部分でしかありません: 
+一度接続されてしまえば、サーバーの言語を使うべきなのです。
+ネットワーク上の各サーバーは、入力として期待しているそれぞれの小さな
+コマンド言語を持っています。
+HTTP 構文において最初にサーバーに送信するのは "GET" です。
+この場合、単純に指定されたドキュメントのそれぞれをリクエストします。
+そう、私たちは実際には、たとえ同じホストであったとしてもドキュメント毎に
+新しいコネクションを作成しています。
+これが HTTP を使うときに常にそうしなければならない方法なのです。
+最近のwebブラウザーではコネクションを開いたままちょっとの間リモートサーバーを
+離れるリクエストをすることができますが、サーバーはそのようなリクエストを
+処理しなければならないというわけではありません。
+
+=begin original
+
+Here's an example of running that program, which we'll call I<webget>:
+
+=end original
+
+以下に挙げるのは、私たちがI<webget>と呼ぶであろうプログラムを
+実行した例です。
+
+    % webget www.perl.com /guanaco.html
+    HTTP/1.1 404 File Not Found
+    Date: Thu, 08 May 1997 18:02:32 GMT
+    Server: Apache/1.2b6
+    Connection: close
+    Content-type: text/html
+
+    <HEAD><TITLE>404 File Not Found</TITLE></HEAD>
+    <BODY><H1>File Not Found</H1>
+    The requested URL /guanaco.html was not found on this server.<P>
+    </BODY>
+
+=begin original
+
+Ok, so that's not very interesting, because it didn't find that
+particular document.  But a long response wouldn't have fit on this page.
+
+=end original
+
+これは特定のドキュメントを見つけられないというものですからあまり
+面白いものでもありません。
+でも、長いレスポンスをここに載せるわけにもいかないでしょう。
+
+=begin original
+
+For a more fully-featured version of this program, you should look to
+the I<lwp-request> program included with the LWP modules from CPAN.
+
+=end original
+
+このプログラムの全機能バージョン(fully-featured version)は、CPAN にある
+LWP モジュール中の I<lwp-request> というプログラムを見るとよいでしょう。
+
+=head2 Interactive Client with IO::Socket
+
+(IO::Socket を使った対話的クライアント)
+
+=begin original
+
+Well, that's all fine if you want to send one command and get one answer,
+but what about setting up something fully interactive, somewhat like
+the way I<telnet> works?  That way you can type a line, get the answer,
+type a line, get the answer, etc.
+
+=end original
+
+一つのコマンドを送信し、一つの返答を得るというのであれば具合が良いのですが、
+完全に対話的な何かを設定し、I<telnet> のように動作するものはどうでしょうか?
+ここでできるのは、ある一行をタイプして答を得て、別の行をタイプしてそれに
+対する答を得て…というやり方です。
+
+=begin original
+
+This client is more complicated than the two we've done so far, but if
+you're on a system that supports the powerful C<fork> call, the solution
+isn't that rough.  Once you've made the connection to whatever service
+you'd like to chat with, call C<fork> to clone your process.  Each of
+these two identical process has a very simple job to do: the parent
+copies everything from the socket to standard output, while the child
+simultaneously copies everything from standard input to the socket.
+To accomplish the same thing using just one process would be I<much>
+harder, because it's easier to code two processes to do one thing than it
+is to code one process to do two things.  (This keep-it-simple principle
+a cornerstones of the Unix philosophy, and good software engineering as
+well, which is probably why it's spread to other systems.)
+
+=end original
+
+このクライアントは既に出てきた二つのものよりも複雑ですが、あなたが
+強力な C<fork> 呼び出しをサポートしているシステムを使っているのであれば、
+解決策は乱暴なものではありません。
+通信したいなんらかのサービスに対してコネクションを作ってしまえば、プロセスの
+複製を作るために C<fork> を呼び出します。
+それによる二つのプロセスはそれぞれ、非常に単純なジョブを行います:
+親プロセスはソケットから入力されたすべてを標準出力にコピーし、子プロセスは
+標準入力をソケットへと同じようにコピーします。
+ただ一つのプロセスを使ったときに同じことをするのは B<非常に>
+難しいでしょう。
+なぜなら、二つのことを行う一つのプロセスのためのプログラムよりも
+一つのことを行う二つのプロセスのためのプログラムのほうが
+簡単だからです(この keep-it-simple 法則は UNIX 文化の要石で、良い
+ソフトウェアエンジニアが使うように、(UNIX が)他のシステムよりも広く
+使われていることの理由でしょう)。
+
+=begin original
+
+Here's the code:
+
+=end original
+
+プログラムの例です:
+
+    #!/usr/bin/perl -w
+    use strict;
+    use IO::Socket;
+    my ($host, $port, $kidpid, $handle, $line);
+
+    unless (@ARGV == 2) { die "usage: $0 host port" }
+    ($host, $port) = @ARGV;
+
+    # create a tcp connection to the specified host and port
+    $handle = IO::Socket::INET->new(Proto     => "tcp",
+				    PeerAddr  => $host,
+				    PeerPort  => $port)
+	   or die "can't connect to port $port on $host: $!";
+
+    $handle->autoflush(1);		# so output gets there right away
+    print STDERR "[Connected to $host:$port]\n";
+
+    # split the program into two processes, identical twins
+    die "can't fork: $!" unless defined($kidpid = fork());
+
+    # the if{} block runs only in the parent process
+    if ($kidpid) {
+	# copy the socket to standard output
+	while (defined ($line = <$handle>)) {
+	    print STDOUT $line;
+	}
+	kill("TERM", $kidpid);  		# send SIGTERM to child
+    }
+    # the else{} block runs only in the child process
+    else {
+	# copy standard input to the socket
+	while (defined ($line = <STDIN>)) {
+	    print $handle $line;
+	}
+    }
+
+=begin original
+
+The C<kill> function in the parent's C<if> block is there to send a
+signal to our child process (current running in the C<else> block)
+as soon as the remote server has closed its end of the connection.
+
+=end original
+
+親プロセスの C<if> ブロックにある C<kill> 関数は、リモートサーバーが
+コネクションを終了してクローズしてすぐに子プロセス(C<else> ブロックを
+実行しています)にシグナルを送るためのものです。
+
+=begin original
+
+If the remote server sends data a byte at time, and you need that
+data immediately without waiting for a newline (which might not happen),
+you may wish to replace the C<while> loop in the parent with the
+following:
+
+=end original
+
+リモートサーバーが一度に一バイト送っていて、そして、あなたが改行を
+待つことなしに即座にデータを必要とする(そうそうないことでしょうが)のなら、
+C<while> ループを以下のようなものに置き換えたくなるでしょう:
+
+    my $byte;
+    while (sysread($handle, $byte, 1) == 1) {
+	print STDOUT $byte;
+    }
+
+=begin original
+
+Making a system call for each byte you want to read is not very efficient
+(to put it mildly) but is the simplest to explain and works reasonably
+well.
+
+=end original
+
+読み出しのために一バイト毎にシステムコールを行うのは実に非効率的ですが、
+説明するのに簡単でとりあえずは動くのです:
+
+=head1 TCP Servers with IO::Socket
+
+(IO::Socket を使った TCP サーバー)
+
+=begin original
+
+As always, setting up a server is little bit more involved than running a client.
+The model is that the server creates a special kind of socket that
+does nothing but listen on a particular port for incoming connections.
+It does this by calling the C<< IO::Socket::INET->new() >> method with
+slightly different arguments than the client did.
+
+=end original
+
+常にそうであるように、サーバーのセッティングはクライアントを実行するよりも
+ほんのちょっと手間がかかります。
+ここで使うのは、サーバーが特定のポートで接続を待つだけという特殊な種類の
+ソケットを作成するというモデルです。
+これは、C<< IO::Socket::INET->new() >> というメソッドをはっきりと異なる
+引数を付けて呼び出してからクライアントを実行することで行います。
+
+=over 4
+
+=item Proto
+
+=begin original
+
+This is which protocol to use.  Like our clients, we'll
+still specify C<"tcp"> here.
+
+=end original
+
+これは使用するプロトコルです。
+クライアントと同様、ここでは C<"tcp"> を指定します。
+
+=item LocalPort
+
+=begin original
+
+We specify a local
+port in the C<LocalPort> argument, which we didn't do for the client.
+This is service name or port number for which you want to be the
+server. (Under Unix, ports under 1024 are restricted to the
+superuser.)  In our sample, we'll use port 9000, but you can use
+any port that's not currently in use on your system.  If you try
+to use one already in used, you'll get an "Address already in use"
+message.  Under Unix, the C<netstat -a> command will show
+which services current have servers.
+
+=end original
+
+C<LocalPort> 引数でローカルポートを指定します。
+これはサーバーにしたいサービス名かポート番号のいずれかです(UNIX では、
+1024 未満のポートはスーパーユーザー限定です)。
+私たちのサンプルでは 9000 番ポートを使いますが、あなたの使っているシステムで
+重複しなければ好きな番号を使うことができます。
+もし既に使われているポートを使おうとすれば、"Address already in use" の
+ようなメッセージを得ることとなるでしょう。
+UNIX では、C<netstat -a> コマンドを使ってサービスが現在使っているサーバーを
+見ることができます。
+
+=item Listen
+
+=begin original
+
+The C<Listen> parameter is set to the maximum number of
+pending connections we can accept until we turn away incoming clients.
+Think of it as a call-waiting queue for your telephone.
+The low-level Socket module has a special symbol for the system maximum, which
+is SOMAXCONN.
+
+=end original
+
+C<Listen> パラメーターは、クライアントを待たせておいて受け付けることのできる
+コネクションの最大数を設定します。
+電話の呼び出しを考えてみてください。
+低水準ソケットモジュールは SOMAXCONN というそのシステムの最大値を表す
+特殊なシンボルを持っています。
+
+=item Reuse
+
+=begin original
+
+The C<Reuse> parameter is needed so that we restart our server
+manually without waiting a few minutes to allow system buffers to
+clear out.
+
+=end original
+
+C<Reuse> パラメーターは、システムがバッファーをクリアするための時間を
+掛けずに私たちのサーバーを手作業で再起動するのに必要です。
+
+=back
+
+=begin original
+
+Once the generic server socket has been created using the parameters
+listed above, the server then waits for a new client to connect
+to it.  The server blocks in the C<accept> method, which eventually accepts a
+bidirectional connection from the remote client.  (Make sure to autoflush
+this handle to circumvent buffering.)
+
+=end original
+
+上で述べたパラメーターを持った汎用のサーバーソケットが生成されれば、
+そのサーバーは接続される新たなクライアントを待ちます。
+C<accept> メソッドにあるサーバーブロックはリモートクライアントからの
+双方向接続を許可します(バッファリングを抑制するためにハンドルに対して
+autoflush することを忘れないように)。
+
+=begin original
+
+To add to user-friendliness, our server prompts the user for commands.
+Most servers don't do this.  Because of the prompt without a newline,
+you'll have to use the C<sysread> variant of the interactive client above.
+
+=end original
+
+ユーザーに親切にするために、私たちのサーバーはコマンドの入力のプロンプトを
+表示します。
+ほとんどのサーバーはこうしたことをしていません。
+プロンプトには改行がないので、上の例にあったような対話的な
+クライアントの類では C<sysread> を使う必要があるでしょう。
+
+=begin original
+
+This server accepts one of five different commands, sending output
+back to the client.  Note that unlike most network servers, this one
+only handles one incoming client at a time.  Multithreaded servers are
+covered in Chapter 6 of the Camel.
+
+=end original
+
+このサーバーは五種類のコマンドのいずれか一つを取り、クライアントに対して
+(コマンドに応じた)出力を行います。
+多くのネットワークサーバーとは異なり、このサーバープログラムは一度に一つの
+クライアントしか扱えないということに注意してください。
+マルチスレッド化されたサーバーはらくだ本の第六章でカバーされています。
+
+=begin original
+
+Here's the code.  We'll
+
+=end original
+
+以下プログラムです。
+
+ #!/usr/bin/perl -w
+ use IO::Socket;
+ use Net::hostent;		# for OO version of gethostbyaddr
+
+ $PORT = 9000;			# pick something not in use
+
+ $server = IO::Socket::INET->new( Proto     => 'tcp',
+                                  LocalPort => $PORT,
+                                  Listen    => SOMAXCONN,
+                                  Reuse     => 1);
+
+ die "can't setup server" unless $server;
+ print "[Server $0 accepting clients]\n";
+
+ while ($client = $server->accept()) {
+   $client->autoflush(1);
+   print $client "Welcome to $0; type help for command list.\n";
+   $hostinfo = gethostbyaddr($client->peeraddr);
+   printf "[Connect from %s]\n", $hostinfo ? $hostinfo->name : $client->peerhost;
+   print $client "Command? ";
+   while ( <$client>) {
+     next unless /\S/;	     # blank line
+     if    (/quit|exit/i)    { last;                                     }
+     elsif (/date|time/i)    { printf $client "%s\n", scalar localtime;  }
+     elsif (/who/i )         { print  $client `who 2>&1`;                }
+     elsif (/cookie/i )      { print  $client `/usr/games/fortune 2>&1`; }
+     elsif (/motd/i )        { print  $client `cat /etc/motd 2>&1`;      }
+     else {
+       print $client "Commands: quit date who cookie motd\n";
+     }
+   } continue {
+      print $client "Command? ";
+   }
+   close $client;
+ }
+
+=head1 UDP: Message Passing
+
+(UDP: メッセージ配送)
+
+=begin original
+
+Another kind of client-server setup is one that uses not connections, but
+messages.  UDP communications involve much lower overhead but also provide
+less reliability, as there are no promises that messages will arrive at
+all, let alone in order and unmangled.  Still, UDP offers some advantages
+over TCP, including being able to "broadcast" or "multicast" to a whole
+bunch of destination hosts at once (usually on your local subnet).  If you
+find yourself overly concerned about reliability and start building checks
+into your message system, then you probably should use just TCP to start
+with.
+
+=end original
+
+クライアント・サーバーをセットアップするもう一つの種類はコネクションではなく
+メッセージを使うものです。
+UDP 通信はオーバーヘッドが低いものの、メッセージがすべて到着するという
+保証がなく到着の順序もきちんと保たれていることも保証されてないために
+信頼性もまた劣るものになっています。
+それでも、UDP には一度に宛て先ホストの塊全体
+(通常はローカルサブネット)に対して“ブロードキャスト”、“マルチキャスト”が
+できるということを含め、TCPに対する幾つかのアドバンテージがあります。
+信頼性に関して過度に関心を持ち、作成するメッセージシステムに検査機構を
+組み込もうというのであれば、むしろ TCP を使うようにした方がよいでしょう。
+
+=begin original
+
+Note that UDP datagrams are I<not> a bytestream and should not be treated
+as such. This makes using I/O mechanisms with internal buffering
+like stdio (i.e. print() and friends) especially cumbersome. Use syswrite(),
+or better send(), like in the example below.
+
+=end original
+
+UDP はバイトストリーム I<ではなく> 、そのように扱うべきでもないことに
+注意してください。
+これは stdio(つまり print() やその親戚) のような内部バッファリング付きの
+I/O 機構を特に扱いにくくします。
+以下の例のように、syswrite() か、よりよい send() を使ってください。
+
+=begin original
+
+Here's a UDP program similar to the sample Internet TCP client given
+earlier.  However, instead of checking one host at a time, the UDP version
+will check many of them asynchronously by simulating a multicast and then
+using select() to do a timed-out wait for I/O.  To do something similar
+with TCP, you'd have to use a different socket handle for each host.
+
+=end original
+
+以下に挙げた UDP プログラムは先に挙げたインターネト TCP クライアントの
+例と似ていますが、一度に一つのホストをチェックするのではなく、
+マルチキャストをシミュレートし、かつ、select() を入出力のタイムアウト待ちの
+ために使うことにより非同期的にたくさんのチェックを行います。
+TCP でこれと同じことを行うには、ホスト毎に異なるソケットハンドルを
+使わなければならないでしょう。
+
+    #!/usr/bin/perl -w
+    use strict;
+    use Socket;
+    use Sys::Hostname;
+
+    my ( $count, $hisiaddr, $hispaddr, $histime,
+	 $host, $iaddr, $paddr, $port, $proto,
+	 $rin, $rout, $rtime, $SECS_of_70_YEARS);
+
+    $SECS_of_70_YEARS      = 2208988800;
+
+    $iaddr = gethostbyname(hostname());
+    $proto = getprotobyname('udp');
+    $port = getservbyname('time', 'udp');
+    $paddr = sockaddr_in(0, $iaddr); # 0 means let kernel pick
+
+    socket(SOCKET, PF_INET, SOCK_DGRAM, $proto)   || die "socket: $!";
+    bind(SOCKET, $paddr)                          || die "bind: $!";
+
+    $| = 1;
+    printf "%-12s %8s %s\n",  "localhost", 0, scalar localtime time;
+    $count = 0;
+    for $host (@ARGV) {
+	$count++;
+	$hisiaddr = inet_aton($host) 	|| die "unknown host";
+	$hispaddr = sockaddr_in($port, $hisiaddr);
+	defined(send(SOCKET, 0, 0, $hispaddr))    || die "send $host: $!";
+    }
+
+    $rin = '';
+    vec($rin, fileno(SOCKET), 1) = 1;
+
+    # timeout after 10.0 seconds
+    while ($count && select($rout = $rin, undef, undef, 10.0)) {
+	$rtime = '';
+	($hispaddr = recv(SOCKET, $rtime, 4, 0)) 	|| die "recv: $!";
+	($port, $hisiaddr) = sockaddr_in($hispaddr);
+	$host = gethostbyaddr($hisiaddr, AF_INET);
+	$histime = unpack("N", $rtime) - $SECS_of_70_YEARS;
+	printf "%-12s ", $host;
+	printf "%8d %s\n", $histime - time, scalar localtime($histime);
+	$count--;
+    }
+
+=begin original
+
+Note that this example does not include any retries and may consequently
+fail to contact a reachable host. The most prominent reason for this
+is congestion of the queues on the sending host if the number of
+list of hosts to contact is sufficiently large.
+
+=end original
+
+この例では一切再試行を行わないので、到達可能なホストへの接続に
+失敗することがあることに注意してください。
+これのもっとも有名な原因は、もし接続するホストのリストの数が十分に大きいと、
+送信ホストのキューが混雑することです。
+
+=head1 SysV IPC
+
+=begin original
+
+While System V IPC isn't so widely used as sockets, it still has some
+interesting uses.  You can't, however, effectively use SysV IPC or
+Berkeley mmap() to have shared memory so as to share a variable amongst
+several processes.  That's because Perl would reallocate your string when
+you weren't wanting it to.
+
+=end original
+
+System V IPC はソケットとしてはそれ程広く使われてはいませんが、
+幾つかの興味深い使用法があります。
+ただし、System V の IPC や Berkley の mmap() を(異なる幾つかのプロセスの
+間で変数を共有するための)共有メモリを持つ目的のために効率良く
+使うことはできません。
+なぜなら Perl が、あなたが望まないときに文字列の再割り付けをやってしまう
+可能性があるからです。
+
+=begin original
+
+Here's a small example showing shared memory usage.
+
+=end original
+
+共有メモリの使い方を例示する小さな例です。
+
+    use IPC::SysV qw(IPC_PRIVATE IPC_RMID S_IRWXU);
+
+    $size = 2000;
+    $id = shmget(IPC_PRIVATE, $size, S_IRWXU) || die "$!";
+    print "shm key $id\n";
+
+    $message = "Message #1";
+    shmwrite($id, $message, 0, 60) || die "$!";
+    print "wrote: '$message'\n";
+    shmread($id, $buff, 0, 60) || die "$!";
+    print "read : '$buff'\n";
+
+    # the buffer of shmread is zero-character end-padded.
+    substr($buff, index($buff, "\0")) = '';
+    print "un" unless $buff eq $message;
+    print "swell\n";
+
+    print "deleting shm $id\n";
+    shmctl($id, IPC_RMID, 0) || die "$!";
+
+=begin original
+
+Here's an example of a semaphore:
+
+=end original
+
+以下はセマフォの例です:
+
+    use IPC::SysV qw(IPC_CREAT);
+
+    $IPC_KEY = 1234;
+    $id = semget($IPC_KEY, 10, 0666 | IPC_CREAT ) || die "$!";
+    print "shm key $id\n";
+
+=begin original
+
+Put this code in a separate file to be run in more than one process.
+Call the file F<take>:
+
+=end original
+
+二つ以上のプロセスで動作するように、このコードを分割されたファイルに
+置きます。
+そのファイルを F<take> と呼びます:
+
+    # create a semaphore
+
+    $IPC_KEY = 1234;
+    $id = semget($IPC_KEY,  0 , 0 );
+    die if !defined($id);
+
+    $semnum = 0;
+    $semflag = 0;
+
+    # 'take' semaphore
+    # wait for semaphore to be zero
+    $semop = 0;
+    $opstring1 = pack("s!s!s!", $semnum, $semop, $semflag);
+
+    # Increment the semaphore count
+    $semop = 1;
+    $opstring2 = pack("s!s!s!", $semnum, $semop,  $semflag);
+    $opstring = $opstring1 . $opstring2;
+
+    semop($id,$opstring) || die "$!";
+
+=begin original
+
+Put this code in a separate file to be run in more than one process.
+Call this file F<give>:
+
+=end original
+
+このコードを、二つ以上のプロセスで実行できるように別のファイルに
+置きます。
+このファイルを F<give> と呼びます。
+
+    # 'give' the semaphore
+    # run this in the original process and you will see
+    # that the second process continues
+
+    $IPC_KEY = 1234;
+    $id = semget($IPC_KEY, 0, 0);
+    die if !defined($id);
+
+    $semnum = 0;
+    $semflag = 0;
+
+    # Decrement the semaphore count
+    $semop = -1;
+    $opstring = pack("s!s!s!", $semnum, $semop, $semflag);
+
+    semop($id,$opstring) || die "$!";
+
+=begin original
+
+The SysV IPC code above was written long ago, and it's definitely
+clunky looking.  For a more modern look, see the IPC::SysV module
+which is included with Perl starting from Perl 5.005.
+
+=end original
+
+ここで例示した System V の IPC コードははるかな昔に書かれたもので、
+へぼなものに見えます。
+より現代的なものについては、Perl 5.005 から含まれている
+IPC::SysV モジュールを参照してください。
+
+=begin original
+
+A small example demonstrating SysV message queues:
+
+=end original
+
+SysV メッセージキューを例示する簡単な例です:
+
+    use IPC::SysV qw(IPC_PRIVATE IPC_RMID IPC_CREAT S_IRWXU);
+
+    my $id = msgget(IPC_PRIVATE, IPC_CREAT | S_IRWXU);
+
+    my $sent = "message";
+    my $type_sent = 1234;
+    my $rcvd;
+    my $type_rcvd;
+
+    if (defined $id) {
+        if (msgsnd($id, pack("l! a*", $type_sent, $sent), 0)) {
+            if (msgrcv($id, $rcvd, 60, 0, 0)) {
+                ($type_rcvd, $rcvd) = unpack("l! a*", $rcvd);
+                if ($rcvd eq $sent) {
+                    print "okay\n";
+                } else {
+                    print "not okay\n";
+                }
+            } else {
+                die "# msgrcv failed\n";
+            }
+        } else {
+            die "# msgsnd failed\n";
+        }
+        msgctl($id, IPC_RMID, 0) || die "# msgctl failed: $!\n";
+    } else {
+        die "# msgget failed\n";
+    }
+
+=head1 NOTES
+
+=begin original
+
+Most of these routines quietly but politely return C<undef> when they
+fail instead of causing your program to die right then and there due to
+an uncaught exception.  (Actually, some of the new I<Socket> conversion
+functions  croak() on bad arguments.)  It is therefore essential to
+check return values from these functions.  Always begin your socket
+programs this way for optimal success, and don't forget to add B<-T>
+taint checking flag to the #! line for servers:
+
+=end original
+
+これらのルーチンのほとんどは物静かですが、何かに失敗した場合には
+あなたのプログラムを終了させてしまったり捕捉されない例外を
+引き起こしたりする代わりに C<undef> を返します(実際には、新しい
+I<Socket> 変換関数の幾つかは不正な引数に対して croak() します)。
+したがって要点は、これらの関数の戻り値を確認すべきであるということです。
+ソケットプログラムは常に最良の成功(optimal success)のためにこのやり方で
+始め、そしてサーバーに対して pound-bang line (#! の行のこと)に
+汚染検査フラグ B<-T> を追加することを忘れないようにしてください。
+
+    #!/usr/bin/perl -Tw
+    use strict;
+    use sigtrap;
+    use Socket;
+
+=head1 BUGS
+
+=begin original
+
+All these routines create system-specific portability problems.  As noted
+elsewhere, Perl is at the mercy of your C libraries for much of its system
+behaviour.  It's probably safest to assume broken SysV semantics for
+signals and to stick with simple TCP and UDP socket operations; e.g., don't
+try to pass open file descriptors over a local UDP datagram socket if you
+want your code to stand a chance of being portable.
+
+=end original
+
+これらのルーチンは全て、システム固有の移植性問題を作り出します。
+他の場所で説明したように、Perl の振る舞いは使用しているCライブラリに
+左右されます。
+System V のおかしなシグナルのセマンティクスを仮定することと、単純な
+TCP および UDP ソケット操作に終始するようにすることがおそらくは最も
+安全なもののでしょう。
+たとえば、あなたが自分のプログラムに移植性を持たせるようにしたいのであれば、
+ローカルな UDP データグラムのソケットを通してファイル記述子を
+渡すようなことをしようとしてはいけないということです。
+
+=head1 AUTHOR
+
+=begin original
+
+Tom Christiansen, with occasional vestiges of Larry Wall's original
+version and suggestions from the Perl Porters.
+
+=end original
+
+Tom Christiansen (Larry Wall による元の文書の部分的な名残と、
+Perl Porters による示唆と共に)
+
+=head1 SEE ALSO
+
+=begin original
+
+There's a lot more to networking than this, but this should get you
+started.
+
+=end original
+
+ネットワークに関する事柄はまだまだたくさんあります。
+ここにあることはスタートでしかありません。
+
+=begin original
+
+For intrepid programmers, the indispensable textbook is I<Unix
+Network Programming, 2nd Edition, Volume 1> by W. Richard Stevens
+(published by Prentice-Hall).  Note that most books on networking
+address the subject from the perspective of a C programmer; translation
+to Perl is left as an exercise for the reader.
+
+=end original
+
+Richard Stevens による非常に重要な教科書
+I<Unix Network Programming, 2nd Edition, Volume 1>
+(Prentice-Hall から出版されています)があります。
+ネットワークに関するほとんどの本は、C プログラマを対象としている点に
+注意してください。
+Perl への変換は、読者の宿題として残しておきます。
+
+=begin original
+
+The IO::Socket(3) manpage describes the object library, and the Socket(3)
+manpage describes the low-level interface to sockets.  Besides the obvious
+functions in L<perlfunc>, you should also check out the F<modules> file
+at your nearest CPAN site.  (See L<perlmodlib> or best yet, the F<Perl
+FAQ> for a description of what CPAN is and where to get it.)
+
+=end original
+
+IO::Socket(3) マニュアルページにはオブジェクトライブラリの説明があり、
+Socket(3) には低水準のソケットに対するインターフェースの説明があります。
+L<perlfunc> にある関数の他にも、至近にある CPAN サイトで
+F<modules> ファイルをチェックしたほうが良いでしょう(L<perlmodlib> を
+参照するか、CPAN がどこにあるかの説明がある F<Perl FAQ> を見ると
+よいでしょう)。
+
+=begin original
+
+Section 5 of the F<modules> file is devoted to "Networking, Device Control
+(modems), and Interprocess Communication", and contains numerous unbundled
+modules numerous networking modules, Chat and Expect operations, CGI
+programming, DCE, FTP, IPC, NNTP, Proxy, Ptty, RPC, SNMP, SMTP, Telnet,
+Threads, and ToolTalk--just to name a few.
+
+=end original
+
+F<modlues> ファイルの第 5 章は
+"Networking, Device Control (modems), and Interprocess Communication"
+に充てられていて、バンドルされなかった多くのネットワーク関連モジュール、
+チャット と Expect operations, CGI プログラミング, DCE, 
+FTP, IPC, NNTP, Proxy, Ptty, RPC, SNMP, SMTP, Telnet, スレッド、
+そして ToolTalk を含んでいます。
+
+=begin meta
+
+Created: KIMURA Koichi
+Updated: Kentaro Shirakata <argrath@ub32.org>
+
+=end meta
+

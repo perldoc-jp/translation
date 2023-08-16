@@ -1,0 +1,189 @@
+
+=encoding euc-jp
+
+=head1 名前
+
+File::chdir - より機能的なディレクトリ変更
+
+=head1 概要
+
+  use File::chdir;
+
+  $CWD = "/foo/bar";     # これで/foo/barに入ります
+  {
+      local $CWD = "/moo/baz";  # これで/moo/bazに入ります
+      ...
+  }
+
+  # /foo/barにいます!
+
+=head1 説明
+
+Perlのchdir()はとても、とても、とってもグローバルであるという残念な
+障害を抱えています。あなたのプログラムのどこかでchdir()を呼ぶか、
+あなたの使うライブラリのいずれかがchdir()を呼ぶと、プログラムB<全体>の
+現在の作業ディレクトリを変更します。
+
+あー、ムカつく!
+
+File::chdirは代替方法、$CWDと@CWDを提供しますこの2つの変数は
+C<chdir()>、File::SpecそしてCwdの能力全てを結合しています。
+
+=head2 $CWD
+
+chdir()とCwdの代わりに、変数$CWDを使ってください。
+
+    use File::chdir;
+    $CWD = $dir;  # chdir($dir)のようなもの!
+    print $CWD;   # 現在の作業ディレクトリを出力
+
+これはローカル化することができます、そしてそれは正しく動きます。
+
+    $CWD = "/foo";      # この外では /foo
+    {
+        local $CWD = "/bar";  # ここでは/bar
+    }
+    # この外では/foo!
+
+$CWDは常に絶対パスを返します。
+
+$CWDと通常のchdir()は一緒にうまく機能します。
+
+=head2 @CWD
+
+@CWDは現在の作業ディレクトリを配列で表します。パスの中のそれぞれの
+ディレクトリが配列の要素になります。これによりディレクトリを扱うことが
+より簡単になることがよくあります。そして
+移植可能なコードにするため、
+C<File::Spec-E<gt>splitpath>とC<File::Spec-E<gt>catdir>をいじくり
+回す必要がありません。
+
+  # chdir("/usr/local/src/perl")と同様
+  @CWD = qw(usr local src perl);
+
+pop, push, shift, unshift そして spliceの全てが機能します。popとpush が
+おそらく最も便利でしょう。
+
+  pop @CWD;                 # chdir(File::Spec->updir)と同じ
+  push @CWD, 'some_dir'     # chdir('some_dir')と同じ
+
+@CWD と $CWD は両方とも一緒にうまく機能します。
+
+B<注意> perlバグにより@CWDをロカール化することはできません。
+回避するためにはL</バグと警告>をご覧ください。
+
+=head1 使用例
+
+(これらの使用例では簡潔にするためC<use File::chdir>を省略しています)
+
+ここでchdirの代わりに$CWD:
+
+    $CWD = 'foo';           # chdir('foo')
+
+それからCwdの代わりに.
+
+    print $CWD;             # use Cwd;  print Cwd::abs_path
+
+zshスタイルC<cd foo bar>を使うことさえも出来ます
+
+    $CWD = '/usr/local/foo';
+    $CWD =~ s/usr/var/;
+
+それをローカル化したければ、確実に括弧が正しくしてください
+
+    {
+        (local $CWD) =~ s/usr/var/;
+        ...
+    }
+
+これはプログラムをどこか変なディレクトリに入ったままにしない
+行儀のよいサブルーチンを書くのにとても便利です:
+
+    sub foo {
+        local $CWD = 'some/other/dir';
+        ...あなたの仕事をします...
+    }
+
+それは同等のものより、かなりシンプルです:
+
+    sub foo {
+        use Cwd;
+        my $orig_dir = Cwd::abs_path;
+        chdir('some/other/dir');
+
+        ...あなたの仕事をします...
+
+        chdir($orig_dir);
+    }
+
+File::Specを使う必要もなく、クロス・プラットホームな方法で
+ディレクトリ階層を上がったり下ったりしたいとき、
+@CWDは手軽です。
+
+    pop @CWD;                   # chdir(File::Spec->updir);
+    push @CWD, 'some', 'dir'    # chdir(File::Spec->catdir(qw(some dir)));
+
+親ディレクトリを簡単に変更することができます:
+
+    # /some/dir/bar/mooから/some/dir/foo/mooへchdir
+    $CWD[-2] = 'foo';
+
+
+=head1 バグと警告
+
+C<local @CWD>はC<@CWD>をローカル化しません。これはPerlのバグです。
+タイされている配列をローカルかできないのです。回避方法として$CWDを
+ローカルすることは、実際上@CWDをローカル化します。
+
+    {
+        local $CWD;
+        pop @CWD;
+        ...
+    }
+
+
+=head1 注意
+
+%CWDは何をすべきでしょう?ボリュームを持っているものとか?
+
+    # C:\Program Files\Sierra\Half Lifeへのchdir?
+    $CWD{C} = '\\Program Files\\Sierra\\Half Life';
+
+
+=head1 作者(=AUTHOR)
+
+Michael G Schwern E<lt>schwern@pobox.comE<gt>
+
+
+=head1 ライセンス(=LICENSE)
+
+Copyright 2001-2003 by Michael G Schwern E<lt>schwern@pobox.comE<gt>.
+
+This program is free software; you can redistribute it and/or 
+modify it under the same terms as Perl itself.
+
+See F<http://www.perl.com/perl/misc/Artistic.html>
+
+
+=head1 歴史(=HISTORY)
+
+私はC<ローカルなchdir>のために働きたかった。でもp5pは違っていた。
+私は私自身を止めたのか？いいや違う!ドイツが真珠湾を爆撃した後、
+我々は諦めだろうか？(訳者注:原文は"Did we give up after the 
+Germans bombed Pearl Harbor?" 真珠湾はドイツに爆撃された歴史って...）
+断じて、そんなことはない。
+
+
+Abigail そして/あるいは Bryan Warnock が$CWDのことを提案してくれた。
+どちらだったか忘れてしまった。彼らは正しかった。
+
+chdir()の上書きは0.04ではずされました。
+
+
+=head1 参考資料
+
+File::Spec, Cwd, L<perlfunc/chdir>
+
+=head1 翻訳
+
+川合孝典(GCD00051@nifty.ne.jp)

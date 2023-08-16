@@ -1,0 +1,1220 @@
+
+=encoding euc-jp
+
+=head1 名前
+
+C Cookbook - Inline Cの豊富な利用するためのレシピ
+
+=cut --------------------------------------------------------------------------
+
+=head1 説明
+
+私たちの多くにとってレシピを元に料理を作ることは、食べれるような形になるまで材料を鍋に単に投げ入れることよりも簡単です。それはプログラミングにも言えます。C<Inline.pm>はPerlのためのCのプログラミングを可能な限り簡単にします。簡単に理解することが出来るサンプルがあれば、それがさらに楽になるでしょう。
+
+このクックブックは、小さいけれども完全なコーディング例が増え続ける倉庫になることを意図しています；それぞれはInlineを使ってある仕事を実現する方法を示します。それぞれの例には、そこで実際に行われている機能の詳細について説明する短い解説がつきます。
+
+これらのレシピの多くは世界中のInlineのユーザとで行われたメールでの議論を元に作っています。私が経験した限りでは、InlineはPerlとCに関連するほとんど全ての問題へのエレガントな解決方法を提供してきました。
+
+さあ召し上がれ(=Bon Appetit）!
+
+=cut --------------------------------------------------------------------------
+
+=head1 前菜(=Appetizers)
+
+=cut --------------------------------------------------------------------------
+
+=head2 Hello, world
+
+=over 4
+
+=item 問題
+
+新しいプログラムのテクニックを学ぶとき、全てのプログラマが最初にやりたがることといえば、地球に挨拶するためにそれを使用することのようです。Inlineを使ってこれはどのように行うことができるでしょうか？
+
+=item 解決法
+
+    use Inline C => <<'END_C';
+    
+    void greet() {
+    printf("Hello, world\n");
+    }
+    END_C
+
+    greet;
+
+=item 解説
+
+ここでは何ら凝ったことはありません。メッセージをSTDOUTに出力する、Cの関数C<greet()>を定義します。ここで注意しなければならないことは、InlineのコードがC<greet>を呼び出す機能よりも前にあるということです。（括弧無しに）そのまま呼び出すことが出来ます。
+
+=item 参考資料
+
+C<Inline.pm>についての基本的な情報についてはL<Inline> と L<Inline::C>をご覧ください。
+
+=item CREDIT
+
+Brian Kernigan
+
+Dennis Ritchie
+
+（訳者注：K&Rのつもりなら、"Kernigan"じゃなくって"Kernighan"じゃないの？）
+
+=back
+
+=cut --------------------------------------------------------------------------
+
+=head2 ワンライナー
+
+=over 4
+
+=item 問題
+
+1行で機能するかどうかを示そうという考えはPerlには適切です。InlineはPerl/Cの対話での複雑さを除去しワンライナーにすることができるでしょうか？
+
+=item 解決法
+
+    perl -e 'use Inline C=>q{void greet(){printf("Hello, world\n");}};greet'
+
+=item 解説
+
+それをXSでやってごらんなさいって :-)
+
+=item 参考資料
+
+最近の私のメールの署名は以下の通り:
+
+    perl -le 'use Inline C=>q{SV*JAxH(char*x){return newSVpvf("Just Another %s Hacker",x);}};print JAxH+Perl'
+
+ちょっと凝っていますが、本当のワンライナーとしては少しばかり長すぎます。 :-)
+
+=item CREDIT
+
+"Eli the Bearded" <elijah@workspot.net> が、私がInlineのワイライナーを署名として持つべきだという考えを与えてくれました。
+
+=back
+
+=cut --------------------------------------------------------------------------
+
+=head1 肉料理、ジャガイモ添え
+
+=cut --------------------------------------------------------------------------
+
+=head2 データ型
+
+=over 4
+
+=item 問題
+
+どのようにすればInlineのCの関数と異なるデータ型（文字列、数値そして整数）を交互に渡すことができますか？
+
+=item 解決法
+
+    # vowels.pl
+    use Inline C;
+    
+    $filename = $ARGV[0];
+    die "Usage: perl vowels.pl filename\n" unless -f $filename;
+    
+    $text = join '', <>;           # 入力ファイルを全て読み込み
+    $vp = vowel_scan($text);       # 私たちの関数を呼び出します
+    $vp = sprintf("%03.1f", $vp * 100);  # 書式を整え出力
+    print "The letters in $filename are $vp% vowels.\n";
+    
+    __END__
+    __C__
+
+    /* 文字の中での母音の割合を調べます */
+    double vowel_scan(char* str) {
+        int letters = 0;
+        int vowels = 0;
+        int i = 0;
+        char c;
+        char normalize = 'a' ^ 'A'; 
+        /* normalizeはASCIIでは小文字に；EBCDICでは小文字に強制します */
+        char A = normalize | 'a';
+        char E = normalize | 'e';
+        char I = normalize | 'i';
+        char O = normalize | 'o';
+        char U = normalize | 'u';
+        char Z = normalize | 'z';
+    
+        while(c = str[i++]) {
+            c |= normalize; 
+            if (c >= A && c <= Z) {
+                 letters++;
+                 if (c == A || c == E || c == I || c == O || c == U)
+                     vowels++;
+            }
+        }
+
+        return letters ? ((double) vowels / letters) : 0.0;
+    }
+
+=item 説明
+
+このスクリプトはコマンドラインからファイル名を取り、そのファイルでの文字数に対する母音の数の割合を出力します。C<vowels.pl>は、文字列の引数をとり、0から1の不動小数点数を返すC<vowel_scan>というInline Cの関数を使用します。ASCIIとEBCDICで、大文字、小文字を扱います。これはとても速く動作します。
+
+
+このスクリプトを実行すると以下のように出力されます：
+
+    > perl vowels.pl /usr/dict/words 
+    The letters in /usr/dict/words are 37.5% vowels.
+
+=item 参考資料
+
+The Perl Journal vol #19には、この例を使っているInlineについての記事があります。
+
+=item CREDIT
+
+この例はThe Perl Journalの許可によって再掲載されています。それはInline v0.30以上で機能するように編集されました。
+
+=back
+
+=cut --------------------------------------------------------------------------
+
+=head2 可変引数リスト
+
+=over 4
+
+=item 問題
+
+可変個数の引数のリストはInline C関数に、どのように渡せばよいですか？
+
+=item 解決法
+
+    greet(qw(Sarathy Jan Sparky Murray Mike));
+    
+    use Inline C => <<'END_OF_C_CODE';
+    
+    void greet(SV* name1, ...) {
+        Inline_Stack_Vars;
+        int i;
+    
+        for (i = 0; i < Inline_Stack_Items; i++) 
+            printf("Hello %s!\n", SvPV(Inline_Stack_Item(i), PL_na));
+    
+        Inline_Stack_Void;
+    }
+    
+    END_OF_C_CODE
+
+
+=item 解説
+
+この本の小さなプログラムは、私の協力者のような、人々のグループに挨拶をします。リストが任意の大きさにもなるように、私たちはC<C>での省略の書き方:"C<...>"を使います。
+
+各引数にデータ型や名前が関連付けられないので、私たちの代わりにXSがその変換をすると期待することは出来ません。私たち自身でB<Stack>からポップする必要があります。幸いなことに、それを非常に簡単な仕事にしてくれる2つの関数（マクロ）があります。
+
+最初に、"C<Inline_Stack_Vars>"ステートメントで私たちの関数をはじめる必要があります。これはB<Stack>にアクセスするために必要な、いくつかの内部変数を定義します。そうすると"C<Inline_Stack_Items>"を使うことが出来ます。それはPerlから渡された引数の数を返します。
+
+B<注意:> "C<Inline_Stack_>"マクロを引数リストに省略がある場合にI<のみ>使用することが重要です。I<そうでなければ>関数は戻り値として何も返しません。
+
+次に、C<Inline_Stack_Item(x)>関数を使って"0 <= x < 要素数"の各引数にアクセスします。
+
+B<注意:> 可変数引数を使うとき、省略の前に少なくとも１つの引数を指定する必要があります。（少なくとも私のコンパイラでは。）XSがその引数をチェックしないとき、I<定義された>引数の数よりも、引数を少なく渡すと文句をいいます。このため今のところは、可変個の引数が期待されるとき、空リストを渡す方法はありません。
+
+=item 参考資料
+
+=item CREDIT
+
+=back
+
+=cut --------------------------------------------------------------------------
+
+=head2 複数の戻り値
+
+=over 4
+
+=item 問題
+
+C関数から変数のリストを返すためには、どのようにすればいいですか？
+
+=item 解決法
+
+    print map {"$_\n"} get_localtime(time);
+    
+    use Inline C => <<'END_OF_C_CODE'; 
+    
+    #include <time.h>
+    
+    void get_localtime(int utc) {
+      struct tm *ltime = localtime(&utc);
+      Inline_Stack_Vars;
+    
+      Inline_Stack_Reset;
+      Inline_Stack_Push(newSViv(ltime->tm_year));
+      Inline_Stack_Push(newSViv(ltime->tm_mon));
+      Inline_Stack_Push(newSViv(ltime->tm_mday));
+      Inline_Stack_Push(newSViv(ltime->tm_hour));
+      Inline_Stack_Push(newSViv(ltime->tm_min));
+      Inline_Stack_Push(newSViv(ltime->tm_sec));
+      Inline_Stack_Push(newSViv(ltime->tm_isdst));
+      Inline_Stack_Done;
+    }
+    END_OF_C_CODE
+
+=item 解説
+
+Perlはサブルーチンが１つの値ではなく値のリストを返すことが普通な言語です。Cはそのような言語ではありません。Cでこれを実現するためには、手でPerlのコール・スタックを操作する必要があります。幸いなことに、Inlineは、これを簡単にするマクロを提供します。
+
+この例はシステムのC<localtime>を呼び出し、perlの組み込み関数C<localtime()>と同じように、time構造体のそれぞれの部分を返します。
+
+注意: 本当は、C<#include>ステートメントは必要ありません。Inlineは自動的にほとんど全ての標準的なシステムコールが入ったPerlのヘッダを読み込むからです。
+
+=item 参考資料
+
+Inlineスタック・マクロの情報については、L<Inline::C>をご覧ください。
+
+=item CREDIT
+
+Richard Anderson <starfire@zipcon.net> が、このことについてのオリジナルのアイデアを寄せてくれました。
+
+=back
+
+=cut --------------------------------------------------------------------------
+
+=head2 複数の戻り値（別の方法）
+
+=over 4
+
+=item 問題
+
+どのようにすればPerlスタックを使うことなく複数の値をもどすことができますか？
+
+=item 解決法
+
+    use Inline::Files;
+    use Inline C;
+    
+    my ($foo, $bar);
+    change($foo, $bar);
+    
+    print "\$foo = $foo\n";
+    print "\$bar = $bar\n";
+    
+    __C__
+    
+    int change(SV* var1, SV* var2) {
+        sv_setpvn(var1, "Perl Rocks!", 11);
+        sv_setpvn(var2, "Inline Rules!", 13);
+        return 1;
+    }
+
+=item 説明
+
+ほとんどのperl関数のインターフェースは１つまたは複数のスカラのリストで値を返します。C<chomp>のように、入力スカラをそのまま変更することはまずありません。一方、Cでは、これが頻繁に行われます。値はリファレンスで渡され、関数を呼び出すことにより、そのまま変更されます。
+
+言い換えれば、Inlineでもそれができます。秘訣は変更される核引数には'C<SV*>'を使うことです。これによりtypemapすることが必要ないので、リファレンスで渡すことが保証されます。
+
+そのためその引数を操作するために、関数はPerl5 APIを使うことが出来ます。Perlに制御が戻ると、その引数はCの関数によって設定された値を保持します。この例では2つの空のスカラーを渡し、それらに直接値を代入しています。
+
+=item 参考資料
+
+=item CREDIT
+
+Ned Konz <ned@bike-nomad.com> が、て私の注意をこの動きに向けさせました。そして彼が世界的な有名なコンピュータ・サイクリスト Steve Roberts (http://www.microship.com)ではないものの、親しいこといこと (http://bike-nomad.com)も示しました。
+
+=back
+
+=cut --------------------------------------------------------------------------
+
+=head2 メモリの使い方
+
+=over 4
+
+=item 問題
+
+Inline Cのコードでバッファをアロケートするには、どうすればいいですか？
+
+=item 解決法
+
+    print greeting('Ingy');
+    
+    use Inline C => <<'END_OF_C_CODE';
+    
+    SV* greeting(SV* sv_name) {
+        return (newSVpvf("Hello %s!\n", SvPV(sv_name, PL_na)));
+    }
+    
+    END_OF_C_CODE
+
+=item 解説
+
+この例では、それを出力するのではなく呼び出した人に挨拶を返します。挨拶を作るためにバッファを少しアロケートする必要をのぞけば、これは簡単そうに見えるかもしれません。
+
+独自のバッファをC<malloc>しないように主張します。Perlに組み込まれているメモリ管理を使うだけにしてください。言い換えれば、単純に新しいPerl文字列スカラを作ってください。関数C<newSVpv>がそれを行います。C<newSVpvf>にはC<sprintf>の機能も含まれています。
+
+もう１つの問題は、この新しいスカラを削除することです。スカラ値を戻した後、どのようにしてリファレンス・カウントを減らすことが出来るでしょうか？PerlはC<sv_2mortal>という関数も提供しています。死にそうな変数はコンテキストがスコープから外れると死にます。言い換えれば、Perlは新しいスカラが戻され、リファレンス・カウントを減らすまで、あなたを待っています。それにより、ガベージ・コレクションが適切になります。C<perldoc perlguts>をご覧ください。
+
+この例では、戻り値のデータ型がC<SV*>になるように宣言されているので、C<sv_2mortal>呼び出しは、XSによって隠されています。
+
+生成されるXSコードを見るためには、"C<perl -MInline=INFO,FORCE,NOCLEAN example004.pl>"というコマンドを実行してください。これはビルド・ディレクトリをそのままにし、どこにそれがあるかを教えてくれます。
+
+=item 参考資料
+
+=item CREDIT
+
+=back
+
+=cut --------------------------------------------------------------------------
+
+=head1 ファースト・フード
+
+=cut --------------------------------------------------------------------------
+
+=head2 Inline CGI
+
+=over 4
+
+=item 問題
+
+CGI環境でセキュアにInlineを使うためには、どうすればよいですか？
+
+=item 解決法
+
+    #!/usr/bin/perl
+    
+    use CGI qw(:standard);
+    use Inline (Config => 
+                DIRECTORY => '/usr/local/apache/Inline',
+               );
+    
+    print (header, 
+           start_html('Inline CGI Example'),
+           h1(JAxH('Inline')),
+           end_html
+          );
+    
+    use Inline C => <<END;
+    SV* JAxH(char* x) {
+        return newSVpvf("Just Another %s Hacker", x);
+    }
+    END
+
+=item 解説
+
+CGIスクリプトからInlineのコードを実行することに伴う問題は、それがコンパイルを実行するたびにディスク上のビルド領域にInlineがB<出力する>ことです。ほとんどのCGIスクリプトはディレクトリを作ったり、それに出力したりといったことはできません（またそうあるべきでもありません）。
+
+解決法は、'use Inline Config => DIRECTORY => ...'行で、どのディレクトリを利用するかをInlineに明示的に伝えることです。そしてWebサーバー（CGIスクリプト）からそのディレクトリへ書込アクセスを与える必要があります。
+
+これをセキュリティ・ホールであると思うのであれば、もう１つの選択肢があります。あなた自身に書込アクセスを与え、CGIスクリプトには読込のみのアクセスを与えてください。そして一度手動で（コマンドラインから）そのスクリプトを実行してください。これによりInlineはCのコードをあらかじめコンパイルさせます。この方法では、CGIにはビルド・ディレクトリへの（そこから共有ライブラリをロードするための）読込アクセスだけが必要となります。
+
+Cのコードを変更したときにはいつでも、それをあらかじめコンパイルしておく必要があることは忘れないでください。
+
+=item 参考資料
+
+C<CGI.pm>モジュールの使い方については、L<CGI>をご覧ください。
+
+=item CREDIT
+
+=back
+
+=cut --------------------------------------------------------------------------
+
+=head2 mod_perl
+
+=over 4
+
+=item 問題
+
+mod_perlでInlineは、どのように使うことが出来ますか？
+
+=item 解決法
+
+    package Factorial;
+    use strict;
+    use Inline Config => 
+               DIRECTORY => '/usr/local/apache/Inline',
+               ENABLE => 'UNTAINT';
+    use Inline 'C';
+    Inline->init;
+  
+    sub handler {
+        my $r = shift;
+        $r->send_http_header('text/plain');
+        printf "%3d! = %10d\n", $_, factorial($_) for 1..100;
+        return Apache::Constants::OK;
+    }
+
+    1;
+    __DATA__
+    __C__
+    double factorial(double x) {
+        if (x < 2)  return 1;
+        return x * factorial(x - 1)
+    }
+
+=item 解決
+
+これは1から100までの数値の階乗を出力する、完全に機能するmod_perlハンドラです。mod_perlの下でInlineを使っているので、いくつか注意しなければならない、うーんと、注意点があります。
+
+まず、mod_perlは通常C<-T>の汚染検知モードで実行されます。このためUNTAINTオプションを有効にする必要があります。これを扱うために次にすることは、まず間違いなくPerlのコンパイルの後にロードされるだろうということです。DATAセクションを使っているので、特別なC<init()>呼び出しを使う必要があります。そしてもちろん、mod_perlがコンパイルできるようにDIRECTORYを指定する必要があります。I<詳細は上記のCGIの例をご覧ください。>
+
+それ以外には、これは非常に素直なmod_perlハンドラであり、より速くなるようにチューンされています！
+
+=item 参照
+
+Stas Bekmanの近々発行されるオライリーのmod_perlについての本に、この例が寄稿されています。
+
+=item CREDIT
+
+=back
+
+=cut --------------------------------------------------------------------------
+
+=head2 オブジェクト指向のInline
+
+=over 4
+
+=item 問題
+
+Cのオブジェクトを使ってPerlでオブジェクト指向プログラミングはどのように実装すればよいですか？
+
+=item 解決法
+
+    my $obj1 = Soldier->new('Benjamin', 'Private', 11111);
+    my $obj2 = Soldier->new('Sanders', 'Colonel', 22222);
+    my $obj3 = Soldier->new('Matt', 'Sergeant', 33333);
+    
+    for my $obj ($obj1, $obj2, $obj3) {
+        print ($obj->get_serial, ") ", 
+               $obj->get_name, " is a ", 
+               $obj->get_rank, "\n");
+    }
+    
+    #---------------------------------------------------------
+    
+    package Soldier;
+    
+    use Inline C => <<'END';
+    
+    typedef struct {
+        char* name;
+        char* rank;
+        long  serial;
+    } Soldier;
+    
+    SV* new(char* class, char* name, char* rank, long serial) {
+        Soldier* soldier = malloc(sizeof(Soldier));
+        SV*      obj_ref = newSViv(0);
+        SV*      obj = newSVrv(obj_ref, class);
+
+        soldier->name = strdup(name);
+        soldier->rank = strdup(rank);
+        soldier->serial = serial;
+        
+        sv_setiv(obj, (IV)soldier);
+        SvREADONLY_on(obj);
+        return obj_ref;
+    }
+    
+    char* get_name(SV* obj) {
+        return ((Soldier*)SvIV(SvRV(obj)))->name;
+    }
+    
+    char* get_rank(SV* obj) {
+        return ((Soldier*)SvIV(SvRV(obj)))->rank;
+    }
+    
+    long get_serial(SV* obj) {
+        return ((Soldier*)SvIV(SvRV(obj)))->serial;
+    }
+
+    void DESTROY(SV* obj) {
+        Soldier* soldier = (Soldier*)SvIV(SvRV(obj));
+        free(soldier->name);
+        free(soldier->rank);
+        free(soldier);
+    }
+    END
+
+=item 解説
+
+Damian ConwayはPerlでのOOPの実装方法を数限りなく提供しています。これは彼が考えてこなかったことの１つかもしれません。
+
+この例での面白いところは、属性やメソッドのためにCを使いながら、オブジェクト指向の結びつけ(OO binding)のためにPerlを使っていることです。
+
+Perlのコードをチェックすれば、全てが完全に通常のOOの例のように見えるでしょう。C<new>メソッドがあり、いくつかのアクセスするためのメソッドがあります。通所の'矢印の書法'が、それらを呼び出すために使われています。
+
+クラス定義(２番目の部分)では、PerlのC<package>ステートメントがオブジェクトのクラスあるいは名前空間の名前として使われます。しかしInlineが似ているところは、そこまでです。
+
+blessされたスカラを返すC<new()>というCのサブルーチンを呼び出すというのは1つのアイデアです。スカラにはSoldier構造体へのCのポインタである読込のみの整数値が入ります。これこそ私たちのオブジェクトです。
+
+関数C<new()>は構造体のためのmallocを必要とします。そして個別の値をC<strdup()>を使い、それにコピーします。これはより多くのメモリをアロケートもします（それを追跡しなければなりません）
+
+アクセッサ・メソッドは非常に素直です。それらはその属性の現在の値を返します。
+
+最後のメソッドC<DESTROY()>は、オブジェクトがスコープから外れたときに、いつもPerlによって自動的に呼び出されます。これはオブジェクトにより使われているメモリを解放することができる場所です。
+
+以上です。これは非常に単純すぎるほど単純な例です。高度なOO機能は何も示していません。しかしこれは実現がどれほど簡単かを見せるということではとてもクールです。重要なPerlの呼び出しはC<newSVrv()>で、それはblessされたスカラを作成します。
+
+=item 参考資料
+
+PerlでOOPするために役に立つ方法については、Damian Conwayの"Object Oriented Perl"を読んでください。
+
+L<perlapi>でより多くのPerl呼び出しを学ぶことが出来ます。Perl5.6.0以上を持っていないのであれば、http://www.perldoc.com/perl5.6/pod/perlapi.htmlをご覧ください。
+
+=item CREDIT
+
+=back
+
+=cut --------------------------------------------------------------------------
+
+=head1 メイン・コース
+
+=cut --------------------------------------------------------------------------
+
+=head2 共有ライブラリを外に見せる
+
+=over 4
+
+=item 問題
+
+この素晴らしいCのライブラリを持っていて、その一部にPerlでアクセスできるようにしたいと思っています。
+
+=item 解決法
+
+    print get('http://www.axkit.org');
+    
+    use Inline C => Config => 
+               LIBS => '-lghttp';
+    use Inline C => <<'END_OF_C_CODE';
+    
+    #include <ghttp.h>
+    
+    char *get(SV* uri) {
+       SV* buffer;
+       ghttp_request* request;
+       
+       buffer = NEWSV(0,0);
+       request = ghttp_request_new();
+       ghttp_set_uri(request, SvPV(uri, PL_na));
+       
+       ghttp_set_header(request, http_hdr_Connection, "close");
+       
+       ghttp_prepare(request);
+       ghttp_process(request);
+       
+       sv_catpv(buffer, ghttp_get_body(request));
+       
+       ghttp_request_destroy(request);
+       
+       return SvPV(buffer, PL_na);
+    }
+    
+    END_OF_C_CODE
+
+=item 解説
+
+この例はhttp://www.axkit.orgからHTMLを取り出し、出力します。
+それはGNOME http ライブラリ（http://www.gnome.org）を必要とします。
+
+私がよく聞かれる質問に"Inlineで共有ライブラリを使うためにはどうすればよいですか？"というものがあります。そうすることは常に可能ですが、構成設定が厄介で、特定の例はありません。
+
+バージョン0.30以上では、以下のようにして簡単に共有ライブラリを使うことを指定することができます：
+
+    use Inline C => Config => LIBS => '-lghttp';
+    use Inline C => "code ...";
+
+あるいは
+
+    use Inline C => "code ...", LIBS => '-lghttp';
+
+特定のライブラリ・パスを指定するためには、以下のようにしてください：
+
+    use Inline C => "code ...", LIBS => '-L/your/lib/path -lyourlib';
+
+インクルード・パスを指定するには、以下のようにしてください：
+
+    use Inline C => "code ...", 
+               LIBS => '-lghttp',
+               INC => '-I/your/inc/path';
+
+=item 参考資料
+
+C<LIBS> と C<INC>という構成設定オプションは書式を整えられ、MakeMakerに渡されます。さらなる詳細についてはL<ExtUtils::MakeMaker>をご覧ください。さらに多くのオプションについてはL<Inline::C>をご覧ください。
+
+=item CREDIT
+
+このコードは多くのCPANモジュールの作者であるMatt Sergeant <matt@sergeant.org>によって書かれました。構成設定の書き方は、Inline v0.30で利用するために変更されました。
+
+=back
+
+=head2 自動的な関数ラッパー
+
+=over 4
+
+=item 問題
+
+Cライブラリにいくつかの関数があります。そしてCでやるのと全く同じようにPerlから、その関数にアクセスしたいと思っています。
+
+=item 解決法
+
+エラー関数C<erf()>は、おそらく標準数学ライブラリで定義されているでしょう。面倒なことにPerlはそれにアクセスさせてくれません。その変数の小さな表を出力するためには、単に以下のようにしてください：
+
+    perl -le 'use Inline C => q{ double erf(double); }, ENABLE => "AUTOWRAP"; print "$_ @{[erf($_)]}" for (0..10)'
+
+素晴らしいC<Term::ReadLine::Gnu>は、GNU ReadLineライブラリを使って、Term::ReadLineを実装しています。そのライブラリから単にC<readline()>にアクセスするという方法を以下に示します：
+
+    package MyTerm;
+
+    use Inline C => Config =>
+               ENABLE => AUTOWRAP =>
+               LIBS => "-lreadline -lncurses -lterminfo -ltermcap ";
+    use Inline C => q{ char * readline(char *); };
+
+    package main;
+    my $x = MyTerm::readline("xyz: ");
+
+しかしながらreadlineによって返されたメモリをC<free()>することが失敗するかもしれないこと、C<Term::ReadLine::Gnu>はより豊富な多くのインターフェースを提供するということに注意してください。
+
+=item 解説
+
+完全な定義ではなく、単にInlineにそれらの宣言を示すだけで、既存の関数にアクセスします。もちろん宣言された関数は、既にPerlにリンクされているライブラリの中、あるいはC<LIBS>オプションを使って指定されたライブラリの中に存在しなければなりません。
+
+最初の例は標準の数学ライブラリからの関数をラップします。そこでInlineは何も追加のC<LIBS>ディレクティブを必要としません。2番目の例は、実際のコンパイルされたCのコードが入っているライブラリを指定するため、Configオプションを使います。
+
+この動きは常にデフォルトでは無効になっています。これが機能するためにはC<AUTOWRAP>を有効にしなければなりません。
+
+=item 参考資料
+
+C<readline>, C<Term::ReadLine::Gnu>
+
+=item CREDIT
+
+GNU ReadLineは、Brian Fox <bfox@ai.mit.edu> と Chet Ramey <chet@ins.cwru.edu>によって書かれました。Term::ReadLine::GnuはHiroo Hayashi <hiroo.hayashi@computer.org>によって書かれました。両方とも、ここで与えられているほんの僅かなインターフェースよりもはるかに豊富です！
+
+関数定義だけが与えられてラッパー・コードを作成するという考えはDavid M. Beazley <beazley@cs.uchicago.edu>によってSwigから取得されました。
+
+Ingyのinlineの編集上の考察：
+
+この完全のエントリはAriel Scolnicov <ariels@compugen.co.il>によって寄稿されました。ArielもInlineが関数宣言処理をサポートするような考えを最初に提案しました。
+
+=back
+
+=cut --------------------------------------------------------------------------
+
+=head2 複雑なデータ
+
+=over 4
+
+=item 問題
+
+InlineのCでハッシュのような複雑なデータ型はどうやって扱えばよいでしょうか？
+
+=item 解決法
+
+    use Inline C => <<'END_OF_C_CODE';
+    
+    void dump_hash(SV* hash_ref) {
+        HV* hash;
+        HE* hash_entry;
+        int num_keys, i;
+        SV* sv_key;
+        SV* sv_val;
+    
+        if (! SvROK(hash_ref))
+            croak("hash_ref is not a reference");
+    
+        hash = (HV*)SvRV(hash_ref);
+        num_keys = hv_iterinit(hash);
+        for (i = 0; i < num_keys; i++) {
+            hash_entry = hv_iternext(hash);
+            sv_key = hv_iterkeysv(hash_entry);
+            sv_val = hv_iterval(hash, hash_entry);
+            printf("%s => %s\n", SvPV(sv_key, PL_na), SvPV(sv_val, PL_na));
+        }
+        return;
+    }
+    
+    END_OF_C_CODE
+    
+    my %hash = (
+            Author => "Brian Ingerson",
+            Nickname => "INGY",
+            Module => "Inline.pm",
+            Version => "0.30",
+            Language => "C",
+           );
+    
+    dump_hash(\%hash);
+
+=item 解説
+
+世の中はスカラだけで成り立っているわけではありません。たとえそれがInlineでおこなうときに、最も扱いやすいものだったとしてもです。時には配列、ハッシュ、そしてコードリファレンスなどを扱う必要があります。
+
+Perlのサブルーチンは引数としてスカラだけを渡しますから、引数のデータ型をC<SV*>で扱い、より複雑なデータ型へのリファレンスを渡さなければなりません。
+
+上記のプログラムはハッシュのキー/値の組み合わせをダンプします。これが分かるためには、数時間L<perlapi>に取り組んでください。実際、一度その呼び出しに慣れてしまえば、これは非常に素直です。
+
+C<croak>関数呼び出しに注意してください。これはCの拡張から死ぬ(=dieする)ための適切な方法です。
+
+=item 参考資料
+
+Perl5内部APIについての情報はL<perlapi>をご覧ください。
+
+=item CREDIT
+
+=back
+
+=cut --------------------------------------------------------------------------
+
+=head2 リストのハッシュ
+
+=over 4
+
+=item 問題
+
+Cからハッシュのリストは、どのようにして作りますか？
+
+=item 解決法
+
+    use Inline C;
+    use Data::Dumper;
+  
+    $hash_ref = load_data("./cartoon.txt");
+    print Dumper $hash_ref;
+  
+    __END__
+    __C__
+  
+    static int next_word(char**, char*);
+  
+    SV* load_data(char* file_name) {
+        char buffer[100], word[100], * pos;
+        AV* array;
+        HV* hash = newHV();
+        FILE* fh = fopen(file_name, "r");
+  
+        while (fgets(pos = buffer, sizeof(buffer), fh)) {
+            if (next_word(&pos, word)) {
+                hv_store(hash, word, strlen(word),
+                        newRV_noinc((SV*)array = newAV()), 0);
+                while (next_word(&pos, word))
+                    av_push(array, newSVpvf("%s", word));
+            }
+        }
+        fclose(fh);
+        return newRV_noinc((SV*) hash);
+    }
+  
+    static int next_word(char** text_ptr, char* word) {
+        char* text = *text_ptr;
+        while(*text != '\0' &&
+              *text <= ' ')
+            text++;
+        if (*text <= ' ')
+            return 0;
+        while(*text != '\0' &&
+              *text > ' ') {
+            *word++ = *text++;
+        }
+        *word = '\0';
+        *text_ptr = text;
+        return 1;
+    }  
+
+=item 解説
+
+これは大きなレシピの１つです。しかしこれが持っているカロリーのことを考えれば、それは悪くありません。関数C<load_data>は、その入力としてファイルの名前を取得します。ファイルC<cartoon.text>は以下のようになるでしょう：
+
+    flintstones fred barney
+    jetsons     george jane elroy
+    simpsons    homer marge bart
+
+関数はファイルを読み込み、各行を単語に分割します。そして各行の先頭の単語をハッシュのキーとし、残りの単語を配列とし、そのリファレンスをハッシュの値とする、新しいハッシュを生成します。出力は以下のようになります：
+
+    $VAR1 = {
+              'flintstones' => [
+                                 'fred',
+                                 'barney'
+                               ],
+              'simpsons' => [
+                              'homer',
+                              'marge',
+                              'bart'
+                            ],
+              'jetsons' => [
+                             'george',
+                             'jane',
+                             'elroy'
+                           ]
+            };
+
+=item 参考資料
+
+Perl5内部APIについての情報はL<perlapi>をご覧ください。 
+
+=item CREDIT
+
+Al Danial <alnd@pacbell.net>はcomp.lang.perl.miscで、これへの解決方法をリクエストしました。彼はラクダ本から"リストのハッシュ"という考えを借りてきました。
+
+=back
+
+=cut --------------------------------------------------------------------------
+
+=head1 デザート
+
+=cut --------------------------------------------------------------------------
+
+=head2 Win32
+
+=over 4
+
+=item 問題
+
+InlineでWin32 DLLにアクセスするにはどうすればよいですか？
+
+=item 解決法
+
+    use Inline C => DATA =>
+               LIBS => '-luser32';
+    
+    $text = "@ARGV" || 'Inline.pm works with MSWin32. Scary...';
+    
+    WinBox('Inline Text Box', $text);
+    
+    __END__
+    __C__
+    
+    #include <windows.h>
+    
+    int WinBox(char* Caption, char* Text) {
+      return MessageBoxA(0, Text, Caption, 0);
+    }
+
+=item 解説
+
+この例はMS Windowsで走ります。これは、あなたが選択したメッセージの入ったテキストボックスを画面上に表示させます。
+
+重要なことは、Windows DLLと対話するためにInlineを使うことが出来るということを証明していることです。本当になんて恐ろしいことなんでしょう。 8-o
+
+WindowsのActivePerl( http://www.ActiveState.com ) でInlineを使うためには、MS Visual Studioが必要になります。http://www.cygwin.com から利用できるCygwinを使うことも出来ます。
+
+=item 参考資料
+
+InlineでのMSWin32プログラミングについての、更なる情報はL<Inline-Support>をご覧ください。
+
+=item CREDIT
+
+この例はGarrett Goebel <garrett@scriptpro.com>によって書かれた、いくつかのサンプル・コードに適用されています。
+
+=back
+
+=cut --------------------------------------------------------------------------
+
+=head2 CにPerlを埋め込む
+
+=over 4
+
+=item 問題
+
+通常のCのプログラムからPerlを使うにはどうすればよいですか？
+
+=item 解決法
+
+    #!/usr/bin/cpr
+    
+    int main(void) {
+
+    printf("Using Perl version %s from a C program!\n\n",
+               CPR_eval("use Config; $Config{version};"));
+
+        CPR_eval("use Data::Dumper;");
+        CPR_eval("print Dumper \\%INC;");
+
+    return 0;
+
+    }
+
+=item 解説
+
+CPR(C Perl Run)を使っています。
+
+この例はC<Inline::CPR>という、もう1つのInlineモジュールを使っています。それはCPANから別に利用できます。このモジュールをインストールすると、一緒にC</usr/bin/cpr>というバイナリ・インタプリタもインストールされます。（パスはシステムによって違うかもしれません）
+
+CPRインタープリタにCのプログラムを食わせると、それは自動的にコンパイルし、Inlineを使ってあなたのコードを実行します。これによりPerlの内部に完全にアクセスすることができます。CPRはPerlの内部関数を呼び出すための、使いやすいCマクロをいくつか提供もします。
+
+つまりCPRのhashbangをあなたのCプログラムの先頭にいれることにより、実質上、Cのソースコードを実行することができるということです。
+
+=item 参考資料
+
+CPRの使い方についての更に詳しい情報についてはL<Inline::CPR>を、ご覧ください。
+
+C<Inline::CPR>はhttp://search.cpan.org/search?dist=Inline-CPRから取得することができます。
+
+=item CREDIT
+
+Randal Schwartz <merlyn@stonehenge.com>, Randolph Bentson <bentson@grieg.holmsjoen.com>, Richard Anderson <starfire@zipcon.net>, そして Tim Maher <tim@consultix-inc.com> がhashbangとして機能するプログラムの書き方を理解することを助けてくれました。
+
+=back
+
+=cut --------------------------------------------------------------------------
+
+=head1 お客様をおもてなし
+
+バージョン0.30では、Inlineは、それ自身のC APIを露出させたいと思っている他のモジュールと一緒に機能することが出来ました。これを行うための一般的な書き方は以下の通りです：
+
+    use Inline with => 'Module';
+    use Inline C => ... ;
+
+これはC<Module>に構成設定オプションをInlineに渡すように伝えます。typemap、インクルード・パス、外部ライブラリのようなオプションは、あなたが関数を書くことだけに集中できるよう全て自動的に解決されます。
+
+=cut --------------------------------------------------------------------------
+
+=head2 Event.pmでのイベント・ハンドリング
+
+=over 4
+
+=item 問題
+
+C<Event.pm>モジュールのためのCのコールバックを書く必要があります。Inlineでこれをより簡単におこなうことはできるでしょうか？
+
+=item 解決法
+
+    use Inline with => 'Event';
+    
+    Event->timer(desc     => 'Timer #1',
+                 interval => 2,
+                 cb       => \&my_callback,
+                );
+    
+    Event->timer(desc     => 'Timer #2',
+                 interval => 3,
+                 cb       => \&my_callback,
+                );
+    
+    print "Starting...\n";
+    Event::loop;
+    
+    use Inline C => <<'END';
+    void my_callback(pe_event* event) {
+        pe_timer * watcher = event->up;
+    
+        printf("%s\n\tEvent priority = %d\n\tWatcher priority = %d\n\n",
+               SvPVX(watcher->base.desc),
+               event->prio,
+               watcher->base.prio
+              );
+    }
+    END
+
+=item 解説
+
+先頭行はInlineにC<Event.pm>モジュールをロードするよう伝えます。そしてInlineは構成設定情報をC<Event>に問い合わせます。それはEventのヘッダ・ファイル、typemap、共有オブジェクトの名前と位置を取得します。C<Event>が返すパラメータは以下のようなものです：
+
+    INC => "-I $path/Event",
+    TYPEMAPS => "$path/Event/typemap",
+    MYEXTLIB => "$path/auto/Event/Event.$so",
+    AUTO_INCLUDE => '#include "EventAPI.h"',
+    BOOT => 'I_EVENT_API("Inline");',
+
+これを自動的におこなうことにより、プログラマであるあなたはC<'pe_event*'>型のポインタを受け取る関数を単純に作成することができます。これにより渡されるC<Event>構造体へアクセスすることができます。
+
+この例では、私は単にその構造体の値を出力しているだけです。Perlのコードはそれぞれに同じコールバックを呼び出す、２つのタイマー・イベントを定義しています。最初のは2秒毎に、２番目のものは3秒毎に呼び出します。
+
+このように、C<Event.pm>はInlineと一緒に機能する唯一のCPANモジュールです。
+
+=item 参考資料
+
+より詳細な情報についてはC<Event.pm>ドキュメントをご覧下さい。Inlineと一緒にC<Event.pm>を使用する、いくつかの例チュートリアルが入っています。
+
+=item CREDIT
+
+Jochen Stenzel <perl@jochen-stenzel.de> が最初にInlineとC<Event>を一緒にすることを思いつきました。またC<Event>のチュートリアルも彼がはじめました。
+
+Joshua Pritikin <joshua.pritikin@db.com> はC<Event.pm>の作者です。
+
+=back
+
+=cut --------------------------------------------------------------------------
+
+=head1 思考のための材料
+
+=cut --------------------------------------------------------------------------
+
+=head2 PerlとCの両方からCを呼び出す
+
+=over 4
+
+=item 問題
+
+私はPerlとCの両方から同じCの関数を呼べたらと思っています。またPerlにB<結び付けられない>Cの関数を定義したいとも思っています。それはどのようにすればよいでしょうか？
+
+=item 解決法
+
+    print "9 + 5 = ", add(9, 5), "\n";
+    print "SQRT(9^2 + 5^2) = ", pyth(9, 5), "\n";
+    print "9 * 5 = ", mult(9, 5), "\n";
+    
+    use Inline C => <<'END_C';
+    int add(int x, int y) {
+        return x + y;
+    }
+    static int mult(int x, int y) {
+        return x * y;
+    }
+    double pyth(int x, int y) {
+        return sqrt(add(mult(x, x), mult(y, y)));
+    }
+    END_C
+
+=item 解説
+
+このプログラムは以下のように出力します:
+
+    9 + 5 = 14
+    SQRT(9^2 + 5^2) = 10.295630140987
+    Can't locate auto/main/mult.al in @INC ...
+
+Perlに結び付けられるInlineの各関数はCからも呼び出すことが出来ます。特別なことをする必要はありません。Inlineは、全てのtypemapコードがXSによって、目に見えないように処理されるよう手はずを整えます。Cの関数が制御を受け取ると、PerlからCへと全てが変換されます。
+
+もちろん関数がPerlのスタックを扱うのであれば、（I<本当に>何をするのかが分かっているのでなければ）おそらくCからそれを呼びたいとは思わないでしょう。
+
+関数をC<static>で宣言すると、InlineはPerlに結び付けようとはしません。このためにC<mult()>はCからは呼び出すことが出来ても、Perlからの呼び出しは失敗します。
+
+=item 参考資料
+
+=item CREDIT
+
+=back
+
+=cut --------------------------------------------------------------------------
+
+=head2 CからPerlを呼び出す
+
+=over 4
+
+=item 問題
+
+これでPerlからCを呼び出すことが出来ます。PerlサブルーチンをCの関数からはどのように呼べばいいのでしょうか？
+
+=item 解決法
+
+    use Inline C;
+    
+    c_func_1('This is the first line');
+    c_func_2('This is the second line');
+    
+    sub perl_sub_1 {
+        print map "$_\n", @_;
+    }
+    
+    __DATA__
+    __C__
+    
+    void c_func_1(SV* text) {
+        c_func_2(text);
+    }
+    
+    void c_func_2(SV* text) {
+        Inline_Stack_Vars;
+        Inline_Stack_Push(newSVpvf("Plus an extra line"));
+        Inline_Stack_Done;
+        perl_call_pv("main::perl_sub_1", 0);
+        Inline_Stack_Void;
+    }
+
+
+=item 解説
+
+実際には、このプログラムはPerlサブルーチンを呼び出すことにより、他のCの関数を呼び出す、Cの関数を呼び出すことをデモストレーションしています。
+
+Inline C関数が素晴らしいのは、Perlの空間からB<も>Cの空間からも呼び出すことができることです。これは、InlineがC関数の周りにラッパー関数を作成するからです。Cを呼び出すためにPerlを使うとき、実際にはその関数のラッパーを呼び出します。ラッパーはtypemapとStack管理を扱い、そしてCの関数を呼び出します。
+
+まず最初にC<c_func_1>を呼び出します。それはC<c_func_2>を呼び出します。次にC<c_func_2>を直接呼び出します。C<c_func_2>は内部のC<perl_call_pv>関数を使ってPerlサブルーチン(C<perl_sub_1>)を呼び出します。スタックに手動で引数を積まなければなりません。関数に入ったとき、既に1つの引数がスタックにあるので、C<Inline_Stack_Push>は2番目の引数を追加します。C<Inline_Stack_Void>は関数から何も返されないことを確実にします。
+
+=item 参考資料
+
+Stackマクロに関しての更なる情報はL<Inline::C>をご覧下さい。
+
+Perl5内部APIについての更なる情報についてはL<perlapi>を、ご覧下さい。
+
+=item CREDIT
+
+=back
+
+=cut --------------------------------------------------------------------------
+
+=head2 Cをevalする
+
+=over 4
+
+=item 問題
+
+私は完全に分別がなくなっています。そこで実行時にCコードを生成し、それをPerlにC<eval>したいと思ってるんです。これはどうすればできますか？
+
+=item 解決法
+
+    use Inline;
+    use Code::Generator;
+    
+    my $c_code = generate('foo_function');
+    
+    Inline->bind(C => $c_code);
+    
+    foo_function(1, 2, 3);
+
+=item 議論
+
+実際のアプリケーションとして実行中にCのコードを生成したいだなんて思えません。でも少なくともそれをどうすればできるかは知っています。:)
+
+InlineのC<bind()>関数は、実行時にCの関数を、あなたに結び付けさせます(コンパイル/ロード/実行)。それは'use Inline C => ...'と全く同じ引数をとります。
+
+一度、そのちょっとしたものがコンパイルされれば、再びコンパイルされることがないように、それはキャッシュされるということは素晴らしいことです。私にはどこかのマッド・サイエンティストが、次第に速く走るようになる自己生成モデルのシステムを夢見ることが想像できます。
+
+あなたがそのような人でしたら、私にご一報ください。
+
+=item 参考資料
+
+=item CREDIT
+
+=back
+
+=cut --------------------------------------------------------------------------
+
+#
+#=head2 xxxxxxxxxxxxxxxxxxxxxxxx
+#
+#=over 4
+#
+#=item Problem
+#
+#=item Solution
+#
+#=item Discussion
+#
+#=item See Also
+#
+#=item Credits
+#
+#=back
+#
+# =cut --------------------------------------------------------------------------
+
+=head1 参考資料
+
+Inlineについての一般的な情報については、L<Inline>をご覧ください。
+
+CでInlineを使うことについての情報についてはL<Inline::C>をご覧ください。
+
+サポートされている言語とプラットホームについての情報はL<Inline-Support>をご覧ください。
+
+独自のInline言語サポートモジュールを作成することについての情報はL<Inline-API>をご覧ください。
+
+Inlineのメーリングリストはinline@perl.orgです。
+
+参加するためには、inline-subscribe@perl.orgにメールしてください。
+
+=head1 作者(=AUTHOR)
+
+Brian Ingerson <INGY@cpan.org>
+
+=head1 著作権(=COPYRIGHT)
+
+Copyright (c) 2001, Brian Ingerson. 
+
+All Rights Reserved.  This module is free software. It may be used, redistributed and/or modified under the terms of the Perl Artistic License.
+
+See http://www.perl.com/perl/misc/Artistic.html
+
+=cut

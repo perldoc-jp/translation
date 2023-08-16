@@ -1,0 +1,2779 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+perlpacktut - tutorial on C<pack> and C<unpack>
+
+=end original
+
+perlpacktut - C<pack> と C<unpack> のチュートリアル
+
+=head1 DESCRIPTION
+
+=begin original
+
+C<pack> and C<unpack> are two functions for transforming data according
+to a user-defined template, between the guarded way Perl stores values
+and some well-defined representation as might be required in the 
+environment of a Perl program. Unfortunately, they're also two of 
+the most misunderstood and most often overlooked functions that Perl
+provides. This tutorial will demystify them for you.
+
+=end original
+
+C<pack> と C<unpack> は、ユーザーが定義したテンプレートに従って、
+Perl が値を保管する保護された方法と、Perl プログラムの環境で必要になる
+かもしれないよく定義された表現の間を変換する二つの関数です。
+残念ながら、これらは Perl が提供する関数の中でもっとも誤解され、
+もっとも見落とされやすい関数でもあります。
+このチュートリアルではこれらを分かりやすく説明します。
+
+=head1 The Basic Principle
+
+(基本原理)
+
+=begin original
+
+Most programming languages don't shelter the memory where variables are
+stored. In C, for instance, you can take the address of some variable,
+and the C<sizeof> operator tells you how many bytes are allocated to
+the variable. Using the address and the size, you may access the storage
+to your heart's content.
+
+=end original
+
+多くのプログラミング言語は変数が格納されているメモリを保護していません。
+例えば、C では、ある変数のアドレスを取得できますし、
+C<sizeof> 演算子は変数に何バイト割り当てられているかを返します。
+アドレスとサイズを使って、心臓部にあるストレージにアクセスできます。
+
+=begin original
+
+In Perl, you just can't access memory at random, but the structural and
+representational conversion provided by C<pack> and C<unpack> is an
+excellent alternative. The C<pack> function converts values to a byte
+sequence containing representations according to a given specification,
+the so-called "template" argument. C<unpack> is the reverse process,
+deriving some values from the contents of a string of bytes. (Be cautioned,
+however, that not all that has been packed together can be neatly unpacked - 
+a very common experience as seasoned travellers are likely to confirm.)
+
+=end original
+
+Perl では、メモリにランダムにアクセスすることはできませんが、C<pack> と
+C<unpack> によって提供される構造的および表現的な変換は素晴らしい
+代替案です。
+C<pack> 関数は、値を、「テンプレート」引数と呼ばれる使用に従った表現を含む
+バイト列に変換します。
+C<unpack> は逆処理で、バイトの並びから値を引き出します。
+(しかし、pack された全てのデータがうまく unpack できるというわけでは
+ないということは注意してください - 経験豊かな旅人が確認しそうな、とても
+一般的な経験です。)
+
+=begin original
+
+Why, you may ask, would you need a chunk of memory containing some values
+in binary representation? One good reason is input and output accessing
+some file, a device, or a network connection, whereby this binary
+representation is either forced on you or will give you some benefit
+in processing. Another cause is passing data to some system call that
+is not available as a Perl function: C<syscall> requires you to provide
+parameters stored in the way it happens in a C program. Even text processing 
+(as shown in the next section) may be simplified with judicious usage 
+of these two functions.
+
+=end original
+
+あなたはどうしてバイナリ表現の中に値が含まれているメモリの塊が
+必要なのか、と問うかもしれません。
+よい理由の一つは、ファイル、デバイス、ネットワーク接続にアクセスする
+入出力で、このバイナリ表現が強制されたものか、処理するためにいくらかの
+利益がある場合です。
+もう一つの原因は、Perl 関数として利用できないシステムコールにデータを
+渡すときです: C<syscall> は C プログラムでのような形で保管された引数を
+提供することを要求します。
+(以下の章で示すように) テキスト処理ですら、これら 2 つの関数を賢明に
+使うことで単純化できます。
+
+=begin original
+
+To see how (un)packing works, we'll start with a simple template
+code where the conversion is in low gear: between the contents of a byte
+sequence and a string of hexadecimal digits. Let's use C<unpack>, since
+this is likely to remind you of a dump program, or some desperate last
+message unfortunate programs are wont to throw at you before they expire
+into the wild blue yonder. Assuming that the variable C<$mem> holds a 
+sequence of bytes that we'd like to inspect without assuming anything 
+about its meaning, we can write
+
+=end original
+
+(un)pack がどのように働くのかを見るために、変換がのろのろと行われる単純な
+テンプレートコードから始めましょう: バイトシーケンスと 16 進数の文字列との
+変換です。
+C<unpack> を使いましょう; なぜならこれはダンププログラムや、
+不幸なプログラムが息を引き取る前にあなたに投げかけることが常となっている
+絶望的な最後のメッセージを思い出させそうだからです。
+変数 C<$mem> に、その意味について何の仮定もおかずに調査したいバイト列が
+入っていると仮定すると、以下のように書きます:
+
+   my( $hex ) = unpack( 'H*', $mem );
+   print "$hex\n";
+
+=begin original
+
+whereupon we might see something like this, with each pair of hex digits
+corresponding to a byte:
+
+=end original
+
+するとすぐに、1 バイトに対応して 16 進数 2 文字が対応する、以下のような
+ものが表示されます:
+
+   41204d414e204120504c414e20412043414e414c2050414e414d41
+
+=begin original
+
+What was in this chunk of memory? Numbers, characters, or a mixture of
+both? Assuming that we're on a computer where ASCII (or some similar)
+encoding is used: hexadecimal values in the range C<0x40> - C<0x5A>
+indicate an uppercase letter, and C<0x20> encodes a space. So we might
+assume it is a piece of text, which some are able to read like a tabloid;
+but others will have to get hold of an ASCII table and relive that
+firstgrader feeling. Not caring too much about which way to read this,
+we note that C<unpack> with the template code C<H> converts the contents
+of a sequence of bytes into the customary hexadecimal notation. Since
+"a sequence of" is a pretty vague indication of quantity, C<H> has been
+defined to convert just a single hexadecimal digit unless it is followed
+by a repeat count. An asterisk for the repeat count means to use whatever
+remains.
+
+=end original
+
+このメモリの塊はなんでしょう?
+数値、文字、あるいはそれらの混合でしょうか?
+使っているコンピュータが ASCII エンコーディング (あるいは似たようなもの) を
+使っていると仮定します: C<0x40> - C<0x5A> 範囲の 16 進数は大文字を
+示していて、C<0x20> は空白をエンコードしたものです。
+それで、これは、タブロイドのように読むことのできるテキストの断片と
+仮定できます; その他は ASCII テーブルを持って 1 年生の感覚を思い出す
+必要があります。
+これをどのようにして読むかについてはあまり気にしないことにして、
+C<unpack> のテンプレートコード C<H> はバイト列の内容をいつもの 16 進表記に
+変換することに注目します。
+「列」というのは量についてあいまいなので、
+C<H> は、引き続いて繰り返し回数がない場合は単に 1 つの 16 進数を
+変換するように定義されています。
+繰り返し数でのアスタリスクは、残っているもの全てを使うことを意味します。
+
+=begin original
+
+The inverse operation - packing byte contents from a string of hexadecimal
+digits - is just as easily written. For instance:
+
+=end original
+
+逆操作 - 16 進数の文字列からバイトの内容に pack する - は簡単に書けます。
+例えば:
+
+   my $s = pack( 'H2' x 10, 30..39 );
+   print "$s\n";
+
+=begin original
+
+Since we feed a list of ten 2-digit hexadecimal strings to C<pack>, the
+pack template should contain ten pack codes. If this is run on a computer
+with ASCII character coding, it will print C<0123456789>.
+
+=end original
+
+16 進で 2 桁の数値を示す文字列 10 個からなるリストを C<pack> に
+渡しているので、pack テンプレートは 10 個の pack コードを含んでいる
+必要があります。
+これが ASCII 文字コードのコンピュータで実行されると、C<0123456789> を
+表示します。
+
+=head1 Packing Text
+
+(テキストを pack する)
+
+=begin original
+
+Let's suppose you've got to read in a data file like this:
+
+=end original
+
+以下のようなデータファイルを読み込むことを考えます:
+
+    Date      |Description                | Income|Expenditure
+    01/24/2001 Zed's Camel Emporium                    1147.99
+    01/28/2001 Flea spray                                24.99
+    01/29/2001 Camel rides to tourists      235.00
+
+=begin original
+
+How do we do it? You might think first to use C<split>; however, since
+C<split> collapses blank fields, you'll never know whether a record was
+income or expenditure. Oops. Well, you could always use C<substr>:
+
+=end original
+
+どうすればいいでしょう?
+最初に思いつくのは C<split> かもしれません;
+しかし、C<split> は空白のフィールドを壊してしまうので、
+そのレコードが収入だったか支出だったが分かりません。あらら。
+では、C<substr> を使うとどうでしょう:
+
+    while (<>) { 
+        my $date   = substr($_,  0, 11);
+        my $desc   = substr($_, 12, 27);
+        my $income = substr($_, 40,  7);
+        my $expend = substr($_, 52,  7);
+        ...
+    }
+
+=begin original
+
+It's not really a barrel of laughs, is it? In fact, it's worse than it
+may seem; the eagle-eyed may notice that the first field should only be
+10 characters wide, and the error has propagated right through the other
+numbers - which we've had to count by hand. So it's error-prone as well
+as horribly unfriendly.
+
+=end original
+
+これはあまり愉快ではないですよね?
+実際、これは思ったより悪いです; 注意深い人は最初のフィールドが 10 文字分しか
+なく、エラーが他の数値に拡大してしまう - 手で数えなければなりません -
+ことに気付くでしょう。
+従って、これは恐ろしく不親切であると同様、間違いが発生しやすいです．
+
+=begin original
+
+Or maybe we could use regular expressions:
+
+=end original
+
+あるいは正規表現も使えます:
+
+    while (<>) { 
+        my($date, $desc, $income, $expend) = 
+            m|(\d\d/\d\d/\d{4}) (.{27}) (.{7})(.*)|;
+        ...
+    }
+
+=begin original
+
+Urgh. Well, it's a bit better, but - well, would you want to maintain
+that?
+
+=end original
+
+うわあ。
+えーと、少しましです、しかし - えーと、これを保守したいと思います?
+
+=begin original
+
+Hey, isn't Perl supposed to make this sort of thing easy? Well, it does,
+if you use the right tools. C<pack> and C<unpack> are designed to help
+you out when dealing with fixed-width data like the above. Let's have a
+look at a solution with C<unpack>:
+
+=end original
+
+ねえ、Perl はこの手のことを簡単にできないの?
+ええ、できます、正しい道具を使えば。
+C<pack> と C<unpack> は上記のような固定長データを扱う時の
+助けになるように設計されています。
+C<unpack> による解法を見てみましょう:
+
+    while (<>) { 
+        my($date, $desc, $income, $expend) = unpack("A10xA27xA7A*", $_);
+        ...
+    }
+
+=begin original
+
+That looks a bit nicer; but we've got to take apart that weird template.
+Where did I pull that out of? 
+
+=end original
+
+これはちょっとましに見えます;
+でも変なテンプレートを分析しなければなりません。
+これはどこから来たのでしょう?
+
+=begin original
+
+OK, let's have a look at some of our data again; in fact, we'll include
+the headers, and a handy ruler so we can keep track of where we are.
+
+=end original
+
+よろしい、ここでデータをもう一度見てみましょう;
+実際、ヘッダも含めて、何をしているかを追いかけるために
+手書きの目盛りも付けています。
+
+             1         2         3         4         5        
+    1234567890123456789012345678901234567890123456789012345678
+    Date      |Description                | Income|Expenditure
+    01/28/2001 Flea spray                                24.99
+    01/29/2001 Camel rides to tourists      235.00
+
+=begin original
+
+From this, we can see that the date column stretches from column 1 to
+column 10 - ten characters wide. The C<pack>-ese for "character" is
+C<A>, and ten of them are C<A10>. So if we just wanted to extract the
+dates, we could say this:
+
+=end original
+
+ここから、日付の桁は 1 桁目から 10 桁目まで - 10 文字の幅があることが
+わかります。
+「文字」のパックは C<A> で、10 文字の場合は C<A10> です。
+それで、もし単に日付を展開したいだけなら、以下のように書けます:
+
+    my($date) = unpack("A10", $_);
+
+=begin original
+
+OK, what's next? Between the date and the description is a blank column;
+we want to skip over that. The C<x> template means "skip forward", so we
+want one of those. Next, we have another batch of characters, from 12 to
+38. That's 27 more characters, hence C<A27>. (Don't make the fencepost
+error - there are 27 characters between 12 and 38, not 26. Count 'em!)
+
+=end original
+
+よろしい、次は?
+日付と説明の間には空白の桁があります;これは読み飛ばしたいです。
+C<x> テンプレートは「読み飛ばす」ことを意味し、
+これで 1 文字読み飛ばせます。
+次に、別の文字の塊が 12 桁から 38 桁まであります。
+これは 27 文字あるので、C<A27> です。
+(数え間違えないように - 12 から 38 の間には 26 ではなく 27 文字あります。)
+
+=begin original
+
+Now we skip another character and pick up the next 7 characters:
+
+=end original
+
+次の文字は読み飛ばして、次の 7 文字を取り出します:
+
+    my($date,$description,$income) = unpack("A10xA27xA7", $_);
+
+=begin original
+
+Now comes the clever bit. Lines in our ledger which are just income and
+not expenditure might end at column 46. Hence, we don't want to tell our
+C<unpack> pattern that we B<need> to find another 12 characters; we'll
+just say "if there's anything left, take it". As you might guess from
+regular expressions, that's what the C<*> means: "use everything
+remaining".
+
+=end original
+
+ここで少し賢くやりましょう。
+台帳のうち、収入だけがあって支出がない行は 46 行目で終わっています。
+従って、次の 12 文字を見つける B<必要がある> ということを
+C<unpack> パターンに書きたくはありません;
+単に次のようにします「もし何かが残っていれば、それを取ります」。
+正規表現から推測したかもしれませんが、これが C<*> の意味することです:
+「残っているもの全てを使います」。
+
+=over 3
+
+=item *
+
+=begin original
+
+Be warned, though, that unlike regular expressions, if the C<unpack>
+template doesn't match the incoming data, Perl will scream and die.
+
+=end original
+
+但し、正規表現とは違うことに注意してください; もし C<unpack> テンプレートが
+入力データと一致しない場合、Perl は悲鳴をあげて die します。
+
+=back
+
+=begin original
+
+Hence, putting it all together:
+
+=end original
+
+従って、これを全部あわせると:
+
+    my($date,$description,$income,$expend) = unpack("A10xA27xA7xA*", $_);
+
+=begin original
+
+Now, that's our data parsed. I suppose what we might want to do now is
+total up our income and expenditure, and add another line to the end of
+our ledger - in the same format - saying how much we've brought in and
+how much we've spent:
+
+=end original
+
+これで、データがパースできます。
+今ほしいものが収入と支出をそれぞれ足し合わせて、台帳の最後に - 同じ形式で -
+1 行付け加えることで、どれだけの収入と支出があったかを記すことだとします:
+
+    while (<>) {
+        my($date, $desc, $income, $expend) = unpack("A10xA27xA7xA*", $_);
+        $tot_income += $income;
+        $tot_expend += $expend;
+    }
+
+    $tot_income = sprintf("%.2f", $tot_income); # Get them into 
+    $tot_expend = sprintf("%.2f", $tot_expend); # "financial" format
+
+    $date = POSIX::strftime("%m/%d/%Y", localtime); 
+
+    # OK, let's go:
+
+    print pack("A10xA27xA7xA*", $date, "Totals", $tot_income, $tot_expend);
+
+=begin original
+
+Oh, hmm. That didn't quite work. Let's see what happened:
+
+=end original
+
+あら、ふうむ。
+これはうまく動きません。
+何が起こったのか見てみましょう:
+
+    01/24/2001 Zed's Camel Emporium                     1147.99
+    01/28/2001 Flea spray                                 24.99
+    01/29/2001 Camel rides to tourists     1235.00
+    03/23/2001Totals                     1235.001172.98
+
+=begin original
+
+OK, it's a start, but what happened to the spaces? We put C<x>, didn't
+we? Shouldn't it skip forward? Let's look at what L<perlfunc/pack> says:
+
+=end original
+
+まあ、これはスタートです; しかしスペースに何が起きたのでしょう?
+C<x> を指定しましたよね?
+これでは飛ばせない?
+L<perlfunc/pack> に書いていることを見てみましょう:
+
+    x   A null byte.
+
+=begin original
+
+Urgh. No wonder. There's a big difference between "a null byte",
+character zero, and "a space", character 32. Perl's put something
+between the date and the description - but unfortunately, we can't see
+it! 
+
+=end original
+
+うわあ。
+当たり前です。
+文字コード 0 の「ヌル文字」と、文字コード 32 の「空白」は全然違います。
+Perl は日付と説明の間に何かを書いたのです - しかし残念ながら、
+それは見えません!
+
+=begin original
+
+What we actually need to do is expand the width of the fields. The C<A>
+format pads any non-existent characters with spaces, so we can use the
+additional spaces to line up our fields, like this:
+
+=end original
+
+実際に必要なことはフィールドの幅を増やすことです。
+C<A> フォーマットは存在しない文字を空白でパッディングするので、
+以下のようにフィールドに空白の分だけ桁数を増やします:
+
+    print pack("A11 A28 A8 A*", $date, "Totals", $tot_income, $tot_expend);
+
+=begin original
+
+(Note that you can put spaces in the template to make it more readable,
+but they don't translate to spaces in the output.) Here's what we got
+this time:
+
+=end original
+
+(テンプレートには読みやすくするために空白を入れることができますが、
+出力には反映されないことに注意してください。)
+これで得られたのは以下のものです:
+
+    01/24/2001 Zed's Camel Emporium                     1147.99
+    01/28/2001 Flea spray                                 24.99
+    01/29/2001 Camel rides to tourists     1235.00
+    03/23/2001 Totals                      1235.00 1172.98
+
+=begin original
+
+That's a bit better, but we still have that last column which needs to
+be moved further over. There's an easy way to fix this up:
+unfortunately, we can't get C<pack> to right-justify our fields, but we
+can get C<sprintf> to do it:
+
+=end original
+
+これで少し良くなりましたが、まだ、最後の桁をもっと向こうに移動させる
+必要があります。
+これを修正する簡単な方法があります:
+残念ながら C<pack> でフィールドを右寄せにすることは出来ませんが、
+C<sprintf> を使えば出来ます:
+
+    $tot_income = sprintf("%.2f", $tot_income); 
+    $tot_expend = sprintf("%12.2f", $tot_expend);
+    $date = POSIX::strftime("%m/%d/%Y", localtime); 
+    print pack("A11 A28 A8 A*", $date, "Totals", $tot_income, $tot_expend);
+
+=begin original
+
+This time we get the right answer:
+
+=end original
+
+今度は正しい答えを得られました:
+
+    01/28/2001 Flea spray                                 24.99
+    01/29/2001 Camel rides to tourists     1235.00
+    03/23/2001 Totals                      1235.00      1172.98
+
+=begin original
+
+So that's how we consume and produce fixed-width data. Let's recap what
+we've seen of C<pack> and C<unpack> so far:
+
+=end original
+
+ということで、これが固定長データを読み書きする方法です。
+ここまでで C<pack> と C<unpack> について見たことを復習しましょう:
+
+=over 3
+
+=item *
+
+=begin original
+
+Use C<pack> to go from several pieces of data to one fixed-width
+version; use C<unpack> to turn a fixed-width-format string into several
+pieces of data. 
+
+=end original
+
+複数のデータ片を一つの固定長データにするには C<pack> を使います;
+固定長フォーマット文字列を複数のデータ片にするには C<unpack> を使います。
+
+=item *
+
+=begin original
+
+The pack format C<A> means "any character"; if you're C<pack>ing and
+you've run out of things to pack, C<pack> will fill the rest up with
+spaces.
+
+=end original
+
+pack フォーマット C<A> は「任意の文字」を意味します; もし C<pack> 中に
+pack するものがなくなったら、C<pack> は残りを空白で埋めます。
+
+=item *
+
+=begin original
+
+C<x> means "skip a byte" when C<unpack>ing; when C<pack>ing, it means
+"introduce a null byte" - that's probably not what you mean if you're
+dealing with plain text.
+
+=end original
+
+C<unpack> での C<x> は「1 バイト読み飛ばす」ことを意味します;
+C<pack> では、「ヌルバイトを生成する」ことを意味します - 
+これは、プレーンテキストを扱っている場合はおそらく望んでいるものでは
+ないでしょう。
+
+=item *
+
+=begin original
+
+You can follow the formats with numbers to say how many characters
+should be affected by that format: C<A12> means "take 12 characters";
+C<x6> means "skip 6 bytes" or "character 0, 6 times".
+
+=end original
+
+フォーマットの後に数値をつけることで、フォーマットに影響される文字数を
+指定します: C<A12> は「12 文字取る」ことを意味します;
+C<x6> は「6 バイト読み飛ばす」や「ヌルバイト 6 つ」を意味します。
+
+=item *
+
+=begin original
+
+Instead of a number, you can use C<*> to mean "consume everything else
+left". 
+
+=end original
+
+数値の代わりに、C<*> で「残っているもの全てを使う」ことを指定できます。
+
+=begin original
+
+B<Warning>: when packing multiple pieces of data, C<*> only means
+"consume all of the current piece of data". That's to say
+
+=end original
+
+B<警告>: 複数のデータ片を pack するとき、C<*> は「現在のデータ片を全て
+含む」という意味だけです。
+これは、以下のようにすると:
+
+    pack("A*A*", $one, $two)
+
+=begin original
+
+packs all of C<$one> into the first C<A*> and then all of C<$two> into
+the second. This is a general principle: each format character
+corresponds to one piece of data to be C<pack>ed.
+
+=end original
+
+C<$one> の全てを最初の C<A*> に pack し、それから C<$two> の全てを二番目に
+pack します。
+ここに一般的な原則があります: 各フォーマット文字は C<pack> されるデータ片
+一つに対応します。
+
+=back
+
+=head1 Packing Numbers
+
+(数値を pack する)
+
+=begin original
+
+So much for textual data. Let's get onto the meaty stuff that C<pack>
+and C<unpack> are best at: handling binary formats for numbers. There is,
+of course, not just one binary format  - life would be too simple - but
+Perl will do all the finicky labor for you.
+
+=end original
+
+テキストデータについてはこれくらいです。
+C<pack> と C<unpack> が最良である、いやらしい代物: 数値のためのバイナリ
+フォーマットに進みましょう。
+もちろん、バイナリフォーマットはひとつではありません - 人生はそれほど
+単純ではありません - が、Perl は全ての細かい作業を行います。
+
+=head2 Integers
+
+(整数)
+
+=begin original
+
+Packing and unpacking numbers implies conversion to and from some
+I<specific> binary representation. Leaving floating point numbers
+aside for the moment, the salient properties of any such representation
+are:
+
+=end original
+
+数値を pack や unpack するということは、I<特定の> バイナリ表現との間で
+変換するということを意味します。
+今のところ浮動小数点数は脇にやっておくとすると、このような表現の
+主要な性質としては:
+
+=over 4
+
+=item *
+
+=begin original
+
+the number of bytes used for storing the integer,
+
+=end original
+
+整数の保存に使うバイト数。
+
+=item *
+
+=begin original
+
+whether the contents are interpreted as a signed or unsigned number,
+
+=end original
+
+内容を符号なし数として解釈するか符号付き数として解釈するか。
+
+=item *
+
+=begin original
+
+the byte ordering: whether the first byte is the least or most
+significant byte (or: little-endian or big-endian, respectively).
+
+=end original
+
+バイト順序:最初のバイトは最下位バイトか最上位バイトか
+(言い換えると: それぞれリトルエンディアンかビッグエンディアンか)。
+
+=back
+
+=begin original
+
+So, for instance, to pack 20302 to a signed 16 bit integer in your
+computer's representation you write
+
+=end original
+
+それで、例えば、20302 をあなたのコンピュータの符号付き 16 ビット整数に
+pack するとすると、以下のように書きます:
+
+   my $ps = pack( 's', 20302 );
+
+=begin original
+
+Again, the result is a string, now containing 2 bytes. If you print 
+this string (which is, generally, not recommended) you might see
+C<ON> or C<NO> (depending on your system's byte ordering) - or something
+entirely different if your computer doesn't use ASCII character encoding.
+Unpacking C<$ps> with the same template returns the original integer value:
+
+=end original
+
+再び、結果は 2 バイトからなる文字列です。
+もしこの文字列を表示する(これは一般的にはお勧めできません)と、
+C<ON> か C<NO> (システムのバイト順に依存します) - または、もし
+コンピューターが ASCII 文字エンコーディングを使っていないなら全く違う
+文字列が表示されます。
+C<$ps> を同じテンプレートで unpack すると、元の整数値が返ります:
+
+   my( $s ) = unpack( 's', $ps );
+
+=begin original
+
+This is true for all numeric template codes. But don't expect miracles:
+if the packed value exceeds the allotted byte capacity, high order bits
+are silently discarded, and unpack certainly won't be able to pull them
+back out of some magic hat. And, when you pack using a signed template
+code such as C<s>, an excess value may result in the sign bit
+getting set, and unpacking this will smartly return a negative value.
+
+=end original
+
+これは全ての数値テンプレートコードに対して真です。
+しかし奇跡を期待してはいけません:
+もし pack された値が割り当てられたバイト容量を超えると、高位ビットは
+黙って捨てられ、unpack は確実に魔法の帽子からデータを
+取り出すことができません。
+そして、C<s> のような符号付きテンプレートコードを使って pack すると、
+超えた値が符号ビットをセットすることになり、unpack すると負の値が
+返されることになるかもしれません。
+
+=begin original
+
+16 bits won't get you too far with integers, but there is C<l> and C<L>
+for signed and unsigned 32-bit integers. And if this is not enough and
+your system supports 64 bit integers you can push the limits much closer
+to infinity with pack codes C<q> and C<Q>. A notable exception is provided
+by pack codes C<i> and C<I> for signed and unsigned integers of the 
+"local custom" variety: Such an integer will take up as many bytes as
+a local C compiler returns for C<sizeof(int)>, but it'll use I<at least>
+32 bits.
+
+=end original
+
+16 ビットは整数に十分とは言えませんが、符号付きと符号なしの 32 ビット
+整数のための C<l> と C<L> もあります。
+そして、これで十分ではなく、システムが 64 ビット整数に対応しているなら、
+pack コード C<q> と C<Q> を使って限界をほぼ無限にまで押しやることができます。
+注目すべき例外は pack コード C<i> と C<I> で、「ローカルに特化した」
+符号付きと符号なしの整数を提供します: このような整数は C<sizeof(int)> と
+したときにローカルな C コンパイラが返す値と同じバイト数ですが、
+I<少なくとも> 32 ビットを使います。 
+
+=begin original
+
+Each of the integer pack codes C<sSlLqQ> results in a fixed number of bytes,
+no matter where you execute your program. This may be useful for some 
+applications, but it does not provide for a portable way to pass data 
+structures between Perl and C programs (bound to happen when you call 
+XS extensions or the Perl function C<syscall>), or when you read or
+write binary files. What you'll need in this case are template codes that
+depend on what your local C compiler compiles when you code C<short> or
+C<unsigned long>, for instance. These codes and their corresponding
+byte lengths are shown in the table below.  Since the C standard leaves
+much leeway with respect to the relative sizes of these data types, actual
+values may vary, and that's why the values are given as expressions in
+C and Perl. (If you'd like to use values from C<%Config> in your program
+you have to import it with C<use Config>.)
+
+=end original
+
+整数 pack コード C<sSlLqQ> のそれぞれは、どこでプログラムが
+実行されたとしても固定長のバイト列となります。
+これは一部のアプリケーションでは有用ですが、(XS エクステンションや
+Perl 関数 C<syscall> を呼び出すときに必要となる)
+Perl と C のプログラムの間でデータ構造を渡す場合や、バイナリファイルを
+読み書きするときの、移植性のある手段は提供しません。
+この場合に必要なものは、例えば、C<short> や C<unsigned long> と書いたときに
+ローカルの C コンパイラがどのようにコンパイルするかに依存する
+テンプレートコードです。
+これらのコードと、それに対応するバイト長は以下のテーブルの様になります。
+C 標準はそれぞれのデータ型の大きさの点で多くの自由裁量を残しているので、
+実際の値は異なるかもしれず、そしてこれがなぜ値が C と Perl の式として
+与えられているかの理由です。
+(もしプログラムで C<%Config> の値を使いたい場合は、C<use Config> として
+これをインポートする必要があります。)
+
+=begin original
+
+   signed unsigned  byte length in C   byte length in Perl       
+     s!     S!      sizeof(short)      $Config{shortsize}
+     i!     I!      sizeof(int)        $Config{intsize}
+     l!     L!      sizeof(long)       $Config{longsize}
+     q!     Q!      sizeof(long long)  $Config{longlongsize}
+
+=end original
+
+  符号付き 符号なし C でのバイト長     Perl でのバイト長
+     s!       S!    sizeof(short)      $Config{shortsize}
+     i!       I!    sizeof(int)        $Config{intsize}
+     l!       L!    sizeof(long)       $Config{longsize}
+     q!       Q!    sizeof(long long)  $Config{longlongsize}
+
+=begin original
+
+The C<i!> and C<I!> codes aren't different from C<i> and C<I>; they are
+tolerated for completeness' sake.
+
+=end original
+
+C<i!> および C<I!> は C<i> および C<I> と違いはありません; これらは
+完全性のために許容されています。
+
+=head2 Unpacking a Stack Frame
+
+(スタックフレームを unpack する)
+
+=begin original
+
+Requesting a particular byte ordering may be necessary when you work with
+binary data coming from some specific architecture whereas your program could
+run on a totally different system. As an example, assume you have 24 bytes
+containing a stack frame as it happens on an Intel 8086:
+
+=end original
+
+特定のアーキテクチャから来たバイナリに対して作業をする一方、プログラムが
+全く違うシステムで動いている場合、特定のバイト順序の要求が必要になります。
+例として、Intel 8086 のスタックフレームを含む 24 バイトを仮定します:
+
+      +---------+        +----+----+               +---------+
+ TOS: |   IP    |  TOS+4:| FL | FH | FLAGS  TOS+14:|   SI    |
+      +---------+        +----+----+               +---------+
+      |   CS    |        | AL | AH | AX            |   DI    |
+      +---------+        +----+----+               +---------+
+                         | BL | BH | BX            |   BP    |
+                         +----+----+               +---------+
+                         | CL | CH | CX            |   DS    |
+                         +----+----+               +---------+
+                         | DL | DH | DX            |   ES    |
+                         +----+----+               +---------+
+
+=begin original
+
+First, we note that this time-honored 16-bit CPU uses little-endian order,
+and that's why the low order byte is stored at the lower address. To
+unpack such a (unsigned) short we'll have to use code C<v>. A repeat
+count unpacks all 12 shorts:
+
+=end original
+
+まず、この伝統のある 16 ビット CPU はリトルエンディアンを使っていて、
+それが低位バイトが低位アドレスに格納されている理由であることに
+注意します。
+このような(符号付き)short を unpack するには、コード C<v> を使う必要が
+あるでしょう。
+繰り返し数によって、12 全ての short を unpack します。
+
+   my( $ip, $cs, $flags, $ax, $bx, $cd, $dx, $si, $di, $bp, $ds, $es ) =
+     unpack( 'v12', $frame );
+
+=begin original
+
+Alternatively, we could have used C<C> to unpack the individually
+accessible byte registers FL, FH, AL, AH, etc.:
+
+=end original
+
+あるいは、FL, FH, AL, AH といったバイトレジスタに個々にアクセスできるように
+unpack するための C<C> もあります:
+
+   my( $fl, $fh, $al, $ah, $bl, $bh, $cl, $ch, $dl, $dh ) =
+     unpack( 'C10', substr( $frame, 4, 10 ) );
+
+=begin original
+
+It would be nice if we could do this in one fell swoop: unpack a short,
+back up a little, and then unpack 2 bytes. Since Perl I<is> nice, it
+proffers the template code C<X> to back up one byte. Putting this all
+together, we may now write:
+
+=end original
+
+これを 1 回で行えたら素敵でしょう: short を unpack して、少し戻って、
+それから 2 バイト unpack します。
+Perl は I<素敵> なので、1 バイト戻るテンプレートコード C<X> を
+提供しています。
+これら全てを一緒にすると、以下のように書けます:
+
+   my( $ip, $cs,
+       $flags,$fl,$fh,
+       $ax,$al,$ah, $bx,$bl,$bh, $cx,$cl,$ch, $dx,$dl,$dh, 
+       $si, $di, $bp, $ds, $es ) =
+   unpack( 'v2' . ('vXXCC' x 5) . 'v5', $frame );
+
+=begin original
+
+(The clumsy construction of the template can be avoided - just read on!)  
+
+=end original
+
+(この不細工なテンプレート構造は避けられます - 読み進めてください!)
+
+=begin original
+
+We've taken some pains to construct the template so that it matches
+the contents of our frame buffer. Otherwise we'd either get undefined values,
+or C<unpack> could not unpack all. If C<pack> runs out of items, it will
+supply null strings (which are coerced into zeroes whenever the pack code
+says so).
+
+=end original
+
+テンプレートを構築するのに少し苦労したのは、フレームバッファの内容に
+一致させるためです。
+さもなければ未定義値を受け取ることになるか、あるいは
+C<unpack> は何も unpack できなくなります。
+もし C<pack> で要素がなくなったら、空文字列を補います
+(pack コードがそうするように言っていれば、ゼロに強制されます)。
+
+=head2 How to Eat an Egg on a Net
+
+(インターネットの卵の食べ方)
+
+=begin original
+
+The pack code for big-endian (high order byte at the lowest address) is
+C<n> for 16 bit and C<N> for 32 bit integers. You use these codes
+if you know that your data comes from a compliant architecture, but,
+surprisingly enough, you should also use these pack codes if you
+exchange binary data, across the network, with some system that you
+know next to nothing about. The simple reason is that this
+order has been chosen as the I<network order>, and all standard-fearing
+programs ought to follow this convention. (This is, of course, a stern
+backing for one of the Lilliputian parties and may well influence the
+political development there.) So, if the protocol expects you to send
+a message by sending the length first, followed by just so many bytes,
+you could write:
+
+=end original
+
+ビッグエンディアン(最下位アドレスが最上位バイト)での pack コードは、
+16 ビット整数が C<n>、 32 ビット整数が C<N> です。
+もし準拠したアーキテクチャからデータが来ることが分かっているなら
+これらのコードを使います;
+もしネットワークを通して何も知らない他のシステムとバイナリデータを
+交換する場合にもこれらの pack コードを使うべきです。
+理由は単純で、この順序が I<ネットワーク順序> として選ばれていて、標準を
+恐れる全てのプログラムがこの慣例に従っているはずだからです。
+(これはもちろん小人族の一行の一人の厳しい支援で、政治的な発展に
+影響を与えています。)
+それで、もし何バイトあるかの長さを先に送ることでメッセージを送ることを
+プロトコルが想定しているなら、以下のように書けます:
+
+   my $buf = pack( 'N', length( $msg ) ) . $msg;
+
+=begin original
+
+or even:
+
+=end original
+
+あるいは:
+
+   my $buf = pack( 'NA*', length( $msg ), $msg );
+
+=begin original
+
+and pass C<$buf> to your send routine. Some protocols demand that the
+count should include the length of the count itself: then just add 4
+to the data length. (But make sure to read L<"Lengths and Widths"> before
+you really code this!)
+
+=end original
+
+そして C<$buf> を送信ルーチンに渡します。
+カウントに、カウント自身の長さも含むことを要求しているプロトコルも
+あります: その時は単にデータ長に 4 を足してください。
+(しかし、実際にこれをコーディングする前に L<"Lengths and Widths"> を
+読んでください!)
+
+=head2 Byte-order modifiers
+
+(バイト順修飾子)
+
+=begin original
+
+In the previous sections we've learned how to use C<n>, C<N>, C<v> and
+C<V> to pack and unpack integers with big- or little-endian byte-order.
+While this is nice, it's still rather limited because it leaves out all
+kinds of signed integers as well as 64-bit integers. For example, if you
+wanted to unpack a sequence of signed big-endian 16-bit integers in a
+platform-independent way, you would have to write:
+
+=end original
+
+以前の章で、ビッグエンディアンとリトルエンディアンのバイト順の整数を
+pack および unpack するための C<n>, C<N>, C<v>, C<V> の使い方を学びました。
+これは素敵ですが、全ての種類の符号付き整数や、64 ビット整数が
+外れているので、まだいくらか制限されたものです。
+例えば、ビッグエンディアンの符号付き整数の並びをプラットフォームに
+依存しない方法で unpack したいとすると、以下のように書かなければなりません:
+
+   my @data = unpack 's*', pack 'S*', unpack 'n*', $buf;
+
+=begin original
+
+This is ugly. As of Perl 5.9.2, there's a much nicer way to express your
+desire for a certain byte-order: the C<E<gt>> and C<E<lt>> modifiers.
+C<E<gt>> is the big-endian modifier, while C<E<lt>> is the little-endian
+modifier. Using them, we could rewrite the above code as:
+
+=end original
+
+これは醜いです。
+Perl 5.9.2 から、バイト順に関して望み通りに記述するための、遥かに
+素敵な方法があります: C<E<gt>> と C<E<lt>> の修飾子です。
+C<E<gt>> はビッグエンディアン修飾子で、C<E<lt>> は
+リトルエンディアン修飾子です。
+これらを使うと、上述のコードは以下のように書き換えられます:
+
+   my @data = unpack 's>*', $buf;
+
+=begin original
+
+As you can see, the "big end" of the arrow touches the C<s>, which is a
+nice way to remember that C<E<gt>> is the big-endian modifier. The same
+obviously works for C<E<lt>>, where the "little end" touches the code.
+
+=end original
+
+見た通り、不等号の「大きい側」が C<s> に向いていて、C<E<gt>> が
+ビッグエンディアン修飾子であることを覚える素敵な方法となっています。
+明らかに同じことが、「小さい側」がコードに向いている C<E<lt>> にも働きます。
+
+=begin original
+
+You will probably find these modifiers even more useful if you have
+to deal with big- or little-endian C structures. Be sure to read
+L<"Packing and Unpacking C Structures"> for more on that.
+
+=end original
+
+おそらく、これらの修飾子はビッグエンディアンやリトルエンディアンの C 構造体を
+扱うときにもっと便利であることに気付くでしょう。
+これに関する詳細は、L<"Packing and Unpacking C Structures"> を
+よく読んでください。
+
+=head2 Floating point Numbers
+
+(浮動小数点数)
+
+=begin original
+
+For packing floating point numbers you have the choice between the
+pack codes C<f>, C<d>, C<F> and C<D>. C<f> and C<d> pack into (or unpack
+from) single-precision or double-precision representation as it is provided
+by your system. If your systems supports it, C<D> can be used to pack and
+unpack extended-precision floating point values (C<long double>), which
+can offer even more resolution than C<f> or C<d>. C<F> packs an C<NV>,
+which is the floating point type used by Perl internally. (There
+is no such thing as a network representation for reals, so if you want
+to send your real numbers across computer boundaries, you'd better stick
+to ASCII representation, unless you're absolutely sure what's on the other
+end of the line. For the even more adventuresome, you can use the byte-order
+modifiers from the previous section also on floating point codes.)
+
+=end original
+
+浮動小数点数を pack するには、pack コード C<f>, C<d>, C<F>, C<D> の
+選択肢があります。
+C<f> と C<d> pack はシステムで提供されている単精度と倍精度の実数に
+pack (あるいは unpack) します。
+もしシステムが対応していれば、C<f> や C<d> より精度のある、
+拡張精度浮動小数点数 (C<long double>) の pack および unpack のために
+C<D> が使えます。
+C<F> は、Perl が内部で使用している浮動小数点型である C<NV> を pack します。
+(実数に対してはネットワーク表現のようなものはないので、もし他の
+コンピュータに実数を送りたい場合は、ネットワークの向こう側で何が起きるかが
+完全に分かっているのでない限りは、ASCII 表現で我慢した方がよいです。
+より冒険的な場合でも、以前の章で触れたバイト順修飾子を浮動小数点コードにも
+使えます。)
+
+=head1 Exotic Templates
+
+(風変わりなテンプレート)
+
+=head2 Bit Strings
+
+(ビット文字列)
+
+=begin original
+
+Bits are the atoms in the memory world. Access to individual bits may
+have to be used either as a last resort or because it is the most
+convenient way to handle your data. Bit string (un)packing converts
+between strings containing a series of C<0> and C<1> characters and
+a sequence of bytes each containing a group of 8 bits. This is almost
+as simple as it sounds, except that there are two ways the contents of
+a byte may be written as a bit string. Let's have a look at an annotated
+byte:
+
+=end original
+
+ビットはメモリの世界の原子です。
+個々のビットへのアクセスは、最後の手段として行われるか、それがデータを
+扱うのに最も便利な方法であるときに行われます。
+(un)pack したビット文字列は、C<0> と C<1> の文字からなる文字列と、
+それぞれ 8 ビットを含むバイト列とを変換します。
+バイトの内容をビット文字列として書くには 2 つの方法があるということを除けば、
+これはほとんど見たままの単純さです。
+以下の注釈付きのバイトを見てみましょう:
+
+     7 6 5 4 3 2 1 0
+   +-----------------+
+   | 1 0 0 0 1 1 0 0 |
+   +-----------------+
+    MSB           LSB
+
+=begin original
+
+It's egg-eating all over again: Some think that as a bit string this should
+be written "10001100" i.e. beginning with the most significant bit, others
+insist on "00110001". Well, Perl isn't biased, so that's why we have two bit
+string codes:
+
+=end original
+
+卵の食べ方の繰り返しです: これは "10001100" というビット文字列になるべき、
+つまり最上位ビットから始めるべき、と考える人もいますし、
+"00110001" と主張する人もいます。
+ええ、Perl は偏向していないので、これが 2 つのビット文字列コードがある
+理由です:
+
+   $byte = pack( 'B8', '10001100' ); # start with MSB
+   $byte = pack( 'b8', '00110001' ); # start with LSB
+
+=begin original
+
+It is not possible to pack or unpack bit fields - just integral bytes.
+C<pack> always starts at the next byte boundary and "rounds up" to the
+next multiple of 8 by adding zero bits as required. (If you do want bit
+fields, there is L<perlfunc/vec>. Or you could implement bit field 
+handling at the character string level, using split, substr, and
+concatenation on unpacked bit strings.)
+
+=end original
+
+ビットフィールドを pack や unpack することはできません -
+バイト単位だけです。
+C<pack> は常に次のバイト境界から始まり、必要な場合は 0 のビットを
+追加することで 8 の倍数に「切り上げ」られます。
+(もしビットフィールドがほしいなら、L<perlfunc/vec> があります。
+あるいは、split, substr および unpack したビット文字列の結合を使って
+文字単位のレベルでビットフィールド操作を実装することも出来ます。)
+
+=begin original
+
+To illustrate unpacking for bit strings, we'll decompose a simple
+status register (a "-" stands for a "reserved" bit):
+
+=end original
+
+ビット文字列の unpack を図示するために、単純な状態レジスタを分解してみます
+("-" は「予約された」ビットを意味します):
+
+   +-----------------+-----------------+
+   | S Z - A - P - C | - - - - O D I T |
+   +-----------------+-----------------+
+    MSB           LSB MSB           LSB
+
+=begin original
+
+Converting these two bytes to a string can be done with the unpack 
+template C<'b16'>. To obtain the individual bit values from the bit
+string we use C<split> with the "empty" separator pattern which dissects
+into individual characters. Bit values from the "reserved" positions are
+simply assigned to C<undef>, a convenient notation for "I don't care where
+this goes".
+
+=end original
+
+これら 2 バイトから文字列への変換は unpack テンプレート C<'b16'> によって
+行われます。
+ビット文字列から個々のビット値を得るには、C<split> を「空」セパレータで
+使うことで個々の文字に切り刻みます。
+「予約された」位置からのビット値は単に C<undef> に代入しておきます;
+これは「この値がどこに行こうが気にしない」ことを示す便利な記法です。
+
+   ($carry, undef, $parity, undef, $auxcarry, undef, $zero, $sign,
+    $trace, $interrupt, $direction, $overflow) =
+      split( //, unpack( 'b16', $status ) );
+
+=begin original
+
+We could have used an unpack template C<'b12'> just as well, since the
+last 4 bits can be ignored anyway. 
+
+=end original
+
+ちょうど同じように、unpack テンプレート C<'b12'> も使えます;
+最後の 4 ビットはどちらにしろ無視されるからです。
+
+=head2 Uuencoding
+
+(uuencode)
+
+=begin original
+
+Another odd-man-out in the template alphabet is C<u>, which packs an
+"uuencoded string". ("uu" is short for Unix-to-Unix.) Chances are that
+you won't ever need this encoding technique which was invented to overcome
+the shortcomings of old-fashioned transmission mediums that do not support
+other than simple ASCII data. The essential recipe is simple: Take three 
+bytes, or 24 bits. Split them into 4 six-packs, adding a space (0x20) to 
+each. Repeat until all of the data is blended. Fold groups of 4 bytes into 
+lines no longer than 60 and garnish them in front with the original byte count 
+(incremented by 0x20) and a C<"\n"> at the end. - The C<pack> chef will
+prepare this for you, a la minute, when you select pack code C<u> on the menu:
+
+=end original
+
+テンプレートの中のもう一つの半端者は C<u> で、「uuencode された文字列」を
+pack します。
+("uu" は Unix-to-Unix を縮めたものです。)
+あなたには、単純な ASCII データしか対応していない旧式の通信メディアの欠点を
+克服するために開発されたこのエンコーディング技術が必要になる機会は
+なかったかもしれません。
+本質的なレシピは単純です: 3 バイト、つまり 24 ビットを取ります。
+これを 4 つの 6 ビットに分け、それぞれに空白 (0x20) を加えます。
+全てのデータが混ぜられるまで繰り返します。
+4 バイトの組を 60 文字を超えない行に折り畳み、元のバイト数(0x20 を
+加えたもの)を先頭に置いて、末尾に C<"\n"> を置きます。
+- あなたがメニューから pack コード C<u> を選ぶと、C<pack> シェフは
+即席で、下ごしらえをしてくれます:
+
+   my $uubuf = pack( 'u', $bindat );
+
+=begin original
+
+A repeat count after C<u> sets the number of bytes to put into an
+uuencoded line, which is the maximum of 45 by default, but could be
+set to some (smaller) integer multiple of three. C<unpack> simply ignores
+the repeat count.
+
+=end original
+
+C<u> の後の繰り返し数は uuencode された行にいれるバイト数で、デフォルトでは
+最大の 45 ですが、3 の倍数のその他の(より小さい)数にできます。
+C<unpack> は単に繰り返し数を無視します。
+
+=head2 Doing Sums
+
+(合計を計算する)
+
+=begin original
+
+An even stranger template code is C<%>E<lt>I<number>E<gt>. First, because 
+it's used as a prefix to some other template code. Second, because it
+cannot be used in C<pack> at all, and third, in C<unpack>, doesn't return the
+data as defined by the template code it precedes. Instead it'll give you an
+integer of I<number> bits that is computed from the data value by 
+doing sums. For numeric unpack codes, no big feat is achieved:
+
+=end original
+
+さらに不思議なテンプレートコードは C<%>E<lt>I<number>E<gt> です。
+第一に、これはその他のテンプレートコードの前置詞として使われるからです。
+第二に、C<pack> では全く使えず、第三に、C<unpack> では、先行する
+テンプレートコードによって定義された値を返さないからです。
+代わりに、これはデータの合計として計算された I<number> ビットの整数を
+与えます。
+数値 unpack コードでは、大きな離れ業は行われません:
+
+    my $buf = pack( 'iii', 100, 20, 3 );
+    print unpack( '%32i3', $buf ), "\n";  # prints 123
+
+=begin original
+
+For string values, C<%> returns the sum of the byte values saving
+you the trouble of a sum loop with C<substr> and C<ord>:
+
+=end original
+
+文字列値に対しては、C<%> はバイト値の合計を返し、C<substr> と C<ord> による
+合計計算ループによる問題からあなたを救います:
+
+    print unpack( '%32A*', "\x01\x10" ), "\n";  # prints 17
+
+=begin original
+
+Although the C<%> code is documented as returning a "checksum":
+don't put your trust in such values! Even when applied to a small number
+of bytes, they won't guarantee a noticeable Hamming distance.
+
+=end original
+
+C<%> コードは「チェックサム」を返すと文書化されていますが:
+このような値に信頼を置いてはいけません!
+少量のバイト列に適用する場合ですら、顕著なハミング距離を保証できません。
+
+=begin original
+
+In connection with C<b> or C<B>, C<%> simply adds bits, and this can be put
+to good use to count set bits efficiently:
+
+=end original
+
+C<b> や C<B> と共に使うと、C<%> は単にビットを加えるので、これは
+セットされているビットを効率的に数えるためのよい方法となります:
+
+    my $bitcount = unpack( '%32b*', $mask );
+
+=begin original
+
+And an even parity bit can be determined like this:
+
+=end original
+
+そして偶数パリティビットは以下のようにして決定できます:
+
+    my $evenparity = unpack( '%1b*', $mask );
+
+=head2  Unicode
+
+=begin original
+
+Unicode is a character set that can represent most characters in most of
+the world's languages, providing room for over one million different
+characters. Unicode 3.1 specifies 94,140 characters: The Basic Latin
+characters are assigned to the numbers 0 - 127. The Latin-1 Supplement with
+characters that are used in several European languages is in the next
+range, up to 255. After some more Latin extensions we find the character
+sets from languages using non-Roman alphabets, interspersed with a
+variety of symbol sets such as currency symbols, Zapf Dingbats or Braille.
+(You might want to visit L<http://www.unicode.org/> for a look at some of
+them - my personal favourites are Telugu and Kannada.)
+
+=end original
+
+Unicode は世界中のほとんどの言語のほとんどの文字を表現できる文字集合で、
+100 万以上の異なった文字のための空間を提供しています。
+Unicode 3.1 は 94,140 文字を定義しています: 基本ラテン文字は番号
+0 - 127 に割り当てられています。
+いくつかのヨーロッパ言語で使われるラテン 1 補助が次の範囲で、255 までです。
+いくつかのラテン拡張の後、非ローマアルファベットを使う言語の文字集合
+および、通貨記号、Zapf Dingbats、点字のような様々な記号集合が
+散らばっています。
+(これらのいくつかを見るために L<http://www.unicode.org/> を訪れるのも
+良いでしょう - 私の個人的なお気に入りは Telugu と Kannada です。)
+
+=begin original
+
+The Unicode character sets associates characters with integers. Encoding
+these numbers in an equal number of bytes would more than double the
+requirements for storing texts written in Latin alphabets.
+The UTF-8 encoding avoids this by storing the most common (from a western
+point of view) characters in a single byte while encoding the rarer
+ones in three or more bytes.
+
+=end original
+
+Unicode 文字集合は文字と整数を結び付けます。
+これらの数値を同じバイト数でエンコードすると、ラテンアルファベットで
+書かれたテキストを保管するのに 2 倍以上のバイト数が必要になります。
+UTF-8 エンコーディングは(西洋からの視点において)もっとも共通の文字を
+1 バイトに格納し、より稀なものを 3 バイト以上にエンコードすることで
+これを回避しています。
+
+=begin original
+
+Perl uses UTF-8, internally, for most Unicode strings.
+
+=end original
+
+Perl はほとんどの Unicode 文字列に対して内部的に UTF-8 を使います。
+
+=begin original
+
+So what has this got to do with C<pack>? Well, if you want to compose a
+Unicode string (that is internally encoded as UTF-8), you can do so by
+using template code C<U>. As an example, let's produce the Euro currency
+symbol (code number 0x20AC):
+
+=end original
+
+それで、これで C<pack> は何ができるのでしょう?
+えっと、もし Unicode 文字列 (これは内部では UTF-8 で
+エンコードされています) を構成したいなら、テンプレートコード C<U> を
+使うことでできます。
+例として、ユーロ通貨記号 (コード番号 0x20AC) を生成してみましょう:
+
+   $UTF8{Euro} = pack( 'U', 0x20AC );
+   # Equivalent to: $UTF8{Euro} = "\x{20ac}";
+
+=begin original
+
+Inspecting C<$UTF8{Euro}> shows that it contains 3 bytes:
+"\xe2\x82\xac". However, it contains only 1 character, number 0x20AC.
+The round trip can be completed with C<unpack>:
+
+=end original
+
+C<$UTF8{Euro}> を検査すると、3 バイトであることがわかります:
+"\xe2\x82\xac" です。
+しかし、これは番号 0x20AC の 1 文字だけを含んでいます。
+往復は C<unpack> を使って完了します:
+
+   $Unicode{Euro} = unpack( 'U', $UTF8{Euro} );
+
+=begin original
+
+Unpacking using the C<U> template code also works on UTF-8 encoded byte
+strings.
+
+=end original
+
+C<U> テンプレートコードを使った unpack テンプレートコードは
+UTF-8 エンコードされたバイト文字列に対しても動作します。
+
+=begin original
+
+Usually you'll want to pack or unpack UTF-8 strings:
+
+=end original
+
+普通は UTF-8 文字列を pack または unpack したいでしょう:
+
+   # pack and unpack the Hebrew alphabet
+   my $alefbet = pack( 'U*', 0x05d0..0x05ea );
+   my @hebrew = unpack( 'U*', $utf );
+
+=begin original
+
+Please note: in the general case, you're better off using
+Encode::decode_utf8 to decode a UTF-8 encoded byte string to a Perl
+Unicode string, and Encode::encode_utf8 to encode a Perl Unicode string
+to UTF-8 bytes. These functions provide means of handling invalid byte
+sequences and generally have a friendlier interface.
+
+=end original
+
+注意: 一般的な場合には、UTF-8 エンコードされたバイト文字列を Perl の
+Unicode 文字列にデコードするには Encode::decode_utf8 を使い、
+Perl の Unicode 文字列を UTF-8 のバイト文字列にエンコードするには
+Encode::encode_utf8 を使った方がよいです。
+これらの関数は不正なバイト列を扱う手段を提供し、一般的により親切な
+インターフェースを持ちます。
+
+=head2 Another Portable Binary Encoding
+
+(その他の移植性のあるバイナリエンコーディング)
+
+=begin original
+
+The pack code C<w> has been added to support a portable binary data
+encoding scheme that goes way beyond simple integers. (Details can
+be found at L<http://Casbah.org/>, the Scarab project.)  A BER (Binary Encoded
+Representation) compressed unsigned integer stores base 128
+digits, most significant digit first, with as few digits as possible.
+Bit eight (the high bit) is set on each byte except the last. There
+is no size limit to BER encoding, but Perl won't go to extremes.
+
+=end original
+
+pack コード C<w> は、単純な整数とは程遠い、移植性のある
+バイナリデータエンコーディングスキームに対応するために追加されました。
+(詳細については Scarab プロジェクト L<http://Casbah.org/> にあります。)
+BER (Binary Encoded Representation) 圧縮符号なし整数は 128 を基数として、
+最上位ビットを最初にして、可能な限り少ない桁になるように保管します。
+ビット 8 (最上位ビット) は、最後以外のバイトでセットされます。
+BER エンコーディングにはサイズ制限がありませんが、Perl は極端なことは
+しません。
+
+   my $berbuf = pack( 'w*', 1, 128, 128+1, 128*128+127 );
+
+=begin original
+
+A hex dump of C<$berbuf>, with spaces inserted at the right places,
+shows 01 8100 8101 81807F. Since the last byte is always less than
+128, C<unpack> knows where to stop.
+
+=end original
+
+C<$berbuf> を、適切な位置に空白を入れつつ 16 進ダンプを取ると、
+01 8100 8101 81807F となります。
+最後のバイトは常に 128 より小さくなるので、C<unpack> は停止する位置が
+わかります。
+
+=head1 Template Grouping
+
+(テンプレートのグループ化)
+
+=begin original
+
+Prior to Perl 5.8, repetitions of templates had to be made by
+C<x>-multiplication of template strings. Now there is a better way as
+we may use the pack codes C<(> and C<)> combined with a repeat count.
+The C<unpack> template from the Stack Frame example can simply
+be written like this:
+
+=end original
+
+Perl 5.8 以前では、テンプレートの繰り返しはテンプレート文字列を C<x> 回
+繰り返すことで作る必要がありました。
+今では、pack コード C<(> と C<)> に繰り返し数を組み合わせて使うという
+よりよい方法があります。
+スタックフレームの例の C<unpack> テンプレートは単に以下のように書けます:
+
+   unpack( 'v2 (vXXCC)5 v5', $frame )
+
+=begin original
+
+Let's explore this feature a little more. We'll begin with the equivalent of
+
+=end original
+
+この機能についてもうすこしだけ探求してみましょう。
+以下と等価なものから始めます:
+
+   join( '', map( substr( $_, 0, 1 ), @str ) )
+
+=begin original
+
+which returns a string consisting of the first character from each string.
+Using pack, we can write
+
+=end original
+
+これは、それぞれの文字列の最初の文字からなる文字列を返します。
+pack を使うと、以下のように書けます:
+
+   pack( '(A)'.@str, @str )
+
+=begin original
+
+or, because a repeat count C<*> means "repeat as often as required",
+simply
+
+=end original
+
+あるいは、繰り返し数 C<*> は「必要なだけ繰り返す」ことを意味するので、
+単に以下のようになります:
+
+   pack( '(A)*', @str )
+
+=begin original
+
+(Note that the template C<A*> would only have packed C<$str[0]> in full
+length.)
+
+=end original
+
+(テンプレートは C<A*> は C<$str[0]> を 完全な長さで pack するだけという
+ことに注意してください。)
+
+=begin original
+
+To pack dates stored as triplets ( day, month, year ) in an array C<@dates>
+into a sequence of byte, byte, short integer we can write
+
+=end original
+
+配列 C<@dates> に 3 つ組 (日、月、年) として保管されている日付を
+バイト、バイト、short に pack するには、以下のように書きます
+
+   $pd = pack( '(CCS)*', map( @$_, @dates ) );
+
+=begin original
+
+To swap pairs of characters in a string (with even length) one could use
+several techniques. First, let's use C<x> and C<X> to skip forward and back:
+
+=end original
+
+ある文字列の中の(同じ長さの)部分文字列の組を交換するには、いくつかの
+技が使えます。
+まず、読み飛ばして戻ってくるために C<x> と C<X> を使いましょう:
+
+   $s = pack( '(A)*', unpack( '(xAXXAx)*', $s ) );
+
+=begin original
+
+We can also use C<@> to jump to an offset, with 0 being the position where
+we were when the last C<(> was encountered:
+
+=end original
+
+また、オフセットに飛ぶために C<@> も使えます; ここで 0 は最後に C<(> に
+遭遇した位置になります:
+
+   $s = pack( '(A)*', unpack( '(@1A @0A @2)*', $s ) );
+
+=begin original
+
+Finally, there is also an entirely different approach by unpacking big
+endian shorts and packing them in the reverse byte order:
+
+=end original
+
+最後に、ビッグエンディアンの short として unpack して、逆のバイト順で
+pack するという、全く異なった手法もあります:
+
+   $s = pack( '(v)*', unpack( '(n)*', $s );
+
+=head1 Lengths and Widths
+
+(長さと幅)
+
+=head2 String Lengths
+
+(文字列の長さ)
+
+=begin original
+
+In the previous section we've seen a network message that was constructed
+by prefixing the binary message length to the actual message. You'll find
+that packing a length followed by so many bytes of data is a 
+frequently used recipe since appending a null byte won't work
+if a null byte may be part of the data. Here is an example where both
+techniques are used: after two null terminated strings with source and
+destination address, a Short Message (to a mobile phone) is sent after
+a length byte:
+
+=end original
+
+前の章で、実際のメッセージの前にメッセージの長さをバイナリで前置することで
+構成されたネットワークメッセージを見ました。
+NUL バイトを追加するという方法は、データの一部として NUL バイトが
+含まれているときには動作しないので、引き続くデータの長さを pack するという
+方法はよく見られます。
+以下は両方の技術を使った例です: 送り元と送り先のアドレスを示す 2 つの
+NUL 終端文字列の後、(携帯電話への)ショートメッセージがその長さの後に
+送られます:
+
+   my $msg = pack( 'Z*Z*CA*', $src, $dst, length( $sm ), $sm );
+
+=begin original
+
+Unpacking this message can be done with the same template:
+
+=end original
+
+このメッセージを unpack するには同じテンプレートで可能です:
+
+   ( $src, $dst, $len, $sm ) = unpack( 'Z*Z*CA*', $msg );
+
+=begin original
+
+There's a subtle trap lurking in the offing: Adding another field after
+the Short Message (in variable C<$sm>) is all right when packing, but this
+cannot be unpacked naively:
+
+=end original
+
+遠くに微妙な罠が顔を覗かせています: (変数 C<$sm> に入っている)
+ショートメッセージの後にフィールドを追加すると、pack は問題ありませんが、
+ネイティブに unpack 出来なくなります。
+
+   # pack a message
+   my $msg = pack( 'Z*Z*CA*C', $src, $dst, length( $sm ), $sm, $prio );
+
+   # unpack fails - $prio remains undefined!
+   ( $src, $dst, $len, $sm, $prio ) = unpack( 'Z*Z*CA*C', $msg );
+
+=begin original
+
+The pack code C<A*> gobbles up all remaining bytes, and C<$prio> remains
+undefined! Before we let disappointment dampen the morale: Perl's got
+the trump card to make this trick too, just a little further up the sleeve.
+Watch this:
+
+=end original
+
+pack コード C<A*> は残り全てのコードを読み込んでしまい、C<$prio> が
+未定義のままになってしまうのです!
+がっかりして士気をくじかれる前に: Perl はこのようなトリックに対しても
+切り札を持っています; もう少し袖をまくってください。
+これを見てください:
+
+   # pack a message: ASCIIZ, ASCIIZ, length/string, byte
+   my $msg = pack( 'Z* Z* C/A* C', $src, $dst, $sm, $prio );
+
+   # unpack
+   ( $src, $dst, $sm, $prio ) = unpack( 'Z* Z* C/A* C', $msg );
+
+=begin original
+
+Combining two pack codes with a slash (C</>) associates them with a single
+value from the argument list. In C<pack>, the length of the argument is
+taken and packed according to the first code while the argument itself
+is added after being converted with the template code after the slash.
+This saves us the trouble of inserting the C<length> call, but it is 
+in C<unpack> where we really score: The value of the length byte marks the
+end of the string to be taken from the buffer. Since this combination
+doesn't make sense except when the second pack code isn't C<a*>, C<A*>
+or C<Z*>, Perl won't let you.
+
+=end original
+
+二つの pack コードをスラッシュ (C</>) で繋ぐことで、引数リストの 1 つの
+値と結び付けられます。
+C<pack> では、引数の長さが取られて最初のコードに従って pack される一方、
+引数自体はスラッシュの後のテンプレートコードによって変換された後
+追加されます。
+これは C<length> 呼び出しを挿入することによるトラブルを救いますが、
+本当に効果があるのは C<unpack> においてです: 長さを示すバイトの値は
+バッファから取られる文字列の末尾をマークします。
+この組み合わせは 2 つ目の pack コードが C<a*>, C<A*>, C<Z*> でない場合
+以外は意味がないので、Perl はそうはさせません。
+
+=begin original
+
+The pack code preceding C</> may be anything that's fit to represent a
+number: All the numeric binary pack codes, and even text codes such as
+C<A4> or C<Z*>:
+
+=end original
+
+C</> の前に置く pack コードは、数値を表現するのに適したものであれば
+なんでも使えます: 
+全ての数値バイナリ pack コードおよび、C<A4> や C<Z*> のような
+テキストコードにも対応します:
+
+   # pack/unpack a string preceded by its length in ASCII
+   my $buf = pack( 'A4/A*', "Humpty-Dumpty" );
+   # unpack $buf: '13  Humpty-Dumpty'
+   my $txt = unpack( 'A4/A*', $buf );
+
+=begin original
+
+C</> is not implemented in Perls before 5.6, so if your code is required to
+work on older Perls you'll need to C<unpack( 'Z* Z* C')> to get the length,
+then use it to make a new unpack string. For example
+
+=end original
+
+C</> は 5.6 以前の Perl には実装されていないので、もし、より古い Perl で
+動作することが要求される場合は、長さを得るために C<unpack( 'Z* Z* C')> を
+使って、それから新しい unpack 文字列を作ってそれを使う必要があります。
+例えば:
+
+   # pack a message: ASCIIZ, ASCIIZ, length, string, byte (5.005 compatible)
+   my $msg = pack( 'Z* Z* C A* C', $src, $dst, length $sm, $sm, $prio );
+
+   # unpack
+   ( undef, undef, $len) = unpack( 'Z* Z* C', $msg );
+   ($src, $dst, $sm, $prio) = unpack ( "Z* Z* x A$len C", $msg );
+
+=begin original
+
+But that second C<unpack> is rushing ahead. It isn't using a simple literal
+string for the template. So maybe we should introduce...
+
+=end original
+
+しかしこの 2 番目の C<unpack> は先走りました。
+これはテンプレートとして単純なリテラル文字列を使っていません。
+それでは説明するべきでしょう…
+
+=head2 Dynamic Templates
+
+(動的テンプレート)
+
+=begin original
+
+So far, we've seen literals used as templates. If the list of pack
+items doesn't have fixed length, an expression constructing the
+template is required (whenever, for some reason, C<()*> cannot be used).
+Here's an example: To store named string values in a way that can be
+conveniently parsed by a C program, we create a sequence of names and
+null terminated ASCII strings, with C<=> between the name and the value,
+followed by an additional delimiting null byte. Here's how:
+
+=end original
+
+これまでは、テンプレートとして使われるリテラルを見てきました。
+pack するアイテムのリストが固定長でない場合(何らかの理由で C<()*> が
+使えないなら)、テンプレートを構成する式が必要です。
+以下は例です: C プログラムで使いやすい形で名前付き文字列値を保管するために、
+一続きの名前と NUL 終端された ASCII 文字列を作ります;
+名前と値の間には C<=> を置いて、最後に追加のデリミタとなる NUL バイトを
+置きます。
+以下のようにします:
+
+   my $env = pack( '(A*A*Z*)' . keys( %Env ) . 'C',
+                   map( { ( $_, '=', $Env{$_} ) } keys( %Env ) ), 0 );
+
+=begin original
+
+Let's examine the cogs of this byte mill, one by one. There's the C<map>
+call, creating the items we intend to stuff into the C<$env> buffer:
+to each key (in C<$_>) it adds the C<=> separator and the hash entry value.
+Each triplet is packed with the template code sequence C<A*A*Z*> that
+is repeated according to the number of keys. (Yes, that's what the C<keys>
+function returns in scalar context.) To get the very last null byte,
+we add a C<0> at the end of the C<pack> list, to be packed with C<C>.
+(Attentive readers may have noticed that we could have omitted the 0.)
+
+=end original
+
+このバイト処理機の要素を一つ一つ調査してみましょう。
+C<map> 呼び出しは、C<$env> バッファに入れることを想定している内容の
+アイテムを作成します:
+(C<$_> の) それぞれのキーについて、C<=> セパレータとハッシュエントリの値を
+追加します。
+それぞれの 3 つ組は、キーの数
+(はい、これは C<keys> 関数がスカラコンテキストで返すものです。)
+に従って繰り返されるテンプレートコードの
+並び C<A*A*Z*> で pack されます。
+まさに最後の NUL バイトを得るために、C<pack> リストの最後に C<C> で
+pack するための C<0> を追加します。
+(注意深い読者なら、この 0 は省略できることに気付いたかもしれません。)
+
+=begin original
+
+For the reverse operation, we'll have to determine the number of items
+in the buffer before we can let C<unpack> rip it apart:
+
+=end original
+
+逆操作のために、C<unpack> に分解させる前にバッファにあるアイテムの数を
+決定する必要があります:
+
+   my $n = $env =~ tr/\0// - 1;
+   my %env = map( split( /=/, $_ ), unpack( "(Z*)$n", $env ) );
+
+=begin original
+
+The C<tr> counts the null bytes. The C<unpack> call returns a list of
+name-value pairs each of which is taken apart in the C<map> block. 
+
+=end original
+
+C<tr> はヌルバイトを数えます。
+C<unpack> 呼び出しは名前-値の組のリストを返し、そのそれぞれが
+C<map> ブロックで分割されます。
+
+=head2 Counting Repetitions
+
+(繰り返しを数える)
+
+=begin original
+
+Rather than storing a sentinel at the end of a data item (or a list of items),
+we could precede the data with a count. Again, we pack keys and values of
+a hash, preceding each with an unsigned short length count, and up front
+we store the number of pairs:
+
+=end original
+
+データアイテム(あるいはアイテムのリスト)の最後に見張りをおくのではなく、
+データの数を先においておくこともできます。
+再び、ハッシュのキーと値を pack します; それぞれの前には符号なし short で
+長さが置かれ、先頭には組の数を保管します:
+
+   my $env = pack( 'S(S/A* S/A*)*', scalar keys( %Env ), %Env );
+
+=begin original
+
+This simplifies the reverse operation as the number of repetitions can be
+unpacked with the C</> code:
+
+=end original
+
+繰り返し数は C</> コードで unpack できるので、逆操作は単純になります:
+
+   my %env = unpack( 'S/(S/A* S/A*)', $env );
+
+=begin original
+
+Note that this is one of the rare cases where you cannot use the same
+template for C<pack> and C<unpack> because C<pack> can't determine
+a repeat count for a C<()>-group.
+
+=end original
+
+これは、C<pack> は C<()> グループの繰り返し数を決定できないので、
+C<pack> と C<unpack> で同じテンプレートが使えない珍しい場合であることに
+注意してください。
+
+=head2 Intel HEX
+
+=begin original
+
+Intel HEX is a file format for representing binary data, mostly for
+programming various chips, as a text file. (See
+L<http://en.wikipedia.org/wiki/.hex> for a detailed description, and
+L<http://en.wikipedia.org/wiki/SREC_(file_format)> for the Motorola
+S-record format, which can be unravelled using the same technique.)
+Each line begins with a colon (':') and is followed by a sequence of
+hexadecimal characters, specifying a byte count I<n> (8 bit),
+an address (16 bit, big endian), a record type (8 bit), I<n> data bytes
+and a checksum (8 bit) computed as the least significant byte of the two's
+complement sum of the preceding bytes. Example: C<:0300300002337A1E>.
+
+=end original
+
+Intel HEX バイナリデータを表現するためのファイル形式で、ほとんどの場合
+様々なデータをテキストファイルとしてプログラミングするためのものです。
+(詳細な記述については L<http://en.wikipedia.org/wiki/.hex> を、
+同じテクニックを使って展開できる Motorola S-record 形式については
+L<http://en.wikipedia.org/wiki/SREC_(file_format)> を参照してください。)
+それぞれの行はコロン (':') で始まり、バイトカウント I<n> (8 ビット)、
+アドレス (16 ビット、ビッグエンディアン)、レコード型 (8 ビット)、
+I<n> バイトのデータ、そこまでのバイト列の合計の最下位バイトの 2 の補数で
+表されるチェックサム (8 ビット)、からなる 16 進文字の並びが続きます。
+例:  C<:0300300002337A1E>。
+
+=begin original
+
+The first step of processing such a line is the conversion, to binary,
+of the hexadecimal data, to obtain the four fields, while checking the
+checksum. No surprise here: we'll start with a simple C<pack> call to 
+convert everything to binary:
+
+=end original
+
+このような行を処理するための最初のステップは、四つのフィールドを得るために
+16 進データをバイナリに変換して、チェックサムを調べることです。
+ここには驚きはありません:  全てをバイナリに変換するための単純な
+C<pack> 呼び出しから始めます:
+
+   my $binrec = pack( 'H*', substr( $hexrec, 1 ) );
+
+=begin original
+
+The resulting byte sequence is most convenient for checking the checksum.
+Don't slow your program down with a for loop adding the C<ord> values
+of this string's bytes - the C<unpack> code C<%> is the thing to use
+for computing the 8-bit sum of all bytes, which must be equal to zero:
+
+=end original
+
+結果のバイト並びははチェックサムを計算するのに最も便利です。
+この文字列のバイトの C<ord> の値を加算するループでプログラムの速度を
+落とすようなことをしないでください - C<unpack> の C<%> コードは
+全てのバイトの 8 ビットの合計を計算するためのもので、これは 0 でなければ
+なりません:
+
+   die unless unpack( "%8C*", $binrec ) == 0;
+
+=begin original
+
+Finally, let's get those four fields. By now, you shouldn't have any
+problems with the first three fields - but how can we use the byte count
+of the data in the first field as a length for the data field? Here
+the codes C<x> and C<X> come to the rescue, as they permit jumping
+back and forth in the string to unpack.
+
+=end original
+
+最後に、四つのフィールドを取り出しましょう。
+ここまでで、最初の三つのフィールドを取り出すのには何の問題もないはずです -
+しかし最初のフィールドにあるデータのバイトカウントをデータフィールドの
+長さに使うにはどうすればいいでしょう?
+ここで C<x> と C<X> が助けにやってきて、戻って文字列の 4 番目を
+unpack できるようにします。
+
+   my( $addr, $type, $data ) = unpack( "x n C X4 C x3 /a", $bin ); 
+
+=begin original
+
+Code C<x> skips a byte, since we don't need the count yet. Code C<n> takes
+care of the 16-bit big-endian integer address, and C<C> unpacks the
+record type. Being at offset 4, where the data begins, we need the count.
+C<X4> brings us back to square one, which is the byte at offset 0.
+Now we pick up the count, and zoom forth to offset 4, where we are
+now fully furnished to extract the exact number of data bytes, leaving
+the trailing checksum byte alone.
+
+=end original
+
+C<x> コードは、まだカウントは必要ではないので 1 バイト飛ばします。
+C<n> コードは 16 ビットビッグエンディアン整数アドレスを取得し、
+C<C> はレコード型を unpack します。
+データが始まる位置であるオフセット 4 に来て、カウントが必要です。
+C<X4> は 1 マス目、つまりオフセット 0 のバイトに戻ります。
+ここでカウントを取りだして、正確な数のデータを展開するために提供されている
+オフセット 4 に移動して、末尾のチェックサムバイトだけを残します。
+
+=head1 Packing and Unpacking C Structures
+
+(C の構造体を pack/unpack する)
+
+=begin original
+
+In previous sections we have seen how to pack numbers and character
+strings. If it were not for a couple of snags we could conclude this
+section right away with the terse remark that C structures don't
+contain anything else, and therefore you already know all there is to it.
+Sorry, no: read on, please.
+
+=end original
+
+前のセクションで、数値と文字列を pack する方法を見ました。
+もしここに障害がないなら、「C 構造体には他に何もなく、従ってあなたは
+既に C 構造体を pack/unpack するための全てを知っています」
+という簡潔な見解と共にこの章をすぐに締めくくることができます。
+すみません、そうではありません: どうか読み進めてください。
+
+=begin original
+
+If you have to deal with a lot of C structures, and don't want to
+hack all your template strings manually, you'll probably want to have
+a look at the CPAN module C<Convert::Binary::C>. Not only can it parse
+your C source directly, but it also has built-in support for all the
+odds and ends described further on in this section.
+
+=end original
+
+もし大量の C 構造体を扱う必要があって、全てのテンプレート文字列を手動で
+ハックしたくないなら、おそらく一度 CPAN モジュール C<Convert::Binary::C> を
+見たほうが良いでしょう。
+C ソースを直接パースできるだけでなく、この章でさらに記述される全ての
+雑務に対する組み込みのサポートがあります。
+
+=head2 The Alignment Pit
+
+(アライメントの落とし穴)
+
+=begin original
+
+In the consideration of speed against memory requirements the balance
+has been tilted in favor of faster execution. This has influenced the
+way C compilers allocate memory for structures: On architectures
+where a 16-bit or 32-bit operand can be moved faster between places in
+memory, or to or from a CPU register, if it is aligned at an even or 
+multiple-of-four or even at a multiple-of eight address, a C compiler
+will give you this speed benefit by stuffing extra bytes into structures.
+If you don't cross the C shoreline this is not likely to cause you any
+grief (although you should care when you design large data structures,
+or you want your code to be portable between architectures (you do want
+that, don't you?)).
+
+=end original
+
+速度とメモリ消費のバランスは、より速く実行できる方に傾いています。
+これは C コンパイラが構造体のためにメモリを割り当てる方法に影響します:
+偶数、4 の倍数、あるいは 8 の倍数のアドレスにアライメントされていれば、
+16 ビットや 32 ビットのオペランドや CPU レジスタへの出し入れが速くなる
+アーキテクチャでは、C コンパイラは構造体に追加のバイトを入れることで
+この速度メリットを受けるようにします。
+もし C の海岸線を越えないのなら、これがなんらかの面倒を引き起こすことは
+ありそうにありません (しかし、大きなデータ構造を設計したり、
+アーキテクチャ間で移植性のあるコードがほしい場合(そうしたくないですか?)、
+気にするべきです)。
+
+=begin original
+
+To see how this affects C<pack> and C<unpack>, we'll compare these two
+C structures:
+
+=end original
+
+これが C<pack> と C<unpack> にどのように影響を与えるかを見るために、
+これら 2 つの C 構造体を比較してみます:
+
+   typedef struct {
+     char     c1;
+     short    s;
+     char     c2;
+     long     l;
+   } gappy_t;
+
+   typedef struct {
+     long     l;
+     short    s;
+     char     c1;
+     char     c2;
+   } dense_t;
+
+=begin original
+
+Typically, a C compiler allocates 12 bytes to a C<gappy_t> variable, but
+requires only 8 bytes for a C<dense_t>. After investigating this further,
+we can draw memory maps, showing where the extra 4 bytes are hidden:
+
+=end original
+
+典型的には、C コンパイラは C<gappy_t> 変数には 12 バイトを割り当てますが、
+C<dense_t> には 8 バイトしか割り当てません。
+これをさらに調査した後、余分な 4 バイトが隠れていることが分かる
+メモリマップが書けます:
+
+   0           +4          +8          +12
+   +--+--+--+--+--+--+--+--+--+--+--+--+
+   |c1|xx|  s  |c2|xx|xx|xx|     l     |    xx = fill byte
+   +--+--+--+--+--+--+--+--+--+--+--+--+
+   gappy_t
+
+   0           +4          +8
+   +--+--+--+--+--+--+--+--+
+   |     l     |  h  |c1|c2|
+   +--+--+--+--+--+--+--+--+
+   dense_t
+
+=begin original
+
+And that's where the first quirk strikes: C<pack> and C<unpack>
+templates have to be stuffed with C<x> codes to get those extra fill bytes.
+
+=end original
+
+そしてこれが最初の思いがけない一撃の理由です:
+C<pack> と C<unpack> のテンプレートは、これらの余分に埋めるバイトのために
+C<X> コードを詰める必要があります。
+
+=begin original
+
+The natural question: "Why can't Perl compensate for the gaps?" warrants
+an answer. One good reason is that C compilers might provide (non-ANSI)
+extensions permitting all sorts of fancy control over the way structures
+are aligned, even at the level of an individual structure field. And, if
+this were not enough, there is an insidious thing called C<union> where
+the amount of fill bytes cannot be derived from the alignment of the next
+item alone.
+
+=end original
+
+自然な質問: 「なぜ Perl は隙間を埋め合わせられないの?」には答えるのが
+当然です。
+一つのよい理由は、個々の構造体フィールドのレベルでさえ、構造体の
+アライメント方法のあらゆる種類の制御方法を許している(非 ANSI の)拡張を
+提供しているCコンパイラがあるからです。
+そして、もしこれが十分でないなら、埋めるバイト数が次のアイテムの
+アライメントだけでは決定されない、C<union> と呼ばれる
+陰険なものがあります。
+
+=begin original
+
+OK, so let's bite the bullet. Here's one way to get the alignment right
+by inserting template codes C<x>, which don't take a corresponding item 
+from the list:
+
+=end original
+
+よし、では困難に耐えましょう。
+これは、リストから対応する要素を使わないテンプレートコード C<x> を
+挿入することでアライメントを正しくする一つの方法です:
+
+  my $gappy = pack( 'cxs cxxx l!', $c1, $s, $c2, $l );
+
+=begin original
+
+Note the C<!> after C<l>: We want to make sure that we pack a long
+integer as it is compiled by our C compiler. And even now, it will only
+work for the platforms where the compiler aligns things as above.
+And somebody somewhere has a platform where it doesn't.
+[Probably a Cray, where C<short>s, C<int>s and C<long>s are all 8 bytes. :-)]
+
+=end original
+
+C<l> の後の C<!> に注意してください: long 整数を C コンパイラで
+コンパイルされるのと同じ形になるのを確実にしたいです。
+そしてこの時点でも、これはコンパイラが上述のようにアライメントする
+プラットフォームでのみ動作します。
+そしてどこかの誰かはそうでないプラットフォームを使っています。
+[おそらくは、Cray です; これは C<short>, C<int>, C<long> が全て
+8 バイトです。:-)]
+
+=begin original
+
+Counting bytes and watching alignments in lengthy structures is bound to 
+be a drag. Isn't there a way we can create the template with a simple
+program? Here's a C program that does the trick:
+
+=end original
+
+とても長い構造体のバイト数を数えてアライメントを監視するのは面倒なことです。
+単純なプログラムでテンプレートを作る方法はないでしょうか?
+以下は技を使った C プログラムです:
+
+   #include <stdio.h>
+   #include <stddef.h>
+
+   typedef struct {
+     char     fc1;
+     short    fs;
+     char     fc2;
+     long     fl;
+   } gappy_t;
+
+   #define Pt(struct,field,tchar) \
+     printf( "@%d%s ", offsetof(struct,field), # tchar );
+
+   int main() {
+     Pt( gappy_t, fc1, c  );
+     Pt( gappy_t, fs,  s! );
+     Pt( gappy_t, fc2, c  );
+     Pt( gappy_t, fl,  l! );
+     printf( "\n" );
+   }
+
+=begin original
+
+The output line can be used as a template in a C<pack> or C<unpack> call:
+
+=end original
+
+出力行は C<pack> や C<unpack> 呼び出しのテンプレートとして使えます。
+
+  my $gappy = pack( '@0c @2s! @4c @8l!', $c1, $s, $c2, $l );
+
+=begin original
+
+Gee, yet another template code - as if we hadn't plenty. But 
+C<@> saves our day by enabling us to specify the offset from the beginning
+of the pack buffer to the next item: This is just the value
+the C<offsetof> macro (defined in C<E<lt>stddef.hE<gt>>) returns when
+given a C<struct> type and one of its field names ("member-designator" in 
+C standardese).
+
+=end original
+
+げー、新しいテンプレートコードです - まだ十分ではありませんでした。
+しかし C<@> は次のアイテムのための pack バッファの先頭からのオフセットを
+指定できるようにすることで手間を省きます:
+これは単に、C<struct> 型とそのフィールド名(C 標準での「メンバ指定子」)を
+与えたときに (C<E<lt>stddef.hE<gt>> で定義されている)C<offsetof> マクロが
+返す値です。
+
+=begin original
+
+Neither using offsets nor adding C<x>'s to bridge the gaps is satisfactory.
+(Just imagine what happens if the structure changes.) What we really need
+is a way of saying "skip as many bytes as required to the next multiple of N".
+In fluent Templatese, you say this with C<x!N> where N is replaced by the
+appropriate value. Here's the next version of our struct packaging:
+
+=end original
+
+オフセットを使ったり、隙間を渡すために C<x> を追加することでは
+十分ではありません。
+(構造体が変更されたときに何が起こるかを単に想像してみてください。)
+本当に必要なものは、「次の N の倍数のバイトになるまでスキップする」と
+書く各方法です。
+雄弁なテンプレートでは、これは C<x!N> とできます (ここで N は適切な値
+に置き換えられます)。
+これは構造体のパッケージ化の次のバージョンです:
+
+  my $gappy = pack( 'c x!2 s c x!4 l!', $c1, $s, $c2, $l );
+
+=begin original
+
+That's certainly better, but we still have to know how long all the
+integers are, and portability is far away. Rather than C<2>,
+for instance, we want to say "however long a short is". But this can be
+done by enclosing the appropriate pack code in brackets: C<[s]>. So, here's
+the very best we can do:
+
+=end original
+
+これは確実により良いものですが、未だに全ての整数の長さを知る必要があり、
+移植性とはかけ離れています。
+例えば、C<2> の代わりに、「とにかく short の長さ」と書きたいです。
+しかし、これは適切な pack コードを大かっこで囲むこと (C<[s]>) で
+可能です。
+それで、これはできる限り最良のものです:
+
+  my $gappy = pack( 'c x![s] s c x![l!] l!', $c1, $s, $c2, $l );
+
+=head2 Dealing with Endian-ness
+
+(エンディアンを扱う)
+
+=begin original
+
+Now, imagine that we want to pack the data for a machine with a
+different byte-order. First, we'll have to figure out how big the data
+types on the target machine really are. Let's assume that the longs are
+32 bits wide and the shorts are 16 bits wide. You can then rewrite the
+template as:
+
+=end original
+
+ここで、異なるバイト順のマシンのためのデータを pack したいとします。
+まず、ターゲットマシンでの実際のデータ型の大きさを知る必要があります。
+long は 32 ビット幅で short が 16 ビット幅と仮定しましょう。
+ここでテンプレートは以下のように書き換えられます:
+
+  my $gappy = pack( 'c x![s] s c x![l] l', $c1, $s, $c2, $l );
+
+=begin original
+
+If the target machine is little-endian, we could write:
+
+=end original
+
+もしターゲットマシンがリトルエンディアンなら、以下のように書けます:
+
+  my $gappy = pack( 'c x![s] s< c x![l] l<', $c1, $s, $c2, $l );
+
+=begin original
+
+This forces the short and the long members to be little-endian, and is
+just fine if you don't have too many struct members. But we could also
+use the byte-order modifier on a group and write the following:
+
+=end original
+
+これは short と long のメンバをリトルエンディアンに強制し、もし
+あまり多くの構造体メンバがない場合は十分です。
+しかし、グループにバイト順修飾子を使うことも出来、以下のように書けます:
+
+  my $gappy = pack( '( c x![s] s c x![l] l )<', $c1, $s, $c2, $l );
+
+=begin original
+
+This is not as short as before, but it makes it more obvious that we
+intend to have little-endian byte-order for a whole group, not only
+for individual template codes. It can also be more readable and easier
+to maintain.
+
+=end original
+
+これは以前ほど短くありませんが、ここのテンプレートだけでなく、グループ全体に
+リトルエンディアンのバイト順を意図していることがより明らかです。
+これはまたより読みやすく、管理もより簡単です。
+
+=head2 Alignment, Take 2
+
+(アライメント、第二幕)
+
+=begin original
+
+I'm afraid that we're not quite through with the alignment catch yet. The
+hydra raises another ugly head when you pack arrays of structures:
+
+=end original
+
+アライメントの捕捉について、十分に説明していないのではないかと
+心配しています。
+構造体の配列を pack しようとすると、ヒドラはまた別の醜い頭をもたげてきます。
+
+   typedef struct {
+     short    count;
+     char     glyph;
+   } cell_t;
+
+   typedef cell_t buffer_t[BUFLEN];
+
+=begin original
+
+Where's the catch? Padding is neither required before the first field C<count>,
+nor between this and the next field C<glyph>, so why can't we simply pack
+like this:
+
+=end original
+
+どこに罠があるのでしょう?
+最初のフィールド C<count> の前や、これと次のフィールド C<glyph> の間に
+パッディングは不要です; それならなぜ以下のように簡単に
+pack できないのでしょう:
+
+   # something goes wrong here:
+   pack( 's!a' x @buffer,
+         map{ ( $_->{count}, $_->{glyph} ) } @buffer );
+
+=begin original
+
+This packs C<3*@buffer> bytes, but it turns out that the size of 
+C<buffer_t> is four times C<BUFLEN>! The moral of the story is that
+the required alignment of a structure or array is propagated to the
+next higher level where we have to consider padding I<at the end>
+of each component as well. Thus the correct template is:
+
+=end original
+
+これは C<3*@buffer> バイトに pack しますが、C<buffer_t> のサイズは
+C<BUFLEN> の 4 倍になるのです!
+このお話の教訓は、構造体や配列で必要なアライメントは、それぞれの要素の
+I<最後に> パッディングを考慮する必要がある場所で、より高いレベルに
+伝播するということです。
+従って、正しいテンプレートは:
+
+   pack( 's!ax' x @buffer,
+         map{ ( $_->{count}, $_->{glyph} ) } @buffer );
+
+=head2 Alignment, Take 3
+
+(アライメント、第三幕)
+
+=begin original
+
+And even if you take all the above into account, ANSI still lets this:
+
+=end original
+
+上記のことを全て頭に入れたとしても、ANSI は以下のような場合:
+
+   typedef struct {
+     char     foo[2];
+   } foo_t;
+
+=begin original
+
+vary in size. The alignment constraint of the structure can be greater than
+any of its elements. [And if you think that this doesn't affect anything
+common, dismember the next cellphone that you see. Many have ARM cores, and
+the ARM structure rules make C<sizeof (foo_t)> == 4]
+
+=end original
+
+サイズは様々であるとしています。
+構造のアライメント制約は、それぞれの要素よりも大きいかもしれません。
+[そしてもしこれが一般的には何も影響を与えないと考えているなら、
+次に見た携帯電話を分解してみてください。
+多くは ARM コアを使っていて、ARM 構造体ルールでは
+C<sizeof (foo_t)> == 4 となります]
+
+=head2 Pointers for How to Use Them
+
+(ポインタをどう扱うかのポインタ)
+
+=begin original
+
+The title of this section indicates the second problem you may run into
+sooner or later when you pack C structures. If the function you intend
+to call expects a, say, C<void *> value, you I<cannot> simply take
+a reference to a Perl variable. (Although that value certainly is a
+memory address, it's not the address where the variable's contents are
+stored.)
+
+=end original
+
+この章のタイトルは、C の構造体を pack するときに遅かれ早かれ出会うことになる
+2 番目の問題を指し示しています。
+呼び出そうとしている関数が、例えば、C<void *> の値を想定している場合、
+単純に Perl の変数のリファレンスを使うことは I<できません>。
+(確かに値はメモリアドレスですが、値の内容が保持されているアドレスでは
+ないからです。)
+
+=begin original
+
+Template code C<P> promises to pack a "pointer to a fixed length string".
+Isn't this what we want? Let's try:
+
+=end original
+
+テンプレートコード C<P> は、「固定長文字列へのポインタ」を pack することを
+約束します。
+これが望みのものではないですか?
+試してみましょう:
+
+    # allocate some storage and pack a pointer to it
+    my $memory = "\x00" x $size;
+    my $memptr = pack( 'P', $memory );
+
+=begin original
+
+But wait: doesn't C<pack> just return a sequence of bytes? How can we pass this
+string of bytes to some C code expecting a pointer which is, after all,
+nothing but a number? The answer is simple: We have to obtain the numeric
+address from the bytes returned by C<pack>.
+
+=end original
+
+ちょっと待った: C<pack> は単にバイトシーケンスを返すのでは?
+どうやってこのバイトの文字列を、ポインタ、つまり結局は数値でしかないものを
+想定している C のコードに渡せるのでしょう?
+答えは単純です: C<pack> で返されたバイト列から数値のアドレスを得なければ
+なりません。
+
+    my $ptr = unpack( 'L!', $memptr );
+
+=begin original
+
+Obviously this assumes that it is possible to typecast a pointer
+to an unsigned long and vice versa, which frequently works but should not
+be taken as a universal law. - Now that we have this pointer the next question
+is: How can we put it to good use? We need a call to some C function
+where a pointer is expected. The read(2) system call comes to mind:
+
+=end original
+
+明らかに、これはポインタから unsigned long への、およびその逆の型キャストが
+可能であることを仮定しています; これはしばしば動作しますが、普遍的な
+原則として扱うべきではありません。
+- ここでこのポインタを得ましたが、次の質問は: これをうまく使うには
+どうするのがよいでしょう?
+ポインタを想定している C 関数を呼び出す必要があります。
+read(2) システムコールが心に浮かびます:
+
+    ssize_t read(int fd, void *buf, size_t count);
+
+=begin original
+
+After reading L<perlfunc> explaining how to use C<syscall> we can write
+this Perl function copying a file to standard output:
+
+=end original
+
+L<perlfunc> にある C<syscall> の使い方の説明を読んだ後、ファイルを
+標準出力にコピーする Perl 関数を書けます:
+
+    require 'syscall.ph';
+    sub cat($){
+        my $path = shift();
+        my $size = -s $path;
+        my $memory = "\x00" x $size;  # allocate some memory
+        my $ptr = unpack( 'L', pack( 'P', $memory ) );
+        open( F, $path ) || die( "$path: cannot open ($!)\n" );
+        my $fd = fileno(F);
+        my $res = syscall( &SYS_read, fileno(F), $ptr, $size );
+        print $memory;
+        close( F );
+    }
+
+=begin original
+
+This is neither a specimen of simplicity nor a paragon of portability but
+it illustrates the point: We are able to sneak behind the scenes and
+access Perl's otherwise well-guarded memory! (Important note: Perl's
+C<syscall> does I<not> require you to construct pointers in this roundabout
+way. You simply pass a string variable, and Perl forwards the address.) 
+
+=end original
+
+これは単純さの見本でもなければ移植性の模範でもありませんが、要点を
+示しています: 舞台裏に忍び込んで、その他の点では良く守られている Perl の
+メモリにアクセスできます!
+(重要な注意: Perl の C<syscall> は、この回りくどい方法でポインタを
+構成する必要は I<ありません> 。
+単に文字列変数を渡せば、Perl がアドレスを転送します。)
+
+=begin original
+
+How does C<unpack> with C<P> work? Imagine some pointer in the buffer
+about to be unpacked: If it isn't the null pointer (which will smartly
+produce the C<undef> value) we have a start address - but then what?
+Perl has no way of knowing how long this "fixed length string" is, so
+it's up to you to specify the actual size as an explicit length after C<P>.
+
+=end original
+
+C<unpack> では C<P> はどのように動作するのでしょう?
+unpack されようとしているバッファにあるポインタを想像します:
+もしそれが(賢く C<undef> 値を生成する)ヌルポインタでない場合、開始アドレスを
+得ることになります - でも、それで?
+Perl はこの「固定長文字列」の長さを知る方法がないので、C<P> の後ろに
+明示的な長さとして実際の大きさを指定する必要があります。
+
+   my $mem = "abcdefghijklmn";
+   print unpack( 'P5', pack( 'P', $mem ) ); # prints "abcde"
+
+=begin original
+
+As a consequence, C<pack> ignores any number or C<*> after C<P>.
+
+=end original
+
+結果として、C<pack> は C<P> の後の数値や C<*> を無視します。
+
+=begin original
+
+Now that we have seen C<P> at work, we might as well give C<p> a whirl.
+Why do we need a second template code for packing pointers at all? The 
+answer lies behind the simple fact that an C<unpack> with C<p> promises
+a null-terminated string starting at the address taken from the buffer,
+and that implies a length for the data item to be returned:
+
+=end original
+
+ここで C<P> の動作は見たので、同様に C<p> を試してみます。
+とにかく、なぜポインタを pack するのに 2 番目のテンプレートコードが
+必要なのでしょう?
+答えは、
+C<unpack> の C<p> はバッファから取った NUL 終端された文字列がその
+アドレスから始まっていることを約束していて、返されるデータアイテムの
+長さを暗示しているという単純な事実の後ろに横たわっています:
+
+   my $buf = pack( 'p', "abc\x00efhijklmn" );
+   print unpack( 'p', $buf );    # prints "abc"
+
+=begin original
+
+Albeit this is apt to be confusing: As a consequence of the length being
+implied by the string's length, a number after pack code C<p> is a repeat
+count, not a length as after C<P>. 
+
+=end original
+
+それでもこれは混乱しがちです: 長さが文字列の長さを暗示しているので、
+C<p> の後の数値は繰り返し数であって、C<P> の後のように長さではありません。
+
+=begin original
+
+Using C<pack(..., $x)> with C<P> or C<p> to get the address where C<$x> is
+actually stored must be used with circumspection. Perl's internal machinery
+considers the relation between a variable and that address as its very own 
+private matter and doesn't really care that we have obtained a copy. Therefore:
+
+=end original
+
+C<$x> が実際に保管されているアドレスを得るために C<pack(..., $x)> で
+C<P> や C<p> を使うことは慎重に行われなければなりません。
+Perl の内部機構は変数とそのアドレスの関係をとてもプライベートな問題と
+考え、私たちがコピーを得たことを実際には気にしません。
+従って:
+
+=over 4
+
+=item * 
+
+=begin original
+
+Do not use C<pack> with C<p> or C<P> to obtain the address of variable
+that's bound to go out of scope (and thereby freeing its memory) before you
+are done with using the memory at that address.
+
+=end original
+
+その変数のアドレスのメモリを使い終わる前にスコープから出る(従って
+メモリが開放される)ような変数のアドレスを得るために
+C<pack> の C<p> や C<P> を使わないでください。
+
+=item * 
+
+=begin original
+
+Be very careful with Perl operations that change the value of the
+variable. Appending something to the variable, for instance, might require
+reallocation of its storage, leaving you with a pointer into no-man's land.
+
+=end original
+
+変数の値を変更する Perl 操作にとても注意してください。
+例えば、値に何かを追加すると、その保管場所を再配置することになって、
+ポインタを誰もいないところにしたままにすることに
+なるかもしれません。
+
+=item * 
+
+=begin original
+
+Don't think that you can get the address of a Perl variable
+when it is stored as an integer or double number! C<pack('P', $x)> will
+force the variable's internal representation to string, just as if you
+had written something like C<$x .= ''>.
+
+=end original
+
+整数や倍精度実数として保管されている Perl 変数のアドレスを取れるとは
+考えないでください!
+C<pack('P', $x)> は、ちょうど C<$x .= ''> のようなものを書いたのと同様に、
+変数の内部表現を文字列に強制します。
+
+=back
+
+=begin original
+
+It's safe, however, to P- or p-pack a string literal, because Perl simply
+allocates an anonymous variable.
+
+=end original
+
+しかし、文字列リテラルを P または p で pack することは安全です;
+なぜなら Perl は単に無名変数を割り当てるからです。
+
+=head1 Pack Recipes
+
+(pack レシピ)
+
+=begin original
+
+Here are a collection of (possibly) useful canned recipes for C<pack>
+and C<unpack>:
+
+=end original
+
+以下に C<pack> と C<unpack> に関する、(多分)役に立つレシピをまとめます:
+
+    # Convert IP address for socket functions
+    pack( "C4", split /\./, "123.4.5.6" ); 
+
+    # Count the bits in a chunk of memory (e.g. a select vector)
+    unpack( '%32b*', $mask );
+
+    # Determine the endianness of your system
+    $is_little_endian = unpack( 'c', pack( 's', 1 ) );
+    $is_big_endian = unpack( 'xc', pack( 's', 1 ) );
+
+    # Determine the number of bits in a native integer
+    $bits = unpack( '%32I!', ~0 );
+
+    # Prepare argument for the nanosleep system call
+    my $timespec = pack( 'L!L!', $secs, $nanosecs );
+
+=begin original
+
+For a simple memory dump we unpack some bytes into just as 
+many pairs of hex digits, and use C<map> to handle the traditional
+spacing - 16 bytes to a line:
+
+=end original
+
+単純なメモリダンプのために、バイト列を 16 進数の組に unpack し、
+C<map> を使って伝統的な表現 - 1 行に 16 バイト - に加工します:
+
+    my $i;
+    print map( ++$i % 16 ? "$_ " : "$_\n",
+               unpack( 'H2' x length( $mem ), $mem ) ),
+          length( $mem ) % 16 ? "\n" : '';
+
+=head1 Funnies Section
+
+(ネタ部門)
+
+    # Pulling digits out of nowhere...
+    print unpack( 'C', pack( 'x' ) ),
+          unpack( '%B*', pack( 'A' ) ),
+          unpack( 'H', pack( 'A' ) ),
+          unpack( 'A', unpack( 'C', pack( 'A' ) ) ), "\n";
+
+    # One for the road ;-)
+    my $advice = pack( 'all u can in a van' );
+
+=head1 Authors
+
+(著者)
+
+Simon Cozens and Wolfgang Laun.
+
+=begin meta
+
+Translate: SHIRAKATA Kentaro <argrath@ub32.org> (5.8.8-)
+Status: completed
+
+=end meta
+

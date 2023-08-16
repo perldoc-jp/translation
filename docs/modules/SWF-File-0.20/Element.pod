@@ -1,0 +1,1254 @@
+
+=encoding euc-jp
+
+
+=head1 NAME
+
+SWF::Element - SWFタグや要素のクラス群
+
+=head1 SYNOPSIS
+
+  use SWF::Element;
+  use SWF::BinStream;
+
+  $swf_stream=SWF::BinStream::Write;
+  ....
+  $rect=SWF::Element::RECT->new;
+  $rect->configure(Xmin=>0, Ymin=>0, Xmax=>100, Ymax=>100);
+  $rect->pack($swf_stream);
+  ....
+
+=head1 DESCRIPTION
+
+I<SWF::Element> モジュールはSWFのタグやその他の要素の作成、設定、コピー、
+ビットストリングのパッキング、アンパッキングを扱います。
+
+=head2 SWF::Element::*
+
+I<SWF::Element> クラスは、たとえばタグやRECT, SHAPEなどといったSWFの各要素のベースクラスです。
+各 SWF::Element オブジェクトは一つ以上のフィールドを持ちます。
+
+=head3 METHODS
+
+=over 4
+
+=item $element=SWF::Element::* ->new([name=>value, ...]);
+
+新しい要素を作成します。configureメソッドと同様の引数リストで初期化できます。
+
+=item $element->clone;
+
+要素をコピーします。
+
+=item $element->configure( [name[=>value, ...]] );
+
+フィールドの内容の設定、取得をします。
+引数なしで呼ぶと、全フィールドの名前と値をハッシュとして返します。
+フィールド名を指定して呼ぶと、そのフィールドの値を返します。
+フィールド名と値（オブジェクト、もしくは配列のリファレンス）のペア（複数可）を指定して呼ぶと、
+各フィールドをセットし、要素自身を返します。
+値が配列のリファレンスであれば、そのフィールドの要素を再帰的に設定していきます。
+
+=item $element->defined;
+
+要素が定義済み(defined)かどうかを調べます。
+要素内の全フィールドが未定義(not defined)であれば、要素自身も未定義と扱います。
+
+=item $element->dumper([\&outputsub, $indent]);
+
+要素を、perlスクリプトとして文字列化します。
+出力用のコールバックサブルーチンとして、スクリプト文字列とインデント幅を引数に取る&outputsub
+を指定することができます。指定がなければ、現在セレクトされているファイルハンドルに出力します。
+
+=item $element->pack($stream);
+
+要素を、SWFフォーマットに従ってI<SWF::BinStream::Write>オブジェクトのI<$stream>に書き込みます。
+
+=item $element->unpack($stream);
+
+要素を、SWFフォーマットに従ってI<SWF::BinStream::Read>オブジェクトのI<$stream>から読み込みます。
+
+=item $element->I<FieldName>([configure parameters...]);
+
+要素の各フィールドは、フィールド名でアクセスできます。
+引数なしで呼ぶと、そのフィールドのオブジェクト/値を返します。
+引数付きで呼ぶと、configureメソッドを呼び出してフィールドを設定し、フィールドのオブジェクト/値を返します。
+
+=item $element->I<FlagName>([value]);
+
+一部のフィールドはフラグの集まりになっています。フラグはオブジェクトではなく単なる値で、フラグアクセサでアクセスします。。
+引数なしで呼ぶと、そのフラグの値を返します。
+値を指定して呼ぶと、フラグに値をセットしてからその値を返します。
+
+=back
+
+=head2 SWF::Element::Scalar 派生クラス
+
+I<SWF::Element::Scalar> 派生クラスは、専用のpack/unpackメソッドを持ったスカラー値を保持するクラスです。
+
+  SWF::Element::STRING    - null終端の文字列
+  SWF::Element::PSTRING   - pascalタイプの文字列（長さ+文字列）
+  SWF::Element::ID        - SWFキャラクタ（形やビットマップなど）のID (16bit)
+  SWF::Element::BinData   - バイナリデータ。後述します。
+
+=head3 METHODS
+
+I<SWF::Element::Scalar> は、I<SWF::Element> からフィールド／フラグアクセサを以外のメソッドを継承しています。
+違いを以下に述べます。
+
+=over 4
+
+=item $scalar->configure([value])
+
+引数なしで呼ぶと、保持しているスカラー値を返します。
+値を指定して呼ぶと、その値をセットして、スカラー値を返します。
+
+=item $scalar->value
+
+保持しているスカラー値を返します。
+
+=back
+
+=head2 SWF::Element::BinData
+
+バイナリデータを保持します。
+
+=head3 METHODS
+
+I<SWF::Element::Scalar>派生クラスです。それらと同じメソッドを持っています。
+他のメソッドは以下の通り。
+
+=over 4
+
+=item $bindata->Length
+
+データの長さを返します。
+
+=item $bindata->add( string )
+
+データを追加します。
+
+=item $bindata->substr( offset [, length , [replace]] )
+
+データから一部を抜き出します。標準のsubstr関数と似ています。
+
+=item $bindata->save( file )
+
+データをファイルに保存します。fileにはファイル名かファイルハンドルを指定します。
+
+=item $bindata->load( file )
+
+データをファイルから読み込みます。fileにはファイル名かファイルハンドルを指定します。
+
+=back
+
+=head2 SWF::Element::Array::*
+
+I<SWF::Element::Array> は、SWF要素の配列を表すベースクラスで、配列のリファレンスです。
+
+=head3 METHODS
+
+I<SWF::Element::Array> は、フィールド／フラグアクセサを除くすべてのメソッドを I<SWF::Element> 
+から継承します。違いを以下に示します。
+
+=over 4
+
+=item $array->configure( list... )
+
+配列にlistを追加します。listの各要素は、$arrayが保持できる適切な要素オブジェクトか、
+要素オブジェクトのフィールドと値のペアを羅列した配列のリファレンスでなければいけません。
+
+=item $array->new_element
+
+$arrayが保持できる新しい要素を返します。
+新要素は$arrayに自動的には追加されません。新要素を設定後、'push @$array, $new' などとして
+追加する必要があります。
+
+=back
+
+=head2 SUBCLASSES
+
+以下に,SWF要素の全サブクラスを列挙します。名前の'SWF::Element::'は省略します
+（つまり、たとえば'RECT'は実際には'SWF::Element::RECT'）。
+'$'は単純なスカラを示します。
+各要素の詳しい情報については、'Macromedia Flash (SWF) File Format Specifications'を参照してください。
+http://www.macromedia.com/software/flash/open/licensing/fileformat/ からダウンロードできます。
+
+=head3 基本データ型
+
+=over 4
+
+=item RGB / RGBA
+
+色。RGBAはアルファチャンネルを保持。
+
+  field    class
+  Red      $
+  Green    $
+  Blue     $
+  Alpha    $  - RGBAのみ
+
+=item RECT
+
+矩形領域。
+
+  field    class
+  Xmin     $
+  Ymin     $
+  Xmax     $
+  Ymax     $
+
+=item MATRIX
+
+拡大縮小回転・平行移動用行列。
+
+ field        class
+ ScaleX       $
+ ScaleY       $
+ RotateSkew0  $
+ RotateSkew1  $
+ TranslateX   $
+ TranslateY   $
+
+これは３つのメソッドを持ちます。
+
+=over 4
+
+=item $matrix->scale([xscale, [yscale]]);
+
+X軸とY軸のそれぞれについて、拡大縮小します。
+yscaleを省略すると、等比で拡大縮小します。
+
+=item $matrix->moveto(x,y);
+
+(I<x>, I<y>)へ平行移動します。
+
+=item $matrix->rotate(degree);
+
+I<degree> 度回転します。
+
+=back
+
+=item CXFORM / CXFORMWITHALPHA
+
+色変換値。
+
+ field          class
+ RedMultTerm    $
+ GreenMultTerm  $
+ BlueMultTerm   $
+ AlphaMultTerm  $  - CXFORMWITHALPHAのみ.
+ RedAddTerm     $
+ GreenAddTerm   $
+ BlueAddTerm    $
+ AlphaAddTerm   $  - CXFORMWITHALPHAのみ.
+
+=back
+
+=head3 SWF タグ
+
+=over 4
+
+=item Tag
+
+全SWFタグのベースクラス。
+SWFストリームからunpackされると、適切なタグに再ブレスされます。
+
+=over 4
+
+=item $tag->tag_number
+
+タグのIDを返します。
+
+=item $tag->tag_name
+
+タグの名前を返します。
+
+=back
+
+=item Tag::Unknown
+
+SWF::Element中に定義されていないタグ。
+
+ field  class
+ Tag    $
+ Data   BinData
+
+=back
+
+=head4 表示
+
+=over 4
+
+=item Tag::PlaceObject
+
+オブジェクトを配置します。
+
+ field           class
+ CharacterID     ID
+ Depth           $
+ Matrix          MATRIX
+ ColorTransform  CXFORM
+
+=item Tag::PlaceObject2
+
+オブジェクトを配置します。
+
+ field           class
+ Flags           $
+   PlaceFlagMove (Flags)
+ Depth           $
+ CharacterID     ID
+ Matrix          MATRIX
+ ColorTramsform  CXFORMWITHALPHA
+ Ratio           $
+ Name            STRING
+ ClipDepth       $
+ ClipActions     Array::CLIPACTIONRECORDARRAY
+
+=item Array::CLIPACTIONRECORDARRAY
+
+CLIPACTIONRECORDの配列。
+
+=item CLIPACTIONRECORD
+
+クリップイベントで起動されるクリップアクション。
+
+ field                     class
+ EventFlags6               $            - SWF 6 以上のみ
+   ClipEventKeyPress       (EventFlags6)
+   ClipEventDragOut        (EventFlags6)
+ EventFlags                $
+   ClipEventDragOver       (EventFlags)
+   ClipEventRollOut        (EventFlags)
+   ClipEventRollOver       (EventFlags)
+   ClipEventReleaseOutside (EventFlags)
+   ClipEventRelease        (EventFlags)
+   ClipEventPress          (EventFlags)
+   ClipEventInitialize     (EventFlags)
+   ClipEventData           (EventFlags)
+   ClipEventKeyUp          (EventFlags)
+   ClipEventKeyDown        (EventFlags)
+   ClipEventMouseUp        (EventFlags)
+   ClipEventMouseDown      (EventFlags)
+   ClipEventMouseMove      (EventFlags)
+   ClipEventUnload         (EventFlags)
+   ClipEventEnterFrame     (EventFlags)
+   ClipEventLoad           (EventFlags)
+ KeyCode                   $
+ Actions                   Array::ACTIONRECORDARRAY
+
+=item Tag::RemoveObject / Tag::RemoveObject2
+
+オブジェクトを除去。
+
+ field        class
+ CharacterID  ID    - RemoveObjectのみ
+ Depth        $
+
+=item Tag::ShowFrame
+
+現在のフレームを表示。
+
+=back
+
+=head4 制御
+
+=over 4
+
+=item Tag::SetBackgroundColor
+
+背景色を設定。
+
+ field            class
+ BackgroundColor  RGB
+
+=item Tag::FrameLabel
+
+フレームラベルを設定。
+
+ field          class
+ Name           STRING
+ NameAnchorFlag $
+
+=item Tag::Protect
+
+SWFファイルを、オーサリングツールから読めないよう保護します。
+
+ field     class
+ Reserved  $         いつも0(?)
+ Password  STRING
+
+=item Tag::End
+
+SWFファイルの終端。
+
+=item Tag::ExportAssets
+
+SWFキャラクタを他のSWFで使えるようexportします。
+
+ field   class
+ Assets  Array::ASSETARRAY
+
+=item Tag::ImportAssets
+
+他のSWFからキャラクタをimportします。
+
+ field   class
+ URL     STRING
+ Assets  Array::ASSETARRAY
+
+=item Array::ASSETARRAY
+
+ASSETの配列
+
+=item ASSET
+
+export/importするキャラクタのIDと名前のペア。
+
+ field   class
+ ID      ID
+ Name    STRING
+
+=item Tag::EnableDebugger / 2
+
+デバッガを有効にします。EnableDebuggerはSWF5用、EnableDebugger2はSWF6用。
+
+ field     class
+ Reserved  $        いつも0 (?)
+ Password  STRING
+
+=back
+
+=head4 アクション
+
+=over 4
+
+=item Tag::DoAction
+
+フレームアクションをセットします。
+
+ field    class
+ Actions  Array::ACTIONRECORDARRAY
+
+=item Tag::DoInitAction
+
+スプライト初期化用にアクションを実行します。
+
+ field    class
+ SpriteID ID
+ Actions  Array::ACTIONRECORDARRAY
+
+=item Array::ACTIONRECORDARRAY
+
+ACTIONRECORDの配列。
+
+=item ACTIONRECORD
+
+アクションタグのベースクラス。
+また、引数なしのアクションはすべてこのクラスに属します。
+
+ field  class
+ Tag    ACTIONTagNumber
+
+他に、疑似フィールドとしてLocalLabelを持ちます。
+ActionIf, ActionJump, ActionWaitForFrame/2 の飛び先やDefineFunction
+のコードサイズとして使うラベルを
+指定します。ラベルは、数字から始まらず、'#'を含まない文字列です。
+
+=item ACTIONTagNumber
+
+アクションタグ番号、あるいは名前。
+
+=item ACTIONRECORD::ActionUnknown
+
+SWF::Element中に定義されていないアクションタグ。
+
+ field  class
+ Tag    ACTIONTagNumber
+ Data   BinData
+
+=item ACTIONRECORD::ActionGotoFrame
+
+指定されたフレームへ飛ぶ。
+
+ field  class
+ Tag    ACTIONTagNumber
+ Frame  $
+
+=item ACTIONRECORD::ActionGetURL
+
+指定したURLに飛ぶ。
+
+ field         class
+ Tag           ACTIONTagNumber
+ UrlString     STRING
+ TargetString  STRING
+
+=item ACTIONRECORD::ActionWaitForFrame
+
+指定したフレームが来るまでアクションをスキップ
+
+ field      class
+ Tag        ACTIONTagNumber
+ Frame      $
+ SkipCount  $[label]
+
+I<unpack>メソッドは、I<SkipCount>の飛び先を計算してそこにLocalLabelを挿入し、
+I<SkipCount>値を'ラベル#元の値' ('A#45'のような）にセットします。
+I<pack>するときには'#'以降は無視されます。
+
+=item ACTIONRECORD::ActionSetTarget
+
+アクションのターゲットを指定。
+
+ field       class
+ Tag         ACTIONTagNumber
+ TargetName  STRING
+
+=item ACTIONRECORD::ActionGotoLabel
+
+指定したラベルのフレームへ飛ぶ。
+
+ field  class
+ Tag    ACTIONTagNumber
+ Label  STRING
+
+=item ACTIONRECORD::ActionWaitForFrame2
+
+スタックで指定したフレームが来るまでアクションをスキップ。
+
+ field      class
+ Tag        ACTIONTagNumber
+ SkipCount  $
+
+WaitForFrameの項のlabelに関する注意書きも参照のこと。
+
+=item ACTIONRECORD::ActionPush
+
+データをスタックにプッシュ。
+
+ field     class
+ Tag       ACTIONTagNumber
+ DataList  Array::ACTIONDATAARRAY
+
+=item Array::ACTIONDATAARRAY
+
+ACTIONDATAの配列。
+
+=item ACTIONDATA
+
+アクションスクリプト用のデータのベースクラス。
+configureすると適切なサブクラスに再ブレスされます。
+
+=over 4
+
+=item $actiondata->configure([type => data])
+
+指定した型のデータをセットします。
+型は、String, Property (FLASH 4 のみ), Register, Boolean, Double, Integer, Lookup。
+
+=back
+
+=item ACTIONRECORD::ActionJump / ActionIf
+
+アクションスクリプトを分岐（常に分岐／スタックトップが真の時分岐）
+
+ field        class
+ BranchOffset $[label]
+
+I<unpack>メソッドは、I<BranchOffset>の飛び先を計算してそこにLocalLabelを挿入し、
+I<BranchOffset>値を'ラベル#元の値' ('A#45'のような）にセットします。
+I<pack>するときには'#'以降は無視されます。
+
+=item ACTIONRECORD::ActionGetURL2
+
+スタックで指定したURLに飛ぶ。
+
+ field   class
+ Tag     ACTIONTagNumber
+ Method  $
+
+=item ACTIONRECORD::ActionGotoFrame2
+
+スタックで指定されたフレームへ飛ぶ。
+
+ field    class
+ Tag      ACTIONTagNumber
+ PlayFlag $
+
+=item ACTIONRECORD::ActionConstantPool
+
+インデックスで参照可能なワードを定義。
+
+ field         class
+ Tag           ActionTagNumber
+ ConstantPool  Array::STRINGARRAY
+
+=item Array::STRINGARRAY
+
+STRINGの配列。
+
+=item ACTIONRECORD::ActionDefineFunction
+
+関数を定義。
+
+ field         class
+ Tag           ActionTagNumber
+ FunctionName  STRING
+ Params        Array::STRINGARRAY
+ CodeSize      $[label]
+
+CodeSizeにlabelを指定することができます。関数定義が終わった次の
+アクションを指すようにします。
+
+=item ACTIONRECORD::ActionStoreRegister
+
+スタックトップをレジスタに代入。
+
+ field     class
+ Tag       ActionTagNumber
+ Register  $
+
+=item ACTIONRECORD::ActionWith
+
+I<WithBlock>内に記述されたスクリプトについて、スタックトップにおかれた
+オブジェクトを参照する。
+
+ field      class
+ WithBlock  Array::ACTIONBLOCK
+
+=item Array::ACTIONBLOCK
+
+ACTIONRECORDの配列。
+
+=back
+
+=head4 図形
+
+=over 4
+
+=item Array::FILLSTYLEARRAY1 / 2 / 3
+
+フィルスタイルの配列。
+FILLSTYLEARRAY1と2はFILLSTYLE1を、FILLSTYLEARRAY3はFILLSTYLE3を保持。
+
+=item FILLSTYLE1 / 3
+
+図形のフィルスタイル。
+FILLSTYLE3はアルファチャンネルを保持。
+
+ field           class
+ FillStyleType   $
+ Color           RGB / RGBA
+ GradientMatrix  MATRIX
+ Gradient        Array::GRADIENT1 / 3
+ BitmapID        ID
+ BitmapMatrix    MATRIX
+
+=item Array::LINESTYLEARRAY1 / 2 / 3
+
+ラインスタイルの配列。
+LINESTYLEARRAY1と2はLINESTYLE1を、LINESTYLEARRAY3はLINESTYLE3を保持。
+
+=item LINESTYLE1 / 3
+
+図形のラインスタイル。
+LINESTYLE3はアルファチャンネルを保持。
+
+ field  class
+ Width  $
+ Color  RGB / RGBA
+
+=item SHAPE
+
+スタイルなしの図形。DefineFont/2, DefineMorphShape用。
+
+ field         class
+ ShapeRecords  Array::SHAPERECARRAY1
+
+=item SHAPEWITHSTYLE1 / 2 / 3
+
+スタイルありの図形。
+SHAPEWITHSTYLE3はアルファチャンネルを保持。
+
+ field         class
+ FillStyles    Array::FILLSTYLEARRAY1 / 2 / 3
+ LineStyles    Array::LINESTYLEARRAY1 / 2 / 3
+ ShapeRecords  Array::SHAPERECARRAY1 / 2 / 3 
+
+=item Array::SHAPERECORDARRAY1 / 2 / 3
+
+SHAPERECORD1 / 2 / 3の配列。
+
+=item SHAPERECORD1 / 2 / 3
+
+図形の辺やスタイルを表すベースクラス。
+configureすると適切なサブクラスに再ブレスされます。
+
+=item SHAPERECORD1/2/3::STYLECHANGERECORD
+
+図形の開始点とスタイルを表す。
+
+ field       class
+ MoveDeltaX  $
+ MoveDeltaY  $
+ FillStyle0  $
+ FillStyle1  $
+ LineStyle   $
+ FillStyles  Array::FILLSTYLEARRAY2 / 3  - SHAPERECORD2/3のみ
+ LineStyles  Array::LINESTYLEARRAY2 / 3  - SHAPERECORD2/3のみ
+
+=item SHAPERECORDn::STRAIGHTEDGERECORD
+
+図形の直線のエッジを表す、SHAPERECORD1/2/3共通のサブクラス。
+
+ field   class
+ DeltaX  $
+ DeltaY  $
+
+=item SHAPERECORDn::CURVEDEDGERECORD
+
+図形の曲線のエッジを表す、SHAPERECORD1/2/3共通のサブクラス。
+
+ field          class
+ ControlDeltaX  $
+ ControlDeltaY  $
+ AnchorDeltaX   $
+ AnchorDeltaY   $
+
+=item Tag::DefineShape / Tag::DefineShape2 / Tag::DefineShape3
+
+図形定義タグ。
+DefineShape2/3は255以上のスタイル数を保持できる。。
+DefineShape3はアルファチャンネルを含む。
+
+ field        class
+ ShapeID      ID
+ ShapeBounds  RECT
+ Shapes       SHAPEWITHSTYLE1 / 2 / 3
+
+=back
+
+=head4 グラデーション
+
+=over 4
+
+=item Array::GRADIENT1 / 3
+
+グラデーション情報の配列。
+それぞれGRADRECORD1 / 3を保持。
+
+=item GRADRECORD1 / 3
+
+グラデーションを作る色。
+GRADRECORD3はアルファチャンネルを保持。
+
+ field  class
+ Ratio  $
+ Color  RGB / RGBA
+
+=back
+
+=head4 ビットマップ
+
+=over 4
+
+=item Tag::DefineBits
+
+JPEGイメージを定義。
+
+ field        class
+ CharacterID  ID
+ JPEGImage    BinData
+
+=item Tag::JPEGTable
+
+JPEGエンコーディングテーブルを定義。
+
+ field     class
+ JPEGData  BinData
+
+=item Tag::DefineBitsJPEG2 / 3
+
+JPEGデータを定義。イメージとエンコーディングテーブルを含む。
+DefineBitsJPEG3はアルファチャンネルのデータも保持。
+
+ field            class
+ CharacterID      ID
+ JPEGData         BinData
+ BitmapAlphaData  BinData - JPEG3のみ
+
+=item Tag::DefineBitsLossless / Tag::DefineBitsLossless2
+
+可逆圧縮のビットマップを定義。
+DefineBitsLossless2はアルファチャンネルを保持。
+
+ field                 class
+ CharacterID           ID
+ BitmapFormat          $
+ BitmapWidth           $
+ BitmapHeight          $
+ BitmapColorTableSize  $
+ ZlibBitmapData        BinData
+
+=back
+
+=head4 モーフィング
+
+=over 4
+
+=item Tag::DefineMorphShape
+
+モーフィングの開始図形と終了図形を定義。
+
+ field            class
+ CharacterID      ID
+ StartBounds      RECT
+ EndBounds        RECT
+ MorphFillStyles  Array::MORPHFILLSTYLEARRAY
+ MorphLineStyles  Array::MORPHLINESTYLEARRAY
+ StartEdges       SHAPE
+ EndEdges         SHAPE
+
+=item Array::MORPHFILLSTYLEARRAY
+
+MORPHFILLSTYLEの配列。
+
+=item MORPHFILLSTYLE
+
+開始時と終了時のフィルスタイル。
+
+ field                class
+ FillStyleType        $
+ StartColor           RGBA     (FillStyleType == 0x00)
+ EndColor             RGBA     (FillStyleType == 0x00)
+ StartGradientMatrix  MATRIX   (FillStyleType == 0x10[線型] or 0x12[放射状])
+ EndGradientMatrix    MATRIX   (FillStyleType == 0x10[線型] or 0x12[放射状])
+ Gradient             Array::MORPHGRADIENT
+                               (FillStyleType == 0x10[線型] or 0x12放射状])
+ BitmapID             ID       (FillStyleType == 0x40[タイル] or 0x41[クリップ])
+ StartBitmapMatrix    MATRIX   (FillStyleType == 0x40[タイル] or 0x41[クリップ])
+ EndBitmapMatrix      MATRIX   (FillStyleType == 0x40[タイル] or 0x41[クリップ])
+
+=item Array::MORPHGRADIENT
+
+MORPHGRADRECORDの配列
+
+=item MORPHGRADRECORD
+
+開始時と終了時のグラデーションを作る色。
+
+ field      class
+ StartRatio $
+ StartColor RGBA
+ EndRatio   $
+ EndColor   RGBA
+
+=item Array::MORPHLINESTYLEARRAY
+
+MORPHLINESTYLEの配列
+
+=item MORPHLINESTYLE
+
+開始時と終了時のラインスタイル。
+
+ field      class
+ StartWidth $
+ StartColor RGBA
+ EndWidth   $
+ EndColor   RGBA
+
+=back
+
+=head4 フォントとテキスト
+
+=over 4
+
+=item Tag::DefineFont
+
+フォントグリフを定義。
+
+ field            class
+ FontID           ID
+ GlyphShapeTable  GLYPHSHAPEARRAY1
+
+=item Array::GLYPHSHAPEARRAY1 / 2
+
+SHAPEの配列。
+
+=item Tag::DefineFontInfo / Tag::DefineFontInfo2
+
+フォント情報を定義。
+
+ field                class
+ FontID               ID
+ FontName             PSTRING
+ FontFlags            $
+   FontFlagsShiftJIS  (FontFlags)
+   FontFlagsANSI      (FontFlags)
+   FontFlagsItalic    (FontFlags)
+   FontFlagsBold      (FontFlags)
+ LanguageCode         $            - DefineFontInfo2 のみ
+ CodeTable            Array::FONTCODETABLE
+
+=item Tag::DefineFont2
+
+フォントグリフや他の情報を定義。
+
+ field                class
+ FontID               ID
+ FontFlags            $
+   FontFlagsShiftJIS  (FontFlags)
+   FontFlagsANSI      (FontFlags)
+   FontFlagsItalic    (FontFlags)
+   FontFlagsBold      (FontFlags)
+ LanguageCode         $
+ FontName             PSTRING
+ GlyphShapeTable      Array::GLYPHSHAPEARRAY2
+ CodeTable            Array::FONTCODETABLE
+ FontAscent           $
+ FontDescent          $
+ FontLeading          $
+ FontAdvanceTable     Array::FONTADVANCETABLE
+ FontBoundsTable      Array::FONTBOUNDSTABLE
+ FontKerningTable     FONTKERNINGTABLE
+
+=item Array::FONTCODETABLE / FONTADVANCETABLE / FONTBOUNDSTABLE
+
+それぞれ、グリフの図形テーブルに対応して文字コード、文字送り幅、バウンディングボックスを定義します。
+コードと送り幅はスカラーの配列、バウンディングボックスはRECTの配列です。
+
+=item FONTKERNINGTABLE
+
+カーニングテーブルをハッシュで定義します。
+それぞれのカーニングのペアを'code1-code2'と表します。
+たとえば'T'(文字コードは84)と'o'(111)のペアは'84-111'。
+
+=over 4
+
+=item $kern->configure([ pair [=> adjustment, ...]])
+
+引数なしで呼ぶと、すべてのカーニングのペアと調整値を返します。
+カーニングペアを指定して呼ぶと、その調整値を返します。
+カーニングペアと調整値の組（複数可）を指定して呼ぶと、カーニングテーブルにそれらを追加します。
+
+=back
+
+=item Tag::DefineText / Tag::DefineText2
+
+テキストを定義。
+
+ field         class
+ CharacterID   ID
+ TextBounds    RECT
+ TextMatrix    MATRIX
+ TextRecords   Array::TEXTRECORDARRAY1 / 2
+
+=item Array::TEXTRECORDARRAY1 / 2
+
+TEXTRECORD1 / 2の配列。
+
+=item TEXTRECORD1 / 2
+
+テキストレコードのベースクラス。
+configureすると適切なサブクラスに再ブレスされます。
+
+=item TEXTRECORD1/2::TYPE1
+
+テキストのフォント、色、位置、一行の高さ。
+
+ field       class
+ FontID      ID
+ TextColor   RGB / RGBA
+ XOffset     $
+ YOffset     $
+ TextHeight  $
+
+=item TEXTRECORD::TYPE0
+
+テキスト文字列。
+
+ field         class
+ GlyphEntries  Array:GLYPHENTRYARRAY
+
+=item Array::GLYPHENTRYARRAY
+
+GLYPHENTRYの配列。
+
+=item GLYPHENTRY
+
+テキスト文字列の文字グリフと送り幅。
+
+ field         class
+ GlyphIndex    $
+ GlyphAdvance  $ 
+
+=item Tag::DefineEditText
+
+編集可能なテキストボックスを定義。
+
+ field         class
+ CharacterID   ID
+ Bounds        RECT
+ Flags         $
+   WordWrap    (Flags)
+   Multiline   (Flags)
+   Password    (Flags)
+   ReadOnly    (Flags)
+   AutoSize    (Flags)
+   NoSelect    (Flags)
+   Border      (Flags)
+   HTML        (Flags)
+   UseOutlines (Flags)
+ FontID        ID
+ FontHeight    $
+ TextColor     RGBA
+ MaxLength     $
+ Align         $
+ LeftMargin    $
+ RightMargin   $
+ Indent        $
+ Leading       $
+ VariableName  STRING
+ InitialText   STRING
+
+=back
+
+=head4 サウンド
+
+=over 4
+
+=item Tag::DefineSound
+
+サウンドを定義。
+
+ field             class
+ SoundID           ID
+ Flags             $
+   SoundFormat     (Flags)
+   SoundRate       (Flags)
+   SoundSize       (Flags)
+   SoundType       (Flags)
+ SoundSampleCount  $
+ SoundData         BinData
+
+=item Tag::StartSound
+
+サウンドを再生。
+
+ field      class
+ SoundID    ID
+ SoundInfo  SOUNDINFO
+
+=item SOUNDINFO
+
+サウンド情報を定義。
+
+ field            class
+ SyncFlags        $
+   SyncNoMultiple (SyncFlags)
+   SyncStop       (SyncFlags)
+ InPoint          $
+ OutPoint         $
+ LoopCount        $
+ EnvelopeRecords  Array::SOUNDENVELOPEARRAY
+
+=item Array::SOUNDENVELOPEARRAY
+
+SOUNDENVELOPEの配列。
+
+=item SOUNDENVELOPE
+
+サウンドエンベロープ情報。
+
+ field       class
+ Pos44       $
+ LeftLevel   $
+ RightLevel  $
+
+=item Tag::SoundStreamHead / Tag::SoundStreamHead2
+
+ストリーミングサウンドのフォーマットを定義。
+
+ field                    class
+ Flags                    $
+   PlaybackSoundRate      (Flags)
+   PlaybackSoundSize      (Flags)
+   PlaybackSoundType      (Flags)
+   StreamSoundCompression (Flags)
+   StreamSoundRate        (Flags)
+   StreamSoundSize        (Flags)
+   StreamSoundType        (Flags)
+ StreamSoundSampleCount   $
+ LatencySeek              $        - SoundStreamHead2 のみ
+
+=item Tag::SoundStreamBlock
+
+フレームごとにインタリーブされたストリーミング用サウンドを定義。
+
+ field            class
+ StreamSoundData  BinData
+
+=back
+
+=head4 ボタン
+
+=over 4
+
+=item Array::BUTTONRECORDARRAY1 / 2
+
+BUTTONRECORD1 / 2の配列。
+
+=item BUTTONRECORD1 / 2
+
+ボタンのキャラクタと、それに関連づけるアクションを定義。
+
+ field                 class
+ ButtonStates          $
+   ButtonStateHitTest  (ButtonStates)
+   ButtonStateDown     (ButtonStates)
+   ButtonStateOver     (ButtonStates)
+   ButtonStateUp       (ButtonStates)
+ CharacterID           ID
+ PlaceDepth            $
+ PlaceMatrix           MATRIX
+ ColorTransform        CXFORMWITHALPHA - BUTTONRECORD2のみ
+
+=item Tag::Definebutton
+
+シンプルなボタンを定義。
+
+ field       class
+ ButtonID    ID
+ Characters  Array::BUTTONRECORDARRAY1
+ Actions     Array::ACTIONRECORDARRAY
+
+=item Tag::DefineButton2
+
+全ての状態に反応できるボタンを定義。
+
+ field       class
+ ButtonID    ID
+ Flags       $
+ Characters  Array::BUTTONRECORDARRAY2
+ Actions     Array::BUTTONCONDACTIONARRAY
+
+=item Array::BUTTONCONDACTIONARRAY
+
+BUTTONCONDACTIONの配列。
+
+=item BUTTONCONDACTION
+
+ボタンのアクションと、トリガとなるボタンの状態。
+
+ field                    class
+ Condition                $
+   CondKeyPress           (Condition)
+   CondOverDownToIdle     (Condition)
+   CondIdleToOverDown     (Condition)
+   CondOutDownToIdle      (Condition)
+   CondOutDownToOverDown  (Condition)
+   CondOverDownToOutDown  (Condition)
+   CondOverDownToOverUp   (Condition)
+   CondOverUpToOverDown   (Condition)
+   CondOverUpToIdle       (Condition)
+   CondIdleToOverUp       (Condition)
+ Actions                  Array::ACTIONRECORDARRAY
+
+=item Tag::DefineButtonCxform
+
+ボタンキャラクタの色変換を定義。
+
+ field                 class
+ ButtonID              ID
+ ButtonColorTransform  CXFORM
+
+=item Tag::DefineButtonSound
+
+ボタンのサウンドを定義。
+
+ field             class
+ ButtonID          ID
+ ButtonSoundChar0  ID
+ ButtonSoundInfo0  SOUNDINFO
+ ButtonSoundChar1  ID
+ ButtonSoundInfo1  SOUNDINFO
+ ButtonSoundChar2  ID
+ ButtonSoundInfo2  SOUNDINFO
+ ButtonSoundChar3  ID
+ ButtonSoundInfo3  SOUNDINFO
+
+=back
+
+=head4 スプライト
+
+=over 4
+
+=item Tag::DefineSprite
+
+スプライトを定義。
+
+ field              class
+ SpriteID           ID
+ FrameCount         $
+ ControlTags        Array::TAGARRAY
+
+=item Array::TAGARRAY
+
+SWFタグの配列
+
+=back
+
+=head4 ビデオ
+
+=over 4
+
+=item Tag::DefineVideoStream
+
+ビデオを定義。
+
+  field        class
+  CharacterID  ID
+  NumFrames    $
+  Width        $
+  Height       $
+  VideoFlags   $
+  CodecID      $
+
+=item Tag::VideoFrame
+
+ビデオの1フレームデータを定義。
+
+  field      class
+  StreamID   ID
+  FrameNum   $
+  VideoData  BinData
+
+=back
+
+=head1 LIMITATIONS
+
+全てのタグをテストできたわけではない。
+
+ビットマップやサウンド、ビデオデータといったバイナリデータはデコードもエンコードもしない。
+
+=head1 COPYRIGHT
+
+Copyright 2000 Yasuhiro Sasama (ySas), <ysas@nmt.ne.jp>
+
+This library is free software; you can redistribute it
+and/or modify it under the same terms as Perl itself.
+
+=head1 SEE ALSO
+
+L<SWF::BinStream>, L<SWF::Parser>
+
+SWF file format specification from Macromedia.
+
+=head1 翻訳者
+
+笹間康弘 (ysas@nmt.ne.jp)
+
+=cut
+

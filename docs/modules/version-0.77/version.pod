@@ -1,0 +1,786 @@
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+version - Perl extension for Version Objects
+
+=end original
+
+version - バージョンオブジェクトのための Perl エクステンション
+
+=head1 SYNOPSIS
+
+  # Parsing version strings (decimal or dotted-decimal)
+
+  use version 0.77; # get latest bug-fixes and API
+  $ver = version->parse($string)
+
+  # Declaring a dotted-decimal $VERSION (keep on one line!)
+
+  use version 0.77; our $VERSION = version->declare("v1.2.3"); # formal
+  use version 0.77; our $VERSION = qv("v1.2.3");               # shorthand
+  use version 0.77; our $VERSION = qv("v1.2_3");               # alpha
+
+  # Declaring an old-style decimal $VERSION (use quotes!)
+
+  use version 0.77; our $VERSION = version->parse("1.0203");   # formal
+  use version 0.77; our $VERSION = version->parse("1.02_03");  # alpha
+
+  # Comparing mixed version styles (decimals, dotted-decimals, objects)
+
+  if ( version->parse($v1) == version->parse($v2) ) {
+    # do stuff
+  }
+
+  # Sorting mixed version styles
+
+  @ordered = sort { version->parse($a) <=> version->parse($b) } @list;
+
+=head1 DESCRIPTION
+
+=begin original
+
+Version objects were added to Perl in 5.10.  This module implements version
+objects for older version of Perl and provides the version object API for all
+versions of Perl.  All previous releases before 0.74 are deprecated and should
+not be used due to incompatible API changes.  Version 0.77 introduces the new
+'parse' and 'declare' methods to standardize usage.  You are strongly urged to
+set 0.77 as a minimum in your code, e.g. 
+
+=end original
+
+バージョンオブジェクトは 5.10 で Perl に追加されました。
+このモジュールは古いバージョンの Perl のためのバージョンオブジェクトを
+実装し、全てのバージョンの Perl のためのバージョンオブジェクト API を
+提供します。
+0.74 以前の全てのリリースは廃止予定で、互換性のない API の変更のため
+使われるべきではありません。
+バージョン 0.77 から使用法を標準化するために 'parse' と 'declare' が
+導入されました。
+コードに最低バージョンとして 0.77 を設定することを強く主張します; 例えば
+
+  use version 0.77; # even for Perl v.5.10.0
+
+=head1 TYPES OF VERSION OBJECTS
+
+(バージョンオブジェクトの種類)
+
+=begin original
+
+There are two different types of version objects, corresponding to the two
+different styles of versions in use:
+
+=end original
+
+バージョンの二つの異なった使用形式に対応して、二つの異なった
+バージョンオブジェクトの種類があります。
+
+=over 2
+
+=item Decimal Versions
+
+(10 進数バージョン)
+
+=begin original
+
+The classic floating-point number $VERSION.  The advantage to this style is
+that you don't need to do anything special, just type a number (without
+quotes) into your source file.
+
+=end original
+
+クラシックな浮動小数点数 $VERSION。
+この形式の利点は何も特殊なことをする必要はなく、単にソースファイルに
+番号を(クォートなしで)書くだけです。
+
+=item Dotted Decimal Versions
+
+(ドット付き 10 進数バージョン)
+
+=begin original
+
+The more modern form of version assignment, with 3 (or potentially more)
+integers seperated by decimal points (e.g. v1.2.3).  This is the form that
+Perl itself has used since 5.6.0 was released.  The leading "v" is now 
+strongly recommended for clarity, and will throw a warning in a future
+release if omitted.
+
+=end original
+
+バージョン割り当てのより近代的な形式で、3 (または潜在的にはそれ以上) の
+整数を小数点で区切ったものです (例えば v1.2.3)。
+これは Perl 自身が 5.6.0 がリリースされてから使っている形式です。
+先頭の "v" は現在では明確化のために強く推奨されていて、これがないと
+将来のリリースでは警告を投げます。
+
+=back
+
+=begin original
+
+See L<VERSION OBJECT DETAILS> for further information.
+
+=end original
+
+さらなる情報については L<VERSION OBJECT DETAILS> を参照してください。
+
+=head1 DECLARING VERSIONS
+
+(バージョンの宣言)
+
+=begin original
+
+If you have a module that uses a decimal $VERSION (floating point), and you
+do not intend to ever change that, this module is not for you.  There is
+nothing that version.pm gains you over a simple $VERSION assignment:
+
+=end original
+
+10 進数 $VERSION (浮動小数点数) を使うモジュールがあって、変更するつもりが
+ないなら、このモジュールはあなたのためのものではありません。
+単純な $VERSION 代入に対して version.pm から得られる利点はありません:
+
+  our $VERSION = 1.02;
+
+=begin original
+
+Since Perl v5.10.0 includes the version.pm comparison logic anyways, 
+you don't need to do anything at all.
+
+=end original
+
+Perl v5.10.0 からはどちらにしろ version.pm 比較ロジックを含んでいるので、
+全く何もする必要はありません。
+
+=head2 How to convert a module from decimal to dotted-decimal
+
+(10 進数からドット付き 10 進数へのモジュールの変換方法)
+
+=begin original
+
+If you have used a decimal $VERSION in the past and wish to switch to a
+dotted-decimal $VERSION, then you need to make a one-time conversion to
+the new format. 
+
+=end original
+
+過去に 10 進数 $VERSION を使っていて、ドット付き 10 進数 $VERSION に
+切り替えたいなら、一度だけ新しい形式に変換する必要があります。
+
+=begin original
+
+B<Important Note>: you must ensure that your new $VERSION is numerically
+greater than your current decimal $VERSION; this is not always obvious. First,
+convert your old decimal version (e.g. 1.02) to a normalized dotted-decimal
+form:
+
+=end original
+
+B<重要な注意>: 新しい $VERSION は数値的に現在の 10 進数 $VERSION より
+大きくしなければなりません; これは常に自明というわけではありません。
+最初に、古い 10 進数バージョン (例えば 1.02) をドット付き 10 進数形式に
+変換します:
+
+  $ perl -Mversion -e 'print version->parse("1.02")->normal'
+  v1.20.0
+
+=begin original
+
+Then increment any of the dotted-decimal components (v1.20.1 or v1.21.0).
+
+=end original
+
+それからドット付き 10 進数の要素のどれかをインクリメントします
+(v1.20.1 または v1.21.0)。
+
+=head2 How to C<declare()> a dotted-decimal version
+
+(ドット付き 10 進数バージョンを C<declare()> する方法)
+
+  use version 0.77; our $VERSION = version->declare("v1.2.3");
+
+=begin original
+
+The C<declare()> method always creates dotted-decimal version objects.  When
+used in a module, you B<must> put it on the same line as "use version" to
+ensure that $VERSION is read correctly by PAUSE and installer tools.  You
+should also add 'version' to the 'configure_requires' section of your
+module metadata file.  See instructions in L<ExtUtils::MakeMaker> or
+L<Module::Build> for details.
+
+=end original
+
+C<declare()> メソッドは常にドット付き 10 進数バージョンオブジェクトを
+作成します。
+モジュールで使うときは、PAUSE やインストーラツールによって $VERSION が
+正しく読み込まれるように "use version" と同じ行に
+B<書かなければなりません>。
+また、モジュールメタデータファイルの 'configure_requires' 節に 'version' を
+追加するべきです。
+詳細については L<ExtUtils::MakeMaker> または L<Module::Build> の説明を
+参照してください。
+
+=begin original
+
+B<Important Note>: Even if you pass in what looks like a decimal number
+("1.2"), a dotted-decimal will be created ("v1.200.0"). To avoid confusion
+or unintentional errors on older Perls, follow these guidelines:
+
+=end original
+
+B<重要な注意>: 例え 10 進数のように見えるもの ("1.2") を渡しても、ドット付き
+10 進数 ("v1.200.0") が作成されます。
+古い Perl での混乱や意図しないエラーを防ぐために、以下のガイドラインに
+従ってください:
+
+=over 2
+
+=item *
+
+=begin original
+
+Always use a dotted-decimal with (at least) three components
+
+=end original
+
+常に (少なくとも) 3 要素のあるドット付き 10 進数を使う
+
+=item *
+
+=begin original
+
+Always use a leading-v
+
+=end original
+
+常に先頭の v を使う
+
+=item *
+
+=begin original
+
+Always quote the version
+
+=end original
+
+常にバージョンをクォートする
+
+=back
+
+=begin original
+
+If you really insist on using version.pm with an ordinary decimal version,
+use C<parse()> instead of declare.  See the L<PARSING AND COMPARING VERSIONS>
+for details.
+
+=end original
+
+本当に version.pm を普通の 10 進数バージョンで使うことにこだわるなら、
+declare の代わりに C<parse()> を使ってください。
+詳しくは L<PARSING AND COMPARING VERSIONS> を参照してください。
+
+=begin original
+
+See also L<VERSION OBJECT DETAILS> for more on version number conversion,
+quoting, calculated version numbers and declaring developer or "alpha" version
+numbers.
+
+=end original
+
+バージョン番号変換、クォート、バージョン番号の計算、開発者バージョンや
+「α」バージョン番号の宣言に関してさらなる情報は L<VERSION OBJECT DETAILS> も
+参照してください。
+
+=head1 PARSING AND COMPARING VERSIONS
+
+(バージョンのパースと比較)
+
+=begin original
+
+If you need to compare version numbers, but can't be sure whether they are
+expressed as numbers, strings, v-strings or version objects,  then you can
+use version.pm to parse them all into objects for comparison.
+
+=end original
+
+バージョン番号を比較する必要があるけれども、バージョン番号が数値なのか
+文字列なのかv-文字列なのかバージョンオブジェクトなのか分からない場合、
+これら全てを比較のためにパースするために version.pm を使えます。
+
+=head2 How to C<parse()> a version
+
+(バージョンの C<parse()> の方法)
+
+=begin original
+
+The C<parse()> method takes in anything that might be a version and returns
+a corresponding version object, doing any necessary conversion along the way.
+
+=end original
+
+C<parse()> メソッドはバージョンになりそうなもの何でもを取って、必要な
+変換を行って、対応するバージョンオブジェクトを返します。
+
+=over 2
+
+=item *
+
+=begin original
+
+Dotted-decimal: bare v-strings (v1.2.3) and strings with more than one
+decimal point and a leading 'v' ("v1.2.3"); NOTE you can technically use a
+v-string or strings with a leading-v and only one decimal point (v1.2 or
+"v1.2"), but you will confuse both yourself and others.
+
+=end original
+
+ドット付き 10 進数: 裸のv-文字列 (v1.2.3) と先頭の 'v' と複数の小数点がある
+文字列 ("v1.2.3"); 注意: 技術的には小数点が一つしかないv-文字列や文字列
+(v1.2 や "v1.2") も使えますが、自分自身も他人も混乱させます。
+
+=item *
+
+=begin original
+
+Decimal: regular decimal numbers (literal or in a string)
+
+=end original
+
+10 進数: (リテラルまたは文字列の中の) 普通の 10 進数
+
+=back
+
+=begin original
+
+Some examples:
+
+=end original
+
+いくつかの例:
+
+  $variable   version->parse($variable)
+  ---------   -------------------------
+  1.23        v1.230.0
+  "1.23"      v1.230.0
+  v1.23       v1.23.0
+  "v1.23"     v1.23.0
+  "1.2.3"     v1.2.3
+  "v1.2.3"    v1.2.3
+
+=begin original
+
+See L<VERSION OBJECT DETAILS> for more on version number conversion.
+
+=end original
+
+さらなるバージョン番号変換については L<VERSION OBJECT DETAILS> を
+参照してください。
+
+=head2 How to compare version objects
+
+(バージョンオブジェクトの比較の方法)
+
+=begin original
+
+Version objects overload the C<cmp> and C<< E<lt>=E<gt> >> operators.  Perl
+automatically generates all of the other comparison operators based on those
+two so all the normal logical comparisons will work.
+
+=end original
+
+バージョンオブジェクトは C<cmp> と C<< E<lt>=E<gt> >> の演算子を
+オーバーロードします。
+Perl はこの二つから自動的にその他の比較演算子を生成するので、通常の論理比較は
+動作します。
+
+  if ( version->parse($v1) == version->parse($v2) ) {
+    # do stuff
+  }
+
+=begin original
+
+If a version object is compared against a non-version object, the non-object
+term will be converted to a version object using C<parse()>.  This may give
+surprising results:
+
+=end original
+
+バージョンオブジェクトがバージョンオブジェクトでないものと比較されると、
+非オブジェクト側は C<parse()> を使ってバージョンオブジェクトに変換されます。
+これにより驚くべき結果になるかもしれません:
+
+  $v1 = version->parse("v0.95.0");
+  $bool = $v1 < 0.96; # FALSE since 0.96 is v0.960.0
+
+=begin original
+
+Always comparing to a version object will help avoid surprises:
+
+=end original
+
+常にバージョンオブジェクトの比較を行うことは驚くことを避ける助けになります:
+
+  $bool = $v1 < version->parse("v0.96.0"); # TRUE
+
+=head1 VERSION OBJECT DETAILS
+
+(バージョンオブジェクトの詳細)
+
+=head2 Equivalence between Decimal and Dotted-Decimal Versions
+
+(10 進数バージョンとドット付き 10 進数バージョンの等価性)
+
+=begin original
+
+When Perl 5.6.0 was released, the decision was made to provide a
+transformation between the old-style decimal versions and new-style
+dotted-decimal versions:
+
+=end original
+
+Perl 5.6.0 がリリースされたとき、古い形式の 10 進数バージョンと新しい形式の
+ドット付き 10 進数バージョンの変換を提供するという決定がなされました:
+
+  5.6.0    == 5.006000
+  5.005_04 == 5.5.40
+
+=begin original
+
+The floating point number is taken and split first on the single decimal
+place, then each group of three digits to the right of the decimal makes up
+the next digit, and so on until the number of significant digits is exhausted,
+B<plus> enough trailing zeros to reach the next multiple of three.
+
+=end original
+
+浮動小数点数を取って、まず小数点で分割し、それから小数点の右側の 3 桁の
+グループ毎に次の数値にして、有効数字がなくなるまでこれを繰り返し、B<さらに>
+3 の倍数になるように末尾に 0 を追加します。
+
+=begin original
+
+This was the method that version.pm adopted as well.  Some examples may be
+helpful:
+
+=end original
+
+これは version.pm が採用している方法でもあります。
+いくつかの例が助けになるでしょう:
+
+                            equivalent
+  decimal    zero-padded    dotted-decimal
+  -------    -----------    --------------
+  1.2        1.200          v1.200.0
+  1.02       1.020          v1.20.0
+  1.002      1.002          v1.2.0
+  1.0023     1.002300       v1.2.300
+  1.00203    1.002030       v1.2.30
+  1.002003   1.002003       v1.2.3
+
+=head2 Quoting rules
+
+(クォート規則)
+
+=begin original
+
+Because of the nature of the Perl parsing and tokenizing routines,
+certain initialization values B<must> be quoted in order to correctly
+parse as the intended version, especially when using the L<declare> or
+L<qv> methods.  While you do not have to quote decimal numbers when
+creating version objects, it is always safe to quote B<all> initial values
+when using version.pm methods, as this will ensure that what you type is
+what is used.
+
+=end original
+
+Perl のパースとトークン化ルーチンの性質により、一部の初期化値は意図している
+バージョンとして正しくパースするためにクォート B<されなければなりません>;
+特に L<declare> や L<qv> メソッドではです。
+バージョンオブジェクトを作成するときに 10 進数をクォートする必要がない一方、
+version.pm メソッドを使うときに B<全ての> 初期値をクォートすることは常に
+安全です; 入力したものがどのように使われるかを確実にするからです。
+
+=begin original
+
+Additionally, if you quote your initializer, then the quoted value that goes
+B<in> will be be exactly what comes B<out> when your $VERSION is printed
+(stringified).  If you do not quote your value, Perl's normal numeric handling
+comes into play and you may not get back what you were expecting.
+
+=end original
+
+さらに、初期化子をクォートする場合、B<入力> としてクォートされた値は
+$VERSION が表示される(文字列化される)ときに正確に同じものが
+B<出力> されます。
+値をクォートしていない場合、Perl の通常の数値の処理が行われ、想定したものに
+戻らないかもしれません。
+
+=begin original
+
+If you use a mathematic formula that resolves to a floating point number,
+you are dependent on Perl's conversion routines to yield the version you
+expect.  You are pretty safe by dividing by a power of 10, for example,
+but other operations are not likely to be what you intend.  For example:
+
+=end original
+
+浮動小数点数になる数値演算を行った場合、想定したバージョンが生成されるかは
+Perl の変換ルーチンに依存します。
+例えば、10 の累乗で割ることはかなり安全ですが、その他の演算はおそらく
+意図した通りにはなりません。
+例えば:
+
+  $VERSION = version->new((qw$Revision: 1.4)[1]/10);
+  print $VERSION;          # yields 0.14
+  $V2 = version->new(100/9); # Integer overflow in decimal number
+  print $V2;               # yields something like 11.111.111.100
+
+=begin original
+
+Perl 5.8.1 and beyond are able to automatically quote v-strings but
+that is not possible in earlier versions of Perl.  In other words:
+
+=end original
+
+Perl 5.8.1 以降は自動的にv-文字列をクォートできますが、それ以前の Perl では
+できません。
+言い換えると:
+
+  $version = version->new("v2.5.4");  # legal in all versions of Perl
+  $newvers = version->new(v2.5.4);    # legal only in Perl >= 5.8.1
+
+=head2 What about v-strings?
+
+(v-文字列はどう?)
+
+=begin original
+
+There are two ways to enter v-strings: a bare number with two or more
+decimal points, or a bare number with one or more decimal points and a 
+leading 'v' character (also bare).  For example:
+
+=end original
+
+v-文字列を入力する方法は 2 つあります。
+2 つ以上の小数点を持つ裸の数値か、先頭に裸の文字 'v' があって
+1 つ以上の小数点を持つ裸の数値です。
+例えば:
+
+  $vs1 = 1.2.3; # encoded as \1\2\3
+  $vs2 = v1.2;  # encoded as \1\2 
+
+=begin original
+
+However, the use of bare v-strings to initialize version objects is
+B<strongly> discouraged in all circumstances.  Also, bare
+v-strings are not completely supported in any version of Perl prior to
+5.8.1.
+
+=end original
+
+しかしながら、バージョンオブジェクトを初期化するために裸のv-文字列を
+使用することは、どのような状況であっても B<強く> 非推奨です。
+また、裸の v-文字列は 5.8.1 より前のバージョンの Perl は完全には
+対応していません。
+
+=begin original
+
+If you insist on using bare v-strings with Perl > 5.6.0, be aware of the 
+following limitations:
+
+=end original
+
+もし Perl > 5.6.0 で裸のv-文字列を使うことにこだわる場合、以下の制限に
+注意してください。
+
+=begin original
+
+1) For Perl releases 5.6.0 through 5.8.0, the v-string code merely guesses, 
+based on some characteristics of v-strings.  You B<must> use a three part
+version, e.g. 1.2.3 or v1.2.3 in order for this heuristic to be successful.
+
+=end original
+
+Perl のリリース 5.6.0 から 5.8.0 において、v-文字列コードはv-文字列の
+いくつかの特徴に基づいて単に推測を行うのみです。
+このヒューリスティクスが成功するためには、必ず 3 つの部分
+(例えば 1.2.3 や v1.2.3) のバージョンを使わなければ B<なりません>。
+
+=begin original
+
+2) For Perl releases 5.8.1 and later, v-strings have changed in the Perl
+core to be magical, which means that the version.pm code can automatically
+determine whether the v-string encoding was used.
+
+=end original
+
+Perl のリリース 5.8.1 以降では、v-文字列は Perl コアでマジカルになるように
+変更されました。
+つまり、version.pm コードがv-文字列エンコーディングが使われたかどうかを
+自動的に判断できるようになったということです。
+
+=begin original
+
+3) In all cases, a version created using v-strings will have a stringified
+form that has a leading 'v' character, for the simple reason that sometimes
+it is impossible to tell whether one was present initially.
+
+=end original
+
+3) 全ての場合で、v-文字列を使って作成されたバージョンは
+文字列化形式にしたときに先頭に 'v' の文字がつきます;
+ときどき、これが先頭に付いていたかを確認することが不可能であるという
+単純な理由によります。
+
+=head2 Alpha versions
+
+(αバージョン)
+
+=begin original
+
+For module authors using CPAN, the convention has been to note unstable
+releases with an underscore in the version string. (See L<CPAN>.)  version.pm
+follows this convention and alpha releases will test as being newer than the
+more recent stable release, and less than the next stable release.  For
+dotted-decimal versions, only the last element may be separated by an
+underscore:
+
+=end original
+
+CPAN を使用しているモジュール作者の間で、不安定なリリースを示すために
+バージョン文字列内にアンダースコアを付ける慣習ができています。
+(L<CPAN> を参照。)
+version.pm はこの慣例に従い、αリリースは、その直前の安定リリースよりも
+新しく、次の安定リリースよりも小さく判定されます。
+ドット付き 10 進数バージョンでは、最後の要素のみが下線で分離されます:
+
+  # Declaring
+  use version 0.77; our $VERSION = version->declare("v1.2_3");
+
+  # Parsing
+  $v1 = version->parse("v1.2_3");
+  $v1 = version->parse("1.002_003");
+
+=head1 OBJECT METHODS
+
+(オブジェクトメソッド)
+
+=head2 is_alpha()
+
+=begin original
+
+True if and only if the version object was created with a underscore, e.g.
+
+=end original
+
+バージョンオブジェクトが下線付きで作られた場合にのみ真になります; 例えば
+
+  version->parse('1.002_03')->is_alpha;  # TRUE
+  version->declare('1.2.3_4')->is_alpha; # TRUE
+
+=head2 is_qv()
+
+=begin original
+
+True only if the version object is a dotted-decimal version, e.g.
+
+=end original
+
+バージョンオブジェクトがドット付き 10 進数バージョンの場合にのみ真になります;
+例えば
+
+  version->parse('v1.2.0')->is_qv;        # TRUE
+  version->declare('v1.2')->is_qv;       # TRUE
+  qv('1.2')->is_qv;                      # TRUE
+  version->parse('1.2')->is_qv;          # FALSE
+
+=head2 normal()
+
+=begin original
+
+Returns a string with a standard 'normalized' dotted-decimal form with a
+leading-v and at least 3 components.
+
+=end original
+
+先頭の v と最低 3 要素ある標準の「正規化された」ドット付き 10 進数形式の
+文字列を返します。
+
+ version->declare('v1.2')->normal;  # v1.2.0
+ version->parse('1.2')->normal;     # v1.200.0
+
+=head2 numify()
+
+=begin original
+
+Returns a value representing the object in a pure decimal form without
+trailing zeroes.
+
+=end original
+
+末尾のゼロなしの純粋な 10 進数形式のオブジェクトで表現される値を返します。
+
+ version->declare('v1.2')->numify;  # 1.002
+ version->parse('1.2')->numify;     # 1.2
+
+=head2 stringify()
+
+=begin original
+
+Returns a string that is as close to the original representation as possible.
+If the original representation was a numeric literal, it will be returned the
+way perl would normally represent it in a string.  This method is used whenever
+a version object is interpolated into a string.
+
+=end original
+
+元の表現にできるだけ近い文字列を返します。
+元の表現が数値リテラルなら、perl が通常これを文字列で表現する方法で値を
+返します。
+このメソッドはバージョンオブジェクトが文字列に変換された時に使われます。
+
+ version->declare('v1.2')->stringify;    # v1.2
+ version->parse('1.200')->stringify;     # 1.200
+ version->parse(1.02_30)->stringify;     # 1.023
+
+=head1 EXPORTED FUNCTIONS
+
+(エクスポートされる関数)
+
+=head2 qv()
+
+=begin original
+
+This function is no longer recommended for use, but is maintained for
+compatibility with existing code.  If you do not want to have it exported
+to your namespace, use this form:
+
+=end original
+
+この関数はもはや使用を推奨されませんが、既にあるコードの互換性のために
+保守されています。
+名前空間にこれをエクスポートしたくないときは、以下のようにします:
+
+  use version 0.77 ();
+
+=head1 AUTHOR
+
+John Peacock E<lt>jpeacock@cpan.orgE<gt>
+
+=head1 SEE ALSO
+
+L<version::Internal>.
+
+L<perl>.
+
+=begin meta
+
+Translate: Kenji Inoue <kenz@oct.zaq.ne.jp> (0.70)
+Update: SHIRAKATA Kentaro <argrath@ub32.org> (0.74-)
+Status: completed
+
+=end meta
+
+=cut
+

@@ -1,0 +1,783 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+perld595elta - perl v5.9.5 更新情報
+
+=head1 説明
+
+このドキュメントでは開発リリース 5.9.4 と 5.9.5 の間での変更点を
+説明します. 5.8.0 から 5.9.4 までの変更点は L<perl590delta>, 
+L<perl591delta>, L<perl592delta>, L<perl593delta> そして L<perl594delta> を
+参照してください.
+
+=head1 互換性の無い変更点
+
+=head2 汚染(taint)と printf
+
+perl が taint モードで実行されているとき, C<printf()>
+及び C<sprintf()> は汚染されている(tained)書式引数を
+拒否するようになりました. (Rafael Garcia-Suarez)
+
+=head2 undef とシグナルハンドラ
+
+C<undef $SIG{FOO}> によるシグナルハンドラのundef化
+若しくは削除は C<'DEFAULT'> の設定と等価になりました. (Rafael)
+
+=head2 defined() での構造体及び配列/ハッシュのデリファレンス
+
+C<defined @$foo> 及び C<defined %$bar> は C<strict 'refs'> 
+の影響に入るようになります(つまり, C<$foo> 及び C<$bar> は
+その場所において適切なリファレンスである必要があります).
+
+(とはいっても, C<defined(@foo)> 及び C<defined(%bar)> は
+おすすめできない構文ですが.)
+
+=head2 C<(?p{})> は削除されました
+
+perl 5.8 で非推奨となっている正規表現構成子 C<(?p{})> 
+は削除されました. C<(??{})> を使うようにしてください. (Rafael)
+
+=head2 擬似ハッシュは削除されました
+
+擬似ハッシュのサポートは Perl 5.9 から削除されました. 
+(C<fields> プラグマは残っていますが違う実装を使っています.)
+
+=head2 バイトコードコンパイラ及び perlcc の削除
+
+C<perlcc>, バイトローダ及びそのサポートモジュール(B::C,
+B::CC, B::Bytecode, etc.)は perl ソースに同梱されなく
+なりました. これらの実験的なツールは確実な動作をせず, 
+また perl 開発と連携して維持するボランティアもいないために
+壊れたバージョンを入れておくのではなく削除されることに
+決定しました. これらのモジュールの最新版は perl 5.9.4 に
+あります.
+
+しかし B コンパイラフレームワークは他に役立つモジュール(
+中でもとりわけ B::Deparse や B::Concise)のために
+perl コアでサポートは続けられます,
+
+=head2 JPL の削除
+
+JPL (Java-Perl Linguo) は perl ソース tar ボールから
+削除されました.
+
+=head2 再帰継承の早期検出
+
+どこかのパッケージで C<@ISA> を再帰継承となる形に変更すると
+その場で例外を発生させるようになりました.
+
+これまではメソッドの解決や C<$foo-E<gt>isa($bar)> の
+ルックアップ等で再帰継承を使うまでは例外は発生され
+ませんでした.
+
+=head1 コアの強化
+
+=head2 正規表現
+
+=over 4
+
+=item 再帰するパターン
+
+C<(??{})> 構成子を使わずに再帰するパターンを記述できる
+ようになりました. この新しい方式はより効率的で, また
+多くの場合より読みやすくなります.
+
+各キャプチャ括弧は C<(?PARNO)> 構文を使って
+利用できる独立したパターンとして扱われる
+ようになります(C<PARNO>は "括弧番号(parenthesis number)"を
+意味します). 例えば次のパターンはネストした
+均等な角括弧にマッチします.
+
+    /
+     ^                      # start of line
+     (                      # start capture buffer 1
+	<                   #   match an opening angle bracket
+	(?:                 #   match one of:
+	    (?>             #     don't backtrack over the inside of this group
+		[^<>]+      #       one or more non angle brackets
+	    )               #     end non backtracking group
+	|                   #     ... or ...
+	    (?1)            #     recurse to bracket 1 and try it again
+	)*                  #   0 or more times.
+	>                   #   match a closing angle bracket
+     )                      # end capture buffer one
+     $                      # end of line
+    /x
+
+    /
+     ^                      # 行の始まり
+     (                      # キャプチャバッファ1の始まり
+	<                   #   開く角括弧のマッチ
+	(?:                 #   次のいずれかにマッチ:
+	    (?>             #     このグループ内はバックトラックしない
+		[^<>]+      #       1つ以上の各括弧以外の文字
+	    )               #     パックトラックしないグループの終わり
+	|                   #     ... 若しくは ...
+	    (?1)            #     括弧 1 を再帰して再挑戦
+	)*                  #   0 回若しくはそれ以上
+	>                   #   閉じる角括弧
+     )                      # キャプチャバッファ1の終わり
+     $                      # 行の終わり
+    /x
+
+補足, PCRE を経験したことのあるユーザは PCRE での再帰は
+アトミック若しくは自然に"所有"されるのに対して, この Perl での
+機能は再帰したパターンにバックトラックできる点で異なることに
+気付くでしょう.  (Yves Orton)
+
+=item 名前付きキャプチャバッファ
+
+パターンに於いてキャプチャの括弧に名前をつけてキャプチャされた
+内容を名前で参照することができるようになりました. 
+名前を付与する構文は C<< (?<NAME>....) >> になります. 
+また C<< \k<NAME> >> 構文で名前をつけたバッファに
+後方参照を行うこともできます. コードに於いて, 
+特殊なハッシュ C<%+> 及び C<%-> を使って
+キャプチャされたバッファの内容にアクセスすることも
+できます.
+
+従って, 次のようにして全ての2つ連続した文字を置換する
+ことができます.
+
+    s/(?<letter>.)\k<letter>/$+{letter}/g
+
+定義された内容を持っているバッファのみが
+C<%+> ハッシュで"可視"となります, つまり次のような
+ことができます:
+
+    foreach my $name (keys %+) {
+        print "content of buffer '$name' is $+{$name}\n";
+    }
+
+C<%-> ハッシュにはもう少し完全なものが入っています, 
+これには同じ名前の全てのキャプチャバッファの
+値を保持する配列リファレンスを持っています.
+
+C<%+> 及び C<%-> は新しいモジュール
+C<Tie::Hash::NamedCapture> を通して tie された
+ハッシュとして実装されています.
+
+.NET の正規表現エンジンを使っているユーザは, perl
+の数値バッファの順序が "まず無名のもの, それから
+名前付きのもの" ではなく, 順序よくなっているという
+実装の違いに気付くでしょう. つまり次のパターンにおいて,
+
+   /(A)(?<B>B)(C)(?<D>D)/
+
+$1 は'A', $2 は 'B', $3 は 'C' そして $4 は 'D' となり,
+.NET プログラマの予期する $1 に 'A', $2 に 'C' 及び 
+$3 に 'B' そして $4 に 'D' とはなりません. 
+これは仕様です :-) (Yves Orton)
+
+=item 強欲な量指定子
+
+"アトミックなマッチ"パターンで"強欲な量指定子"構文を
+サポートしました. 基本的に強欲は量指定子はできる限り
+多くにマッチし後退させません. 従ってこれはバックトラックの
+制御に利用できます. 構文は貪欲でない(non-greedy)マッチと
+似ていますが, '?' の代わりに修飾子 '+' を使います. 
+従って C<?+>, C<*+>, C<++>, C<{min,max}+> は正しい
+量指定子になります. (Yves Orton)
+
+=item バックトラック制御記号
+
+正規表現エンジンはいくつかの特殊な用途のための
+バックトラック制御記号のサポートをするようになります: 
+(*THEN), (*PRUNE), (*MARK), (*SKIP), (*COMMIT), (*FAIL)
+そして (*ACCEPT). これらの説明は L<perlre> を参照
+してください. (Yves Orton)
+
+=item 相対後方参照
+
+新しい構文 C<\g{N}> 及び C<\gN> (ここで"N"は10進
+整数)を使って相対的な後方参照の許可と同時に
+安全な形式の後方参照記法が行えるようになります. 
+これによって後方参照を含んだパターンの生成や埋め込みを
+より容易に行えるようになります. L<perlre/Capture buffers>
+を参照してください. (Yves Orton)
+
+=item C<\K> エスケープ
+
+Jeff Pinyan によるモジュール Regexp::Keep の
+機能はコアに追加されました. これによって
+可変長の正のルックビハインドのような用途に
+利用できる特殊なエスケープ C<\K> を
+正規表現で利用できるようになりました. 
+これは次のような置換に便利です:
+
+  s/(foo)bar/$1/g
+
+これは次のように置き換えることができます
+
+  s/foo\Kbar//g
+
+またこれはより効率的です. (Yves Orton)
+
+=item 垂直及び水平白空白, そして行区切り
+
+正規表現に於いて C<\v> 及び C<\h> エスケープを認識
+するようになりました, これらはそれぞれ垂直及び水平
+白空白です. C<\V> 及び C<\H> はそれぞれの補集合に
+マッチします.
+
+C<\R> は汎用的な行区切りにマッチします, つまり, 
+垂直白空白, そして複数文字のシーケンス
+C<"\x0D\x0A">.
+
+=back
+
+=head2 C<_> プロトタイプ
+
+新しいプロトタイプ文字が追加されました. 
+C<_> がそれで, C<$> (スカラー)と等価ですが, 
+対応する引数が提供されなかったときに
+デフォルトとして C<$_> が使われます. 
+引数の省略方法からこれはプロトタイプの最後か, 
+セミコロンの前でのみ使うことができます.
+
+これの結果小さな非互換があります: 
+prototype() 関数はいくつかの組み込み関数
+に対して適切に C<_> を返すようになります(
+例えば C<prototype('CORE::rmdir')>). (Rafael)
+
+=head2 UNITCHECK ブロック
+
+C<BEGIN>, C<CHECK>, C<INIT> 及び C<END> に加えて
+特殊コードブロック C<UNITCHECK> が導入されました.
+
+特殊な目的のために便利な C<CHECK> 及び C<INIT>
+ブロックはメインプログラムのコンパイルと
+実行の間で常に実行され, つまりコードが
+実行時にロードされる場合には使うことが
+できません. 一方, C<UNITCHECK> ブロックはそれが
+定義されている単位(unit)がコンパイルされた直後に
+実行されます. より詳しい情報は L<perlmod> を
+参照してください. (Alex Gough)
+
+=head2 readpipe() がオーバーライド可能に
+
+組み込み関数 readpipe() がオーバーライド可能
+になりました. これをオーバーライドすることに
+よって, これに対応する演算子, C<qx//> (a.k.a. C<``>)
+もオーバーライドできます. さらに引数が渡されな
+かったときにはデフォルトで C<$_> が使われるように
+なりました. (Rafael)
+
+=head2 readline() のデフォルトの引数
+
+readline() は引数が渡されなかったときに
+デフォルトで C<*ARGV> をとるようになりました. 
+(Rafael)
+
+=head2 UCD 5.0.0
+
+Perl 5.9 に含まれる Unicode Character Database の
+コピーはバージョン 5.0.0 にアップデート
+されました.
+
+=head2 スマートマッチ
+
+スマートマッチ演算子 (C<~~>) はデフォルトで
+有効になりました (C<use feature> で有効に
+する必要はなくなりました). (Michael G Schwern)
+
+=head2 C<feature> の暗黙なロード
+
+最低限の perl バージョンを(C<use VERSION> 構成子で)
+5.9.5 以上に要求することで C<feature> プラグマが暗黙に
+ロードされるようになりました.
+
+=head1 モジュールとプラグマ
+
+=head2 新しいプラグマ, C<mro>
+
+新しいプラグマ, C<mro> (メソッド解決順序; Method
+Resolution Order)が追加されました. これを使うことで
+クラス毎に複数の継承階層を持っているときに継承
+されたメソッドの探索に使うアルゴリズムを切り替える
+ことができます. デフォルトの MRO は変更されていません
+(DFS, 深さ優先探索; Depth First Search).
+他に利用できるMROには C3 アルゴリズムがあります. 
+詳細は L<mro> を参照してください. (Brandon Black)
+
+クラス階層探索の実装の変更によって, C<*ISA> 
+グラブを undef にするようなコードでは恐らく
+破損します. C<*ISA> を undef にすることは @ISA
+配列のマジックを削除する副作用を伴うため
+第一に行うべきではありません.
+
+=head2 bignum, bigint, bigrat
+
+3つの数値プラグマ C<bignum>, C<bigint> そして
+C<bigrat> はレキシカルスコープになりました. (Tels)
+
+=head2 Math::BigInt/Math::BigFloat
+
+=begin original
+
+Many bugs have been fixed; noteworthy are comparisons with NaN, which
+no longer warn about undef values.
+
+=end original
+
+多くのバグが修正されました; 注目すべきものは、NaN との比較で、
+未定義値に関する警告を行わなくなりました。
+
+=begin original
+
+The following things are new:
+
+=end original
+
+新しいものは以下の通りです:
+
+=over 4
+
+=item config()
+
+=begin original
+
+The config() method now also supports the calling-style
+C<< config('lib') >> in addition to C<< config()->{'lib'} >>.
+
+=end original
+
+config() メソッドは、C<< config()->{'lib'} >> に加えて、
+C<< config('lib') >> という呼び出し形式にも対応しました。
+
+=item import()
+
+=begin original
+
+Upon import, using C<< lib => 'Foo' >> now warns if the low-level library
+cannot be found. To suppress the warning, you can use C<< try => 'Foo' >>
+instead. To convert the warning into a die, use C<< only => 'Foo' >>
+instead.
+
+=end original
+
+インポート時に、C<< lib => 'Foo' >> を使ったときに、低レベルライブラリが
+見つからないと警告するようになりました。
+警告を抑制するためには、代わりに C<< try => 'Foo' >> が使えます。
+警告を die に変換するには、代わりに C<< only => 'Foo' >> を使ってください。
+
+=item roundmode common
+
+=begin original
+
+A rounding mode of C<common> is now supported.
+
+=end original
+
+C<common> の丸めモードに対応しました。
+
+=back
+
+=begin original
+
+Also, support for the following methods has been added:
+
+=end original
+
+また、以下のメソッドの対応も追加されました:
+
+=over 4
+
+=item bpi(), bcos(), bsin(), batan(), batan2()
+
+=item bmuladd()
+
+=item bexp(), bnok()
+
+=item from_hex(), from_oct(), and from_bin()
+
+=item as_oct()
+
+=back
+
+=begin original
+
+In addition, the default math-backend (Calc (Perl) and FastCalc (XS)) now
+support storing numbers in parts with 9 digits instead of 7 on Perls with
+either 64bit integer or long double support. This means math operations
+scale better and are thus faster for really big numbers.
+
+=end original
+
+さらに、デフォルトの数学バックエンド (Calc (Perl) と FastCalc (XS)) は、
+64 ビット整数か long double に対応している Perl では、7 桁ではなく
+9 桁の数値の保管に対応しました。
+これは、数値演算のスケールが向上し、従って、本当に大きな数値に対して
+より速くなることを意味します。
+
+=head2 新しいコアモジュール
+
+=over 4
+
+=item *
+
+C<Locale::Maketext::Simple>,
+CPANPLUS に必要な C<Locale::Maketext::Lexicon> の
+簡単なラッパー.  C<Locale::Maketext::Lexicon> は 
+perl コアには含まれていない点に注意してください; 
+C<Locale::Maketext::Simple> の振る舞いは Lexicon が
+存在しなかったときには大きくデグレードされています.
+
+=item *
+
+C<Params::Check>, 汎用的な入力パース/チェックメカニズムの
+実装. CPANPLUS で使われます.
+
+=item *
+
+C<Term::UI>, ターミナルプロンプトでの
+応答タスクを用意にします.
+
+=item *
+
+C<Object::Accessor>, オブジェクト毎の
+アクセサインターフェースを提供します.
+
+=item *
+
+C<Module::Pluggable>, プラガブルなサブモジュール
+を受け付けるモジュールを作るための簡単な
+フレームワークです.
+
+=item *
+
+C<Module::Load::Conditional>, インストールされて
+いるモジュールの問い合わせ及びロードを簡単に
+提供します.
+
+=item *
+
+C<Time::Piece> は組み込みの localtime() および
+gmtime() をオーバーライドして時刻関数の
+オブジェクト指向なインターフェースを提供します.
+
+=item *
+
+C<IPC::Cmd>, 外部コマンドの探索及び実行を
+インタラクティブに助けます.
+
+=item *
+
+C<File::Fetch>, ファイルのフェッチメカニズムを
+簡単で汎用的に提供します.
+
+=item *
+
+C<Log::Message> 及び C<Log::Message::Simple>, 
+C<CPANPLUS> のログ機能に使われています.
+
+=item *
+
+C<Archive::Extract>, F<.tar> (plain, gzip, bzip)
+若しくは F<.zip> ファイルの汎用的な
+アーカイブ展開メカニズム.
+
+=item *
+
+C<CPANPLUS>, CPAN ミラーへアクセスする API 及び
+コマンドラインツールを提供.
+
+=back
+
+=head2 モジュールの変更
+
+=over 4
+
+=item C<assertions>
+
+C<assertions> プラグマ, そのサブクラスである C<assertions::activate>
+及び C<assertions::command> そして B<-A> コマンドラインスイッチは
+削除されました. このインターフェースは安定リリースに
+含めれるほど十分に成熟しているとは判断できませんでした.
+
+=item C<base>
+
+C<base> プラグマはクラスが自分自身を継承しようと
+したときに警告を発するようになりました. 
+(Curtis "Ovid" Poe)
+
+=item C<strict> 及び C<warnings>
+
+C<strict> 及び C<warnings> は不適切な大文字小文字区別
+(たとえば C<use Strict;>)でロードされたときに
+大声で騒ぐようになりました.
+
+=item C<warnings>
+
+C<warnings> プラグマは C<Carp> をロードしなくなりました. 
+この結果コンパイル時のロードなしに C<Carp> ルーチンを
+使っていたコードは修正する必要があるでしょう; 典型的には
+次のような(間違った)コードは動かなくなるでしょう, そして関数名の後に
+括弧を書く必要があるでしょう:
+
+    use warnings;
+    require Carp;
+    Carp::confess "argh";
+
+=item C<less>
+
+C<less> は何か便利になりました(若しくは少なくともそうであろうと
+しています). 事実, これはレキシカルプラグマになりました. 
+そしてモジュール側で, ユーザがより少ない CPU, 若しくは
+より少ないメモリ, より少ないマジック, 若しくはより少ない
+脂っ気を要求しているかどうかをテストできます.
+
+=item C<Attribute::Handlers>
+
+C<Attribute::Handlers> は呼び出し元のファイル及び行番号を
+報告できるようになりました. (David Feldman)
+
+=item C<B::Lint>
+
+C<B::Lint> は C<Module::Pluggable> をベースとするようになりました, 
+これによってプラグインで拡張することが出来ます. (Joshua ben Jore)
+
+=item C<B>
+
+レキシカルなプラグマヒント(C<%^H>)に B::COP::hints_hash() メソッドを
+使ってアクセスできるようになりました. これは C<B::RHE> オブジェクトを返し,
+B::RHE::HASH() メソッドを使ってハッシュリファレンスを得ることが
+できます. (Joshua ben Jore)
+
+=for p5p XXX document this in B.pm too
+
+=item C<Thread>
+
+古い 5005thread スレッドモデルは削除されたので, ithreads スキームに
+賛同して, C<Thread> モジュールは古いコードで使うためだけの互換ラッパに
+なりました.
+これは動的エクステンションのデフォルトのリストから取り除かれました。
+
+=back
+
+=head1 ユーティリティの変更点
+
+=head2 C<cpanp>
+
+C<cpanp>, CPANPLUS シェルが追加されました. (CPANPLUS 操作の
+ヘルパである C<cpanp-run-perl> も追加されましたが, これは
+直接使うためのものではありません).
+
+=head2 C<cpan2dist>
+
+C<cpan2dist> は CPANPLUS に同梱の新しいユーティリティです. 
+これは CPAN モジュールから配布物(若しくはパッケージ）を
+作るためのツールです.
+
+=head2 C<pod2html>
+
+C<pod2html> の出力は CSS を使ってカスタマイズできるように
+強化されました. 幾つかの整形における問題点は修正されました. 
+(Hari Aalto)
+
+=head1 ドキュメント
+
+=head2 新しいマニュアルページ, perlunifaq
+
+新しいマニュアルページ, L<perlunifaq> (Perl ユニコード FAQ)が
+追加されました. (Juerd Waalboer)
+
+=head1 パフォーマンス強化
+
+=head1 インストールと Configure の向上
+
+=head2 C++ compatibility
+
+perl 及びコア XS モジュールを様々な C++ コンパイラ互換に
+するよう努力が行われました(けれどもテストされた幾つかの
+プラットフォームでの幾つかのコンパイラでは完全では
+ありませんでした).
+
+=head2 Visual C++
+
+Microsoft Visual C++ 2005 でコンパイルできるようになりました.
+
+=head2 Win32 におけるstaticビルド
+
+Win32 において C<perl59.dll> に依存しない
+C<perl-static.exe> をビルドできるようになりました. 
+詳細は Win32 Makefiles を参照してください. (Vadim Konovalov)
+
+=head2 win32 builds
+
+(win32 ビルド)
+
+=begin original
+
+All win32 builds (MS-Win, WinCE) have been merged and cleaned up.
+
+=end original
+
+全ての win32 ビルド (MS-Win, WinCE) はマージされ、整理されました。
+
+=head2 C<d_pseudofork> and C<d_printf_format_null>
+
+C<d_pseudofork> と C<d_printf_format_null>)
+
+L<Config> モジュールで C<$Config{d_pseudofork}> として提供
+される新しいコンフィギュレーション変数が追加されました, 
+これによって実際の fork() と Windows プラットフォームにおける
+疑似 fork によるサポートを区別できます.
+
+=begin original
+
+A new configuration variable, C<d_printf_format_null>, has been added, 
+to see if printf-like formats are allowed to be NULL.
+
+=end original
+
+新しいコンフィギュレーション変数 C<d_printf_format_null> が追加されました;
+printf 的なフォーマットで NULL が許されるかどうかを示します。
+
+=head2 Help
+
+(ヘルプ)
+
+=begin original
+
+C<Configure -h> has been extended with the most used option.
+
+=end original
+
+C<Configure -h> はもっとも有用なオプションに拡張されました。
+
+=begin original
+
+Much less 'Whoa there' messages.
+
+=end original
+
+'Whoa there' メッセージを大幅に減らしました。
+
+=head2 64bit systems
+
+(64 ビットシステム)
+
+=begin original
+
+Better detection of 64bit(only) systems, and setting all the (library)
+paths accordingly.
+
+=end original
+
+64 ビット(専用)システムの検出を向上させ、それに応じた(ライブラリ)パスを
+全て設定するようになりました。
+
+=head2 Ports
+
+MidnightBSD での動作報告を得ました.
+
+=begin original
+
+Support for Cray XT4 Catamount/Qk has been added.
+
+=end original
+
+Cray XT4 Catamount/Qk への対応を追加しました。
+
+=begin original
+
+Vendor patches have been merged for RedHat and GenToo.
+
+=end original
+
+RedHat と GenToo からのベンダーパッチをマージしました。
+
+=head1 バグ修正抜粋
+
+PerlIO::scalar は読み込み専用スカラーへの書き込みを
+妨げるようになりました. さらに PerlIO::scalar ベースの
+ファイルハンドルで seek() がサポートされるようになりました, 
+元になる文字列は必要なだけゼロ埋めされます. (Rafael, Jarkko Hietaniemi)
+
+study() は UTF-8 文字列では動作していませんでしたが, 
+間違った結果をもたらしていました. これは UTF-8 データ
+では何もしないようになります. (Yves Orton)
+
+シグナル SIGILL, SIGBUS そして SIGSEGV は常に
+"unsafe" 方式で配送されるようになります(対して他の
+シグナルは perl インタプリタが安定した状態に達するまで
+遅延されます; L<perlipc/Deferred Signals (Safe Signals)>
+を参照してください). (Rafael)
+
+新しいモジュール若しくはファイルが @INC フック経由で
+ロードされた時そしてこのフックが %INC にファイル名のエントリを
+設定した時には __FILE__ は %INC エントリの内容に応じて
+設定されます.  (Rafael)
+
+C<-w> 及び C<-t> スイッチは警告カテゴリがアクティブに
+されているかを散らかすこと無くつかえるようになりました. (Rafael)
+
+C<:utf8> PerlIO レイヤ設定を持っているファイルハンドルの
+dup は dup されたファイルハンドルのレイヤから適切に
+運ぶようになりました. (Rafael)
+
+変数でキーを与えられたハッシュ要素の local 化は local() の
+影響内で変数が変更される(C<local $h{$x};++$x>等)と適切に動いて
+いませんでした. (Bo Lindbergh)
+
+=head1 新しい及び変更された診断メッセージ
+
+=head2 非推奨事項
+
+2つの非推奨警告が追加されました: (Rafael)
+
+    Opening dirhandle %s also as a file
+    Opening filehandle %s also as a directory
+
+    dirhandle %s を file としても開こうとしています
+    filehandle %s を directory としても開こうとしています
+
+=head1 変更された内部処理
+
+無名ハッシュ及び配列の構築子は optree 内で 3 つの op ではなく
+1つの op を取るようになりました, そして pp_anonhash 及び
+pp_anonlist は op が OPf_SPECIAL フラグを持つ時, ハッシュ
+/配列へのリファレンスを返します.
+
+=for p5p XXX have we some docs on how to create regexp engine plugins, since that's now possible ? (perlreguts)
+J<< ja; p5p XXX 正規表現エンジンプラグインの作り方も書く? 出来るようになったし. (perlreguts) >>
+
+=for p5p XXX new BIND SV type, #29544, #29642
+
+=head1 既知の問題
+
+=head2 プラットホーム固有の問題
+
+=head1 バグの報告方法
+
+もしバグと思われるものが見つかったら, comp.lang.perl.misc ニュース
+グループに最近投稿された記事や http://rt.perl.org/rt3/ にある perl 
+バグデータベースを確認してください. 
+Perl ホームページ, http://www.perl.org にも情報はあります.
+
+もしまだ報告されていないバグだと確信したら, そのリリースに含まれている
+B<perlbug> プログラムをを実行してください. バグの再現スクリプトを
+十分小さく, しかし有効なコードに切りつめることを意識してください. 
+バグレポートは C<perl -V> の出力と一緒に perlbug@perl.org に送られ 
+Perl porting チームによって解析されます.
+
+=head1 関連項目
+
+F<Changes> には完全な変更箇所があります.
+
+F<INSTALL> には Perl をビルドする方法があります.
+
+F<README> には一般的な事項があります.
+
+F<Artistic> 及び F<Copying> には著作権情報があります.
+
+=begin meta
+
+Translate: 山科 氷魚 (YAMASHINA Hio) <hio@hio.jp> (5.9.5)
+Update: Kentaro Shirakata <argrath@ub32.org> (5.10.0)
+
+=end meta
+

@@ -1,0 +1,364 @@
+
+=encoding euc-jp
+
+=head1 名前
+
+GD::Polyline - GDで使用するための多線形オブジェクトと多角形ユーティリティ（スプラインを含む）
+
+=head1 概要
+
+    use GD;
+    use GD::Polyline;
+
+    # イメージの作成
+    $image = new GD::Image (500,300);
+    $white  = $image->colorAllocate(255,255,255);
+    $black  = $image->colorAllocate(  0,  0,  0);
+    $red    = $image->colorAllocate(255,  0,  0);
+    
+    # 新しい多線形の作成
+    $polyline = new GD::Polyline;
+            
+    # いくつかポイントを追加
+    $polyline->addPt(  0,  0);
+    $polyline->addPt(  0,100);
+    $polyline->addPt( 50,125);
+    $polyline->addPt(100,  0);
+
+    # polylineはpolygonメソッドを使うことが出来ます（そしてその反対も）
+    $polyline->offset(200,100);
+    
+    # 重心(centroid)について60度回転
+    $polyline->rotate(3.14159/3, $polyline->centroid()); 
+    
+    # 重心について拡大
+    $polyline->scale(1.5, 2, $polyline->centroid());  
+    
+    # 多線形の描画
+    $image->polydraw($polyline,$black);
+    
+    # スプラインの作成、それも多線形です
+    $spline = $polyline->addControlPoints->toSpline;
+    $image->polydraw($spline,$red);
+
+    # pngを出力
+    binmode STDOUT;
+    print $image->png;
+
+=head1 説明
+
+B<Polyline.pm>は多線形を作成することを可能にすることによりGDモジュールを
+拡張しています。多線形を"開いている多角形"のように考えてください。
+つまり最後の頂点は最初の頂点につながっていません(あなたがわざと両方の点として
+同じ値を追加しなければ）。
+
+このドキュメントの残りでは、"polyline"はGD::Polylineを参照し、
+"polygon"は、多線形ではないGD::Polygonを参照します。そして
+"polything"と"$poly"は、どちらにもすることができます。
+
+このモジュールによりGDに追加された大きな機能は、スプラインを作成する
+方法です。それは曲線への近似になります。
+
+=head1 Polylineオブジェクト
+
+GD::Polylineは以下のクラスを定義します:
+
+=over 5
+
+=item C<GD::Polyline>
+
+多線形オブジェクト。イメージに多線形を描画するために頂点のリストを
+格納するために使われます。
+
+=item C<new>
+
+C<GD::Polyline-E<gt>new> I<クラス・メソッド>
+
+頂点を持たない空の多線形を作成します。
+
+    $polyline = new GD::Polyline;
+
+    $polyline->addPt(  0,  0);
+    $polyline->addPt(  0,100);
+    $polyline->addPt( 50,100);
+    $polyline->addPt(100,  0);
+
+    $image->polydraw($polyline,$black);
+
+実際、GD::PolylineはGD::Polygonのサブクラスです。
+そのためすべてのpolygonメソッド(B<offset> や B<transform>のような）は
+polylineでも利用することができます。
+I<このモジュールで>、いくつかの新しいメソッドが、このためGD::Polygonに
+追加され(B<rotate>のように)、いくつかは更新/変更/拡張されました(B<scale>のように>。
+さらなる情報についてはセクション"新しいあるいは更新されたGD::Polygonメソッド"を
+ご覧ください。
+
+=back
+
+このモジュールは、まだ非常に"幼い"こと、そして将来のリリースで
+変更されると考えられること、そして/あるいは、おそらく
+既存のpolygonオブジェクトそしてあるいはGDモジュールに
+織り込まれるかもしれないことに注意してください。
+
+=head1 更新されたPolygonメソッド
+
+(GD.pmで定義されている)以下のメソッドは、このモジュールを使うとオーバーライドされます。
+
+100%後方互換性を保障するために全ての努力をしています。しかしそれが達成できていないと
+確証することが出来たのであれば、それをバグだと考え、Polyline.pmの作者に
+知らせてください。
+
+=over 5
+
+=item C<scale>
+
+C<$poly-E<gt>scale($sx, $sy, $cx, $cy)> I<オブジェクト・メソッド -- GD::Polygon::scaleの更新>
+
+x座標に$sx、y座標に$sy、中心点を($cx, $cy)として、
+polythingを拡大、縮小をおこないます。
+
+中心点($cx, $cy)はオプションです -- これらが省略されると、関数は
+その開始点で拡大/縮小を行います。
+
+polythingを裏返すためには、scale factorを-1にしてください。例えば
+polythingの上下を直線 y = 100で反転させるためには、以下のようにしてください:
+
+    $poly->scale(1, -1, 0, 100);
+
+=back
+
+=head1 新しいPolygonメソッド
+
+以下のメソッドはGD::Polygonに追加され、そのためpolygonとpolylineで
+使うことが出来ます。
+
+忘れないでください: polylineはGD::Polygonです。そのためoffset()のような
+GD::Polygonメソッドを使うことが出来ます。そしてfilledPolygon()のような
+GD::Imageメソッドで利用することができます。
+
+=over 5
+
+=item C<rotate>
+
+C<$poly-E<gt>rotate($angle, $cx, $cy)> I<オブジェクト・メソッド>
+
+polythingを$angle（時計回り、ラジアンで）、中心点($cx、$cy)で回転させます。
+
+中心点($cx, $cy)はオプションです -- 省略されれば、この関数は開始点で
+回転させます。
+
+この関数とGD::Polylineでの他の角度に関連する関数では、正の$angleは
+時計回りの回転に対応します。これは通常のデカルトの教徒の感覚とは反対です。
+しかしそれはラスターがy軸が"下に"行くという点で通常のデカルトの教徒の
+感覚とは反対だからです。
+
+=item C<centroid>
+
+C<($cx, $cy) = $poly-E<gt>centroid($scale)> I<オブジェクト・メソッド>
+
+計算し、polythingの頂点の重心(centroid)である($cx, $cy)を返します。
+例えば、何かをその重心について180度回転させるためには以下のようにします:
+
+    $poly->rotate(3.14159, $poly->centroid());
+
+$scaleはオプションです:もし指定されれば$cx と $cy は返される前に$scale倍
+されます。この主な利用法は、先頭位置に以下のようにしてpolythingをシフトさせる
+ことです:
+
+    $poly->offset($poly->centroid(-1));
+
+=item C<segLength>
+
+C<@segLengths = $poly-E<gt>segLength()> I<オブジェクト・メソッド>
+
+配列コンテキストでは、polythingでの線分の長さの配列を返します。
+線分nは、頂点nから頂点n+1への辺です。
+Polygonは頂点と同じ数だけの線分を持ちます;polylineは1つ少ない線分を持ちます。
+
+スカラーコンテキストでは、配列コンテキストで返される配列の合計を返します。
+
+=item C<segAngle>
+
+C<@segAngles = $poly-E<gt>segAngle()> I<オブジェクト・メソッド>
+
+各線分のX軸からの角度の配列を返します。
+線分nは、頂点nから頂点n+1への辺です。
+Polygonは頂点と同じ数だけの線分を持ちます;polylineは1つ少ない線分を持ちます。
+
+返された線分は 0 <= $angle < 2 * pi の間になり、
+角度は時計回り方向に増加します。
+
+=item C<vertexAngle>
+
+C<@vertexAngles = $poly-E<gt>vertexAngle()> I<オブジェクト・メソッド>
+
+線分と各頂点の内側と外側の角度の配列を返します。
+polylineでは頂点0と最後の頂点での頂点角度は未定義です;
+しかし$vertexAngle[1]が頂点1に対応するため、$vertexAngle[0]はundefになります。
+
+返された線分は 0 <= $angle < 2 * pi の間になり、
+角度は時計回り方向に増加します。
+
+この計算は多角形の"内側"あるいは"外側"という視点で"内側の"角度を計算しようと
+しているのではないということに注意してください。むしろ隣接する線分の
+間の単なる時計回りの角度です。このため適切な角度を持った多角形は
+その多角形がどのように"曲がっているか"によって、pi/2か3*pi/2の頂点角度を持ちます。
+
+=item C<toSpline>
+
+C<$poly-E<gt>toSpline()> I<オブジェクト・メソッド & ファクトリ・メソッド>
+
+よくベジエ曲線と言われる、キュービックスプライン補間(cubic spline)アルゴリズムを
+使って適度に滑らかな、新しいpolythingを作成します。"元の"polythingは
+"制御多線体"("control polything")と呼ばれます。
+それがpolylineであれば、その制御多線形(control polyline)は4,7,10など
+頂点の数が3n+1でなければなりません。
+もしpolygonであれば制御多角形(control polygon)は3, 6, 9など頂点の数が3nで
+なければなりません。
+
+    $spline = $poly->toSpline();    
+    $image->polydraw($spline,$red);
+
+簡単に説明すると、制御多線形からの4つの点のグループは、
+スプラインの与えられた部分の"制御ポイント"として考えられます:最初と4番目は
+"アンカー・ポイント"("anchor points")となり、スプラインはそれらの間を
+通ります;2番目と3番目は"指示ポイント"("director points")です。
+スプラインはアンカー・ポイントから隣接する支持ポイントへの線分への
+タンジェントですが、指示ポイントの間は通りません。
+
+スプラインの次の部分は前の部分の最後のアンカー・ポイントを利用します。
+アンカー・ポイントとその隣接する支持ポイントが同一直線上になければ、
+スプラインは先端(cusp)(非連続な傾斜）をアンカー・ポイントに持つでしょう。
+
+現在の実装では、4つの制御ポイントの集合ごとの、
+返される多線形でのtoSpline()は固定の線分の数を返します。
+将来は、これそしてその他のアルゴリズムのパラメータを設定可能に
+するでしょう。
+
+=item C<addControlPoints>
+
+C<$polyline-E<gt>addControlPoints()> I<オブジェクト・メソッド & ファクトリ・メソッド>
+
+そこであなたは言うでしょう:"OK。スプラインはよさげだね。でも
+スムーズな曲線を多線形から取り出せるよう、アンカーポイントと
+隣接する指示ポイントが同一線上に並ぶようにするにはどうすればいいの？"
+リラックスしてください! ものぐさな人には: addControlPoints()が救ってくれます。
+
+addControlPoints()はtoSpline()のための制御多線形として与えることができる多線形
+を返します。これはスプラインである他の多線形を返します。頭は回ってますか？
+このように考えてみてください:
+
+=over 5
+
+=item +
+
+多線形を持っていて、あなたが欲しい場所に制御ポイントを既に
+置いてあるのであれば、直接toSpline()を呼び出してください。
+それぞれ3番目の頂点がスプライン"上"になることを、お忘れなく。
+
+スプラインが制御多線形の内側に"刻み込まれた"ように見えるものに
+なるでしょう。
+
+=item +
+
+多線形を持っていて、その頂点を全て結果のスプライン上にしたければ、
+addControlPoints()を呼び出し、それからtoSpline()を呼び出してください:
+
+    $control = $polyline->addControlPoints();   
+    $spline  = $control->toSpline();    
+    $image->polyline($spline,$red);
+
+制御多線形がスプラインの内側に"刻み込まれた"ように見えるものに
+なるでしょう。
+
+=back
+
+"よい"制御ポイントを追加することは主観的なものです;この特定の
+アルゴリズムは、その作者の好みを明らかにしてしまいます。
+将来はアルゴリズムへのパラメータを通して、その好みを少し変更
+できるようになるでしょう。傲慢な方々へ:どうかよりよいものをお作りください!
+
+気短な方々へ:addControlPoints()はpolylineを返します。そこで以下のように
+呼び出しを積み重ねることが出来ます:
+
+    $image->polyline($polyline->addControlPoints()->toSpline(),$mauve);
+
+=back
+
+=head1 新しいGD::Imageメソッド
+
+=over 5
+
+=item C<polyline>
+
+C<$image-E<gt>polyline(polyline,color)> I<オブジェクト・メソッド> 
+
+    $image->polyline($polyline,$black)
+
+これは指定された色で多線形を描画します。
+本当のカラー・インデックスと特別な色gdBrushed, gdStyled と gdStyledBrushed が
+指定できます。
+
+polyline()メソッドもpolygon()メソッドもそれほど気難しいわけではありません:
+どちらのメソッドもGD::Polygon と GD::Polylineのどちらでも呼ぶことが出来ます。
+I<メソッド>は、描画の際、オブジェクトの種類ではI<なく>、その形が
+"閉じている"か"開いている"かを判定します。
+
+=item C<polydraw>
+
+C<$image-E<gt>polydraw(polything,color)> I<オブジェクト・メソッド> 
+
+    $image->polydraw($poly,$black)
+
+このメソッドは、単純にオブジェクトの種類と
+$image->polygon()と$image->polyline()のどちらを呼んでいるかを
+チェックすることにより、期待されているように
+(polygonは閉じ、polylineは開いて）polythingを描画します。
+
+=back
+
+=head1 使用例
+
+ディストリビューションに含まれているファイル"polyline-examples.pl"をご覧ください。
+
+=head1 参考資料
+
+ベジエ スプラインについての更なる情報は、http://www.webreference.com/dlab/9902/bezier.html
+をご覧ください。
+
+=head1 将来の機能
+
+描画の部分については以下のような機能の追加があります:
+
+    - 多角形の屈曲アルゴリズム（ある点が多角形の"内側"か"外側"かを判定できるよう）
+
+    - 取り囲む四角形(bounding box)から新しい多角形
+    
+    - 取り囲む多角形(bounding polygon)の検索（与えられた頂点の就業のためのぴったりフィットした簡単な凸状の多角形）
+    
+    - 一度に複数の点を追加するaddPts()メソッド
+    
+    - 多角形のためのclone()メソッド
+    
+    - GDとSVGの両方で機能する関数
+    
+あなたが見たいと思っている、その他の可能な機能をどうか教えてください。
+
+=head1 作者
+
+このモジュールはDaniel J. Harastyによって作成されました。
+質問、コメント、苦情、賞賛は彼に送ってください  harasty@cpan.org 。
+
+私とこの私の始めてのCPANへの貢献に対する入力と我慢について、
+Lincoln Steinに感謝します。
+
+=head1 著作権情報(Copyright Information)
+
+The Polyline.pm module is copyright 2002, Daniel J. Harasty.  It is
+distributed under the same terms as Perl itself.  See the "Artistic
+License" in the Perl source code distribution for licensing terms.
+
+The latest version of Polyline.pm is available at 
+your favorite CPAN repository and/or 
+along with GD.pm by Lincoln D. Stein at http://stein.cshl.org/WWW/software/GD.
+

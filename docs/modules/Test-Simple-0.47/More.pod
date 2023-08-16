@@ -1,0 +1,1081 @@
+
+=encoding euc-jp
+
+=head1 名前
+
+Test::More - テストを書くためのもう一つのフレームワーク
+
+=head1 概要
+
+  use Test::More tests => $Num_Tests;
+  # または
+  use Test::More qw(no_plan);
+  # または
+  use Test::More skip_all => $reason;
+
+  BEGIN { use_ok( 'Some::Module' ); }
+  require_ok( 'Some::Module' );
+
+  # 「ok」と示すためのさまざまな方法
+  ok($this eq $that, $test_name);
+
+  is  ($this, $that,    $test_name);
+  isnt($this, $that,    $test_name);
+
+  # STDERR に出力するよりも  "# here's what went wrong\n"
+  diag("here's what went wrong");
+
+  like  ($this, qr/that/, $test_name);
+  unlike($this, qr/that/, $test_name);
+
+  cmp_ok($this, '==', $that, $test_name);
+
+  is_deeply($complex_structure1, $complex_structure2, $test_name);
+
+  SKIP: {
+      skip $why, $how_many unless $have_some_feature;
+
+      ok( foo(),       $test_name );
+      is( foo(42), 23, $test_name );
+  };
+
+  TODO: {
+      local $TODO = $why;
+
+      ok( foo(),       $test_name );
+      is( foo(42), 23, $test_name );
+  };
+
+  can_ok($module, @methods);
+  isa_ok($object, $class);
+
+  pass($test_name);
+  fail($test_name);
+
+  # 比較関数ユーティリティ
+  eq_array(\@this, \@that);
+  eq_hash(\%this, \%that);
+  eq_set(\@this, \@that);
+
+  # 未実装!!!
+  my @status = Test::More::status;
+
+  # 未実装!!!
+  BAIL_OUT($why);
+
+
+=head1 説明
+
+B<STOP!> If you're just getting started writing tests, have a look at
+Test::Simple first.  This is a drop in replacement for Test::Simple
+which you can switch to once you get the hang of basic testing.
+
+B<待った!>もし、今初めて、テストを書こうとしているのなら、Test::Simpleをまず見てください。
+Test::Moreは、基本的なテストのコツを得て、置き換え可能なTest::Simpleの差込式の置換です。
+
+
+The purpose of this module is to provide a wide range of testing
+utilities.  Various ways to say "ok" with better diagnostics,
+facilities to skip tests, test future features and compare complicated
+data structures.  While you can do almost anything with a simple
+C<ok()> function, it doesn't provide good diagnostic output.
+
+このモジュールの目的は、大幅なテストユーティリティを提供することです。
+よりよい診断で「ok」と示す方法を用意したり、テストを簡単にスキップしたり、
+将来的な実装をテストしたり、複雑なデータ構造を比較したりする様々な機能があります。
+単純なC<ok()>関数でほとんど全てのことが出来ますが、C<ok()>関数は、良い診断出力を提供しません。
+
+=head2 計画が一緒に来るなら、それを大事にする
+
+Before anything else, you need a testing plan.  This basically declares
+how many tests your script is going to run to protect against premature
+failure.
+
+他の何より前に、テストの計画が必要です。
+scriptが行おうとしているテストがいくつであるかというこの基本的な宣言は、原始的な失敗に対する保護になります。
+
+The preferred way to do this is to declare a plan when you C<use Test::More>.
+
+この保護を行う好ましい方法は、C<use Test::More> を書く時に、計画を宣言することです。
+
+  use Test::More tests => $Num_Tests;
+
+There are rare cases when you will not know beforehand how many tests
+your script is going to run.  In this case, you can declare that you
+have no plan.  (Try to avoid using this as it weakens your test.)
+
+scriptが行おうとしているテストがいくつあるかを事前に知らないような、まれなケースがあります。
+こういうケースでは、計画を持っていないと宣言することが出来ます。
+(テストの効果を弱めるので、これを使うのは避けるようにしてください)
+
+  use Test::More qw(no_plan);
+
+In some cases, you'll want to completely skip an entire testing script.
+
+いくつかのケースでは、あるテストscript全てを完全にスキップしたいでしょう。
+
+  use Test::More skip_all => $skip_reason;
+
+Your script will declare a skip with the reason why you skipped and
+exit immediately with a zero (success).  See L<Test::Harness> for
+details.
+
+scriptが、なぜスキップするのかの理由を宣言すると、即座に0(成功)で終了します。
+詳細についてはL<Test::Harness>をみてください。
+
+If you want to control what functions Test::More will export, you
+have to use the 'import' option.  For example, to import everything
+but 'fail', you'd do:
+
+Test::Moreがエクスポートする関数をコントロールしたければ、
+'import'オプションを使う必要があります。
+たとえば、'fail'を除いて、全てをインポートしたいなら、次のようにします：
+
+  use Test::More tests => 23, import => ['!fail'];
+
+Alternatively, you can use the plan() function.  Useful for when you
+have to calculate the number of tests.
+
+代わりに、plan() 関数を使うことが出来ます。
+テストの数を計算しなければならないなら、有益です。
+
+  use Test::More;
+  plan tests => keys %Stuff * 3;
+
+or for deciding between running the tests at all:
+
+または、テストを走らせている間に決めるためには：
+
+  use Test::More;
+  if( $^O eq 'MacOS' ) {
+      plan skip_all => 'Test irrelevant on MacOS';
+  }
+  else {
+      plan tests => 42;
+  }
+
+=head2 テストの名前
+
+By convention, each test is assigned a number in order.  This is
+largely done automatically for you.  However, it's often very useful to
+assign a name to each test.  Which would you rather see:
+
+便宜のために、それぞれのテストは、順番に番号が割り振られています。
+これは、主に自動的に行われます。ですが、テストに名前を割り当てると、
+とても有益なことがよくあります。どちらがよいでしょうか:
+
+
+  ok 4
+  not ok 5
+  ok 6
+
+というのと、
+
+  ok 4 - basic multi-variable
+  not ok 5 - simple exponential
+  ok 6 - force == mass * acceleration
+
+The later gives you some idea of what failed.  It also makes it easier
+to find the test in your script, simply search for "simple
+exponential".
+
+後者は、何が失敗したかの手がかりを与えてくれます。
+また、script中のテストを見つけやすくなり、「簡単な指数関数」を楽に探せます。
+
+All test functions take a name argument.  It's optional, but highly
+suggested that you use it.
+
+全てのテストの関数は、名前を引数にとります。名前の引数は、オプショナルではありますが、
+使うことが強く推奨されています。
+
+=head2 わたしは、OK 、あなたは、だめ
+
+The basic purpose of this module is to print out either "ok #" or "not
+ok #" depending on if a given test succeeded or failed.  Everything
+else is just gravy.
+
+このモジュールの基本的な目的は、与えたテストが、失敗したか、成功したかで、
+「ok 番号」か、「not ok 番号」のどちらかを出力することです。他の全ては、ただのおまけです。
+
+All of the following print "ok" or "not ok" depending on if the test
+succeeded or failed.  They all also return true or false,
+respectively.
+
+この下に書いているものは全て、テストが成功したか失敗したかどうかによって、「ok」か「not ok」を表示します。
+それらは、全て、それぞれ真か偽を返します。
+
+=over 4
+
+=item B<ok>
+
+  ok($this eq $that, $test_name);
+
+This simply evaluates any expression (C<$this eq $that> is just a
+simple example) and uses that to determine if the test succeeded or
+failed.  A true expression passes, a false one fails.  Very simple.
+
+これは単純に、どんな式も評価します(C<$this eq $that>はただの簡単な例です)。
+そして、テストが成功したかどうかを決めるのに使います。
+真の式は合格し、偽の式は失敗です。とても簡単です。
+
+たとえば:
+
+    ok( $exp{9} == 81,                   'simple exponential' );
+    ok( Film->can('db_Main'),            'set_db()' );
+    ok( $p->tests == 4,                  'saw tests' );
+    ok( !grep !defined $_, @items,       'items populated' );
+
+(覚えかた:  "This is ok.")
+
+$test_name is a very short description of the test that will be printed
+out.  It makes it very easy to find a test in your script when it fails
+and gives others an idea of your intentions.  $test_name is optional,
+but we B<very> strongly encourage its use.
+
+C<$test_name>は、とても短いテストの説明で、実行時に出力されます。
+$test_nameは、テストが失敗した場合に、script中のテストをとても見つけやすくします。
+それに、他の人に、あなたの意図する考えを伝えます。$test_nameは、は、オプショナルですが、
+使うことが強く勧められています。
+
+Should an ok() fail, it will produce some diagnostics:
+
+万一、ok()が失敗した場合、ちょっとした診断を提供します:
+
+    not ok 18 - sufficient mucus
+    #     Failed test 18 (foo.t at line 42)
+
+This is actually Test::Simple's ok() routine.
+
+これは、実際に、Test::SimpleのC<ok()> ルーチンです。
+
+=item B<is>
+
+=item B<isnt>
+
+  is  ( $this, $that, $test_name );
+  isnt( $this, $that, $test_name );
+
+Similar to ok(), is() and isnt() compare their two arguments
+with C<eq> and C<ne> respectively and use the result of that to
+determine if the test succeeded or failed.  So these:
+
+ok() と is() と isnt() の類似点は、二つの引数をそれぞれC<eq> と C<ne>で比較し、
+その結果を使って、テストが成功したか、失敗したかを決めることです。それで、これらは：
+
+    # Is the ultimate answer 42?
+    is( ultimate_answer(), 42,          "Meaning of Life" );
+
+    # $foo isn't empty
+    isnt( $foo, '',     "Got some foo" );
+
+次と似ています:
+
+    ok( ultimate_answer() eq 42,        "Meaning of Life" );
+    ok( $foo ne '',     "Got some foo" );
+
+(覚えかた:  "This is that."  "This isn't that.")
+
+So why use these?  They produce better diagnostics on failure.  ok()
+cannot know what you are testing for (beyond the name), but is() and
+isnt() know what the test was and why it failed.  For example this
+test:
+
+どうしてこれらを使うのでしょう？ is() と isnt() は、失敗に関して、よりよい診断をだします。
+ok()は、(名前以上には)何のためにテストをしているのか知ることが出来ませんが、
+is()とisnt()は、テストが何で、テストがなぜ失敗したかを知っています。
+たとえばこのテスト：
+
+    my $foo = 'waffle';  my $bar = 'yarblokos';
+    is( $foo, $bar,   'Is foo the same as bar?' );
+
+Will produce something like this:
+
+このようなものを出力します:
+
+    not ok 17 - Is foo the same as bar?
+    #     Failed test (foo.t at line 139)
+    #          got: 'waffle'
+    #     expected: 'yarblokos'
+
+So you can figure out what went wrong without rerunning the test.
+
+これで、テストを再度走らせずに何が間違ったのか、判断できます。
+
+You are encouraged to use is() and isnt() over ok() where possible,
+however do not be tempted to use them to find out if something is
+true or false!
+
+可能なら、is() と isnt()をok()の代わりに使うことを勧めます。
+ですが、何かが、真であるか偽であるかを見つけ出すために、
+is() と isnt() を使おうとしてはいけません。
+
+  # XXX BAD!  $pope->isa('Catholic') eq 1
+  is( $pope->isa('Catholic'), 1,        'Is the Pope Catholic?' );
+
+This does not check if C<$pope->isa('Catholic')> is true, it checks if
+it returns 1.  Very different.  Similar caveats exist for false and 0.
+In these cases, use ok().
+
+このコードは、C<$pope->isa('Catholic')> が真であるかどうかをチェックしません。
+このコードは、1を返すかどうかをチェックします。これらはまったく違います。
+似たような警告は、偽 と 0 にも在ります。こういうケースでは、ok() を使います。
+
+  ok( $pope->isa('Catholic') ),         'Is the Pope Catholic?' );
+
+For those grammatical pedants out there, there's an C<isn't()>
+function which is an alias of isnt().
+
+文法学者ぶる人のために、書いておくと、C<isn't()> 関数は isnt()関数の
+エイリアスとして存在してます。
+
+=item B<like>
+
+  like( $this, qr/that/, $test_name );
+
+Similar to ok(), like() matches $this against the regex C<qr/that/>.
+
+ok() と似ていますが、like() は、 引数の$thisを正規表現のC<qr/that/>にマッチさせます。
+
+このように:
+
+    like($this, qr/that/, 'this is like that');
+
+これは、次と似ています:
+
+    ok( $this =~ /that/, 'this is like that');
+
+(覚えかた  "This is like that".)
+
+The second argument is a regular expression.  It may be given as a
+regex reference (i.e. C<qr//>) or (for better compatibility with older
+perls) as a string that looks like a regex (alternative delimiters are
+currently not supported):
+
+二番目の引数は正規表現です。正規表現のリファレンス
+(たとえば、C<qr//>)や、(古いPelrと、より互換性を持たせるなら)
+正規表現に見える文字列(二者択一の区切りは、現在サポートされていません)として与えられます。
+
+    like( $this, '/that/', 'this is like that' );
+
+Regex options may be placed on the end (C<'/that/i'>).
+
+正規表現のオプションは終わりに置かれます (C<'/that/i'>)。
+
+Its advantages over ok() are similar to that of is() and isnt().  Better
+diagnostics on failure.
+
+ok()と比べたときの利点は、is() と isnt()の利点に似ています。
+失敗に関して、よく診断します。
+
+=item B<unlike>
+
+  unlike( $this, qr/that/, $test_name );
+
+Works exactly as like(), only it checks if $this B<does not> match the
+given pattern.
+
+like()のように働きますが、 
+$this が与えたパターンにマッチB<しない>ことだけをチェックします。
+
+=item B<cmp_ok>
+
+  cmp_ok( $this, $op, $that, $test_name );
+
+Halfway between ok() and is() lies cmp_ok().  This allows you to
+compare two arguments using any binary perl operator.
+
+ok() と is() の中間に cmp_ok()があります。 
+これは、すべてのバイナリのPerlの演算子を使って、二つの引数を比較することを許します。
+
+
+    # ok( $this eq $that );
+    cmp_ok( $this, 'eq', $that, 'this eq that' );
+
+    # ok( $this == $that );
+    cmp_ok( $this, '==', $that, 'this == that' );
+
+    # ok( $this && $that );
+    cmp_ok( $this, '&&', $that, 'this || that' );
+    ...etc...
+
+Its advantage over ok() is when the test fails you'll know what $this
+and $that were:
+
+ok()と比べたときの cmp_ok の 利点は、テストが失敗したときに、
+$this と $that が何かがわかることです。
+
+    not ok 1
+    #     Failed test (foo.t at line 12)
+    #     '23'
+    #         &&
+    #     undef
+
+It's also useful in those cases where you are comparing numbers and
+is()'s use of C<eq> will interfere:
+
+cmp_ok は、数を比較する際や、is() を eq として使うことが、干渉する際に、有益でしょう:
+
+    cmp_ok( $big_hairy_number, '==', $another_big_hairy_number );
+
+=item B<can_ok>
+
+  can_ok($module, @methods);
+  can_ok($object, @methods);
+
+Checks to make sure the $module or $object can do these @methods
+(works with functions, too).
+
+$module か $object が 複数のメソッド(または、関数)@methodsを実行できるかをチェックします。
+
+    can_ok('Foo', qw(this that whatever));
+
+is almost exactly like saying:
+
+上の表現は、実際は、以下のような意味です:
+
+    ok( Foo->can('this') && 
+        Foo->can('that') && 
+        Foo->can('whatever') 
+      );
+
+only without all the typing and with a better interface.  Handy for
+quickly testing an interface.
+
+すべてをタイプしなくていい、よりよいインターフェースです。
+素早いテストのための、手ごろなインターフェースです。
+
+No matter how many @methods you check, a single can_ok() call counts
+as one test.  If you desire otherwise, use:
+
+いくつの @methods があるか、チェックすることは、大したことではありません。
+一つの can_ok() は一つのテストとして、カウントされます。
+別の方法で、やりたいなら、次のように使います:
+
+
+    foreach my $meth (@methods) {
+        can_ok('Foo', $meth);
+    }
+
+=item B<isa_ok>
+
+  isa_ok($object, $class, $object_name);
+  isa_ok($ref,    $type,  $ref_name);
+
+Checks to see if the given $object->isa($class).  Also checks to make
+sure the object was defined in the first place.  Handy for this sort
+of thing:
+
+$object->isa($class)が与えられているかどうかを見るためのチェック。
+オブジェクトが最初の場所で定義されているか確かめるためのチェックでもあります。
+
+    my $obj = Some::Module->new;
+    isa_ok( $obj, 'Some::Module' );
+
+where you'd otherwise have to write
+
+代わりに次のように書けます：
+
+    my $obj = Some::Module->new;
+    ok( defined $obj && $obj->isa('Some::Module') );
+
+to safeguard against your test script blowing up.
+
+テストscriptが、吹っ飛ぶのを防ぐためのセーフガードです。
+
+It works on references, too:
+
+リファレンスでも動きます：
+
+    isa_ok( $array_ref, 'ARRAY' );
+
+The diagnostics of this test normally just refer to 'the object'.  If
+you'd like them to be more specific, you can supply an $object_name
+(for example 'Test customer').
+
+このテストの診断は、通常、ただ、'そのオブジェクト'のリファレンスです。
+それらをもっと特定したいなら、$object_name
+(たとえば、'Test customer')を供給できます。
+
+=item B<pass>
+
+=item B<fail>
+
+  pass($test_name);
+  fail($test_name);
+
+Sometimes you just want to say that the tests have passed.  Usually
+the case is you've got some complicated condition that is difficult to
+wedge into an ok().  In this case, you can simply use pass() (to
+declare the test ok) or fail (for not ok).  They are synonyms for
+ok(1) and ok(0).
+
+時には、ただ、テストがパスしたと示したいでしょう。
+普通、このケースは、ok()に、押し込むことが難しい複雑な条件になっています。
+こういう場合、単純にpass()(テストがokであると宣言するために)か、fail(not ok のために)
+かを使えます。これらは、ok(1)と、ok(0)の同意語です。
+
+Use these very, very, very sparingly.
+
+pass() と fail() を使うことはひじょーに慎重に判断してください。
+
+=back
+
+=head2 複数の診断
+
+If you pick the right test function, you'll usually get a good idea of
+what went wrong when it failed.  But sometimes it doesn't work out
+that way.  So here we have ways for you to write your own diagnostic
+messages which are safer than just C<print STDERR>.
+
+正しいテスト関数を選んだなら、ふつう、そのテスト関数が失敗した場合に、
+何が間違っているかについてよい情報を得ることができるでしょう。ですが、時に、
+そういう風には、うまく働かないこともあります。
+そのために、自分で自分自身の診断メッセージを書く方法があります。
+C<print STDERR> よりも、安全です。
+
+=over 4
+
+=item B<diag>
+
+  diag(@diagnostic_message);
+
+Prints a diagnostic message which is guaranteed not to interfere with
+test output.  Handy for this sort of thing:
+
+テストの出力に干渉しないと保証されている診断メッセージを出力します。
+次のようなことにとって、手ごろです：
+
+    ok( grep(/foo/, @users), "There's a foo user" ) or
+        diag("Since there's no foo, check that /etc/bar is set up right");
+
+which would produce:
+
+次のようになります：
+
+    not ok 42 - There's a foo user
+    #     Failed test (foo.t at line 52)
+    # Since there's no foo, check that /etc/bar is set up right.
+
+You might remember C<ok() or diag()> with the mnemonic C<open() or
+die()>.
+
+C<ok() or diag()>を、C<open() or die()> と一緒に覚えると覚えやすいでしょう。
+ 
+B<NOTE> The exact formatting of the diagnostic output is still
+changing, but it is guaranteed that whatever you throw at it it won't
+interfere with the test.
+
+B<注意> 診断の出力のためのフォーマットは、まだまだ流動的です。
+しかし、それに何を渡してもテストに干渉しないことは保証されています。
+
+=back
+
+=head2 モジュールのテスト
+
+You usually want to test if the module you're testing loads ok, rather
+than just vomiting if its load fails.  For such purposes we have
+C<use_ok> and C<require_ok>.
+
+普通、テストしているモジュールのロードが失敗したかどうかを吐くだけよりも、
+むしろ、 ok をロードしたかどうかをテストしたいことでしょう。
+そのような目的のために、C<use_ok>と、C<require_ok>があります。
+
+=over 4
+
+=item B<use_ok>
+
+   BEGIN { use_ok($module); }
+   BEGIN { use_ok($module, @imports); }
+
+These simply use the given $module and test to make sure the load
+happened ok.  It's recommended that you run use_ok() inside a BEGIN
+block so its functions are exported at compile-time and prototypes are
+properly honored.
+
+これらは、単純に、与えられた $module を使い、
+ロードが ok したかを確かめるためのテストをするだけです。
+BEGIN ブロック内で、use_ok() を走らせることを推奨します。
+これにより、この関数は、コンパイル時にexportされ、プロトタイプを適切に受け取ります。
+
+If @imports are given, they are passed through to the use.  So this:
+
+@import が与えれた場合、use の際に渡されます。次のように :
+
+   BEGIN { use_ok('Some::Module', qw(foo bar)) }
+
+is like doing this:
+
+次のようにするのと同じです：
+
+   use Some::Module qw(foo bar);
+
+don't try to do this:
+
+次のようにしようとしてはいけません：
+
+   BEGIN {
+       use_ok('Some::Module');
+
+       ...some code that depends on the use...
+       ...happening at compile time...
+   }
+
+instead, you want:
+
+代わりに、次のようにしましょう：
+
+  BEGIN { use_ok('Some::Module') }
+  BEGIN { ...some code that depends on the use... }
+
+
+=item B<require_ok>
+
+   require_ok($module);
+
+Like use_ok(), except it requires the $module.
+
+C<use_ok()> に似ていますが、これは $module を必要とします。
+
+=back
+
+=head2 条件テスト
+
+Sometimes running a test under certain conditions will cause the
+test script to die.  A certain function or method isn't implemented
+(such as fork() on MacOS), some resource isn't available (like a 
+net connection) or a module isn't available.  In these cases it's
+necessary to skip tests, or declare that they are supposed to fail
+but will work in the future (a todo test).
+
+ある条件下でテストを動かすことによって、テストスクリプトが死ぬ時があります。
+(MacOSでのfork()のような)特定の関数やメソッドは実装されていなかったり、
+(ネット接続のような)いくつかのリソースが利用できなかったり、
+モジュールが利用できなかったりとか。
+こういったケースでは、テストをスキップしなければならないか、
+そうでなければ、失敗することが予想されるけれど、
+将来的に動く(a todo test)であろうということを宣言しなければなりません。
+
+For more details on the mechanics of skip and todo tests see
+L<Test::Harness>.
+
+skip と todo テストの機構の詳細は、C<Test::Harness>を見て下さい。
+
+The way Test::More handles this is with a named block.  Basically, a
+block of tests which can be skipped over or made todo.  It's best if I
+just show you...
+
+名前のついたブロックと一緒にあるTest::More ハンドルの使い方。
+基本的にテストのブロックは、スキップさせるか、todo にするかです。
+ただコードを見せるのが最善でしょう…
+
+=over 4
+
+=item B<SKIP: BLOCK>
+
+  SKIP: {
+      skip $why, $how_many if $condition;
+
+      ...normal testing code goes here...
+  }
+
+This declares a block of tests that might be skipped, $how_many tests
+there are, $why and under what $condition to skip them.  An example is
+the easiest way to illustrate:
+
+これは、スキップするテストのブロックを宣言します。
+$how_many はテストの数、 $why は理由、$conditionは、
+どういう条件で、これらのテストをスキップするのかを意味します。
+最も簡単な例を見せます：
+
+
+    SKIP: {
+        eval { require HTML::Lint };
+
+        skip "HTML::Lint not installed", 2 if $@;
+
+        my $lint = new HTML::Lint;
+        isa_ok( $lint, "HTML::Lint" );
+
+        $lint->parse( $html );
+        is( $lint->errors, 0, "No errors found in HTML" );
+    }
+
+If the user does not have HTML::Lint installed, the whole block of
+code I<won't be run at all>.  Test::More will output special ok's
+which Test::Harness interprets as skipped, but passing, tests.
+It's important that $how_many accurately reflects the number of tests
+in the SKIP block so the # of tests run will match up with your plan.
+
+ユーザが、HTML::Lint をインストールしていなければ、全てのブロックコードは、
+I<まったく実行されないでしょう>。 Test::Moreは、特別な ok() を出力し、
+Test::Harnes は、テストをスキップしたが、合格したと解釈します。
+
+テストの数が、計画にマッチするために、
+$how_many が正しくSKIP ブロックの中のテストの数を反映することは重要です。
+
+It's perfectly safe to nest SKIP blocks.  Each SKIP block must have
+the label C<SKIP>, or Test::More can't work its magic.
+
+ネストするSKIPブロックは完全に安全です。それぞれのSKIPブロックには、
+C<SKIP>ラベルがなければなりません、そうしないと、Test::Moreは、その魔法をうまく使えません。
+
+You don't skip tests which are failing because there's a bug in your
+program, or for which you don't yet have code written.  For that you
+use TODO.  Read on.
+
+失敗するテストをスキップしてはいけません。失敗するのは、プログラムにバグがあるからですし、
+そうでなければ、まだコードを書いていないからです。
+TODO の使い方を書くので、読み続けてください。
+
+=item B<TODO: BLOCK>
+
+    TODO: {
+        local $TODO = $why if $condition;
+
+        ...ふつうのテストコードをここに続けてください...
+    }
+
+Declares a block of tests you expect to fail and $why.  Perhaps it's
+because you haven't fixed a bug or haven't finished a new feature:
+
+失敗すると予測しているテストと、$why のブロックを宣言します。
+たぶん、バグをまだ直していないか、新しい機能を作り終えていないのでしょう。
+
+    TODO: {
+        local $TODO = "URI::Geller not finished";
+
+        my $card = "Eight of clubs";
+        is( URI::Geller->your_card, $card, 'Is THIS your card?' );
+
+        my $spoon;
+        URI::Geller->bend_spoon;
+        is( $spoon, 'bent',    "Spoon bending, that's original" );
+    }
+
+With a todo block, the tests inside are expected to fail.  Test::More
+will run the tests normally, but print out special flags indicating
+they are "todo".  Test::Harness will interpret failures as being ok.
+Should anything succeed, it will report it as an unexpected success.
+You then know the thing you had todo is done and can remove the
+TODO flag.
+
+todoブロックでは、その中のテストは、失敗すると予期されます。Test::More は、
+普通にテストを行いますが、特別なフラグを出力し、それのテストが「todo」であることを示します。
+Test::Harness は、この失敗を ok であると解釈します。
+なんでも成功にし、予期しない成功と、報告します。
+todoが解消されたと分かったら、TODOフラグを外すことが出来ます。
+
+The nice part about todo tests, as opposed to simply commenting out a
+block of tests, is it's like having a programmatic todo list.  You know
+how much work is left to be done, you're aware of what bugs there are,
+and you'll know immediately when they're fixed.
+
+todo テストの良いところは、テストのブロックを単純にコメントアウトすることではなく、
+プログラマ的なtodoリストであるようになることです。
+どれくらいするべき仕事が残っているのか分かるし、どのようなバグがあるのかも気付きます。
+また、それらのテストが修正された場合、即座に識別することが出来るでしょう。
+
+Once a todo test starts succeeding, simply move it outside the block.
+When the block is empty, delete it.
+
+一度、todoテストが成功し始めると、単純に、ブロックの外側にtodoテストを移します。
+ブロックが空なら、削除します。
+
+=item B<todo_skip>
+
+    TODO: {
+        todo_skip $why, $how_many if $condition;
+
+        ...normal testing code...
+    }
+
+With todo tests, it's best to have the tests actually run.  That way
+you'll know when they start passing.  Sometimes this isn't possible.
+Often a failing test will cause the whole program to die or hang, even
+inside an C<eval BLOCK> with and using C<alarm>.  In these extreme
+cases you have no choice but to skip over the broken tests entirely.
+
+todo テストでは、実際にテストをなるべく走らせようとします。
+このように、それらのテストがいつ通過し始めるかを知るでしょう。
+こういうことが、可能でない時があります。
+失敗するテストは全てのプログラムが死ぬか、ハングする原因になることがよくあります。
+C<eval BLOCK>の内側で、C<alarm>を使っても。
+このような極端なケースでは、壊れたテストを完全にスキップする以外には、選択の余地はありません。
+
+The syntax and behavior is similar to a C<SKIP: BLOCK> except the
+tests will be marked as failing but todo.  Test::Harness will
+interpret them as passing.
+
+todoではなくテストが失敗としてマークされる以外は、
+構文や振る舞いがC<SKIP: BLOCK>に似ています。
+Test::Harness は、テストに合格していると解釈します。
+
+=item When do I use SKIP vs. TODO?
+
+=item SKIP 対 TODO をどのように使い分けるのでしょう？
+
+B<If it's something the user might not be able to do>, use SKIP.
+This includes optional modules that aren't installed, running under
+an OS that doesn't have some feature (like fork() or symlinks), or maybe
+you need an Internet connection and one isn't available.
+
+B<もし、ユーザが出来そうにないときには>、SKIPを使ってください。
+これには、インストールされていないオプショナルなモジュールや、
+(fork()やsymlinksなどの)機能を持っていないOSで実行することや、
+インターネット接続を必要としているのに、それをユーザが利用できないことも含みます。
+
+B<If it's something the programmer hasn't done yet>, use TODO.  This
+is for any code you haven't written yet, or bugs you have yet to fix,
+but want to put tests in your testing script (always a good idea).
+
+B<もし、プログラマがまだ、やっていないときには>、TODO を使ってください。
+これは、テストscriptに、テストを置きたい(常によい考えです)けれども、
+まだ書いていないコードや、まだ直していないバグなどです。
+
+=back
+
+=head2 比較関数
+
+Not everything is a simple eq check or regex.  There are times you
+need to see if two arrays are equivalent, for instance.  For these
+instances, Test::More provides a handful of useful functions.
+
+全てが、単純なeq チェックや、正規表現 ではありません。
+たとえば、二つの配列がイコールであるかどうかを見る必要があるときもあります。
+こういった例のために、Test::Moreは、ちょっとした有益な関数を提供しています。
+
+B<NOTE> These are NOT well-tested on circular references.  Nor am I
+quite sure what will happen with filehandles.
+
+これらの関数は、circular references で、十分にテストされていません。
+また、ファイルハンドルについて起きるだろうことを、除いています。
+
+=over 4
+
+=item B<is_deeply>
+
+  is_deeply( $this, $that, $test_name );
+
+Similar to is(), except that if $this and $that are hash or array
+references, it does a deep comparison walking each data structure to
+see if they are equivalent.  If the two structures are different, it
+will display the place where they start differing.
+
+is()と似ていますが、$this と $thatが、ハッシュか配列のリファレンスです。
+それぞれのデータの構造を見てまわり、それぞれが、イコールかどうか、深い比較をします。
+二つの構造が違っていれば、二つが違い始めた場所を示します。
+
+Barrie Slaymaker's Test::Differences module provides more in-depth
+functionality along these lines, and it plays well with Test::More.
+
+Barrie Slaymaker の Test::Differences モジュールは、より、徹底的な、
+機能を提供している。Test::More と一緒によく動きます。
+
+B<NOTE> Display of scalar refs is not quite 100%
+
+B<注意>スカラーリファレンスの表示は、まだ、100%ではありません。
+
+=item B<eq_array>
+
+  eq_array(\@this, \@that);
+
+Checks if two arrays are equivalent.  This is a deep check, so
+multi-level structures are handled correctly.
+
+二つの配列がイコールかどうかをチェックします。これは、深いチェックであり、
+マルチレベルの構造が正確に扱われます。
+
+=item B<eq_hash>
+
+  eq_hash(\%this, \%that);
+
+Determines if the two hashes contain the same keys and values.  This
+is a deep check.
+
+二つのハッシュが同じキーと値を含んでいるかどうかを調べます。
+これは深いチェックです。
+
+=item B<eq_set>
+
+
+eq_set(\@this, \@that);
+
+Similar to eq_array(), except the order of the elements is B<not>
+important.  This is a deep check, but the irrelevancy of order only
+applies to the top level.
+
+eq_array() とにていますが、要素の順番は重要ではありません。
+これは、深いチェックですが、順番の不整合は、トップレベルにしか適用されません。
+
+B<NOTE> By historical accident, this is not a true set comparision.
+While the order of elements does not matter, duplicate elements do.
+
+B<注意>歴史的な都合により、これは、本当の set の比較ではありません。
+要素の順番が問題ではない上に、重複した要素も問題にしません。
+
+=back
+
+=head2 Test::Moreの拡張と包含
+
+Sometimes the Test::More interface isn't quite enough.  Fortunately,
+Test::More is built on top of Test::Builder which provides a single,
+unified backend for any test library to use.  This means two test
+libraries which both use Test::Builder B<can be used together in the
+same program>.
+
+Test::More のインターフェースが、まったく十分でない時もあります。
+幸運なことに、Test::More は、Test::Builderの上に作られています。
+Test::Builder は、あらゆるテストライブラリーのための、一つの、統合された、バックエンドを提供しています。
+このことは、両方とも、Test::Builderを使っている、二つのテストライブラリーならば、
+B<同じプログラムでいっしょに使えること>を意味します
+
+If you simply want to do a little tweaking of how the tests behave,
+you can access the underlying Test::Builder object like so:
+
+もし単純に、テストの挙動の仕方を微調整したければ、次のように、
+ベースとされたTest::Builderオブジェクトにアクセスできます:
+
+=over 4
+
+=item B<builder>
+
+    my $test_builder = Test::More->builder;
+
+Returns the Test::Builder object underlying Test::More for you to play
+with.
+
+Test::Moreで遊ぶための、Test::Moreの基礎をなすTest::Builder オブジェクトを、返します。
+
+=back
+
+
+=head1 注意書き
+
+Test::More is B<explicitly> tested all the way back to perl 5.004.
+
+Test::More is thread-safe for perl 5.8.0 and up.
+
+Test::More は、perl 5.004まで、<STRONG>はっきりと</STRONG>テストされています。
+
+Test::More は、perl 5.8.0 以降でスレッドセーフです。
+
+=head1 バグと警告
+
+=over 4
+
+=item Making your own ok()
+
+If you are trying to extend Test::More, don't.  Use Test::Builder
+instead.
+
+Test::Moreを拡張しようとすることは止めておきなさい。Test::Builder を代わりに使いなさい。
+
+=item The eq_* family has some caveats.
+
+=item Test::Harness upgrades
+
+no_plan and todo depend on new Test::Harness features and fixes.  If
+you're going to distribute tests that use no_plan or todo your
+end-users will have to upgrade Test::Harness to the latest one on
+CPAN.  If you avoid no_plan and TODO tests, the stock Test::Harness
+will work fine.
+
+no_plan と todo は、新しい Test::Harness の特徴に依存し、修正しています。
+もし、no_pan か、todoを使った、テストを、エンドユーザーに配布するなら、 
+Test::HarnessをCPANにある、最新のものに、アップグレードしなければなりません。
+no_plan と TODO テストを避けるなら、手持ちの Test::Harness でも、うまく動くでしょう。
+
+If you simply depend on Test::More, it's own dependencies will cause a
+Test::Harness upgrade.
+
+単純に、Test::Moreに依存しているのなら、
+その依存関係はTest::Harnesをアップグレードさせる動機になるでしょう。
+
+=back
+
+
+=head1 経緯
+
+This is a case of convergent evolution with Joshua Pritikin's Test
+module.  I was largely unaware of its existence when I'd first
+written my own ok() routines.  This module exists because I can't
+figure out how to easily wedge test names into Test's interface (along
+with a few other problems).
+
+これは、Joshua Pritikin のテストモジュールをまとめて進化させたものです。
+自分のok()ルーチンを最初に書いたとき、Pritikinのテストモジュールの存在にまったく気づいていませんでした。
+このモジュールが在るのは、簡単にテストの名前をテストのインターフェースに、押し込む方法を見つけ出せなかったからです
+(他のいくつかの問題とともに)。
+
+The goal here is to have a testing utility that's simple to learn,
+quick to use and difficult to trip yourself up with while still
+providing more flexibility than the existing Test.pm.  As such, the
+names of the most common routines are kept tiny, special cases and
+magic side-effects are kept to a minimum.  WYSIWYG.
+
+ここでのゴールは、存在するTest.pmより、柔軟性を提供しつつ
+学びやすく、すぐに使えて、つまずきにくいテストのユーティリティです。
+こんなわけで、ほとんどの共通のルーチンの名前は小さいままにして、
+特別なケースと魔法の側面の効果は最小限にとどめました。
+WYSIWYG（訳註:what you see is what you get）。
+
+
+=head1 SEE ALSO
+
+L<Test::Simple> if all this confuses you and you just want to write
+some tests.  You can upgrade to Test::More later (it's forward
+compatible).
+
+L<Test::Simple> もし、Test::Moreがまったく混乱させるだけのものであり、
+ただ、テストを書きたいだけなら。後で、Test::Moreにアップグレードできます
+(Test::More は、上位互換性があります)。
+
+L<Test::Differences> for more ways to test complex data structures.
+And it plays well with Test::More.
+
+L<Test::Differences> 複雑なデータ構造をテストするためのより多くの方法のために。
+Test::Moreと一緒によくはたらきます。
+
+L<Test> is the old testing module.  Its main benefit is that it has
+been distributed with Perl since 5.004_05.
+
+L<Test> 古いテストモジュール。 Testの主な利益は、
+Perl 5.004_05 から、Perl と一緒に配布されていることです。
+
+L<Test::Harness> for details on how your test results are interpreted
+by Perl.
+
+L<Test::Harness> Perlにテスト結果を解釈させる方法に関する詳細。
+
+L<Test::Unit> describes a very featureful unit testing interface.
+
+L<Test::Unit>とても特徴的なユニットテストのインターフェースを記述する。
+
+L<Test::Inline> shows the idea of embedded testing.
+
+L<Test::Inline>テストを埋め込む考えを見せます。
+
+L<SelfTest> is another approach to embedded testing.
+
+L<SelfTest>テストを埋め込む別のアプローチ。
+
+
+=head1 著者
+
+(原文まま)
+
+Michael G Schwern E<lt>schwern@pobox.comE<gt> with much inspiration
+from Joshua Pritikin's Test module and lots of help from Barrie
+Slaymaker, Tony Bowden, chromatic and the perl-qa gang
+
+
+=head1 著作権
+
+(原文)
+
+Copyright 2001 by Michael G Schwern E<lt>schwern@pobox.comE<gt>.
+
+This program is free software; you can redistribute it and/or 
+modify it under the same terms as Perl itself.
+
+See F<http://www.perl.com/perl/misc/Artistic.html>

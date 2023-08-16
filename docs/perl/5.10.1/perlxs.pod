@@ -1,0 +1,4429 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+perlxs - XS language reference manual
+
+=end original
+
+perlxs - XS 言語リファレンスマニュアル
+
+=head1 DESCRIPTION
+
+=head2 Introduction
+
+(序論)
+
+=begin original
+
+XS is an interface description file format used to create an extension
+interface between Perl and C code (or a C library) which one wishes
+to use with Perl.  The XS interface is combined with the library to
+create a new library which can then be either dynamically loaded
+or statically linked into perl.  The XS interface description is
+written in the XS language and is the core component of the Perl
+extension interface.
+
+=end original
+
+XS は Perl と(Perl と一緒に使いたい)C のコード(または C ライブラリ)との
+間の拡張インターフェースを作るのに使われるインターフェース記述
+ファイルフォーマットです。
+XS インターフェースはライブラリと動的または静的にリンクされて、
+Perl とリンクすることのできる新しいライブラリを生成します。
+XS インターフェース記述はは XS 言語で書かれており、
+Perl 拡張インターフェースのコアコンポーネントです。
+
+=begin original
+
+An B<XSUB> forms the basic unit of the XS interface.  After compilation
+by the B<xsubpp> compiler, each XSUB amounts to a C function definition
+which will provide the glue between Perl calling conventions and C
+calling conventions.
+
+=end original
+
+B<XSUB> は XS インターフェースの基本単位を形成します。
+B<xsubpp> コンパイラによるコンパイル後、
+それぞれの XSUB は Perl 呼び出し規則と C 呼び出し規則の間の糊を提供する
+C 関数定義となります。
+
+=begin original
+
+The glue code pulls the arguments from the Perl stack, converts these
+Perl values to the formats expected by a C function, call this C function,
+transfers the return values of the C function back to Perl.
+Return values here may be a conventional C return value or any C
+function arguments that may serve as output parameters.  These return
+values may be passed back to Perl either by putting them on the
+Perl stack, or by modifying the arguments supplied from the Perl side.
+
+=end original
+
+糊のコードは Perl スタックから引数を取り出し、Perl の値を C 関数が
+想定している形式に変換し、C 関数を呼び出し、C 関数の返り値を Perl に
+返します。
+ここでの返り値は、伝統的な C の返り値か、出力パラメータの役目をする
+C 関数引数です。
+これらの返り値は、Perl スタックに置かれるか、Perl 側から供給された
+引数を変更することによって Perl に返されます。
+
+=begin original
+
+The above is a somewhat simplified view of what really happens.  Since
+Perl allows more flexible calling conventions than C, XSUBs may do much
+more in practice, such as checking input parameters for validity,
+throwing exceptions (or returning undef/empty list) if the return value
+from the C function indicates failure, calling different C functions
+based on numbers and types of the arguments, providing an object-oriented
+interface, etc.
+
+=end original
+
+上記は実際に起きることをいくらか単純化したものです。
+Perl は C よりもより柔軟な呼び出し規則を認めているので、
+実際には XSUB は、検証のために入力をチェックする、もし C 関数からの
+返り値が失敗を示していたら例外を投げる(あるいは undef/空リストを返す)、
+引数の数と型によって異なった C 関数を呼び出す、オブジェクト指向
+インターフェースを提供する、といった、遥かに多くのことができます。
+
+=begin original
+
+Of course, one could write such glue code directly in C.  However, this
+would be a tedious task, especially if one needs to write glue for
+multiple C functions, and/or one is not familiar enough with the Perl
+stack discipline and other such arcana.  XS comes to the rescue here:
+instead of writing this glue C code in long-hand, one can write
+a more concise short-hand I<description> of what should be done by
+the glue, and let the XS compiler B<xsubpp> handle the rest.
+
+=end original
+
+もちろん、このような糊のコードを直接 C で書くこともできます。
+しかし、これはつまらない仕事です; 特に複数の C 関数に対する糊を書く
+必要があったり、Perl スタックの分野やその奥義に親しくない場合はそうです。
+XS はこれを助けます:
+糊の C コードを長々と書く代わりに、糊にしてほしいことに関する、
+もっと簡潔で短い I<記述> を書いて、XS コンパイラ B<xsubpp> に
+残りを扱わせることができます。
+
+=begin original
+
+The XS language allows one to describe the mapping between how the C
+routine is used, and how the corresponding Perl routine is used.  It
+also allows creation of Perl routines which are directly translated to
+C code and which are not related to a pre-existing C function.  In cases
+when the C interface coincides with the Perl interface, the XSUB
+declaration is almost identical to a declaration of a C function (in K&R
+style).  In such circumstances, there is another tool called C<h2xs>
+that is able to translate an entire C header file into a corresponding
+XS file that will provide glue to the functions/macros described in
+the header file.
+
+=end original
+
+XS 言語は、どのように C ルーチンが使うのかと、どのように対応する Perl
+ルーチンが使うのかとのマッピングを記述できます。
+これはまた、直接 C コードに変換され、既に存在する C 関数と関係ない
+Perl ルーチンの作成も可能にします。
+C インターフェースが Perl インターフェースと同期している場合、
+XSUB 宣言はほとんど (K&R 形式の) C 関数の宣言と同じです。
+このような事情から、C ヘッダ全体から、ヘッダファイルに記述されている
+関数/マクロへの糊を提供する XS ファイルへ変換する、C<h2xs> と呼ばれる
+もう一つのツールがあります。
+
+=begin original
+
+The XS compiler is called B<xsubpp>.  This compiler creates
+the constructs necessary to let an XSUB manipulate Perl values, and
+creates the glue necessary to let Perl call the XSUB.  The compiler
+uses B<typemaps> to determine how to map C function parameters
+and output values to Perl values and back.  The default typemap
+(which comes with Perl) handles many common C types.  A supplementary
+typemap may also be needed to handle any special structures and types
+for the library being linked.
+
+=end original
+
+XS コンパイラは B<xsubpp> と呼ばれます。
+このコンパイラは XSUB が Perl の値を扱うための構造や、
+Perl が XSUB を呼び出すために必要なものを作成します。
+このコンパイラは B<typemaps> を使って C の関数の引数とと出力値を
+Perlの値とどのようにマッピングするかを決定します。
+デフォルトの typemap (Perl に同梱しているもの)は多くの標準的な C の型を
+扱います。
+リンクされるライブラリのための特殊な構造体や型を扱えるようするための
+補助的な typemap も必要になるかもしれません。
+
+=begin original
+
+A file in XS format starts with a C language section which goes until the
+first C<MODULE =Z<>> directive.  Other XS directives and XSUB definitions
+may follow this line.  The "language" used in this part of the file
+is usually referred to as the XS language.  B<xsubpp> recognizes and
+skips POD (see L<perlpod>) in both the C and XS language sections, which
+allows the XS file to contain embedded documentation. 
+
+=end original
+
+XS 形式のファイルは、最初の C<MODULE =Z<>> 指示子が現れるまで C 言語
+セクションから開始します。
+その他の XS 指示子と XSUB 定義はこの行に続きます。
+ファイルのこの部分で使われる「言語」は普通 XS 言語として参照されます。
+B<xsubpp> は C と XS の言語セクションで POD (L<perlpod> を
+参照してください)を認識して呼び飛ばすので、XS ファイルに組み込み
+ドキュメントを含めることができます。
+
+=begin original
+
+See L<perlxstut> for a tutorial on the whole extension creation process.
+
+=end original
+
+エクステンションの作成手順についてのチュートリアルは L<perlxstut> を
+参照してください。
+
+=begin original
+
+Note: For some extensions, Dave Beazley's SWIG system may provide a
+significantly more convenient mechanism for creating the extension
+glue code.  See http://www.swig.org/ for more information.
+
+=end original
+
+注意: エクステンションによっては、エクステンションの糊コードの作成には
+Dave Beazley の SWIG システムがはるかに便利な機構を提供するでしょう。
+さらなる情報については http://www.swig.org/ を参照してください。
+
+=head2 On The Road
+
+=begin original
+
+Many of the examples which follow will concentrate on creating an interface
+between Perl and the ONC+ RPC bind library functions.  The rpcb_gettime()
+function is used to demonstrate many features of the XS language.  This
+function has two parameters; the first is an input parameter and the second
+is an output parameter.  The function also returns a status value.
+
+=end original
+
+この後で出てくる例の多くは、Perl と ONC+ RPC bind ライブラリ関数との間の
+インターフェースを具体的に生成します。
+rpcb_gettime() という関数が、XS 言語の多くの機能を説明するために使われます。
+この関数は二つの引数を取ります;
+最初のものは入力パラメータで、二番目のものは出力パラメータです。
+関数はステータス値も返します。
+
+	bool_t rpcb_gettime(const char *host, time_t *timep);
+
+=begin original
+
+From C this function will be called with the following
+statements.
+
+=end original
+
+この関数は C では、次のように呼ばれます。
+
+     #include <rpc/rpc.h>
+     bool_t status;
+     time_t timep;
+     status = rpcb_gettime( "localhost", &timep );
+
+=begin original
+
+If an XSUB is created to offer a direct translation between this function
+and Perl, then this XSUB will be used from Perl with the following code.
+The $status and $timep variables will contain the output of the function.
+
+=end original
+
+XSUB がこの関数と perl との間の直接的な変換をするように作られていれば、
+この XSUB は Perl から以下のようにして使われます。
+$status と $timep という変数は関数の出力を保持します。
+
+     use RPC;
+     $status = rpcb_gettime( "localhost", $timep );
+
+=begin original
+
+The following XS file shows an XS subroutine, or XSUB, which
+demonstrates one possible interface to the rpcb_gettime()
+function.  This XSUB represents a direct translation between
+C and Perl and so preserves the interface even from Perl.
+This XSUB will be invoked from Perl with the usage shown
+above.  Note that the first three #include statements, for
+C<EXTERN.h>, C<perl.h>, and C<XSUB.h>, will always be present at the
+beginning of an XS file.  This approach and others will be
+expanded later in this document.
+
+=end original
+
+以下に示す XS ファイルは XS サブルーチン、もしくは rpcb_gettime() 関数に
+対して可能なインターフェースの一つを例示する XSUB の例です。
+この XSUB は C と Perl との間の直接的な変換を表わし、また、Perl からも
+インターフェースを保護します。
+この XSUB は Perl から、先程の例のようにして呼び出されます。
+最初の三つの #include 文、C<EXTERN.h>, C<perl.h>, C<XSUB.h> は常に
+XS ファイルの先頭に置かれることに注意してください。
+このアプローチなどはこのドキュメントの後のほうで説明します。
+
+     #include "EXTERN.h"
+     #include "perl.h"
+     #include "XSUB.h"
+     #include <rpc/rpc.h>
+
+     MODULE = RPC  PACKAGE = RPC
+
+     bool_t
+     rpcb_gettime(host,timep)
+          char *host
+          time_t &timep
+        OUTPUT:
+          timep
+
+=begin original
+
+Any extension to Perl, including those containing XSUBs,
+should have a Perl module to serve as the bootstrap which
+pulls the extension into Perl.  This module will export the
+extension's functions and variables to the Perl program and
+will cause the extension's XSUBs to be linked into Perl.
+The following module will be used for most of the examples
+in this document and should be used from Perl with the C<use>
+command as shown earlier.  Perl modules are explained in
+more detail later in this document.
+
+=end original
+
+Perl に対する全てのエクステンションは、このような XSUB も含めて、
+Perl にエクステンションを押し込むブートストラップとして働く
+Perl モジュールを持つべきです。
+このモジュールはエクステンションの関数と変数とをエクスポートし、
+Perl プログラムや Perl にリンクされるエクステンションの XSUB を起動します。
+以下のモジュールはこのドキュメントのほとんどの例で使われるもので、
+(先に挙げた例のように) Perl から C<use> コマンドを使うべきものです。
+Perl のモジュールはこのドキュメントの後のほうでより詳しく説明されます。
+
+     package RPC;
+
+     require Exporter;
+     require DynaLoader;
+     @ISA = qw(Exporter DynaLoader);
+     @EXPORT = qw( rpcb_gettime );
+
+     bootstrap RPC;
+     1;
+
+=begin original
+
+Throughout this document a variety of interfaces to the rpcb_gettime()
+XSUB will be explored.  The XSUBs will take their parameters in different
+orders or will take different numbers of parameters.  In each case the
+XSUB is an abstraction between Perl and the real C rpcb_gettime()
+function, and the XSUB must always ensure that the real rpcb_gettime()
+function is called with the correct parameters.  This abstraction will
+allow the programmer to create a more Perl-like interface to the C
+function.
+
+=end original
+
+このドキュメントを通して、rpcb_gettime() XSUB に対する様々な
+インターフェースが検討されます。
+XSUB はパラメータを違った順番で受け取ったり、異なる個数のパラメータを
+とったりします。
+それぞれの場合において XSUB は Perl と実際の C の rpcb_gettime 関数の間の
+抽象作用(abstraction)であり、かつ、XSUB は常に実際の rpcb_gettime() が
+正しいパラメータで呼ばれることを保証しなければなりません。
+この抽象作用はプログラマが C に対するより Perl 的なインターフェースを
+作成することを許します。
+
+=head2 The Anatomy of an XSUB
+
+(XSUB の構造)
+
+=begin original
+
+The simplest XSUBs consist of 3 parts: a description of the return
+value, the name of the XSUB routine and the names of its arguments,
+and a description of types or formats of the arguments.
+
+=end original
+
+もっとも単純な XSUB は 3 つの部分からなります: 返り値の記述、XSUB
+ルーチンの名前とその引数の名前、引数の型や形式の記述です。
+
+=begin original
+
+The following XSUB allows a Perl program to access a C library function
+called sin().  The XSUB will imitate the C function which takes a single
+argument and returns a single value.
+
+=end original
+
+以下に示す XSUB は、Perl プログラムに対して sin() と呼ばれる C の
+ライブラリ関数にアクセスすることを許します。
+この XSUB は引数を一つ取り、一つの値を返す C の関数を模倣します。
+
+     double
+     sin(x)
+       double x
+
+=begin original
+
+Optionally, one can merge the description of types and the list of
+argument names, rewriting this as
+
+=end original
+
+オプションとして、型の記述と引数の名前のリストを結合できます;
+これを以下のように書き換えます:
+
+     double
+     sin(double x)
+
+=begin original
+
+This makes this XSUB look similar to an ANSI C declaration.  An optional
+semicolon is allowed after the argument list, as in
+
+=end original
+
+これによって XSUB を ANSI C 宣言と似せて見せます。
+以下のように、引数の後にオプションのセミコロンも付けられます:
+
+     double
+     sin(double x);
+
+=begin original
+
+Parameters with C pointer types can have different semantic: C functions
+with similar declarations
+
+=end original
+
+C ポインタ型の引数は異なった意味論を持ちます: 同じような定義の
+C 関数:
+
+     bool string_looks_as_a_number(char *s);
+     bool make_char_uppercase(char *c);
+
+=begin original
+
+are used in absolutely incompatible manner.  Parameters to these functions
+could be described B<xsubpp> like this:
+
+=end original
+
+は完全に互換性のない方式です。
+これらの関数への引数は以下のように B<xsubpp> が記述します:
+
+     char *  s
+     char    &c
+
+=begin original
+
+Both these XS declarations correspond to the C<char*> C type, but they have
+different semantics, see L<"The & Unary Operator">.
+
+=end original
+
+これらの XS 宣言の両方とも C の C<char*> 型に対応しますが、異なる
+意味論を持ちます;  L<"The & Unary Operator"> を参照してください。
+
+=begin original
+
+It is convenient to think that the indirection operator
+C<*> should be considered as a part of the type and the address operator C<&>
+should be considered part of the variable.  See L<"The Typemap">
+for more info about handling qualifiers and unary operators in C types.
+
+=end original
+
+間接参照演算子 C<*> は型の一部とみなすべきで、アドレス演算子 C<&> は
+変数の一部であるとみなすと便利です。
+C の型における単項演算子や修飾子(qualifiers)の扱いに関する詳細は
+L<"The Typemap"> を参照してください。
+
+=begin original
+
+The function name and the return type must be placed on
+separate lines and should be flush left-adjusted.
+
+=end original
+
+関数名と、その返り値の型は別々の行に分けておかなければなりません;
+また左揃えにするべきです。
+
+=begin original
+
+  INCORRECT                        CORRECT
+
+=end original
+
+  間違い                           正しい
+
+  double sin(x)                    double
+    double x                       sin(x)
+				     double x
+
+=begin original
+
+The rest of the function description may be indented or left-adjusted. The
+following example shows a function with its body left-adjusted.  Most
+examples in this document will indent the body for better readability.
+
+=end original
+
+残りの関数記述はインデントを付けたり、左寄せすることができます。
+以下の例では関数の本体を左寄せしています。
+本ドキュメントにあるほとんどの例では読みやすいように本体にインデントを
+付けています。
+
+  CORRECT
+
+  double
+  sin(x)
+  double x
+
+=begin original
+
+More complicated XSUBs may contain many other sections.  Each section of
+an XSUB starts with the corresponding keyword, such as INIT: or CLEANUP:.
+However, the first two lines of an XSUB always contain the same data:
+descriptions of the return type and the names of the function and its
+parameters.  Whatever immediately follows these is considered to be
+an INPUT: section unless explicitly marked with another keyword.
+(See L<The INPUT: Keyword>.)
+
+=end original
+
+もっと複雑な XSUB は多くのその他のセクションを含んでいるかもしれません。
+XSUB のそれぞれのセクションは、INIT: や CLEANUP: のような、対応する
+キーワードで始まります。
+しかし、XSUB の最初の 2 行はいつも同じデータからなります:
+返り値の種類の記述と、関数およびその引数の名前です。
+これらに引き続くものはなんでも、明示的にその他のキーワードがない限りは
+INPUT: セクションと考えられます。
+(L<The INPUT: Keyword> を参照してください。)
+
+=begin original
+
+An XSUB section continues until another section-start keyword is found.
+
+=end original
+
+XSUB セクションは他のセクション開始キーワードが現れるまで続きます。
+
+=head2 The Argument Stack
+
+(引数スタック)
+
+=begin original
+
+The Perl argument stack is used to store the values which are
+sent as parameters to the XSUB and to store the XSUB's
+return value(s).  In reality all Perl functions (including non-XSUB
+ones) keep their values on this stack all the same time, each limited
+to its own range of positions on the stack.  In this document the
+first position on that stack which belongs to the active
+function will be referred to as position 0 for that function.
+
+=end original
+
+Perl の引数スタックは XSUB にパラメータとして渡される値や XSUB から返って
+きた値を格納するのに使われます。
+すべての(非 XSUB 関数を含む)Perl 関数は、その値をこのスタックに全て同時に
+保持していて、それぞれこのスタック上の位置の範囲によって制限されます。
+このドキュメントでは、アクティブな関数に所属するスタックの最初の位置は
+その関数からは位置 0として参照されます。
+
+=begin original
+
+XSUBs refer to their stack arguments with the macro B<ST(x)>, where I<x>
+refers to a position in this XSUB's part of the stack.  Position 0 for that
+function would be known to the XSUB as ST(0).  The XSUB's incoming
+parameters and outgoing return values always begin at ST(0).  For many
+simple cases the B<xsubpp> compiler will generate the code necessary to
+handle the argument stack by embedding code fragments found in the
+typemaps.  In more complex cases the programmer must supply the code.
+
+=end original
+
+XSUB はそのスタックにある引数に対して B<ST(x)> というマクロを使って、
+I<x> が示している XSUB のスタック上にある位置の参照を行います。
+関数に対する位置 0 は ST(0) となります。
+XSUB に対するパラメータと XSUB から返される値は常に ST(0) から始まります。
+多くの単純な場合においては、B<xsubpp>コンパイラは typemap にある
+埋め込みコード片(embedding code fragments)から引数スタックを扱う
+コードを生成します。
+もっと複雑な場合には、プログラマがコードを提供しなければなりません。
+
+=head2 The RETVAL Variable
+
+(RETVAL 変数)
+
+=begin original
+
+The RETVAL variable is a special C variable that is declared automatically
+for you.  The C type of RETVAL matches the return type of the C library
+function.  The B<xsubpp> compiler will declare this variable in each XSUB
+with non-C<void> return type.  By default the generated C function
+will use RETVAL to hold the return value of the C library function being
+called.  In simple cases the value of RETVAL will be placed in ST(0) of
+the argument stack where it can be received by Perl as the return value
+of the XSUB.
+
+=end original
+
+RETVAL という変数は自動的に宣言される特別な C 変数です。
+RETVAL の C での型は C のライブラリ関数が返す型に一致します。
+B<xsubpp> コンパイラは各 XSUB の非 C<void> 返り値に対してこの変数を
+宣言します。
+デフォルトでは生成された C 関数は RETVAL を C ライブラリ関数が呼ばれたときの
+返り値の型を保持するのに使われます。
+単純な場合には、RETVAL の値は Perl から XSUB の返り値として
+受け取ることのできる引数スタックの ST(0) に置かれます。
+
+=begin original
+
+If the XSUB has a return type of C<void> then the compiler will
+not declare a RETVAL variable for that function.  When using
+a PPCODE: section no manipulation of the RETVAL variable is required, the
+section may use direct stack manipulation to place output values on the stack.
+
+=end original
+
+XSUB の返り値の方が C<void> であった場合には、コンパイラは
+その関数に対して変数 RETVAL を宣言しません。
+PPCODE: セクションをを使う場合、RETVAL 変数の操作を操作する必要がないので、
+このセクションはスタックに出力値を置くためにスタックを直接操作します。
+
+=begin original
+
+If PPCODE: directive is not used, C<void> return value should be used
+only for subroutines which do not return a value, I<even if> CODE:
+directive is used which sets ST(0) explicitly.
+
+=end original
+
+PPCODE: 指示子を使わないのであれば、C<void> な返り値は
+CODE: 指示子が ST(0) へ陽にセットするのに使われていたとしても、
+値を返さないサブルーチンに対してのみ使うべきです。
+
+=begin original
+
+Older versions of this document recommended to use C<void> return
+value in such cases. It was discovered that this could lead to
+segfaults in cases when XSUB was I<truly> C<void>. This practice is
+now deprecated, and may be not supported at some future version. Use
+the return value C<SV *> in such cases. (Currently C<xsubpp> contains
+some heuristic code which tries to disambiguate between "truly-void"
+and "old-practice-declared-as-void" functions. Hence your code is at
+mercy of this heuristics unless you use C<SV *> as return value.)
+
+=end original
+
+このドキュメントの以前のものでは、そういった場合に返り値として C<void> を
+使うことを勧めていました。
+これは XSUB が I<本当に> C<void> であるときにセグメンテーション違反を起こす
+可能性があることが確認されました。
+このやり方は今では使わないことが推奨されていて、将来のバージョンで
+サポートされなくなるでしょう。
+こういった場合、返り値 C<SV *> を使います(現在 C<xsubpp> は
+"truely-void" な関数と"old-practice-declared-as-void" な関数とを明確に
+しようとする経験則的なコードが入っています。
+このためあなたのプログラムはあなたが返り値として C<SV *> を使わない限り、
+この経験則の振る舞いに左右されます。)
+
+=head2 Returning SVs, AVs and HVs through RETVAL
+
+(RETVAL で SV, AV, HV を返す)
+
+=begin original
+
+When you're using RETVAL to return an C<SV *>, there's some magic
+going on behind the scenes that should be mentioned. When you're
+manipulating the argument stack using the ST(x) macro, for example,
+you usually have to pay special attention to reference counts. (For
+more about reference counts, see L<perlguts>.) To make your life
+easier, the typemap file automatically makes C<RETVAL> mortal when
+you're returning an C<SV *>. Thus, the following two XSUBs are more
+or less equivalent:
+
+=end original
+
+C<SV *> を返すために RETVAL を使うとき、言及しておくべき魔法が舞台裏で
+行われます。
+例えば、ST(x) マクロを使って引数スタックを操作するとき、普通は
+参照カウントに特別な注意を払う必要があります。
+(参照カウントに関しては、L<perlguts> を参照してください。)
+人生をより簡単にするために、C<SV *> を返そうとしているときは
+typemap ファイルは自動的に C<RETVAL> を揮発性にします。
+従って、以下の 2 つの XSUB はだいたい等価です:
+
+  void
+  alpha()
+      PPCODE:
+          ST(0) = newSVpv("Hello World",0);
+          sv_2mortal(ST(0));
+          XSRETURN(1);
+
+  SV *
+  beta()
+      CODE:
+          RETVAL = newSVpv("Hello World",0);
+      OUTPUT:
+          RETVAL
+
+=begin original
+
+This is quite useful as it usually improves readability. While
+this works fine for an C<SV *>, it's unfortunately not as easy
+to have C<AV *> or C<HV *> as a return value. You I<should> be
+able to write:
+
+=end original
+
+これは普通可読性を改善するのでかなり有用です。
+これは C<SV *> ではうまく動作する一方、残念ながら返り値として
+C<AV *> や C<HV *> を使うときには簡単ではありません。
+以下のように書ける I<べき> です:
+
+  AV *
+  array()
+      CODE:
+          RETVAL = newAV();
+          /* do something with RETVAL */
+      OUTPUT:
+          RETVAL
+
+=begin original
+
+But due to an unfixable bug (fixing it would break lots of existing
+CPAN modules) in the typemap file, the reference count of the C<AV *>
+is not properly decremented. Thus, the above XSUB would leak memory
+whenever it is being called. The same problem exists for C<HV *>.
+
+=end original
+
+しかし typemap ファイルにある修正されていないバグのために(これを
+修正すると既存の多くの CPANモジュールが動かなくなります)、
+C<AV *> の参照カウントは適切にデクリメントされません。
+従って、上述の XSUB は、呼び出されるごとにメモリリークします。
+同じ問題は C<HV *> にもあります。
+
+=begin original
+
+When you're returning an C<AV *> or a C<HV *>, you have to make sure
+their reference count is decremented by making the AV or HV mortal:
+
+=end original
+
+C<AV *> や C<HV *> を返すとき、AV や HV を揮発性にすることによって、
+確実に参照カウントを減らす必要があります:
+
+  AV *
+  array()
+      CODE:
+          RETVAL = newAV();
+          sv_2mortal((SV*)RETVAL);
+          /* do something with RETVAL */
+      OUTPUT:
+          RETVAL
+
+=begin original
+
+And also remember that you don't have to do this for an C<SV *>.
+
+=end original
+
+そして、C<SV *> のためにはこれをする必要はないことも覚えておいてください。
+
+=head2 The MODULE Keyword
+
+(MODULE キーワード)
+
+=begin original
+
+The MODULE keyword is used to start the XS code and to specify the package
+of the functions which are being defined.  All text preceding the first
+MODULE keyword is considered C code and is passed through to the output with
+POD stripped, but otherwise untouched.  Every XS module will have a
+bootstrap function which is used to hook the XSUBs into Perl.  The package
+name of this bootstrap function will match the value of the last MODULE
+statement in the XS source files.  The value of MODULE should always remain
+constant within the same XS file, though this is not required.
+
+=end original
+
+キーワード MODULE は XS コードの始まりと、定義する関数のパッケージを
+指定するのに使われます。
+キーワード MODULE よりも前にあるテキストはCプログラムとして扱われ、
+POD が除去されますが、それ以外は何の変更も加えられずに出力されます。
+すべての XS モジュールは、XSUB を Perl にフックするのに使われる
+ブートストラップ関数を持ちます。
+このブートストラップ関数のパッケージ名は、XS のソースファイルにある
+最後の MODULE 文の値に一致します。
+MODULE の値は同じ XS ファイルの中では変更されないようにすべきです
+(が、必須ではありません)。
+
+=begin original
+
+The following example will start the XS code and will place
+all functions in a package named RPC.
+
+=end original
+
+以下の例は XS コードを開始し、すべての関数を RPC という名前のパッケージに
+置きます。
+
+     MODULE = RPC
+
+=head2 The PACKAGE Keyword
+
+(PACKAGE キーワード)
+
+=begin original
+
+When functions within an XS source file must be separated into packages
+the PACKAGE keyword should be used.  This keyword is used with the MODULE
+keyword and must follow immediately after it when used.
+
+=end original
+
+XS ソースファイルの関数をパッケージに分割しなければならないとき、
+キーワード PACKAGE を使うべきです。
+このキーワードは MODULE キーワードと共に使われ、かつ、そのすぐ後に
+なければなりません。
+
+     MODULE = RPC  PACKAGE = RPC
+
+     [ XS code in package RPC ]
+
+     MODULE = RPC  PACKAGE = RPCB
+
+     [ XS code in package RPCB ]
+
+     MODULE = RPC  PACKAGE = RPC
+
+     [ XS code in package RPC ]
+
+=begin original
+
+The same package name can be used more than once, allowing for
+non-contiguous code. This is useful if you have a stronger ordering
+principle than package names.
+
+=end original
+
+同じパッケージ名を複数回使えるので、連続していないコードも可能です。
+これは、パッケージ名よりより強い順序原則を持っている場合に有用です。
+
+=begin original
+
+Although this keyword is optional and in some cases provides redundant
+information it should always be used.  This keyword will ensure that the
+XSUBs appear in the desired package.
+
+=end original
+
+このキーワードは省略可能であって、また、一部のケースにおいては
+重複する情報となるにもかかわらず、常に使うべきものです。
+このキーワードは XSUB が要求したパッケージにあることを保証します。
+
+=head2 The PREFIX Keyword
+
+(PREFIX キーワード)
+
+=begin original
+
+The PREFIX keyword designates prefixes which should be
+removed from the Perl function names.  If the C function is
+C<rpcb_gettime()> and the PREFIX value is C<rpcb_> then Perl will
+see this function as C<gettime()>.
+
+=end original
+
+キーワード PREFIX は Perl の関数名から取り除かれるべきプリフィクスを
+指定するものです。
+C 関数が C<rpcb_gettime()> で、その PREFIX の値が C<rpcb_> であったとすると、
+Perl はこの関数を C<gettime()> として見ます。
+
+=begin original
+
+This keyword should follow the PACKAGE keyword when used.
+If PACKAGE is not used then PREFIX should follow the MODULE
+keyword.
+
+=end original
+
+このキーワードはキーワード PACKAGE を使った後にあるべきです。
+PACKAGE が使われなければ、PREFIX はキーワード MODULE の後にあるべきです。
+
+     MODULE = RPC  PREFIX = rpc_
+
+     MODULE = RPC  PACKAGE = RPCB  PREFIX = rpcb_
+
+=head2 The OUTPUT: Keyword
+
+(OUTPUT: キーワード)
+
+=begin original
+
+The OUTPUT: keyword indicates that certain function parameters should be
+updated (new values made visible to Perl) when the XSUB terminates or that
+certain values should be returned to the calling Perl function.  For
+simple functions which have no CODE: or PPCODE: section,
+such as the sin() function above, the RETVAL variable is
+automatically designated as an output value.  For more complex functions
+the B<xsubpp> compiler will need help to determine which variables are output
+variables.
+
+=end original
+
+キーワード OUTPUT: は、幾つかの関数パラメータが XSUB が終了するときに
+更新されるべき(Perl のために新しい値を見えるようにする)ものであることや、
+幾つかの値が呼び出し元の Perl 関数に戻されるべきものであることを示します。
+前述の sin() のような CODE: や PPCODE: セクションのない単純な関数には、変数 
+RETVALは自動的に出力値に割り当てられます。
+もっと複雑な関数では、B<xsubpp> コンパイラはどの変数が 出力変数であるかを
+決めるための助けが必要です。
+
+=begin original
+
+This keyword will normally be used to complement the CODE:  keyword.
+The RETVAL variable is not recognized as an output variable when the
+CODE: keyword is present.  The OUTPUT:  keyword is used in this
+situation to tell the compiler that RETVAL really is an output
+variable.
+
+=end original
+
+このキーワードは、通常 キーワード CODE: を完全にするために使われます。
+変数 RETVALは、キーワード CODE: が使われている場合には出力変数としては
+認識されません。
+キーワード OUTPUT はこういった場合にコンパイラに RETVAL が本当に
+出力変数であることを教えるために使われます。
+
+=begin original
+
+The OUTPUT: keyword can also be used to indicate that function parameters
+are output variables.  This may be necessary when a parameter has been
+modified within the function and the programmer would like the update to
+be seen by Perl.
+
+=end original
+
+キーワード OUTPUT: はまた、関数のパラメータが出力変数であるということを
+示すのにも使えます。
+これは関数の中でパラメータが変更されたり、プログラマが更新したことを
+Perl に教えたいといったときに必要になります。
+
+     bool_t
+     rpcb_gettime(host,timep)
+          char *host
+          time_t &timep
+        OUTPUT:
+          timep
+
+=begin original
+
+The OUTPUT: keyword will also allow an output parameter to
+be mapped to a matching piece of code rather than to a
+typemap.
+
+=end original
+
+キーワード OUTPUT: はまた、出力パラメータを(typemap ではなく)
+それにマッチするコード片にマッピングするのにも使えます。
+
+     bool_t
+     rpcb_gettime(host,timep)
+          char *host
+          time_t &timep
+        OUTPUT:
+          timep sv_setnv(ST(1), (double)timep);
+
+=begin original
+
+B<xsubpp> emits an automatic C<SvSETMAGIC()> for all parameters in the
+OUTPUT section of the XSUB, except RETVAL.  This is the usually desired
+behavior, as it takes care of properly invoking 'set' magic on output
+parameters (needed for hash or array element parameters that must be
+created if they didn't exist).  If for some reason, this behavior is
+not desired, the OUTPUT section may contain a C<SETMAGIC: DISABLE> line
+to disable it for the remainder of the parameters in the OUTPUT section.
+Likewise,  C<SETMAGIC: ENABLE> can be used to reenable it for the
+remainder of the OUTPUT section.  See L<perlguts> for more details
+about 'set' magic.
+
+=end original
+
+B<xsubpp> は、XSUB の OUTPUT セクション中、RETVAL を除く全てのパラメータに
+対して自動的に C<SvSETMAGIC()> を出力します。
+これは普通は望ましい振る舞いです; なぜなら出力パラメータに適切に
+'set' マジックを起動する面倒を見るからです(ハッシュや配列の要素が
+存在しなかったとき、作成しなければならないので必要です)。
+もし何らかの理由でこの振る舞いが望ましくないなら、
+OUTPUT セクションの残りのパラメータでこれを無効にするために、
+OUTPUT セクションには C<SETMAGIC: DISABLE> という行を含めることが出来ます。
+同様に、C<SETMAGIC: ENABLE> は OUTPUT セクションの残りのために
+再有効化するために使えます。
+'set' マジックに関するさらなる詳細については L<perlguts> を参照してください。
+
+=head2 The NO_OUTPUT Keyword
+
+(NO_OUTPUT キーワード)
+
+=begin original
+
+The NO_OUTPUT can be placed as the first token of the XSUB.  This keyword
+indicates that while the C subroutine we provide an interface to has
+a non-C<void> return type, the return value of this C subroutine should not
+be returned from the generated Perl subroutine.
+
+=end original
+
+NO_OUTPUT キーワードは XSUB の最初のトークンとして置くことが出来ます。
+このキーワードは、インターフェースを提供する C サブルーチンが C<void> でない
+返り値を持ちますが、この C サブルーチンからの返り値は生成された Perl
+サブルーチンから返されるべきではないことを示します。
+
+=begin original
+
+With this keyword present L<The RETVAL Variable> is created, and in the
+generated call to the subroutine this variable is assigned to, but the value
+of this variable is not going to be used in the auto-generated code.
+
+=end original
+
+このキーワードが存在すると L<The RETVAL Variable> は作成され、
+サブルーチンへの生成された呼び出しの中でこの変数に代入されますが、
+この変数の値は自動生成されたコードの中では使われません。
+
+=begin original
+
+This keyword makes sense only if C<RETVAL> is going to be accessed by the
+user-supplied code.  It is especially useful to make a function interface
+more Perl-like, especially when the C return value is just an error condition
+indicator.  For example,
+
+=end original
+
+このキーワードは、C<RETVAL> がユーザーが追加したコードによって
+アクセスされる場合にのみ意味があります。
+これは、関数インターフェースをより Perl 風にする場合、
+特に C の返り値が単にエラーを示すだけのものの場合に特に有用です。
+例えば、
+
+  NO_OUTPUT int
+  delete_file(char *name)
+    POSTCALL:
+      if (RETVAL != 0)
+	  croak("Error %d while deleting file '%s'", RETVAL, name);
+
+=begin original
+
+Here the generated XS function returns nothing on success, and will die()
+with a meaningful error message on error.
+
+=end original
+
+ここで生成された XS 関数は成功時には何も返さず、エラー時には意味のある
+エラーメッセージと共に die() します。
+
+=head2 The CODE: Keyword
+
+(CODE: キーワード)
+
+=begin original
+
+This keyword is used in more complicated XSUBs which require
+special handling for the C function.  The RETVAL variable is
+still declared, but it will not be returned unless it is specified
+in the OUTPUT: section.
+
+=end original
+
+このキーワードは、C の関数に対して特殊な操作を必要とするような、
+より複雑なXSUB で使われます。
+変数 RETVAL はまだ宣言されていますが、セクション OUTPUT: を使って陽に
+指定しない限りは値を戻すことはありません。
+
+=begin original
+
+The following XSUB is for a C function which requires special handling of
+its parameters.  The Perl usage is given first.
+
+=end original
+
+以下に示す XSUB はパラメータに対する特殊な操作を必要とする C 関数の
+ためのものです。
+Perl での使い方を最初に示します。
+
+     $status = rpcb_gettime( "localhost", $timep );
+
+=begin original
+
+The XSUB follows.
+
+=end original
+
+XSUB はこうです。
+
+     bool_t
+     rpcb_gettime(host,timep)
+          char *host
+          time_t timep
+        CODE:
+               RETVAL = rpcb_gettime( host, &timep );
+        OUTPUT:
+          timep
+          RETVAL
+
+=head2 The INIT: Keyword
+
+(INIT: キーワード)
+
+=begin original
+
+The INIT: keyword allows initialization to be inserted into the XSUB before
+the compiler generates the call to the C function.  Unlike the CODE: keyword
+above, this keyword does not affect the way the compiler handles RETVAL.
+
+=end original
+
+キーワード INIT: は、コンパイラがCの関数の呼び出しを生成する前に
+XSUB へ初期化ルーチンを挿入することを許します。
+キーワード CODE: と違って、このキーワードはコンパイラの RETVAL の扱いに
+何の影響も及ぼしません。
+
+    bool_t
+    rpcb_gettime(host,timep)
+          char *host
+          time_t &timep
+	INIT:
+	  printf("# Host is %s\n", host );
+        OUTPUT:
+          timep
+
+=begin original
+
+Another use for the INIT: section is to check for preconditions before
+making a call to the C function:
+
+=end original
+
+INIT: セクションのもう一つの利用法は、C 関数を呼び出す前の前提条件を
+チェックすることです:
+
+    long long
+    lldiv(a,b)
+	long long a
+	long long b
+      INIT:
+	if (a == 0 && b == 0)
+	    XSRETURN_UNDEF;
+	if (b == 0)
+	    croak("lldiv: cannot divide by 0");
+
+=head2 The NO_INIT Keyword
+
+(NO_INIT キーワード)
+
+=begin original
+
+The NO_INIT keyword is used to indicate that a function
+parameter is being used only as an output value.  The B<xsubpp>
+compiler will normally generate code to read the values of
+all function parameters from the argument stack and assign
+them to C variables upon entry to the function.  NO_INIT
+will tell the compiler that some parameters will be used for
+output rather than for input and that they will be handled
+before the function terminates.
+
+=end original
+
+キーワード NO_INIT は関数のパラメータが出力値としてのみ使われることを
+示すのに使われます。
+B<xsubpp> コンパイラは通常、すべての関数パラメータの値を引数スタックから
+読み取って、関数の入り口で C の変数にそれを代入するようなコードを生成します。
+NO_INIT は、コンパイラに一部のパラメータが入力としてではなく出力として
+使われることと、それらが関数を終了する前に操作されることを示します。
+
+=begin original
+
+The following example shows a variation of the rpcb_gettime() function.
+This function uses the timep variable only as an output variable and does
+not care about its initial contents.
+
+=end original
+
+以下に示す例では、関数 rpcb_gettime() の変種を示します。
+この関数は変数 timep を出力変数としてのみ使っており、その初期値は
+考慮しません。
+
+     bool_t
+     rpcb_gettime(host,timep)
+          char *host
+          time_t &timep = NO_INIT
+        OUTPUT:
+          timep
+
+=head2 Initializing Function Parameters
+
+(関数パラメータの初期化)
+
+=begin original
+
+C function parameters are normally initialized with their values from
+the argument stack (which in turn contains the parameters that were
+passed to the XSUB from Perl).  The typemaps contain the
+code segments which are used to translate the Perl values to
+the C parameters.  The programmer, however, is allowed to
+override the typemaps and supply alternate (or additional)
+initialization code.  Initialization code starts with the first
+C<=>, C<;> or C<+> on a line in the INPUT: section.  The only
+exception happens if this C<;> terminates the line, then this C<;>
+is quietly ignored.
+
+=end original
+
+C 関数のパラメータは通常、引数スタック(Perl から XSUB に渡された
+パラメータが順番に入っています)にある値によって初期化されます。
+typemap は Perl の値から C のパラメータへ変換するのに使われるコード片から
+構成されています。
+しかしプログラマは、typemap をオーバーライドすることや別の
+(もしくは追加の)初期化コードを提供することができます。
+初期化コードは INPUT: セクションの行で最初の
+C<=>, C<;>, C<+> から始まります。
+唯一の例外はこの C<;> が行を終端している場合で、この C<;> は
+暗黙に無視されます。
+
+=begin original
+
+The following code demonstrates how to supply initialization code for
+function parameters.  The initialization code is eval'ed within double
+quotes by the compiler before it is added to the output so anything
+which should be interpreted literally [mainly C<$>, C<@>, or C<\\>]
+must be protected with backslashes.  The variables $var, $arg,
+and $type can be used as in typemaps.
+
+=end original
+
+以下に示すコードは、関数の引数に対する初期化コードをどのように提供するかを
+例示するものです。
+初期化コードはそれが出力される前にダブルクォートの中でコンパイラによって
+評価されるので、たとえばダブルクォートのようなリテラルとして
+評価されるようなもの [mainly C<$>, C<@>, or C<\\>]であれば、
+バックスラッシュを使って保護しなければなりません。
+変数 $var, $arg, $type は typemap として使われます。
+
+     bool_t
+     rpcb_gettime(host,timep)
+          char *host = (char *)SvPV_nolen($arg);
+          time_t &timep = 0;
+        OUTPUT:
+          timep
+
+=begin original
+
+This should not be used to supply default values for parameters.  One
+would normally use this when a function parameter must be processed by
+another library function before it can be used.  Default parameters are
+covered in the next section.
+
+=end original
+
+これはパラメータに対するデフォルト値を設定するために使うべきでは
+ありません。
+通常これは、使用するよりも前に他のライブラリ関数によってパラメータを
+処理しなければならないようなときに使われるでしょう。
+デフォルトパラメータは次のセクションで説明します。
+
+=begin original
+
+If the initialization begins with C<=>, then it is output in
+the declaration for the input variable, replacing the initialization
+supplied by the typemap.  If the initialization
+begins with C<;> or C<+>, then it is performed after
+all of the input variables have been declared.  In the C<;>
+case the initialization normally supplied by the typemap is not performed.
+For the C<+> case, the declaration for the variable will include the
+initialization from the typemap.  A global
+variable, C<%v>, is available for the truly rare case where
+information from one initialization is needed in another
+initialization.
+
+=end original
+
+初期化が C<=> で始まっていると、入力変数の宣言中に出力され、
+typemap によって提供された初期化を置き換えます。
+初期化が C<;> か C<+> で始まっていると、これは全ての入力変数が
+宣言された後に実行されます。
+C<;> の場合、typemap によって通常提供される初期化は実行されません。
+C<+> の場合、変数の宣言は typemap からの初期化に含まれます。
+グローバル変数 C<%v> は、ある初期化からの情報は他の初期化に必要になるという
+本当に珍しい場合のために利用可能です。
+
+=begin original
+
+Here's a truly obscure example:
+
+=end original
+
+これは本当に不明瞭な例です:
+
+     bool_t
+     rpcb_gettime(host,timep)
+          time_t &timep; /* \$v{timep}=@{[$v{timep}=$arg]} */
+          char *host + SvOK($v{timep}) ? SvPV_nolen($arg) : NULL;
+        OUTPUT:
+          timep
+
+=begin original
+
+The construct C<\$v{timep}=@{[$v{timep}=$arg]}> used in the above
+example has a two-fold purpose: first, when this line is processed by
+B<xsubpp>, the Perl snippet C<$v{timep}=$arg> is evaluated.  Second,
+the text of the evaluated snippet is output into the generated C file
+(inside a C comment)!  During the processing of C<char *host> line,
+$arg will evaluate to C<ST(0)>, and C<$v{timep}> will evaluate to
+C<ST(1)>.
+
+=end original
+
+上述の例で使われている C<\$v{timep}=@{[$v{timep}=$arg]}> という構文は
+2 つの目的があります: 1 つ目に、この行が B<xsubpp> によって処理されると、
+Perl スニペット C<$v{timep}=$arg> が評価されます。
+2 つ目に、評価されたスニペットのテキストは生成された C ファイル
+(C コメントの内側) へ出力されます!
+C<char *host> の行の処理中に、$arg は C<ST(0)> に評価され、C<$v{timep}> は
+C<ST(1)> に評価されます。
+
+=head2 Default Parameter Values
+
+(デフォルトパラメータ値)
+
+=begin original
+
+Default values for XSUB arguments can be specified by placing an
+assignment statement in the parameter list.  The default value may
+be a number, a string or the special string C<NO_INIT>.  Defaults should
+always be used on the right-most parameters only.
+
+=end original
+
+XSUB 引数のデフォルト値はパラメータリスト中に代入文を置くことによって
+関数パラメータを指定できます。
+デフォルト値には数字か文字列、または特別な文字列 C<NO_INIT> を使えます。
+デフォルト値は常に、最も右にあるパラメータに対してのみ使うべきです。
+
+=begin original
+
+To allow the XSUB for rpcb_gettime() to have a default host
+value the parameters to the XSUB could be rearranged.  The
+XSUB will then call the real rpcb_gettime() function with
+the parameters in the correct order.  This XSUB can be called
+from Perl with either of the following statements:
+
+=end original
+
+rpcb_gettime() に対する XSUB がデフォルトの host の値を持つことが
+できるように、XSUB に対するパラメータの順序を変えます。
+この XSUB は実際の rpcb_gettime() 関数を正しい順序の引数で呼び出します。
+この XSUB は以下のどちらかの文で Perl から呼び出せます:
+
+     $status = rpcb_gettime( $timep, $host );
+
+     $status = rpcb_gettime( $timep );
+
+=begin original
+
+The XSUB will look like the code  which  follows.   A  CODE:
+block  is used to call the real rpcb_gettime() function with
+the parameters in the correct order for that function.
+
+=end original
+
+XSUB は以下のようなコードになるでしょう。
+CODE: ブロックは 実際の rpcb_gettime() 関数を正しい順番のパラメータで
+呼び出すために使われます。
+
+     bool_t
+     rpcb_gettime(timep,host="localhost")
+          char *host
+          time_t timep = NO_INIT
+        CODE:
+               RETVAL = rpcb_gettime( host, &timep );
+        OUTPUT:
+          timep
+          RETVAL
+
+=head2 The PREINIT: Keyword
+
+(PREINIT: キーワード)
+
+=begin original
+
+The PREINIT: keyword allows extra variables to be declared immediately
+before or after the declarations of the parameters from the INPUT: section
+are emitted.
+
+=end original
+
+キーワード PREINIT: は INPUT: セクションが発行するパラメータ定義の
+直前または直後に追加の変数を宣言できるようにします。
+
+=begin original
+
+If a variable is declared inside a CODE: section it will follow any typemap
+code that is emitted for the input parameters.  This may result in the
+declaration ending up after C code, which is C syntax error.  Similar
+errors may happen with an explicit C<;>-type or C<+>-type initialization of
+parameters is used (see L<"Initializing Function Parameters">).  Declaring
+these variables in an INIT: section will not help.
+
+=end original
+
+もし変数が CODE: セクション内で宣言されていると、その変数は入力
+パラメータとして発行した typemap のコードに従うことになります。
+これは C コードが終わった後の結果となることがあり、C の構文エラーと
+なります。
+同様のエラーは、明示的に C<;>-型や C<+>-型のパラメータの初期化が使われた
+場合にも起こります
+(L<"Initializing Function Parameters"> を参照してください)。
+これらの変数を INIT: セクションで宣言することは助けにはなりません。
+
+=begin original
+
+In such cases, to force an additional variable to be declared together
+with declarations of other variables, place the declaration into a
+PREINIT: section.  The PREINIT: keyword may be used one or more times
+within an XSUB.
+
+=end original
+
+このような場合、追加の変数を他の変数宣言と共に宣言することを
+強制するために、宣言を PREINIT: セクションに置きます。
+キーワード PREINIT: は XSUB の中で複数回使うことができます。
+
+=begin original
+
+The following examples are equivalent, but if the code is using complex
+typemaps then the first example is safer.
+
+=end original
+
+以下の例は、等価であるけれども複雑な typemap を使った場合には最初の例が
+より安全である、という例です。
+
+     bool_t
+     rpcb_gettime(timep)
+          time_t timep = NO_INIT
+	PREINIT:
+          char *host = "localhost";
+        CODE:
+	  RETVAL = rpcb_gettime( host, &timep );
+        OUTPUT:
+          timep
+          RETVAL
+
+=begin original
+
+For this particular case an INIT: keyword would generate the
+same C code as the PREINIT: keyword.  Another correct, but error-prone example:
+
+=end original
+
+この特定の場合のために、INIT: キーワードは PREINIT: キーワードと同じ
+C コードを生成します。
+もう一つの、正しいがエラーになりやすい例です:
+
+     bool_t
+     rpcb_gettime(timep)
+          time_t timep = NO_INIT
+	CODE:
+          char *host = "localhost";
+	  RETVAL = rpcb_gettime( host, &timep );
+        OUTPUT:
+          timep
+          RETVAL
+
+=begin original
+
+Another way to declare C<host> is to use a C block in the CODE: section:
+
+=end original
+
+C<host> を宣言するもう一つの方法は CODE: セクションで C ブロックを
+使うことです:
+
+     bool_t
+     rpcb_gettime(timep)
+          time_t timep = NO_INIT
+	CODE:
+	  {
+            char *host = "localhost";
+	    RETVAL = rpcb_gettime( host, &timep );
+	  }
+        OUTPUT:
+          timep
+          RETVAL
+
+=begin original
+
+The ability to put additional declarations before the typemap entries are
+processed is very handy in the cases when typemap conversions manipulate
+some global state:
+
+=end original
+
+typemap エントリが処理される前に追加の宣言を置く能力は、typemap 変換が
+グローバルな状態を操作する場合にはとても便利です:
+
+    MyObject
+    mutate(o)
+	PREINIT:
+	    MyState st = global_state;
+	INPUT:
+	    MyObject o;
+	CLEANUP:
+	    reset_to(global_state, st);
+
+=begin original
+
+Here we suppose that conversion to C<MyObject> in the INPUT: section and from
+MyObject when processing RETVAL will modify a global variable C<global_state>.
+After these conversions are performed, we restore the old value of
+C<global_state> (to avoid memory leaks, for example).
+
+=end original
+
+ここで、RETVAL の処理がグローバル変数 C<global_state> を変更するときに
+MyObject から INPUT: セクションで C<MyObject> に変換するとします。
+これらの変換が行われた後、(例えば、メモリリークを避けるために)
+C<global_state> の古い値を戻します。
+
+=begin original
+
+There is another way to trade clarity for compactness: INPUT sections allow
+declaration of C variables which do not appear in the parameter list of
+a subroutine.  Thus the above code for mutate() can be rewritten as
+
+=end original
+
+ここにはもう一つの明快さと簡潔さのトレードオフがあります:
+INPUT セクションはサブルーチンの引数リストに現れない C 変数の宣言も
+許しています。
+従って mutate() のための上述のコードは以下のように書き直せます
+
+    MyObject
+    mutate(o)
+	  MyState st = global_state;
+	  MyObject o;
+	CLEANUP:
+	  reset_to(global_state, st);
+
+=begin original
+
+and the code for rpcb_gettime() can be rewritten as
+
+=end original
+
+そして rpcb_gettime() のためのコードは次のように書き直すことができます:
+
+     bool_t
+     rpcb_gettime(timep)
+	  time_t timep = NO_INIT
+	  char *host = "localhost";
+	C_ARGS:
+	  host, &timep
+	OUTPUT:
+          timep
+          RETVAL
+
+=head2 The SCOPE: Keyword
+
+(SCOPE: キーワード)
+
+=begin original
+
+The SCOPE: keyword allows scoping to be enabled for a particular XSUB. If
+enabled, the XSUB will invoke ENTER and LEAVE automatically.
+
+=end original
+
+キーワード SCOPE: は特定の XSUB に対してスコーピングを
+有効にするために使います。
+有効になった場合、XSUB は ENTER と LEAVE を自動的に起動します。
+
+=begin original
+
+To support potentially complex type mappings, if a typemap entry used
+by an XSUB contains a comment like C</*scope*/> then scoping will
+be automatically enabled for that XSUB.
+
+=end original
+
+複雑な型マッピングをサポートするために、typemap のエントリーが
+C</*scope*/> のようなコメントを含む XUSBによって使われていれば、
+スコーピングはそのような XSUB では自動的に許可されます。
+
+=begin original
+
+To enable scoping:
+
+=end original
+
+スコーピングを許可するには:
+
+    SCOPE: ENABLE
+
+=begin original
+
+To disable scoping:
+
+=end original
+
+スコーピングを禁止するには:
+
+    SCOPE: DISABLE
+
+=head2 The INPUT: Keyword
+
+(INPUT: キーワード)
+
+=begin original
+
+The XSUB's parameters are usually evaluated immediately after entering the
+XSUB.  The INPUT: keyword can be used to force those parameters to be
+evaluated a little later.  The INPUT: keyword can be used multiple times
+within an XSUB and can be used to list one or more input variables.  This
+keyword is used with the PREINIT: keyword.
+
+=end original
+
+XSUB のパラメータは、通常 XSUB に入った直後に評価されます。
+キーワード INPUT: によって、指定したパラメータが少々遅れて
+評価するようにできます。
+キーワード INPUT: は一つの XSUB の中で複数回使うことや、一つ以上の
+入力変数リストに使うことができます。
+このキーワードは キーワード PREINIT: と一緒に使われます。
+
+=begin original
+
+The following example shows how the input parameter C<timep> can be
+evaluated late, after a PREINIT.
+
+=end original
+
+以下の例では、入力パラメータ C<timep> の評価を遅らせて、PREINIT の後で
+行います。
+
+    bool_t
+    rpcb_gettime(host,timep)
+          char *host
+	PREINIT:
+	  time_t tt;
+	INPUT:
+          time_t timep
+        CODE:
+               RETVAL = rpcb_gettime( host, &tt );
+	       timep = tt;
+        OUTPUT:
+          timep
+          RETVAL
+
+=begin original
+
+The next example shows each input parameter evaluated late.
+
+=end original
+
+次の例は各入力パラメータの評価を遅らせます。
+
+    bool_t
+    rpcb_gettime(host,timep)
+	PREINIT:
+	  time_t tt;
+	INPUT:
+          char *host
+	PREINIT:
+	  char *h;
+	INPUT:
+          time_t timep
+        CODE:
+	       h = host;
+	       RETVAL = rpcb_gettime( h, &tt );
+	       timep = tt;
+        OUTPUT:
+          timep
+          RETVAL
+
+=begin original
+
+Since INPUT sections allow declaration of C variables which do not appear
+in the parameter list of a subroutine, this may be shortened to:
+
+=end original
+
+INPUT セクションはサブルーチンの引数リストに現れない C 変数の宣言も
+許しているので、これは以下のように短く出来ます:
+
+    bool_t
+    rpcb_gettime(host,timep)
+	  time_t tt;
+          char *host;
+	  char *h = host;
+          time_t timep;
+        CODE:
+	  RETVAL = rpcb_gettime( h, &tt );
+	  timep = tt;
+        OUTPUT:
+          timep
+          RETVAL
+
+=begin original
+
+(We used our knowledge that input conversion for C<char *> is a "simple" one,
+thus C<host> is initialized on the declaration line, and our assignment
+C<h = host> is not performed too early.  Otherwise one would need to have the
+assignment C<h = host> in a CODE: or INIT: section.)
+
+=end original
+
+(C<char *> のための入力変換は「単純な」ものであるという知識を使っているので、
+C<host> は宣言行で初期化され、C<h = host> の代入は早すぎることはありません。
+さもなければ C<h = host> の代入は CODE: か INIT: のセクションで
+行う必要があります。)
+
+=head2 The IN/OUTLIST/IN_OUTLIST/OUT/IN_OUT Keywords
+
+(IN/OUTLIST/IN_OUTLIST/OUT/IN_OUT キーワード)
+
+=begin original
+
+In the list of parameters for an XSUB, one can precede parameter names
+by the C<IN>/C<OUTLIST>/C<IN_OUTLIST>/C<OUT>/C<IN_OUT> keywords.
+C<IN> keyword is the default, the other keywords indicate how the Perl
+interface should differ from the C interface.
+
+=end original
+
+XSUB の引数リストの中で、引数名の前に
+C<IN>/C<OUTLIST>/C<IN_OUTLIST>/C<OUT>/C<IN_OUT> キーワードを前置できます。
+C<IN> キーワードがデフォルトで、他のキーワードは Perl インターフェースが
+C インターフェースとどのように異なるかを示します。
+
+=begin original
+
+Parameters preceded by C<OUTLIST>/C<IN_OUTLIST>/C<OUT>/C<IN_OUT>
+keywords are considered to be used by the C subroutine I<via
+pointers>.  C<OUTLIST>/C<OUT> keywords indicate that the C subroutine
+does not inspect the memory pointed by this parameter, but will write
+through this pointer to provide additional return values.
+
+=end original
+
+C<OUTLIST>/C<IN_OUTLIST>/C<OUT>/C<IN_OUT> が前置された引数は
+C サブルーチンから I<ポインタ経由で> 使われるとみなされます。
+C<OUTLIST>/C<OUT> キーワードは、C サブルーチンは
+この引数で示されているメモリを検査しないが、追加の返り値を
+このポインタを通して書き込むということを示しています。
+
+=begin original
+
+Parameters preceded by C<OUTLIST> keyword do not appear in the usage
+signature of the generated Perl function.
+
+=end original
+
+C<OUTLIST> キーワードが前置された引数は、生成された Perl 関数の使用法
+シグネチャに現れません。
+
+=begin original
+
+Parameters preceded by C<IN_OUTLIST>/C<IN_OUT>/C<OUT> I<do> appear as
+parameters to the Perl function.  With the exception of
+C<OUT>-parameters, these parameters are converted to the corresponding
+C type, then pointers to these data are given as arguments to the C
+function.  It is expected that the C function will write through these
+pointers.
+
+=end original
+
+C<IN_OUTLIST>/C<IN_OUT>/C<OUT> が前置された引数は Perl 関数の引数として
+I<現れます>。
+C<OUT>-引数の例外として、これらの引数は対応する C 型に変換され、それから
+それらのデータへのポインタが C 関数への引数として与えられます。
+これは C 関数がこれらのポインタを通して書き込むことを想定しています。
+
+=begin original
+
+The return list of the generated Perl function consists of the C return value
+from the function (unless the XSUB is of C<void> return type or
+C<The NO_OUTPUT Keyword> was used) followed by all the C<OUTLIST>
+and C<IN_OUTLIST> parameters (in the order of appearance).  On the
+return from the XSUB the C<IN_OUT>/C<OUT> Perl parameter will be
+modified to have the values written by the C function.
+
+=end original
+
+生成された Perl 関数の返り値リストは、関数からの C の返り値
+(XSUB の返り値型が C<void> であるか、
+L<The NO_OUTPUT Keyword> が使わた場合を除く)に、
+全ての C<OUTLIST> および C<IN_OUTLIST> 引数を(出現順に)
+続けたものとなります。
+XSUB からの返り時に、C<IN_OUT>/C<OUT> Perl 引数は C 関数によって書かれた
+値に変更されます。
+
+=begin original
+
+For example, an XSUB
+
+=end original
+
+例えば、以下の XSUB は:
+
+  void
+  day_month(OUTLIST day, IN unix_time, OUTLIST month)
+    int day
+    int unix_time
+    int month
+
+=begin original
+
+should be used from Perl as
+
+=end original
+
+Perl から次のようにして使われます:
+
+  my ($day, $month) = day_month(time);
+
+=begin original
+
+The C signature of the corresponding function should be
+
+=end original
+
+対応する関数の C シグネチャは次のようになります:
+
+  void day_month(int *day, int unix_time, int *month);
+
+=begin original
+
+The C<IN>/C<OUTLIST>/C<IN_OUTLIST>/C<IN_OUT>/C<OUT> keywords can be
+mixed with ANSI-style declarations, as in
+
+=end original
+
+C<IN>/C<OUTLIST>/C<IN_OUTLIST>/C<IN_OUT>/C<OUT> のキーワードは、次のように
+ANSI 型の宣言と混ぜることができます:
+
+  void
+  day_month(OUTLIST int day, int unix_time, OUTLIST int month)
+
+=begin original
+
+(here the optional C<IN> keyword is omitted).
+
+=end original
+
+(ここではオプションの C<IN> キーワードは省略されています)。
+
+=begin original
+
+The C<IN_OUT> parameters are identical with parameters introduced with
+L<The & Unary Operator> and put into the C<OUTPUT:> section (see
+L<The OUTPUT: Keyword>).  The C<IN_OUTLIST> parameters are very similar,
+the only difference being that the value C function writes through the
+pointer would not modify the Perl parameter, but is put in the output
+list.
+
+=end original
+
+C<IN_OUT> 引数は、L<The & Unary Operator> で導入されて
+C<OUTPUT:> セクション (L<The OUTPUT: Keyword> を参照してください) に
+置かれた引数と同じです。
+C<IN_OUTLIST> 引数はとても似ていて、唯一の違いは、C 関数がポインタを
+通して書いた値は Perl 引数を変更せず、出力リストに置かれるということです。
+
+=begin original
+
+The C<OUTLIST>/C<OUT> parameter differ from C<IN_OUTLIST>/C<IN_OUT>
+parameters only by the initial value of the Perl parameter not
+being read (and not being given to the C function - which gets some
+garbage instead).  For example, the same C function as above can be
+interfaced with as
+
+=end original
+
+C<OUTLIST>/C<OUT> 引数は、Perl 引数の初期値が読み込まれない
+(そして C 関数に渡されない - 代わりに何らかのごみが渡されます)という
+点においてだけ、C<IN_OUTLIST>/C<IN_OUT> 引数と異なります。
+例えば、上述の同じ C 関数は以下のようなインターフェースか:
+
+  void day_month(OUT int day, int unix_time, OUT int month);
+
+=begin original
+
+or
+
+=end original
+
+または:
+
+  void
+  day_month(day, unix_time, month)
+      int &day = NO_INIT
+      int  unix_time
+      int &month = NO_INIT
+    OUTPUT:
+      day
+      month
+
+=begin original
+
+However, the generated Perl function is called in very C-ish style:
+
+=end original
+
+しかし、生成された Perl 関数はとても C っぽい形で呼び出されます:
+
+  my ($day, $month);
+  day_month($day, time, $month);
+
+=head2 The C<length(NAME)> Keyword
+
+(C<length(NAME)> キーワード)
+
+=begin original
+
+If one of the input arguments to the C function is the length of a string
+argument C<NAME>, one can substitute the name of the length-argument by
+C<length(NAME)> in the XSUB declaration.  This argument must be omitted when
+the generated Perl function is called.  E.g.,
+
+=end original
+
+C 関数への入力引数の 1 つが文字列引数 C<NAME> の長さの場合、
+XSUB 宣言において長さ引数の名前を C<length(NAME)> で置き換えることが
+できます。
+この引数は、生成された Perl 関数が呼び出されるときには
+省略されなければなりません。
+例えば:
+
+  void
+  dump_chars(char *s, short l)
+  {
+    short n = 0;
+    while (n < l) {
+        printf("s[%d] = \"\\%#03o\"\n", n, (int)s[n]);
+        n++;
+    }
+  }
+
+  MODULE = x		PACKAGE = x
+
+  void dump_chars(char *s, short length(s))
+
+=begin original
+
+should be called as C<dump_chars($string)>.
+
+=end original
+
+は C<dump_chars($string)> として呼び出されます。
+
+=begin original
+
+This directive is supported with ANSI-type function declarations only.
+
+=end original
+
+この指示子は ANSI 風の関数定義にのみ対応しています。
+
+=head2 Variable-length Parameter Lists
+
+(可変長引数リスト)
+
+=begin original
+
+XSUBs can have variable-length parameter lists by specifying an ellipsis
+C<(...)> in the parameter list.  This use of the ellipsis is similar to that
+found in ANSI C.  The programmer is able to determine the number of
+arguments passed to the XSUB by examining the C<items> variable which the
+B<xsubpp> compiler supplies for all XSUBs.  By using this mechanism one can
+create an XSUB which accepts a list of parameters of unknown length.
+
+=end original
+
+XSUB は、引数リストで C<(...)> という省略記法で指定することによって、
+可変長の引数リストを取ることができます。
+この省略記法の仕様は ANSI C にあるものと似ています。
+プログラマは XSUB に渡された引数の数を、B<xsubpp> コンパイラがすべての
+XSUB に提供する C<items> という変数をチェックすることによって決定できます。
+この機構を使うことによって、長さが不定の引数リストを
+受け付ける XSUB を作成できます。
+
+=begin original
+
+The I<host> parameter for the rpcb_gettime() XSUB can be
+optional so the ellipsis can be used to indicate that the
+XSUB will take a variable number of parameters.  Perl should
+be able to call this XSUB with either of the following statements.
+
+=end original
+
+rpcb_gettime() XSUB に対する I<host> 引数は省略できるので、XSUB が
+引数の変化する個数を取ることを示すために省略記法が使えます。
+Perl はこの XSUB を以下に示す文のいずれかで呼び出すことができます。
+
+     $status = rpcb_gettime( $timep, $host );
+
+     $status = rpcb_gettime( $timep );
+
+=begin original
+
+The XS code, with ellipsis, follows.
+
+=end original
+
+省略記法を使った XS コードは次のようになります。
+
+     bool_t
+     rpcb_gettime(timep, ...)
+          time_t timep = NO_INIT
+	PREINIT:
+          char *host = "localhost";
+        CODE:
+	  if( items > 1 )
+	       host = (char *)SvPV_nolen(ST(1));
+	  RETVAL = rpcb_gettime( host, &timep );
+        OUTPUT:
+          timep
+          RETVAL
+
+=head2 The C_ARGS: Keyword
+
+(C_ARGS: キーワード)
+
+=begin original
+
+The C_ARGS: keyword allows creating of XSUBS which have different
+calling sequence from Perl than from C, without a need to write
+CODE: or PPCODE: section.  The contents of the C_ARGS: paragraph is
+put as the argument to the called C function without any change.
+
+=end original
+
+C_ARGS: キーワードは、Perl からの呼び出し手順ではなく C からの呼び出し手順を
+持つ XSUB を、CODE: や PPCODE: セクションを書くことなく作成することを
+可能にします。
+C_ARGS: 段落の内容は、呼び出される C 関数の引数として、何の変更もなく
+使われます。
+
+=begin original
+
+For example, suppose that a C function is declared as
+
+=end original
+
+例えば、以下のように宣言される C 関数を想定します:
+
+    symbolic nth_derivative(int n, symbolic function, int flags);
+
+=begin original
+
+and that the default flags are kept in a global C variable
+C<default_flags>.  Suppose that you want to create an interface which
+is called as
+
+=end original
+
+そしてデフォルトのフラグは C のグローバル変数 C<default_flags> に
+保管されているとします。
+以下のようにして呼び出されるインターフェースを作りたいとします:
+
+    $second_deriv = $function->nth_derivative(2);
+
+=begin original
+
+To do this, declare the XSUB as
+
+=end original
+
+これをするためには、XSUB を以下のように宣言します:
+
+    symbolic
+    nth_derivative(function, n)
+	symbolic	function
+	int		n
+      C_ARGS:
+	n, function, default_flags
+
+=head2 The PPCODE: Keyword
+
+(PPCODE: キーワード)
+
+=begin original
+
+The PPCODE: keyword is an alternate form of the CODE: keyword and is used
+to tell the B<xsubpp> compiler that the programmer is supplying the code to
+control the argument stack for the XSUBs return values.  Occasionally one
+will want an XSUB to return a list of values rather than a single value.
+In these cases one must use PPCODE: and then explicitly push the list of
+values on the stack.  The PPCODE: and CODE:  keywords should not be used
+together within the same XSUB.
+
+=end original
+
+キーワード PPCODE: は キーワード CODE: の代替であり、B<xsubpp> コンパイラに
+プログラマが XSUB の返り値のための引数スタックを制御するコードを
+提供しているということを指示するのに使われます。
+ある XSUB で、一つの値ではなく値のリストを返したいというときに必要になります。
+この場合 PPCODE: を使わなければならず、また、値のリストを陽にスタックへ
+プッシュしなければなりません。
+PPCODE: と CODE: は同一の XSUB で同時に使うべきではありません。
+
+=begin original
+
+The actual difference between PPCODE: and CODE: sections is in the
+initialization of C<SP> macro (which stands for the I<current> Perl
+stack pointer), and in the handling of data on the stack when returning
+from an XSUB.  In CODE: sections SP preserves the value which was on
+entry to the XSUB: SP is on the function pointer (which follows the
+last parameter).  In PPCODE: sections SP is moved backward to the
+beginning of the parameter list, which allows C<PUSH*()> macros
+to place output values in the place Perl expects them to be when
+the XSUB returns back to Perl.
+
+=end original
+
+PPCODE: と CODE: セクションの実際の違いは、
+(I<現在の> Perl のスタックポインタである) C<SP> マクロの初期化と、
+XSUB から返るときのスタックのデータの扱いです。
+CODE: セクションでは SP は XSUB に入ったときの値を保存します:
+SP は(最後の引数に続く)関数ポインタを指します。
+PPCODE: セクションでは、SP は引数リストの先頭に戻るので、
+XSUB が Perl に戻るときに、Perl が想定している場所に C<PUSH*()> マクロが 
+出力値を置くことが出来ます。
+
+=begin original
+
+The generated trailer for a CODE: section ensures that the number of return
+values Perl will see is either 0 or 1 (depending on the C<void>ness of the
+return value of the C function, and heuristics mentioned in
+L<"The RETVAL Variable">).  The trailer generated for a PPCODE: section
+is based on the number of return values and on the number of times
+C<SP> was updated by C<[X]PUSH*()> macros.
+
+=end original
+
+CODE: セクションの末尾に生成されるコードは、Perl が受け取る返り値の数が
+(C 関数の返り値が C<void> かどうか、および
+L<"The RETVAL Variable"> で記述した経験則に依存して)0 か 1 であることを
+保証します。
+PPCODE: セクションの末尾に生成されるコードは、返り値の数と
+C<SP> が C<[X]PUSH*()> マクロで更新された回数に基づきます。
+
+=begin original
+
+Note that macros C<ST(i)>, C<XST_m*()> and C<XSRETURN*()> work equally
+well in CODE: sections and PPCODE: sections.
+
+=end original
+
+マクロ C<ST(i)>, C<XST_m*()>, C<XSRETURN*()> は CODE: セクションでも
+PPCODE: セクションでも同じようにうまく動作することに注意してください。
+
+=begin original
+
+The following XSUB will call the C rpcb_gettime() function
+and will return its two output values, timep and status, to
+Perl as a single list.
+
+=end original
+
+次の XSUB は C の rpcb_gettime() 関数を呼び出し、二つの出力値 timep と
+status を、単一のリストとして Perl に返します。
+
+     void
+     rpcb_gettime(host)
+          char *host
+	PREINIT:
+          time_t  timep;
+          bool_t  status;
+        PPCODE:
+          status = rpcb_gettime( host, &timep );
+          EXTEND(SP, 2);
+          PUSHs(sv_2mortal(newSViv(status)));
+          PUSHs(sv_2mortal(newSViv(timep)));
+
+=begin original
+
+Notice that the programmer must supply the C code necessary
+to have the real rpcb_gettime() function called and to have
+the return values properly placed on the argument stack.
+
+=end original
+
+プログラマは、rbcb_gettime を実際に呼び出すコードと、返り値を引数スタックの
+適切な場所にプッシュするコードを提供しなければならないことに
+注意してください。
+
+=begin original
+
+The C<void> return type for this function tells the B<xsubpp> compiler that
+the RETVAL variable is not needed or used and that it should not be created.
+In most scenarios the void return type should be used with the PPCODE:
+directive.
+
+=end original
+
+この関数に対する返り値の型 C<void> は、B<xsubpp> コンパイラに変数
+RETVAL が必要ないとか、使われないので(RETVAL を)生成すべきではないことを
+指示します。
+ほとんどの場合、返り値の型 C<void> は PPCODE: 指示子と共に使うべきです。
+
+=begin original
+
+The EXTEND() macro is used to make room on the argument
+stack for 2 return values.  The PPCODE: directive causes the
+B<xsubpp> compiler to create a stack pointer available as C<SP>, and it
+is this pointer which is being used in the EXTEND() macro.
+The values are then pushed onto the stack with the PUSHs()
+macro.
+
+=end original
+
+引数スタックに二つの値を置くための場所を作るのに EXTEND()という
+マクロが使われています。
+PPCODE: 指示子は B<xsubpp>コンパイラに C<SP> と呼ばれる
+スタックポインタを生成させ、このポインタは EXTEND() マクロに使われます。
+値のスタックに対するプッシュは、PUSHs() というマクロを使います。
+
+=begin original
+
+Now the rpcb_gettime() function can be used from Perl with
+the following statement.
+
+=end original
+
+関数 rpcb_gettime() は、Perl から次のような文で使うことができます。
+
+     ($status, $timep) = rpcb_gettime("localhost");
+
+=begin original
+
+When handling output parameters with a PPCODE section, be sure to handle
+'set' magic properly.  See L<perlguts> for details about 'set' magic.
+
+=end original
+
+PPCODE セクションの出力パラメータを扱うとき、'set' マジックプロパティを
+扱うようにしてください。
+'set' マジックに関する詳細については L<perlguts> を参照してください。
+
+=head2 Returning Undef And Empty Lists
+
+(undef と空リストを返す)
+
+=begin original
+
+Occasionally the programmer will want to return simply
+C<undef> or an empty list if a function fails rather than a
+separate status value.  The rpcb_gettime() function offers
+just this situation.  If the function succeeds we would like
+to have it return the time and if it fails we would like to
+have undef returned.  In the following Perl code the value
+of $timep will either be undef or it will be a valid time.
+
+=end original
+
+ときとしてプログラマには、関数が失敗したときに(返り値とは)別に
+ステータスを表わす値を返すよりは、単純に C<undef> や空リストを
+返したいというときがあるでしょう。
+rpcb_gettime() 関数はまさにこういった状況を提示しています。
+関数が成功したときには私たちは関数が時刻を返すことを望み、失敗したときには
+undef を返して欲しいと望んでいます。
+以下に示す Perl プログラムでは、$timep の値は undef か正しい時刻のいずれかに
+なります。
+
+     $timep = rpcb_gettime( "localhost" );
+
+=begin original
+
+The following XSUB uses the C<SV *> return type as a mnemonic only,
+and uses a CODE: block to indicate to the compiler
+that the programmer has supplied all the necessary code.  The
+sv_newmortal() call will initialize the return value to undef, making that
+the default return value.
+
+=end original
+
+以下の XSUB は、C<SV *> を ニーモニック(mnemonic)のみの返り値の型として
+使っていて、CODE: ブロックをコンパイラに対してプログラマが必要な
+コードすべてを提供していることを示すために使っています。
+sv_newmortal() の呼び出しは返り値を undef で初期化して、それをデフォルトの
+返り値とします。
+
+     SV *
+     rpcb_gettime(host)
+          char *  host
+	PREINIT:
+          time_t  timep;
+          bool_t x;
+        CODE:
+          ST(0) = sv_newmortal();
+          if( rpcb_gettime( host, &timep ) )
+               sv_setnv( ST(0), (double)timep);
+
+=begin original
+
+The next example demonstrates how one would place an explicit undef in the
+return value, should the need arise.
+
+=end original
+
+次の例は、返り値の中で陽に undef をどのように置き、arise (発生する、起こる)
+する必要があるかという例です。
+
+     SV *
+     rpcb_gettime(host)
+          char *  host
+	PREINIT:
+          time_t  timep;
+          bool_t x;
+        CODE:
+          if( rpcb_gettime( host, &timep ) ){
+               ST(0) = sv_newmortal();
+               sv_setnv( ST(0), (double)timep);
+          }
+          else{
+               ST(0) = &PL_sv_undef;
+          }
+
+=begin original
+
+To return an empty list one must use a PPCODE: block and
+then not push return values on the stack.
+
+=end original
+
+空リストを返すには、PPCODE: ブロックを使わなければならず、
+かつその後でスタックに返り値をプッシュしてはいけません。
+
+     void
+     rpcb_gettime(host)
+          char *host
+	PREINIT:
+          time_t  timep;
+        PPCODE:
+          if( rpcb_gettime( host, &timep ) )
+               PUSHs(sv_2mortal(newSViv(timep)));
+          else{
+	      /* Nothing pushed on stack, so an empty
+	       * list is implicitly returned. */
+          }
+
+=begin original
+
+Some people may be inclined to include an explicit C<return> in the above
+XSUB, rather than letting control fall through to the end.  In those
+situations C<XSRETURN_EMPTY> should be used, instead.  This will ensure that
+the XSUB stack is properly adjusted.  Consult L<perlapi> for other
+C<XSRETURN> macros.
+
+=end original
+
+一部には、上記のXSUB において、最後の文へ fall through するように
+制御するよりは陽に C<return> を含めるようにしたいと考える人もいるでしょう。
+そういった場合には、代わりに C<XSRETURN_EMPTY> を使います。
+これは XSUB スタックが適切に調整されることを保証します。
+他の C<XSRETURN> マクロについては L<perlapi> を参照してください。
+
+=begin original
+
+Since C<XSRETURN_*> macros can be used with CODE blocks as well, one can
+rewrite this example as:
+
+=end original
+
+C<XSRETURN_*> マクロは CODE ブロックでも使えるので、この例は以下のように
+書き換えられます:
+
+     int
+     rpcb_gettime(host)
+          char *host
+	PREINIT:
+          time_t  timep;
+        CODE:
+          RETVAL = rpcb_gettime( host, &timep );
+	  if (RETVAL == 0)
+		XSRETURN_UNDEF;
+	OUTPUT:
+	  RETVAL
+
+=begin original
+
+In fact, one can put this check into a POSTCALL: section as well.  Together
+with PREINIT: simplifications, this leads to:
+
+=end original
+
+実際のところ、このチェックを POSTCALL: セクションに置くこともできます。
+PREINIT: の単純化と共に、これは以下のようになります:
+
+     int
+     rpcb_gettime(host)
+          char *host
+          time_t  timep;
+	POSTCALL:
+	  if (RETVAL == 0)
+		XSRETURN_UNDEF;
+
+=head2 The REQUIRE: Keyword
+
+(REQUIRE: キーワード)
+
+=begin original
+
+The REQUIRE: keyword is used to indicate the minimum version of the
+B<xsubpp> compiler needed to compile the XS module.  An XS module which
+contains the following statement will compile with only B<xsubpp> version
+1.922 or greater:
+
+=end original
+
+キーワード REQUIRE: は B<xsubpp> コンパイラが XS モジュールを
+コンパイルするために最低限必要なバージョンを示すために使われます。
+以下のような文のある XS モジュールはバージョン 1.922 以降の B<xsubpp> でのみ
+コンパイルできます。
+
+	REQUIRE: 1.922
+
+=head2 The CLEANUP: Keyword
+
+(CLEANUP: キーワード)
+
+=begin original
+
+This keyword can be used when an XSUB requires special cleanup procedures
+before it terminates.  When the CLEANUP:  keyword is used it must follow
+any CODE:, PPCODE:, or OUTPUT: blocks which are present in the XSUB.  The
+code specified for the cleanup block will be added as the last statements
+in the XSUB.
+
+=end original
+
+このキーワードは XSUB がその終了前に特別なクリーンアップ手続きを必要とする
+場合に使うことができます。
+キーワード CLEANUP: が使われるときには、それは CODE:, PPCODE, OUTPUT: 
+ブロックのいずれかに続いていなければなりません。
+クリーンアップブロックのためのコードは XSUB にある最後のステートメントに
+付け加えられます。
+
+=head2 The POSTCALL: Keyword
+
+(POSTCALL: キーワード)
+
+=begin original
+
+This keyword can be used when an XSUB requires special procedures
+executed after the C subroutine call is performed.  When the POSTCALL:
+keyword is used it must precede OUTPUT: and CLEANUP: blocks which are
+present in the XSUB.
+
+=end original
+
+このキーワードは、C サブルーチンを実行した後に特別な手続きが必要な XSUB に
+使います。
+POSTCALL: キーワードを使う時は、XSUB に存在する
+OUTPUT: と CLEANUP: ブロックの前になければなりません。
+
+=begin original
+
+See examples in L<"The NO_OUTPUT Keyword"> and L<"Returning Undef And Empty Lists">.
+
+=end original
+
+L<"The NO_OUTPUT Keyword"> と L<"Returning Undef And Empty Lists"> の例を
+参照してください。
+
+=begin original
+
+The POSTCALL: block does not make a lot of sense when the C subroutine
+call is supplied by user by providing either CODE: or PPCODE: section.
+
+=end original
+
+The POSTCALL: ブロックは、C サブルーチン呼び出しがユーザーから
+CODE: や PPCODE: セクションによって提供される場合はあまり意味はありません。
+
+=head2 The BOOT: Keyword
+
+(BOOT: キーワード)
+
+=begin original
+
+The BOOT: keyword is used to add code to the extension's bootstrap
+function.  The bootstrap function is generated by the B<xsubpp> compiler and
+normally holds the statements necessary to register any XSUBs with Perl.
+With the BOOT: keyword the programmer can tell the compiler to add extra
+statements to the bootstrap function.
+
+=end original
+
+キーワード BOOT: はエクステンションのブートストラップ関数のためにコードを
+追加するのに使われます。
+ブートストラップ関数は B<xsubpp> コンパイラによって生成され、通常は
+Perl に登録するような XSUB に必要な文を保持します。
+BOOT: キーワードによってプログラマはコンパイラに対して、
+ブートストラップ関数にコードを追加することを指示できます。
+
+=begin original
+
+This keyword may be used any time after the first MODULE keyword and should
+appear on a line by itself.  The first blank line after the keyword will
+terminate the code block.
+
+=end original
+
+このキーワードは最初に キーワード MODULE が現れたあとの任意の場所で
+使うことができ、その行にはこのキーワードのみがあるようにすべきです。
+キーワードの後で最初に現れる空行がコードブロックの終端を示します。
+
+     BOOT:
+     # The following message will be printed when the
+     # bootstrap function executes.
+     printf("Hello from the bootstrap!\n");
+
+=head2 The VERSIONCHECK: Keyword
+
+(VERSIONCHECK: キーワード)
+
+=begin original
+
+The VERSIONCHECK: keyword corresponds to B<xsubpp>'s C<-versioncheck> and
+C<-noversioncheck> options.  This keyword overrides the command line
+options.  Version checking is enabled by default.  When version checking is
+enabled the XS module will attempt to verify that its version matches the
+version of the PM module.
+
+=end original
+
+キーワード VERSIONCHECK: は B<xsubpp> のオプションである
+C<-versioncheck> や C<-noversioncheck> に相当します。
+このキーワードはコマンドラインオプションをオーバーライドします。
+バージョンチェックはデフォルトでは有効になっています。
+バージョンチェックが有効になっている場合、XS モジュールはそのバージョンが
+PM モジュールのバージョンとマッチするかどうかが検査されます。
+
+=begin original
+
+To enable version checking:
+
+=end original
+
+バージョンチェックを有効にするには:
+
+    VERSIONCHECK: ENABLE
+
+=begin original
+
+To disable version checking:
+
+=end original
+
+バージョンチェックを無効にするには:
+
+    VERSIONCHECK: DISABLE
+
+=begin original
+
+Note that if the version of the PM module is an NV (a floating point
+number), it will be stringified with a possible loss of precision
+(currently chopping to nine decimal places) so that it may not match
+the version of the XS module anymore. Quoting the $VERSION declaration
+to make it a string is recommended if long version numbers are used.
+
+=end original
+
+PM モジュールのバージョンが NV (浮動小数点数) の場合、文字列化するときに
+精度が落ちる可能性がある (今のところ 9 桁で切っています) ので、
+XS モジュールのバージョンの一致しないかもしれません。
+長いバージョン番号を使うときは、$VERSION 宣言をクォートして文字列に
+することを推奨します。
+
+=head2 The PROTOTYPES: Keyword
+
+(PROTOTYPES: キーワード)
+
+=begin original
+
+The PROTOTYPES: keyword corresponds to B<xsubpp>'s C<-prototypes> and
+C<-noprototypes> options.  This keyword overrides the command line options.
+Prototypes are enabled by default.  When prototypes are enabled XSUBs will
+be given Perl prototypes.  This keyword may be used multiple times in an XS
+module to enable and disable prototypes for different parts of the module.
+
+=end original
+
+キーワード PROTOTYPES: は B<xsubpp> の C<-prototypes> や C<-noprototypes> 
+といったオプションに相当します。
+このキーワードはコマンドラインオプションを上書きします。
+デフォルトではプロトタイプが有効になっています。
+プロトタイプが有効になっているとき、XSUB は Perl にプロトタイプを与えます。
+このキーワードはXSモジュールの中で、モジュールの異なった部分で何回でも
+プロトタイプを許可したり禁止したりできます。
+
+=begin original
+
+To enable prototypes:
+
+=end original
+
+プロトタイプを許可するには:
+
+    PROTOTYPES: ENABLE
+
+=begin original
+
+To disable prototypes:
+
+=end original
+
+プロトタイプを禁止するには:
+
+    PROTOTYPES: DISABLE
+
+=head2 The PROTOTYPE: Keyword
+
+(PROTOTYPE: キーワード)
+
+=begin original
+
+This keyword is similar to the PROTOTYPES: keyword above but can be used to
+force B<xsubpp> to use a specific prototype for the XSUB.  This keyword
+overrides all other prototype options and keywords but affects only the
+current XSUB.  Consult L<perlsub/Prototypes> for information about Perl
+prototypes.
+
+=end original
+
+このキーワードは前述したキーワード PROTOTYPES: に似ていますが、
+XSUB に対する特定のプロトタイプを使うのに B<xsubpp> を強制的に
+使うことができます。
+このキーワードは他のすべてのプロトタイプオプションやキーワードを
+上書きしますが、カレントの XSUB にのみ影響します。
+Perl のプロトタイプについては L<perlsub/Prototypes> を参照してください。
+
+    bool_t
+    rpcb_gettime(timep, ...)
+          time_t timep = NO_INIT
+	PROTOTYPE: $;$
+	PREINIT:
+          char *host = "localhost";
+        CODE:
+		  if( items > 1 )
+		       host = (char *)SvPV_nolen(ST(1));
+		  RETVAL = rpcb_gettime( host, &timep );
+        OUTPUT:
+          timep
+          RETVAL
+
+=begin original
+
+If the prototypes are enabled, you can disable it locally for a given
+XSUB as in the following example:
+
+=end original
+
+プロトタイプが有効の場合、以下の例のようにして XSUB の中でローカルに
+無効にすることができます:
+
+    void
+    rpcb_gettime_noproto()
+        PROTOTYPE: DISABLE
+    ...
+
+=head2 The ALIAS: Keyword
+
+(ALIAS: キーワード)
+
+=begin original
+
+The ALIAS: keyword allows an XSUB to have two or more unique Perl names
+and to know which of those names was used when it was invoked.  The Perl
+names may be fully-qualified with package names.  Each alias is given an
+index.  The compiler will setup a variable called C<ix> which contain the
+index of the alias which was used.  When the XSUB is called with its
+declared name C<ix> will be 0.
+
+=end original
+
+ALIAS: というキーワードは、XSUB に対して二つ以上のユニークな Perl での名前を
+持たせ、また、起動されたときに使われている(そういったユニークな Perl での)
+名前を知るための手段を持たせます。
+Perl での名前は完全修飾されたパッケージ名とすることができます。
+それぞれの別名はインデックスとして与えられます。
+コンパイラは、使用される別名のインデックスが格納されている C<ix> と
+呼ばれる変数をセットアップします。
+XSUB が C<ix> という名前と共に呼び出されたとき、その値は 0 となります。
+
+=begin original
+
+The following example will create aliases C<FOO::gettime()> and
+C<BAR::getit()> for this function.
+
+=end original
+
+以下に挙げる例では、C<FOO::gettime()> と C<BAR::getit()> という
+別名をこの関数のために作成します。
+
+    bool_t
+    rpcb_gettime(host,timep)
+          char *host
+          time_t &timep
+	ALIAS:
+	    FOO::gettime = 1
+	    BAR::getit = 2
+	INIT:
+	  printf("# ix = %d\n", ix );
+        OUTPUT:
+          timep
+
+=head2 The OVERLOAD: Keyword
+
+(OVERLOAD: キーワード)
+
+=begin original
+
+Instead of writing an overloaded interface using pure Perl, you
+can also use the OVERLOAD keyword to define additional Perl names
+for your functions (like the ALIAS: keyword above).  However, the
+overloaded functions must be defined with three parameters (except
+for the nomethod() function which needs four parameters).  If any
+function has the OVERLOAD: keyword, several additional lines
+will be defined in the c file generated by xsubpp in order to 
+register with the overload magic.
+
+=end original
+
+pure Perl を使ったオーバーロードインターフェースを書く代わりに、
+(上述の ALIAS: キーワードと同様に)関数のための追加の Perl の名前を
+定義するための OVERLOAD キーワードも使えます。
+しかし、オーバーロードした関数は (4 つの引数が必要な nomethod() 関数を
+除いて)3 つの引数で定義しなければなりません
+関数に OVERLOAD: キーワードがあると、オーバーロードしたマジックを
+登録するために、いくつかの追加の行がxsubpp によって生成された
+c ファイルで定義されます。
+
+=begin original
+
+Since blessed objects are actually stored as RV's, it is useful
+to use the typemap features to preprocess parameters and extract
+the actual SV stored within the blessed RV. See the sample for
+T_PTROBJ_SPECIAL below.
+
+=end original
+
+bless されたオブジェクトは実際には RV として保管されるので、
+引数を前処理して bless された RV に保管されている実際の SV を取り出すという
+typemap の昨日を使うのが便利です。
+以下の T_PTROBJ_SPECIAL の例を参照してください。
+
+=begin original
+
+To use the OVERLOAD: keyword, create an XS function which takes
+three input parameters ( or use the c style '...' definition) like
+this:
+
+=end original
+
+OVERLOAD: キーワードを使うには、以下のように 3 つの入力パラメータ (または
+C 形式の '...' 定義) を持つ XS 関数を作ります:
+
+    SV *
+    cmp (lobj, robj, swap)
+    My_Module_obj    lobj
+    My_Module_obj    robj
+    IV               swap
+    OVERLOAD: cmp <=>
+    { /* function defined here */}
+
+=begin original
+
+In this case, the function will overload both of the three way
+comparison operators.  For all overload operations using non-alpha
+characters, you must type the parameter without quoting, separating
+multiple overloads with whitespace.  Note that "" (the stringify 
+overload) should be entered as \"\" (i.e. escaped).
+
+=end original
+
+この場合、関数は比較演算子の 3 つの方法全てをオーバーロードします。
+非英字を使った全てのオーバーロード操作に関して、引数をクォートなしで
+タイプする必要があり、複数のオーバーロードは空白で分けられます。
+"" (文字列化のオーバーロード) は \"\" と入力する(エスケープする)
+必要があります。
+
+=head2 The FALLBACK: Keyword
+
+(FALLBACK: キーワード)
+
+=begin original
+
+In addition to the OVERLOAD keyword, if you need to control how
+Perl autogenerates missing overloaded operators, you can set the
+FALLBACK keyword in the module header section, like this:
+
+=end original
+
+OVERLOAD キーワードに追加して、省略したオーバーロード演算子を
+Perl がどのように自動生成するかを制御したい場合は、以下のように
+モジュールヘッダセクションに FALLBACK キーワードをセットできます:
+
+    MODULE = RPC  PACKAGE = RPC
+
+    FALLBACK: TRUE
+    ...
+
+=begin original
+
+where FALLBACK can take any of the three values TRUE, FALSE, or
+UNDEF.  If you do not set any FALLBACK value when using OVERLOAD,
+it defaults to UNDEF.  FALLBACK is not used except when one or 
+more functions using OVERLOAD have been defined.  Please see
+L<overload/Fallback> for more details.
+
+=end original
+
+ここで FALLBACK は TRUE, FALSE, UNDEF の 3 つの値のいずれかを
+取ることができます。
+OVERLOAD を使うときに FALLBACK 値がセットされていないと、デフォルトとして
+UNDEF となります。
+1 つまたは複数の関数で OVERLOAD を使っている場合以外は FALLBACK は
+使えません。
+さらなる詳細については L<overload/Fallback> を参照してください。
+
+=head2 The INTERFACE: Keyword
+
+(INTERFACE: キーワード)
+
+=begin original
+
+This keyword declares the current XSUB as a keeper of the given
+calling signature.  If some text follows this keyword, it is
+considered as a list of functions which have this signature, and
+should be attached to the current XSUB.
+
+=end original
+
+このキーワードは現在の XSUB を与えられた呼び出しシグネチャの持ち主として
+宣言します。
+キーワードになんらかの文字列が続いていると、それはこのシグネチャを
+持っている関数のリストとして扱われ、現在の XSUB に付加されたものと
+扱われます。
+
+=begin original
+
+For example, if you have 4 C functions multiply(), divide(), add(),
+subtract() all having the signature:
+
+=end original
+
+例えば、以下の同じシグネチャを持つ 4 つの C 関数 multiply(), divide(),
+add(), subtract() がある場合:
+
+    symbolic f(symbolic, symbolic);
+
+=begin original
+
+you can make them all to use the same XSUB using this:
+
+=end original
+
+以下のようにして全てを同じ XSUB で使えます:
+
+    symbolic
+    interface_s_ss(arg1, arg2)  
+	symbolic	arg1
+	symbolic	arg2
+    INTERFACE:
+	multiply divide 
+	add subtract
+
+=begin original
+
+(This is the complete XSUB code for 4 Perl functions!)  Four generated
+Perl function share names with corresponding C functions.
+
+=end original
+
+(これは 4 つの Perl 関数のための完全な XSUB コードです!)
+4 つの生成された Perl 関数は対応する C 関数と名前を共有します。
+
+=begin original
+
+The advantage of this approach comparing to ALIAS: keyword is that there
+is no need to code a switch statement, each Perl function (which shares
+the same XSUB) knows which C function it should call.  Additionally, one
+can attach an extra function remainder() at runtime by using
+
+=end original
+
+ALIAS: キーワードと比べた場合のこの手法の有利な点は、switch 文を
+コーディングする必要がなく、それぞれの Perl 関数はどの C 関数を
+呼び出すべきかを知っている、ということです。
+更に、以下のように使うことで実行時に追加の関数 remainder() を
+他の XSUB から付加できます:
+
+    CV *mycv = newXSproto("Symbolic::remainder", 
+			  XS_Symbolic_interface_s_ss, __FILE__, "$$");
+    XSINTERFACE_FUNC_SET(mycv, remainder);
+
+=begin original
+
+say, from another XSUB.  (This example supposes that there was no
+INTERFACE_MACRO: section, otherwise one needs to use something else instead of
+C<XSINTERFACE_FUNC_SET>, see the next section.)
+
+=end original
+
+(この例は、INTERFACE_MACRO: セクションがないことを想定しています;
+さもなければ、C<XSINTERFACE_FUNC_SET> 以外の何かを使う必要があります;
+次の章を参照してください。)
+
+=head2 The INTERFACE_MACRO: Keyword
+
+(INTERFACE_MACRO: キーワード)
+
+=begin original
+
+This keyword allows one to define an INTERFACE using a different way
+to extract a function pointer from an XSUB.  The text which follows
+this keyword should give the name of macros which would extract/set a
+function pointer.  The extractor macro is given return type, C<CV*>,
+and C<XSANY.any_dptr> for this C<CV*>.  The setter macro is given cv,
+and the function pointer.
+
+=end original
+
+このキーワードは、XSUB から関数ポインタを取り出すために異なった方法を
+使って INTERFACE を定義できるようにします。
+このキーワードに引き続く文字列は、関数ポインタを展開/セットする
+マクロの名前になります。
+展開マクロは、返り値、C<CV*>、この C<CV*> のための C<XSANY.any_dptr> が
+渡されます。
+セッターマクロは cv と関数ポインタが渡されます。
+
+=begin original
+
+The default value is C<XSINTERFACE_FUNC> and C<XSINTERFACE_FUNC_SET>.
+An INTERFACE keyword with an empty list of functions can be omitted if
+INTERFACE_MACRO keyword is used.
+
+=end original
+
+デフォルト値は C<XSINTERFACE_FUNC> と C<XSINTERFACE_FUNC_SET> です。
+空の関数リストのINTERFACE キーワードは、INTERFACE_MACRO キーワードが
+使われたときは省略できます。
+
+=begin original
+
+Suppose that in the previous example functions pointers for 
+multiply(), divide(), add(), subtract() are kept in a global C array
+C<fp[]> with offsets being C<multiply_off>, C<divide_off>, C<add_off>,
+C<subtract_off>.  Then one can use 
+
+=end original
+
+前述の例で、multiply(), divide(), add(), subtract() の関数ポインタが
+C 配列 C<fp[]> にオフセット C<multiply_off>, C<divide_off>, C<add_off>,
+C<subtract_off> で保管されていると仮定します。
+以下のように
+
+    #define XSINTERFACE_FUNC_BYOFFSET(ret,cv,f) \
+	((XSINTERFACE_CVT_ANON(ret))fp[CvXSUBANY(cv).any_i32])
+    #define XSINTERFACE_FUNC_BYOFFSET_set(cv,f) \
+	CvXSUBANY(cv).any_i32 = CAT2( f, _off )
+
+=begin original
+
+in C section,
+
+=end original
+
+と C セクションに書きます。
+
+    symbolic
+    interface_s_ss(arg1, arg2)  
+	symbolic	arg1
+	symbolic	arg2
+      INTERFACE_MACRO: 
+	XSINTERFACE_FUNC_BYOFFSET
+	XSINTERFACE_FUNC_BYOFFSET_set
+      INTERFACE:
+	multiply divide 
+	add subtract
+
+=begin original
+
+in XSUB section.
+
+=end original
+
+と XSUB セクションに書きます。
+
+=head2 The INCLUDE: Keyword
+
+(INCLUDE: キーワード)
+
+=begin original
+
+This keyword can be used to pull other files into the XS module.  The other
+files may have XS code.  INCLUDE: can also be used to run a command to
+generate the XS code to be pulled into the module.
+
+=end original
+
+このキーワードは XS モジュールに他のファイルを取り込むのに使われます。
+取り込むファイルは XS コードを持つこともできます。
+INCLUDE: は あるコマンドを実行してそこで生成された XS コードを
+モジュールに取り込むこともできます。
+
+=begin original
+
+The file F<Rpcb1.xsh> contains our C<rpcb_gettime()> function:
+
+=end original
+
+F<Rpcb1.xsh> というファイルは私たちの C<rpcb_gettime()> 関数を
+含んでいます。
+
+    bool_t
+    rpcb_gettime(host,timep)
+          char *host
+          time_t &timep
+        OUTPUT:
+          timep
+
+=begin original
+
+The XS module can use INCLUDE: to pull that file into it.
+
+=end original
+
+XS モジュールは、ファイルを取り込むために INCLUDE: を使うことができます。
+
+    INCLUDE: Rpcb1.xsh
+
+=begin original
+
+If the parameters to the INCLUDE: keyword are followed by a pipe (C<|>) then
+the compiler will interpret the parameters as a command.
+
+=end original
+
+キーワード INCLUDE: に続くパラメータが パイプ (C<|>) を伴っていれば、
+コンパイラはそのパラメータをコマンドとして解釈します。
+
+    INCLUDE: cat Rpcb1.xsh |
+
+=head2 The CASE: Keyword
+
+(CASE: キーワード)
+
+=begin original
+
+The CASE: keyword allows an XSUB to have multiple distinct parts with each
+part acting as a virtual XSUB.  CASE: is greedy and if it is used then all
+other XS keywords must be contained within a CASE:.  This means nothing may
+precede the first CASE: in the XSUB and anything following the last CASE: is
+included in that case.
+
+=end original
+
+キーワード CASE: は XSUB が、それぞれが仮想的な XSUB として扱うことの
+できる複数の部品を持つことを許可します。
+CASE: は貪欲 (greedy) で、使われた場合には他の XS キーワードは CASE: の中に
+なければなりません。
+これは XSUB にある最初の CASE: より前に他のキーワードを置けないと
+いうことであり、最後の CASE よりも後にあるものはその case に含まれると
+いうことです。
+
+=begin original
+
+A CASE: might switch via a parameter of the XSUB, via the C<ix> ALIAS:
+variable (see L<"The ALIAS: Keyword">), or maybe via the C<items> variable
+(see L<"Variable-length Parameter Lists">).  The last CASE: becomes the
+B<default> case if it is not associated with a conditional.  The following
+example shows CASE switched via C<ix> with a function C<rpcb_gettime()>
+having an alias C<x_gettime()>.  When the function is called as
+C<rpcb_gettime()> its parameters are the usual C<(char *host, time_t *timep)>,
+but when the function is called as C<x_gettime()> its parameters are
+reversed, C<(time_t *timep, char *host)>.
+
+=end original
+
+CASE: は XSUB のパラメータや、C<ix> ALIAS: 変数(L<"The ALIAS: Keyword"> を
+参照)、変数 C<items> を通じて切り替えることができます。
+最後の CASE: は、そこに結び付けられている条件がない場合には
+B<default> となります。
+以下の例は CASE: が C<ix> によって C<x_gettime()> という別名を持つ関数
+C<rpcb_gettime()> を切り替えるものです。
+この関数が C<rpcb_gettime()> として呼ばれたとき、そのパラメータは通常、
+C<(char *host, time_t *timep)> ですが、C<x_gettime()> として呼ばれた場合には
+そのパラメータは反転して C<(time_t *timep, char *host)> となります。
+
+    long
+    rpcb_gettime(a,b)
+      CASE: ix == 1
+	ALIAS:
+	  x_gettime = 1
+	INPUT:
+	  # 'a' is timep, 'b' is host
+          char *b
+          time_t a = NO_INIT
+        CODE:
+               RETVAL = rpcb_gettime( b, &a );
+        OUTPUT:
+          a
+          RETVAL
+      CASE:
+	  # 'a' is host, 'b' is timep
+          char *a
+          time_t &b = NO_INIT
+        OUTPUT:
+          b
+          RETVAL
+
+=begin original
+
+That function can be called with either of the following statements.  Note
+the different argument lists.
+
+=end original
+
+こういった関数は、以下に示すいずれかの文で呼び出すことができます。
+引数リストが異なっていることに注意してください。
+
+	$status = rpcb_gettime( $host, $timep );
+
+	$status = x_gettime( $timep, $host );
+
+=head2 The & Unary Operator
+
+(& 単項演算子)
+
+=begin original
+
+The C<&> unary operator in the INPUT: section is used to tell B<xsubpp>
+that it should convert a Perl value to/from C using the C type to the left
+of C<&>, but provide a pointer to this value when the C function is called.
+
+=end original
+
+INPUT: セクションにある C<&> 単項演算子は、
+Perl の値と C を、C<&> の左にある C の型を使って変換する必要があるけれども、
+C 関数が呼び出されたときはこの値へのポインタが提供されることを
+B<xsubpp> に伝えるために使われます。
+
+=begin original
+
+This is useful to avoid a CODE: block for a C function which takes a parameter
+by reference.  Typically, the parameter should be not a pointer type (an
+C<int> or C<long> but not an C<int*> or C<long*>).
+
+=end original
+
+これはパラメータを参照渡しする C 関数のための CODE: ブロックを避けるときに
+有用です。
+典型的には、パラメータがポインタ型でないとき(C<int*> や C<long*> ではなく、
+C<int> か C<long>)に使われます。
+
+=begin original
+
+The following XSUB will generate incorrect C code.  The B<xsubpp> compiler will
+turn this into code which calls C<rpcb_gettime()> with parameters C<(char
+*host, time_t timep)>, but the real C<rpcb_gettime()> wants the C<timep>
+parameter to be of type C<time_t*> rather than C<time_t>.
+
+=end original
+
+次の XSUB は正しくない C コードを生成してしまいます。
+B<xsubpp> コンパイラはこれを、C<(char *host, time_t timep)> という引数を
+伴って C<rpcb_gettime()> を呼ぶコードに変換しますが、実際に 
+C<rpcb_gettime()> が C<timep> パラメータの型として要求しているのは
+C<time_t> ではなく C<time_t*> です。
+
+    bool_t
+    rpcb_gettime(host,timep)
+          char *host
+          time_t timep
+        OUTPUT:
+          timep
+
+=begin original
+
+That problem is corrected by using the C<&> operator.  The B<xsubpp> compiler
+will now turn this into code which calls C<rpcb_gettime()> correctly with
+parameters C<(char *host, time_t *timep)>.  It does this by carrying the
+C<&> through, so the function call looks like C<rpcb_gettime(host, &timep)>.
+
+=end original
+
+この問題は C<&> 演算子を使うことによって修正できます。
+B<xsubpp> コンパイラはこれによって、C<rpcb_gettime()> を正しく
+C<(char *host, time_t *timep)>というパラメータで呼ぶようなコードにします。
+これは C<&> を付けることでなされるので、関数の呼び出しは
+C<rpcb_gettime(host, &timep)> のように見えます。
+
+    bool_t
+    rpcb_gettime(host,timep)
+          char *host
+          time_t &timep
+        OUTPUT:
+          timep
+
+=head2 Inserting POD, Comments and C Preprocessor Directives
+
+(POD、コメント、C プリプロセッサ指示子を挿入する)
+
+=begin original
+
+C preprocessor directives are allowed within BOOT:, PREINIT: INIT:, CODE:,
+PPCODE:, POSTCALL:, and CLEANUP: blocks, as well as outside the functions.
+Comments are allowed anywhere after the MODULE keyword.  The compiler will
+pass the preprocessor directives through untouched and will remove the
+commented lines. POD documentation is allowed at any point, both in the
+C and XS language sections. POD must be terminated with a C<=cut> command;
+C<xsubpp> will exit with an error if it does not. It is very unlikely that
+human generated C code will be mistaken for POD, as most indenting styles
+result in whitespace in front of any line starting with C<=>. Machine
+generated XS files may fall into this trap unless care is taken to
+ensure that a space breaks the sequence "\n=".
+
+=end original
+
+C プリプロセッサの指示子は BOOT:, PREINIT:, INIT:, CODE:, PPCODE:,
+POSTCALL:, CLEANUP: といったブロックなしに、関数の外側のときと同じように
+使えます。
+コメントは MODULE キーワードの後の任意の場所で使えます。
+コンパイラはプリプロセッサ指示子をいじらずにそのまま出力し、
+コメント行は削除します。
+POD 文書は C と XS の両方のセクションで、どの地点でも利用できます。
+POD は C<=cut> コマンドで終端されなければなりません;
+これがないと C<xsubpp> はエラーを出して終了します。
+ほとんどのインデントスタイルは C<=> で始まる行の先頭には空白を
+入れることになるので、人間が生成した C コードが間違って POD と
+みなされることはほとんどありそうにないことです。
+機械が生成した XS ファイルは、空白を "\n=" で区切らないように気を付けないと、
+同じ罠に引っかかるかもしれません。
+
+=begin original
+
+Comments can be added to XSUBs by placing a C<#> as the first
+non-whitespace of a line.  Care should be taken to avoid making the
+comment look like a C preprocessor directive, lest it be interpreted as
+such.  The simplest way to prevent this is to put whitespace in front of
+the C<#>.
+
+=end original
+
+行の最初にある空白でないキャラクタとしてC<#>を使うことで、
+XSUB にコメントを追加できます。
+コメントを C のプリプロセッサ指示子と取り違えられないように
+注意してください。
+これを防ぐ単純な方法は、C<#> の前に空白を置くことです。
+
+=begin original
+
+If you use preprocessor directives to choose one of two
+versions of a function, use
+
+=end original
+
+プリプロセッサの指示子を二つのバージョンの関数のうちの一つを
+選ぶために使うのであれば、こうであって:
+
+    #if ... version1
+    #else /* ... version2  */
+    #endif
+
+=begin original
+
+and not
+
+=end original
+
+こうではありません:
+
+    #if ... version1
+    #endif
+    #if ... version2
+    #endif
+
+=begin original
+
+because otherwise B<xsubpp> will believe that you made a duplicate
+definition of the function.  Also, put a blank line before the
+#else/#endif so it will not be seen as part of the function body.
+
+=end original
+
+これは、そうしなければ B<xsubpp> があなたが関数の重複した定義をしようと
+していると信じてしまうからです。
+同様に、#else/#endif の前に空白行を入れて、それが関数本体の一部と
+みなされないようにしてください。
+
+=head2 Using XS With C++
+
+(C++ で XS を使う)
+
+=begin original
+
+If an XSUB name contains C<::>, it is considered to be a C++ method.
+The generated Perl function will assume that
+its first argument is an object pointer.  The object pointer
+will be stored in a variable called THIS.  The object should
+have been created by C++ with the new() function and should
+be blessed by Perl with the sv_setref_pv() macro.  The
+blessing of the object by Perl can be handled by a typemap.  An example
+typemap is shown at the end of this section.
+
+=end original
+
+XSUB 名に C<::> が含まれている場合、C++ のメソッドとして扱われます。
+生成された Perl 関数は、その関数に対する第一引数がオブジェクト
+ポインタであると仮定されます。
+このオブジェクトポインタは THIS と呼ばれる変数に格納されます。
+オブジェクトは C++ の new() を使って作成されたものであるべきで、かつ、
+sv_setref_pv() マクロによって Perl から bless されているべきものです。
+Perl によるオブジェクトの bless は typemap で扱えます。
+typemap の例はこのセクションの最後にあります。
+
+=begin original
+
+If the return type of the XSUB includes C<static>, the method is considered
+to be a static method.  It will call the C++
+function using the class::method() syntax.  If the method is not static
+the function will be called using the THIS-E<gt>method() syntax.
+
+=end original
+
+XSUB の返り値型に C<static> が含まれている場合、このメソッドは
+静的メソッドとして扱われます。
+これは、class::method() 構文を使って C++ 関数を呼び出します。
+メソッドが静的でないのであれば、関数は THIS-E<gt>method() 構文を使って
+呼び出されます。
+
+=begin original
+
+The next examples will use the following C++ class.
+
+=end original
+
+次の例では、以下の C++ のクラスを使用します。
+
+     class color {
+          public:
+          color();
+          ~color();
+          int blue();
+          void set_blue( int );
+
+          private:
+          int c_blue;
+     };
+
+=begin original
+
+The XSUBs for the blue() and set_blue() methods are defined with the class
+name but the parameter for the object (THIS, or "self") is implicit and is
+not listed.
+
+=end original
+
+blue() や set_blue() といったメソッドに対する XSUB はクラス名を伴って
+定義されますが、オブジェクト(THIS もしくは“self”)に対する
+パラメータは明示されておらず、リストにありません。
+
+     int
+     color::blue()
+
+     void
+     color::set_blue( val )
+          int val
+
+=begin original
+
+Both Perl functions will expect an object as the first parameter.  In the 
+generated C++ code the object is called C<THIS>, and the method call will
+be performed on this object.  So in the C++ code the blue() and set_blue()
+methods will be called as this:
+
+=end original
+
+両方の Perl 関数とも第一引数としてオブジェクトを期待しています。
+生成された C++ コードではオブジェクトは C<THIS> と呼ばれ、メソッド呼び出しは
+このオブジェクトで実行されます。
+このため、C++ コード blue(), set_blue() メソッドは以下のようにして
+呼び出されます:
+
+     RETVAL = THIS->blue();
+
+     THIS->set_blue( val );
+
+=begin original
+
+You could also write a single get/set method using an optional argument:
+
+=end original
+
+単一の get/set メソッドを、省略可能な引数を使って書くこともできます:
+
+     int
+     color::blue( val = NO_INIT )
+         int val
+         PROTOTYPE $;$
+         CODE:
+             if (items > 1)
+                 THIS->set_blue( val );
+             RETVAL = THIS->blue();
+         OUTPUT:
+             RETVAL
+
+=begin original
+
+If the function's name is B<DESTROY> then the C++ C<delete> function will be
+called and C<THIS> will be given as its parameter.  The generated C++ code for
+
+=end original
+
+関数名が B<DESTROY> である場合、C++ の C<delete> 関数が呼び出されて、
+C<THIS> はそれに対するパラメータとして与えられます。
+このような生成されたコードは:
+
+     void
+     color::DESTROY()
+
+=begin original
+
+will look like this:
+
+=end original
+
+以下のようになります:
+
+     color *THIS = ...;	// Initialized as in typemap
+
+     delete THIS;
+
+=begin original
+
+If the function's name is B<new> then the C++ C<new> function will be called
+to create a dynamic C++ object.  The XSUB will expect the class name, which
+will be kept in a variable called C<CLASS>, to be given as the first
+argument.
+
+=end original
+
+関数名が B<new> であった場合、動的に C++ オブジェクトを作成するために
+C++ の C<new> 関数が呼び出されます。
+XSUB は C<CLASS> と呼ばれる変数に保持されるクラス名が、第一引数として
+与えられることを期待します。
+
+     color *
+     color::new()
+
+=begin original
+
+The generated C++ code will call C<new>.
+
+=end original
+
+C++ コードは C<new> を呼び出します。
+
+     RETVAL = new color();
+
+=begin original
+
+The following is an example of a typemap that could be used for this C++
+example.
+
+=end original
+
+この C++ の例を使うことのできる typemap の例を示します。
+
+    TYPEMAP
+    color *		O_OBJECT
+
+    OUTPUT
+    # The Perl object is blessed into 'CLASS', which should be a
+    # char* having the name of the package for the blessing.
+    O_OBJECT
+    	sv_setref_pv( $arg, CLASS, (void*)$var );
+
+    INPUT
+    O_OBJECT
+    	if( sv_isobject($arg) && (SvTYPE(SvRV($arg)) == SVt_PVMG) )
+    		$var = ($type)SvIV((SV*)SvRV( $arg ));
+    	else{
+    		warn( \"${Package}::$func_name() -- $var is not a blessed SV reference\" );
+    		XSRETURN_UNDEF;
+    	}
+
+=head2 Interface Strategy
+
+(インターフェースの戦略)
+
+=begin original
+
+When designing an interface between Perl and a C library a straight
+translation from C to XS (such as created by C<h2xs -x>) is often sufficient.
+However, sometimes the interface will look
+very C-like and occasionally nonintuitive, especially when the C function
+modifies one of its parameters, or returns failure inband (as in "negative
+return values mean failure").  In cases where the programmer wishes to
+create a more Perl-like interface the following strategy may help to
+identify the more critical parts of the interface.
+
+=end original
+
+Perl と C ライブラリとの間のインターフェースを設計するとき、
+しばしば (C<h2xs -x> によって生成されるように) ストレートに
+C から XS への変換することで十分となります。
+しかし、時々インターフェースは非常に C に似たものに見え、
+特に C の関数がそのパラメータを変更したり、(「返り値が負の場合は
+失敗を意味します」のような) 範囲内の失敗を返すような場合には
+直感的でないものになります。
+プログラマがもっと Perl 的なインターフェースを作りたいと望んでいる場合には、
+以下に示す戦略がインターフェースのより重要な部分を認識するための
+手助けとなるでしょう。
+
+=begin original
+
+Identify the C functions with input/output or output parameters.  The XSUBs for
+these functions may be able to return lists to Perl.
+
+=end original
+
+入出力や出力のパラメータのある C の関数を見つけ出します。
+こういった関数に対する XSUB は Perl にリストを返すことができます。
+
+=begin original
+
+Identify the C functions which use some inband info as an indication
+of failure.  They may be
+candidates to return undef or an empty list in case of failure.  If the
+failure may be detected without a call to the C function, you may want to use
+an INIT: section to report the failure.  For failures detectable after the C
+function returns one may want to use a POSTCALL: section to process the
+failure.  In more complicated cases use CODE: or PPCODE: sections.
+
+=end original
+
+失敗を示すのに範囲内の情報を使う C 関数を見つけ出します。
+これらは関数が失敗したときには空リストや undef を返す候補です。
+もし C 関数の呼び出しなしに失敗が検出されるなら、
+失敗を報告するのに INIT: セクションを使いたいかもしれません。
+C 関数から返った後で検出可能な失敗については、失敗を処理するために
+POSTCALL: セクションを使いたいかもしれません。
+もっと複雑な場合では CODE: か PPCODE: のセクションを使ってください。
+
+=begin original
+
+If many functions use the same failure indication based on the return value,
+you may want to create a special typedef to handle this situation.  Put
+
+=end original
+
+多くの関数が返り値による同じ失敗表示を使う場合、この状況を扱うための
+特別な typedef を作りたいと思うかもしれません。
+以下の文を:
+
+  typedef int negative_is_failure;
+
+=begin original
+
+near the beginning of XS file, and create an OUTPUT typemap entry
+for C<negative_is_failure> which converts negative values to C<undef>, or
+maybe croak()s.  After this the return value of type C<negative_is_failure>
+will create more Perl-like interface.
+
+=end original
+
+XS ファイルの先頭近くに置き、負の数を C<undef> に変換するか、おそらく
+croak() するような  C<negative_is_failure> のための OUTPUT typemap エントリを
+作成します。
+この後、C<negative_is_failure> 型の返り値は、より Perl 風の
+インターフェースを作ります。
+
+=begin original
+
+Identify which values are used by only the C and XSUB functions
+themselves, say, when a parameter to a function should be a contents of a
+global variable.  If Perl does not need to access the contents of the value
+then it may not be necessary to provide a translation for that value
+from C to Perl.
+
+=end original
+
+C と XSUB の関数それ自身でしか使われないような値を見つけ出します;
+つまり、関数へのパラメータがグローバル変数の内容であるようなものです。
+Perl がそういった値に対するアクセスを必要としないのであれば、その値を
+C から Perl へ変換する必要はないということになります。
+
+=begin original
+
+Identify the pointers in the C function parameter lists and return
+values.  Some pointers may be used to implement input/output or
+output parameters, they can be handled in XS with the C<&> unary operator,
+and, possibly, using the NO_INIT keyword.
+Some others will require handling of types like C<int *>, and one needs
+to decide what a useful Perl translation will do in such a case.  When
+the semantic is clear, it is advisable to put the translation into a typemap
+file.
+
+=end original
+
+C の関数に対する引数リストや返り値の中にあるポインタを見つけ出します。
+一部のポインタは、入出力や出力のパラメータのために使われており、
+これらは C<&> 単項演算子で扱うことができ、おそらくは、NO_INIT キーワードが
+使えます。
+その他のいくつかは C<int *> の方を扱う必要があり、
+このような場合に便利な Perl 変換をするかを決定する必要があります。
+意味論が明確な場合、変換を typemap ファイルに置くことが望ましいです。
+
+=begin original
+
+Identify the structures used by the C functions.  In many
+cases it may be helpful to use the T_PTROBJ typemap for
+these structures so they can be manipulated by Perl as
+blessed objects.  (This is handled automatically by C<h2xs -x>.)
+
+=end original
+
+C の関数によって使われている構造体を見つけ出します。
+多くの場合、こういった構造体に対して T_PTROBJ typemap を使うのが
+助けになるので、(そのような構造体を) bless されたオブジェクトとして
+Perl から扱うことができます。
+(これは C<h2xs -x> で自動的に扱われます。)
+
+=begin original
+
+If the same C type is used in several different contexts which require
+different translations, C<typedef> several new types mapped to this C type,
+and create separate F<typemap> entries for these new types.  Use these
+types in declarations of return type and parameters to XSUBs.
+
+=end original
+
+同じ C の型が、異なった変換を必要とする異なった複数のコンテキストで
+使われる場合、この C の型にマッピングされる新しいいくつかの型を
+C<typedef> して、これらの新しい型に対して別々の F<typemap> エントリを
+作成します。
+これらの型を返り値の宣言と XSUB への引数に使います。
+
+=head2 Perl Objects And C Structures
+
+(Perl のオブジェクトと C の構造体)
+
+=begin original
+
+When dealing with C structures one should select either
+B<T_PTROBJ> or B<T_PTRREF> for the XS type.  Both types are
+designed to handle pointers to complex objects.  The
+T_PTRREF type will allow the Perl object to be unblessed
+while the T_PTROBJ type requires that the object be blessed.
+By using T_PTROBJ one can achieve a form of type-checking
+because the XSUB will attempt to verify that the Perl object
+is of the expected type.
+
+=end original
+
+C の構造体を扱うときには、XS の型として B<T_PTROBJ> か B<T_PTRREF> の
+いずれかを選択すべきです。
+これら二つの型は複雑なオブジェクトへのポインタを扱うために
+デザインされました。
+T_PTRREF 型は T_PTROBJ 型が bless されたオブジェクトを要求するのに対して、
+bless されていない Perl オブジェクトも使うことができます。
+T_PTROBJ を使うことによって、XSUB は Perl オブジェクトが期待する
+型であることを確認するようになるので、型チェックを行なうことができます。
+
+=begin original
+
+The following XS code shows the getnetconfigent() function which is used
+with ONC+ TIRPC.  The getnetconfigent() function will return a pointer to a
+C structure and has the C prototype shown below.  The example will
+demonstrate how the C pointer will become a Perl reference.  Perl will
+consider this reference to be a pointer to a blessed object and will
+attempt to call a destructor for the object.  A destructor will be
+provided in the XS source to free the memory used by getnetconfigent().
+Destructors in XS can be created by specifying an XSUB function whose name
+ends with the word B<DESTROY>.  XS destructors can be used to free memory
+which may have been malloc'd by another XSUB.
+
+=end original
+
+以下に示す XS コードは ONC+ TIRPC と共に使われた
+関数 getnetconfigent() です。
+関数 getnetconfigent() は C の構造体へのポインタを返し、以下にあるような
+C のプロトタイプを持ちます。
+この例はどのようにして C のポインタを Perl のリファレンスにするかを
+示します。
+Perl はこのリファレンスを bless されたオブジェクトへのリファレンスと
+みなし、そしてオブジェクトに対するデストラクタの呼び出しを試みます。
+デストラクタは XS のソースで、getnetconfigent() が使ったメモリを
+解放するために提供されます。
+XS にあるデストラクタは、B<DESTROY>で終わる名前の XSUB 関数を
+指定することで作成することができます。
+XS デストラクタは別の XSUB によって割り当てられた (malloc された)
+メモリを解放するために使うこともできます。
+
+     struct netconfig *getnetconfigent(const char *netid);
+
+=begin original
+
+A C<typedef> will be created for C<struct netconfig>.  The Perl
+object will be blessed in a class matching the name of the C
+type, with the tag C<Ptr> appended, and the name should not
+have embedded spaces if it will be a Perl package name.  The
+destructor will be placed in a class corresponding to the
+class of the object and the PREFIX keyword will be used to
+trim the name to the word DESTROY as Perl will expect.
+
+=end original
+
+C<typedef> が C<struct netconfig> のために生成されます。
+Perl のオブジェクトは C の型の名前とマッチするクラスにおいて( C<Ptr>と
+いうタグが付加されて) bless されます。
+その名前は、Perl のパッケージ名として使うのであれば空白を
+含むべきではありません。
+デストラクタはオブジェクトのクラスに対応するクラスに置かれて、
+キーワード PREFIX は Perl が期待するようにワード DESTOROY の名前を
+切り詰めるのに使われます。
+
+     typedef struct netconfig Netconfig;
+
+     MODULE = RPC  PACKAGE = RPC
+
+     Netconfig *
+     getnetconfigent(netid)
+          char *netid
+
+     MODULE = RPC  PACKAGE = NetconfigPtr  PREFIX = rpcb_
+
+     void
+     rpcb_DESTROY(netconf)
+          Netconfig *netconf
+        CODE:
+          printf("Now in NetconfigPtr::DESTROY\n");
+          free( netconf );
+
+=begin original
+
+This example requires the following typemap entry.  Consult the typemap
+section for more information about adding new typemaps for an extension.
+
+=end original
+
+上の例は、以下にある typemap のエントリーを必要とします。
+エクステンションのために新しい typemap を追加することに関する詳細は
+typemap セクションを参照してください。
+
+     TYPEMAP
+     Netconfig *  T_PTROBJ
+
+=begin original
+
+This example will be used with the following Perl statements.
+
+=end original
+
+この例は次のような Perl 文によって使われます。
+
+     use RPC;
+     $netconf = getnetconfigent("udp");
+
+=begin original
+
+When Perl destroys the object referenced by $netconf it will send the
+object to the supplied XSUB DESTROY function.  Perl cannot determine, and
+does not care, that this object is a C struct and not a Perl object.  In
+this sense, there is no difference between the object created by the
+getnetconfigent() XSUB and an object created by a normal Perl subroutine.
+
+=end original
+
+Perl が $netconf によってリファレンスされるオブジェクトを
+始末(destroy)するとき、
+そのオブジェクトに (そのオブジェクトのための) XSUB DESTROY が送られます。
+Perl はそのオブジェクトが C の構造体なのか、Perl のオブジェクトでなのかを
+決定することは出来ませんし、気にすることもありません。
+この意味では、getnetconfigent() XSUB によって作られたオブジェクトと
+通常の Perl サブルーチンによって作られたオブジェクトには違いはありません。
+
+=head2 The Typemap
+
+(typemap)
+
+=begin original
+
+The typemap is a collection of code fragments which are used by the B<xsubpp>
+compiler to map C function parameters and values to Perl values.  The
+typemap file may consist of three sections labelled C<TYPEMAP>, C<INPUT>, and
+C<OUTPUT>.  An unlabelled initial section is assumed to be a C<TYPEMAP>
+section.  The INPUT section tells
+the compiler how to translate Perl values
+into variables of certain C types.  The OUTPUT section tells the compiler
+how to translate the values from certain C types into values Perl can
+understand.  The TYPEMAP section tells the compiler which of the INPUT and
+OUTPUT code fragments should be used to map a given C type to a Perl value.
+The section labels C<TYPEMAP>, C<INPUT>, or C<OUTPUT> must begin
+in the first column on a line by themselves, and must be in uppercase.
+
+=end original
+
+typemap は C 関数の引数と値を Perl の値にマッピングするために B<xsubpp>
+コンパイラによって使われるコード片の集合(collection)です。
+typemap ファイルは C<TYPEMAP>, C<INPUT>, C<OUTPUT> というラベルの付いた
+三つのセクションから構成されます。
+ラベルのついていない初期化セクションは、C<TYPEMAP> であるかのように
+仮定されます。
+INPUT セクションは、コンパイラに対して Perl の値をどのように
+(幾つかある) C の型に変換するかを指示します。
+OUTPUT セクションは、コンパイラに対してどのようにして C の型を Perl が
+認識できる値に変換するのかを指示します。
+TYPEMAP セクションは、コンパイラに対して指示された C の型を Perl の値に
+マッピングするのに使うべき INPUT セクションもしくは OUTPUT セクションに
+あるコード片を指示します。
+セクションラベル C<TYPEMAP>, C<INPUT>, C<OUTPUT> は行の先頭におかれ、
+大文字でなければなりません。
+
+=begin original
+
+The default typemap in the C<lib/ExtUtils> directory of the Perl source
+contains many useful types which can be used by Perl extensions.  Some
+extensions define additional typemaps which they keep in their own directory.
+These additional typemaps may reference INPUT and OUTPUT maps in the main
+typemap.  The B<xsubpp> compiler will allow the extension's own typemap to
+override any mappings which are in the default typemap.
+
+=end original
+
+Perl のソースの C<lib/ExtUtils> ディレクトリにあるデフォルトの typemap は
+Perl のエクステンションから使うことのできるたくさんの便利な型があります。
+一部のエクステンションではそれに固有のディレクトリに、typemap に対する
+追加の定義を置いています。
+これらの追加された typemap はメインの typemap にある INPUT や OUTPUT の
+マッピングを参照することができます。
+B<xsubpp> コンパイラは、エクステンションに固有の typemap が
+デフォルトのtypemapにあるマッピングをオーバーライドすることを許しています。
+
+=begin original
+
+Most extensions which require a custom typemap will need only the TYPEMAP
+section of the typemap file.  The custom typemap used in the
+getnetconfigent() example shown earlier demonstrates what may be the typical
+use of extension typemaps.  That typemap is used to equate a C structure
+with the T_PTROBJ typemap.  The typemap used by getnetconfigent() is shown
+here.  Note that the C type is separated from the XS type with a tab and
+that the C unary operator C<*> is considered to be a part of the C type name.
+
+=end original
+
+カスタム typemap を要求するエクステンションのほとんどは、typemap ファイルの
+TYEPMAPセクションだけを必要としています。
+カスタム typemap は getnetconfigent() の例で拡張 typemap の典型的な
+使用例として使われています。
+そういった typemap は C の構造体を T_PTROBJ tyepmap と一致させるために
+使われています。
+getnetconfigent() で使われる typemap をここで示します。
+C の型は XS の型とタブで分けられていて、C の単項演算子 C<*> は C の型名の
+一部としてみなされることに注意してください。
+
+	TYPEMAP
+	Netconfig *<tab>T_PTROBJ
+
+=begin original
+
+Here's a more complicated example: suppose that you wanted C<struct
+netconfig> to be blessed into the class C<Net::Config>.  One way to do
+this is to use underscores (_) to separate package names, as follows:
+
+=end original
+
+もっと複雑な例を挙げましょう。
+C<struct netconfig> を C<Net::Config> というクラスに bless したいと
+考えていると仮定しましょう。
+これを行うやり方の一つは、アンダースコア(_)を以下の様にパッケージ名を
+区切るために使うというものです。
+
+        typedef struct netconfig * Net_Config;
+
+=begin original
+
+And then provide a typemap entry C<T_PTROBJ_SPECIAL> that maps underscores to
+double-colons (::), and declare C<Net_Config> to be of that type:
+
+=end original
+
+それからアンダースコアをダブルコロン(::)にマップする typemap
+エントリー C<T_PTROBJ_SPECIAL> を用意して、C<Net_Config> をその型と
+して宣言します。
+
+        TYPEMAP
+        Net_Config      T_PTROBJ_SPECIAL
+
+        INPUT
+        T_PTROBJ_SPECIAL
+                if (sv_derived_from($arg, \"${(my $ntt=$ntype)=~s/_/::/g;\$ntt}\")) {
+                        IV tmp = SvIV((SV*)SvRV($arg));
+                        $var = INT2PTR($type, tmp);
+                }
+                else
+                        croak(\"$var is not of type ${(my $ntt=$ntype)=~s/_/::/g;\$ntt}\")
+
+        OUTPUT
+        T_PTROBJ_SPECIAL
+                sv_setref_pv($arg, \"${(my $ntt=$ntype)=~s/_/::/g;\$ntt}\",
+                (void*)$var);
+
+=begin original
+
+The INPUT and OUTPUT sections substitute underscores for double-colons
+on the fly, giving the desired effect.  This example demonstrates some
+of the power and versatility of the typemap facility.
+
+=end original
+
+INPUT セクションと OUTPUT セクションはアンダースコアをダブルコロンへ
+その場で置換して、期待される効果をもたらします。
+この例では typemap 機構の威力と適用範囲の広さを例示します。
+
+=begin original
+
+The INT2PTR macro (defined in perl.h) casts an integer to a pointer, 
+of a given type, taking care of the possible different size of integers
+and pointers.  There are also PTR2IV, PTR2UV, PTR2NV macros,
+to map the other way, which may be useful in OUTPUT sections.
+
+=end original
+
+(perl.h に定義されている) INT2PTR マクロは、整数から与えられた型の
+ポインタへのキャストを、整数とポインタとのサイズが異なる可能性を
+考慮しつつ行います。
+また、OUTPUT セクションで有用かもしれない、他の方法でマッピングする、
+PTR2IV, PTR2UV, PTR2NV マクロもあります。
+
+=head2 Safely Storing Static Data in XS
+
+(XS に静的データを安全に格納する)
+
+=begin original
+
+Starting with Perl 5.8, a macro framework has been defined to allow
+static data to be safely stored in XS modules that will be accessed from
+a multi-threaded Perl.
+
+=end original
+
+Perl 5.8 から、マクロフレームワークは、マルチスレッド Perl から
+アクセスされる XS モジュールで安全に保管される静的データを許すように
+定義されています。
+
+=begin original
+
+Although primarily designed for use with multi-threaded Perl, the macros
+have been designed so that they will work with non-threaded Perl as well.
+
+=end original
+
+マクロは基本的にはマルチスレッド Perl で使えるように設計されていますが、
+非スレッド Perl でも動作するように設計されています。
+
+=begin original
+
+It is therefore strongly recommended that these macros be used by all
+XS modules that make use of static data.
+
+=end original
+
+従って、静的データを使う全ての XS モジュールではこれらのマクロを使うことが
+強く推奨されます。
+
+=begin original
+
+The easiest way to get a template set of macros to use is by specifying
+the C<-g> (C<--global>) option with h2xs (see L<h2xs>).
+
+=end original
+
+使うマクロのテンプレートを得るための最も簡単な方法は、h2xs に
+C<-g> (C<--global>) オプションを指定することです
+(L<h2xs> を参照してください)。
+
+=begin original
+
+Below is an example module that makes use of the macros.
+
+=end original
+
+以下はマクロを使ったサンプルモジュールです。
+
+    #include "EXTERN.h"
+    #include "perl.h"
+    #include "XSUB.h"
+
+    /* Global Data */
+
+    #define MY_CXT_KEY "BlindMice::_guts" XS_VERSION
+
+    typedef struct {
+        int count;
+        char name[3][100];
+    } my_cxt_t;
+
+    START_MY_CXT
+
+    MODULE = BlindMice           PACKAGE = BlindMice
+
+    BOOT:
+    {
+        MY_CXT_INIT;
+        MY_CXT.count = 0;
+        strcpy(MY_CXT.name[0], "None");
+        strcpy(MY_CXT.name[1], "None");
+        strcpy(MY_CXT.name[2], "None");
+    }                              
+
+    int
+    newMouse(char * name)
+        char * name;
+        PREINIT:
+          dMY_CXT;
+        CODE:
+          if (MY_CXT.count >= 3) {
+              warn("Already have 3 blind mice");
+              RETVAL = 0;
+          }
+          else {
+              RETVAL = ++ MY_CXT.count;
+              strcpy(MY_CXT.name[MY_CXT.count - 1], name);
+          }
+
+    char *
+    get_mouse_name(index)
+      int index
+      CODE:
+        dMY_CXT;
+        RETVAL = MY_CXT.lives ++;
+        if (index > MY_CXT.count)
+          croak("There are only 3 blind mice.");
+        else
+          RETVAL = newSVpv(MY_CXT.name[index - 1]);
+
+    void
+    CLONE(...)
+	CODE:
+	MY_CXT_CLONE;
+
+=begin original
+
+B<REFERENCE>
+
+=end original
+
+B<REFERENCE>
+
+=over 5
+
+=item MY_CXT_KEY
+
+=begin original
+
+This macro is used to define a unique key to refer to the static data
+for an XS module. The suggested naming scheme, as used by h2xs, is to
+use a string that consists of the module name, the string "::_guts"
+and the module version number.
+
+=end original
+
+このマクロは、XS モジュールのための静的データを参照するためのユニークな
+キーを定義するために使われます。
+h2xs で使われている、推奨される命名スキームは、モジュール名、
+文字列 "::_guts"、モジュールのバージョン番号、からなる文字列を
+使うことです。
+
+    #define MY_CXT_KEY "MyModule::_guts" XS_VERSION
+
+=item typedef my_cxt_t
+
+=begin original
+
+This struct typedef I<must> always be called C<my_cxt_t> -- the other
+C<CXT*> macros assume the existence of the C<my_cxt_t> typedef name.
+
+=end original
+
+この構造体 typedef は常に C<my_cxt_t> から I<呼び出されなければなりません>
+-- その他の C<CXT*> マクロは C<my_cxt_t> typedef 名の存在を仮定します。
+
+=begin original
+
+Declare a typedef named C<my_cxt_t> that is a structure that contains
+all the data that needs to be interpreter-local.
+
+=end original
+
+インタプリタローカルにする必要がある全てのデータを含む構造体である
+C<my_cxt_t> という名前の typedef を宣言します。
+
+    typedef struct {
+        int some_value;
+    } my_cxt_t;
+
+=item START_MY_CXT
+
+=begin original
+
+Always place the START_MY_CXT macro directly after the declaration
+of C<my_cxt_t>.
+
+=end original
+
+C<my_cxt_t> の宣言の直後には常に START_MY_CXT マクロを置きます。
+
+=item MY_CXT_INIT
+
+=begin original
+
+The MY_CXT_INIT macro initialises storage for the C<my_cxt_t> struct.
+
+=end original
+
+MY_CXT_INIT マクロは C<my_cxt_t> 構造体のための保存場所を初期化します。
+
+=begin original
+
+It I<must> be called exactly once -- typically in a BOOT: section. If you
+are maintaining multiple interpreters, it should be called once in each
+interpreter instance, except for interpreters cloned from existing ones.
+(But see C<MY_CXT_CLONE> below.)
+
+=end original
+
+これは正確に I<1 回だけ> -- 典型的には BOOT: セクションで --
+呼び出されなければなりません です。
+もし複数のインタプリタを管理しているなら、既にあるインタプリタを
+クローンしたもの以外では、インタプリタインスタンス毎に一度呼び出します。
+(しかし後述する C<MY_CXT_CLONE> を参照してください。)
+
+=item dMY_CXT
+
+=begin original
+
+Use the dMY_CXT macro (a declaration) in all the functions that access
+MY_CXT.
+
+=end original
+
+MY_CXT にアクセスする全ての関数で dMY_CXT マクロ(宣言) を使います。
+
+=item MY_CXT
+
+=begin original
+
+Use the MY_CXT macro to access members of the C<my_cxt_t> struct. For
+example, if C<my_cxt_t> is 
+
+=end original
+
+C<my_cxt_t> 構造体のメンバにアクセスするために MY_CXT マクロを使います。
+例えば、もし C<my_cxt_t> が
+
+    typedef struct {
+        int index;
+    } my_cxt_t;
+
+=begin original
+
+then use this to access the C<index> member
+
+=end original
+
+なら、これを C<index> メンバのアクセスに使います:
+
+    dMY_CXT;
+    MY_CXT.index = 2;
+
+=item aMY_CXT/pMY_CXT
+
+=begin original
+
+C<dMY_CXT> may be quite expensive to calculate, and to avoid the overhead
+of invoking it in each function it is possible to pass the declaration
+onto other functions using the C<aMY_CXT>/C<pMY_CXT> macros, eg
+
+=end original
+
+C<dMY_CXT> は計算するにはかなりコストが高いので、それぞれの関数で起動する
+オーバーヘッドを防ぐために、C<aMY_CXT>/C<pMY_CXT> マクロを使って
+他の関数に宣言を渡すことができます; 例えば:
+
+    void sub1() {
+	dMY_CXT;
+	MY_CXT.index = 1;
+	sub2(aMY_CXT);
+    }
+
+    void sub2(pMY_CXT) {
+	MY_CXT.index = 2;
+    }
+
+=begin original
+
+Analogously to C<pTHX>, there are equivalent forms for when the macro is the
+first or last in multiple arguments, where an underscore represents a
+comma, i.e.  C<_aMY_CXT>, C<aMY_CXT_>, C<_pMY_CXT> and C<pMY_CXT_>.
+
+=end original
+
+C<pTHX> と同様に、マクロが複数の引数の最初か最後のときのために、下線を
+カンマとして表現した等価な形式があります; つまり
+C<_aMY_CXT>, C<aMY_CXT_>, C<_pMY_CXT> and C<pMY_CXT_> です。
+
+=item MY_CXT_CLONE
+
+=begin original
+
+By default, when a new interpreter is created as a copy of an existing one
+(eg via C<< threads->create() >>), both interpreters share the same physical
+my_cxt_t structure. Calling C<MY_CXT_CLONE> (typically via the package's
+C<CLONE()> function), causes a byte-for-byte copy of the structure to be
+taken, and any future dMY_CXT will cause the copy to be accessed instead.
+
+=end original
+
+デフォルトでは、新しいインタプリタが既に存在するもののコピーとして
+(つまり C<< threads->create() >> 経由で)作成されたとき、
+両方のインタプリタは同じ物理的な my_cxt_t 構造体を共有します。
+(典型的にはパッケージの C<CLONE()> 関数経由で) C<MY_CXT_CLONE> を呼び出すと、
+構造体のバイト単位でのコピーが行われ、将来の dMY_CXT は代わりにコピーに
+アクセスします。
+
+=item MY_CXT_INIT_INTERP(my_perl)
+
+=item dMY_CXT_INTERP(my_perl)
+
+=begin original
+
+These are versions of the macros which take an explicit interpreter as an
+argument.
+
+=end original
+
+引数として明示的にインタプリタを取るバージョンのマクロです。
+
+=back
+
+=begin original
+
+Note that these macros will only work together within the I<same> source
+file; that is, a dMY_CTX in one source file will access a different structure
+than a dMY_CTX in another source file.
+
+=end original
+
+これらのマクロは I<同じ> ソースファイルの中でだけ共に動作することに
+注意してください; これは、あるソースファイルの dMY_CTX は他のソースファイルの
+dMY_CTX とは異なる構造体にアクセスするということです。
+
+=head2 Thread-aware system interfaces
+
+(スレッド対応システムのインターフェース)
+
+=begin original
+
+Starting from Perl 5.8, in C/C++ level Perl knows how to wrap
+system/library interfaces that have thread-aware versions
+(e.g. getpwent_r()) into frontend macros (e.g. getpwent()) that
+correctly handle the multithreaded interaction with the Perl
+interpreter.  This will happen transparently, the only thing
+you need to do is to instantiate a Perl interpreter.
+
+=end original
+
+Perl 5.8 から、Perl インタプリタでのマルチスレッドの相互作用を正しく
+扱うために、Perl はC/C++ のレベルでどうやってスレッド対応版の
+システム/ライブラリインターフェース (getpwent_r() など) で
+フロントエンドマクロ (getpwent() など) をラッピングするかを知っています。
+これは透過的に行われるので、しなければならないのは Perl インタプリタを
+インスタンス化することだけです。
+
+=begin original
+
+This wrapping happens always when compiling Perl core source
+(PERL_CORE is defined) or the Perl core extensions (PERL_EXT is
+defined).  When compiling XS code outside of Perl core the wrapping
+does not take place.  Note, however, that intermixing the _r-forms
+(as Perl compiled for multithreaded operation will do) and the _r-less
+forms is neither well-defined (inconsistent results, data corruption,
+or even crashes become more likely), nor is it very portable.
+
+=end original
+
+このラッピングは Perl コアソース (PERL_CORE が定義されます) か
+Perl コアエクステンションを (PERL_EXT が定義されます) をコンパイルするときは
+常に行われます。
+Perl コアの外側の XS コードをコンパイルするときは行われません。
+しかし、(マルチスレッド操作が行われるようにコンパイルされた Perl の)
+_r-形式と、_r-なし形式を混ぜると、動作は未定義(一貫しない結果、データの
+破壊、あるいはクラッシュすら十分あり得ます)で、全く移植性がありません。
+
+=head1 EXAMPLES
+
+(例)
+
+=begin original
+
+File C<RPC.xs>: Interface to some ONC+ RPC bind library functions.
+
+=end original
+
+ファイル C<RPC.xs>: ONC+ RPC bind ライブラリ関数に対するインターフェース。
+
+     #include "EXTERN.h"
+     #include "perl.h"
+     #include "XSUB.h"
+
+     #include <rpc/rpc.h>
+
+     typedef struct netconfig Netconfig;
+
+     MODULE = RPC  PACKAGE = RPC
+
+     SV *
+     rpcb_gettime(host="localhost")
+          char *host
+	PREINIT:
+          time_t  timep;
+        CODE:
+          ST(0) = sv_newmortal();
+          if( rpcb_gettime( host, &timep ) )
+               sv_setnv( ST(0), (double)timep );
+
+     Netconfig *
+     getnetconfigent(netid="udp")
+          char *netid
+
+     MODULE = RPC  PACKAGE = NetconfigPtr  PREFIX = rpcb_
+
+     void
+     rpcb_DESTROY(netconf)
+          Netconfig *netconf
+        CODE:
+          printf("NetconfigPtr::DESTROY\n");
+          free( netconf );
+
+=begin original
+
+File C<typemap>: Custom typemap for RPC.xs.
+
+=end original
+
+ファイル C<typemap>: RPC.xs のためのカスタム typemap。
+
+     TYPEMAP
+     Netconfig *  T_PTROBJ
+
+=begin original
+
+File C<RPC.pm>: Perl module for the RPC extension.
+
+=end original
+
+ファイル C<RPC.pm>: RPC エクステンションのための Perl モジュール。
+
+     package RPC;
+
+     require Exporter;
+     require DynaLoader;
+     @ISA = qw(Exporter DynaLoader);
+     @EXPORT = qw(rpcb_gettime getnetconfigent);
+
+     bootstrap RPC;
+     1;
+
+=begin original
+
+File C<rpctest.pl>: Perl test program for the RPC extension.
+
+=end original
+
+ファイル C<rpctest.pl>: RPC エクステンションのための Perl の
+テストプログラム。
+
+     use RPC;
+
+     $netconf = getnetconfigent();
+     $a = rpcb_gettime();
+     print "time = $a\n";
+     print "netconf = $netconf\n";
+
+     $netconf = getnetconfigent("tcp");
+     $a = rpcb_gettime("poplar");
+     print "time = $a\n";
+     print "netconf = $netconf\n";
+
+=head1 XS VERSION
+
+(XS バージョン)
+
+=begin original
+
+This document covers features supported by C<xsubpp> 1.935.
+
+=end original
+
+このドキュメントは C<xsubpp> 1.936 で対応している機能に対応しています。
+
+=head1 AUTHOR
+
+(著者)
+
+=begin original
+
+Originally written by Dean Roehrich <F<roehrich@cray.com>>.
+
+=end original
+
+原文は Dean Roehrich <F<roehrich@cray.com>> によって書かれました。
+
+=begin original
+
+Maintained since 1996 by The Perl Porters <F<perlbug@perl.org>>.
+
+=end original
+
+1996 年から、The Perl Porters <F<perlbug@perl.org>> によって
+保守されています。
+
+=begin meta
+
+Translate: KIMURA Koichi
+Update: SHIRAKATA Kentaro <argrath@ub32.org> (5.8.8-)
+Status: completed
+
+=end meta
+
