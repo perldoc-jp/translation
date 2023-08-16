@@ -1,0 +1,1349 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+perldebtut - Perl debugging tutorial
+
+=end original
+
+perldebtut - Perl でのデバッグのチュートリアル
+
+=head1 DESCRIPTION
+
+=begin original
+
+A (very) lightweight introduction in the use of the perl debugger, and a
+pointer to existing, deeper sources of information on the subject of debugging
+perl programs.  
+
+=end original
+
+perl デバッガの使い方の(とても) 軽量な紹介および、 perl プログラムの
+デバッグに関する、すでに存在するより深い情報源へのポインタです。
+
+=begin original
+
+There's an extraordinary number of people out there who don't appear to know
+anything about using the perl debugger, though they use the language every
+day.  
+This is for them.  
+
+=end original
+
+perl を毎日使っているのに、perl デバッガを使うことについて何も知らないように
+思われる人が非常にたくさんいます。
+これはそのような人たちのためのものです。
+
+=head1 use strict
+
+=begin original
+
+First of all, there's a few things you can do to make your life a lot more
+straightforward when it comes to debugging perl programs, without using the
+debugger at all.  To demonstrate, here's a simple script, named "hello", with
+a problem:
+
+=end original
+
+まず最初に、perl のプログラムをデバッグするときに、デバッガを全く
+使うことなく、人生を遥かに素直なものにするためにできることがいくつか
+あります。
+それを示すために、"hello" という名前の、単純ですが問題を抱えたスクリプトを
+示します:
+
+	#!/usr/bin/perl
+
+	$var1 = 'Hello World'; # always wanted to do that :-)
+	$var2 = "$varl\n";
+
+	print $var2; 
+	exit;
+
+=begin original
+
+While this compiles and runs happily, it probably won't do what's expected,
+namely it doesn't print "Hello World\n" at all;  It will on the other hand do
+exactly what it was told to do, computers being a bit that way inclined.  That
+is, it will print out a newline character, and you'll get what looks like a
+blank line.  It looks like there's 2 variables when (because of the typo)
+there's really 3:
+
+=end original
+
+これはエラーなくコンパイルおよび実行されますが、おそらく想定したことは
+起きないでしょう; すなわち、"Hello World\n" とは全く表示されません;
+一方 (コンピュータに少しある傾向通りに) するように言われた通りに
+動作しています。
+これは、改行文字を表示していて、それが空行のように見えるのです。
+2 つの変数があるように見えますが、実際には (タイプミスのために)
+3 つの変数があるのです:
+
+	$var1 = 'Hello World';
+	$varl = undef;
+	$var2 = "\n";
+
+=begin original
+
+To catch this kind of problem, we can force each variable to be declared
+before use by pulling in the strict module, by putting 'use strict;' after the
+first line of the script.
+
+=end original
+
+この種の問題を補足するには、スクリプトの最初の行の後に 'use strict;' を
+書いて strict モジュールを導入することで、変数を使う前には宣言することを
+強制できます。
+
+=begin original
+
+Now when you run it, perl complains about the 3 undeclared variables and we
+get four error messages because one variable is referenced twice:
+
+=end original
+
+これで実行すると、perl は 3 つの未宣言変数に関して 4 つのエラーメッセージが
+でます; なぜなら 1 つの変数は 2 回参照されているからです:
+
+ Global symbol "$var1" requires explicit package name at ./t1 line 4.
+ Global symbol "$var2" requires explicit package name at ./t1 line 5.
+ Global symbol "$varl" requires explicit package name at ./t1 line 5.
+ Global symbol "$var2" requires explicit package name at ./t1 line 7.
+ Execution of ./hello aborted due to compilation errors.     
+
+=begin original
+
+Luvverly! and to fix this we declare all variables explicitly and now our
+script looks like this:	
+
+=end original
+
+バッチリだ!
+そしてこれを修正するために、全ての変数を明示的に宣言することにすると、
+スクリプトは以下のようになります:
+
+	#!/usr/bin/perl
+	use strict;
+
+	my $var1 = 'Hello World';
+	my $varl = undef;
+	my $var2 = "$varl\n";
+
+	print $var2; 
+	exit;
+
+=begin original
+
+We then do (always a good idea) a syntax check before we try to run it again:
+
+=end original
+
+それから、もう一度実行する前に文法チェックを行います(これは常に
+いい考えです):
+
+	> perl -c hello
+	hello syntax OK 
+
+=begin original
+
+And now when we run it, we get "\n" still, but at least we know why.  Just
+getting this script to compile has exposed the '$varl' (with the letter 'l')
+variable, and simply changing $varl to $var1 solves the problem.
+
+=end original
+
+そして実行すると、やはり "\n" が表示されますが、少なくともなぜかは
+分かります。
+コンパイルしたスクリプトに '$varl' (文字 'l' です) があることが明らかになり、
+単に $varl を $var1 に変更すれば問題は解決します。
+
+=head1 Looking at data and -w and v
+
+(データの見方と -w と v)
+
+=begin original
+
+Ok, but how about when you want to really see your data, what's in that
+dynamic variable, just before using it?
+
+=end original
+
+よし、でも本当に、動的変数に入っているデータを、それを使う直前に知るには?
+
+	#!/usr/bin/perl 
+	use strict;
+
+	my $key = 'welcome';
+	my %data = (
+		'this' => qw(that), 
+		'tom' => qw(and jerry),
+		'welcome' => q(Hello World),
+		'zip' => q(welcome),
+	);
+	my @data = keys %data;
+
+	print "$data{$key}\n";
+	exit;                               
+
+=begin original
+
+Looks OK, after it's been through the syntax check (perl -c scriptname), we
+run it and all we get is a blank line again!  Hmmmm.
+
+=end original
+
+良さそうに見えます; 文法チェック (perl -c scriptname) の後、実行してみると、
+またも空行しか出ません!
+ふーむ。
+
+=begin original
+
+One common debugging approach here, would be to liberally sprinkle a few print
+statements, to add a check just before we print out our data, and another just
+after:
+
+=end original
+
+ここで一般的なデバッグ手法の一つは、print 文を自由にいくつかばらまいて、
+データをプリントする直前のチェックを追加することです:
+
+	print "All OK\n" if grep($key, keys %data);
+	print "$data{$key}\n";
+	print "done: '$data{$key}'\n";
+
+=begin original
+
+And try again:
+
+=end original
+
+そして再挑戦します:
+
+	> perl data
+	All OK     
+
+	done: ''
+
+=begin original
+
+After much staring at the same piece of code and not seeing the wood for the
+trees for some time, we get a cup of coffee and try another approach.  That
+is, we bring in the cavalry by giving perl the 'B<-d>' switch on the command
+line:
+
+=end original
+
+同じコード片を見つめすぎて、木を見て森を見ずになっていることがあります;
+一服して違う手法を試しましょう。
+それは、コマンドラインで perl に 'B<-d>' オプションを与えることで騎兵隊を
+迎え入れることです:
+
+	> perl -d data 
+	Default die handler restored.
+
+	Loading DB routines from perl5db.pl version 1.07
+	Editor support available.
+
+	Enter h or `h h' for help, or `man perldebug' for more help.
+
+	main::(./data:4):     my $key = 'welcome';   
+
+=begin original
+
+Now, what we've done here is to launch the built-in perl debugger on our
+script.  It's stopped at the first line of executable code and is waiting for
+input.
+
+=end original
+
+ここでしたことは、スクリプトに対して組み込み perl デバッガを
+起動したことです。
+それは実行コードの最初の行で停止して、入力を待っています。
+
+=begin original
+
+Before we go any further, you'll want to know how to quit the debugger: use
+just the letter 'B<q>', not the words 'quit' or 'exit':
+
+=end original
+
+先に進む前に、どうやってデバッガを抜けるかを知りたいでしょう: 単語
+'quit' や 'exit' ではなく、単に文字 'B<q>' をタイプしてください:
+
+	DB<1> q
+	>
+
+=begin original
+
+That's it, you're back on home turf again.
+
+=end original
+
+これで、再びホームグラウンドに戻ってきます。
+
+=head1 help
+
+(ヘルプ)
+
+=begin original
+
+Fire the debugger up again on your script and we'll look at the help menu. 
+There's a couple of ways of calling help: a simple 'B<h>' will get the summary 
+help list, 'B<|h>' (pipe-h) will pipe the help through your pager (which is 
+(probably 'more' or 'less'), and finally, 'B<h h>' (h-space-h) will give you 
+the entire help screen.  Here is the summary page:
+
+=end original
+
+スクリプトに対してもう一度デバッガを起動して、ヘルプメニューを見てみます。
+ヘルプを呼び出すには複数の方法があります: 単純な 'B<h>' はヘルプリストの
+要約を出力し、'B<|h>' (パイプ-h) はヘルプをページャ(多分 'more' か
+'less') に送り、最後に 'B<h h>' (h-空白-h) はヘルプスクリーン全体を
+表示します。
+以下は要約ページです:
+
+DB<1>h
+
+ List/search source lines:               Control script execution:
+  l [ln|sub]  List source code            T           Stack trace
+  - or .      List previous/current line  s [expr]    Single step
+                                                               [in expr]
+  v [line]    View around line            n [expr]    Next, steps over
+                                                                    subs
+  f filename  View source in file         <CR/Enter>  Repeat last n or s
+  /pattern/ ?patt?   Search forw/backw    r           Return from
+                                                              subroutine
+  M           Show module versions        c [ln|sub]  Continue until
+                                                                position
+ Debugger controls:                       L           List break/watch/
+                                                                 actions
+  o [...]     Set debugger options        t [expr]    Toggle trace
+                                                            [trace expr]
+  <[<]|{[{]|>[>] [cmd] Do pre/post-prompt b [ln|event|sub] [cnd] Set
+                                                              breakpoint
+  ! [N|pat]   Redo a previous command     B ln|*      Delete a/all
+                                                             breakpoints
+  H [-num]    Display last num commands   a [ln] cmd  Do cmd before line
+  = [a val]   Define/list an alias        A ln|*      Delete a/all
+                                                                 actions
+  h [db_cmd]  Get help on command         w expr      Add a watch
+                                                              expression
+  h h         Complete help page          W expr|*    Delete a/all watch
+                                                                   exprs
+  |[|]db_cmd  Send output to pager        ![!] syscmd Run cmd in a
+                                                              subprocess
+  q or ^D     Quit                        R           Attempt a restart
+ Data Examination:     expr     Execute perl code, also see: s,n,t expr
+  x|m expr       Evals expr in list context, dumps the result or lists
+                                                                methods.
+  p expr         Print expression (uses script's current package).
+  S [[!]pat]     List subroutine names [not] matching pattern
+  V [Pk [Vars]]  List Variables in Package.  Vars can be ~pattern or
+                                                               !pattern.
+  X [Vars]       Same as "V current_package [Vars]".
+  y [n [Vars]]   List lexicals in higher scope <n>.  Vars same as V.
+ For more help, type h cmd_letter, or run man perldebug for all docs. 
+
+=begin original
+
+More confusing options than you can shake a big stick at!  It's not as bad as
+it looks and it's very useful to know more about all of it, and fun too!
+
+=end original
+
+とても多くの混乱させるオプションがあります!
+これは見た目ほど悪くはありませんし、これらすべてについてもっと知ることは
+とても有用ですし、楽しくもあります!
+
+=begin original
+
+There's a couple of useful ones to know about straight away.  You wouldn't
+think we're using any libraries at all at the moment, but 'B<M>' will show
+which modules are currently loaded, and their version number, while 'B<m>' 
+will show the methods, and 'B<S>' shows all subroutines (by pattern) as 
+shown below.  'B<V>' and 'B<X>' show variables in the program by package 
+scope and can be constrained by pattern. 
+
+=end original
+
+まず知っておくべきいくつかのコマンドがあります。
+この時点では何かのライブラリを使っているとは考えていないでしょうが、
+'B<M>' は現在読み込まれているモジュールとバージョン番号を表示し、
+一方 'B<m>' はメソッドを表示し、'B<S>' は以下のように、(パターンによって)
+全てのサブルーチンを表示します。
+'B<V>' と'B<X>' は、パッケージスコープと、パターンによって制限できる、
+変数を表示します。
+
+	DB<2>S str 
+	dumpvar::stringify
+	strict::bits
+	strict::import
+	strict::unimport  
+
+=begin original
+
+Using 'X' and cousins requires you not to use the type identifiers ($@%), just
+the 'name':
+
+=end original
+
+X' とその親類を使う時には、型指定子($@%)を使う必要はありません;
+単に 'name' を入力してください:
+
+	DM<3>X ~err
+	FileHandle(stderr) => fileno(2)    
+
+=begin original
+
+Remember we're in our tiny program with a problem, we should have a look at
+where we are, and what our data looks like. First of all let's view some code 
+at our present position (the first line of code in this case), via 'B<v>':
+
+=end original
+
+問題を抱えた小さなプログラムがあって、今どこにいるか、そしてデータが
+どのようにあっているのかを見ようとしていることを思い出してください。
+まず最初に、現在位置 (この場合ではコードの最初の行) のコードを見てみましょう;
+'B<v>' を使います:
+
+	DB<4> v
+	1       #!/usr/bin/perl
+	2:      use strict;
+	3
+	4==>    my $key = 'welcome';
+	5:      my %data = (
+	6               'this' => qw(that),
+	7               'tom' => qw(and jerry),
+	8               'welcome' => q(Hello World),
+	9               'zip' => q(welcome),
+	10      );                                 
+
+=begin original
+
+At line number 4 is a helpful pointer, that tells you where you are now.  To
+see more code, type 'v' again:
+
+=end original
+
+行番号 4 にあるのは助けになるポインタで、今どこにいるのかを示しています。
+さらにコードを見るには、再び 'v' をタイプします:
+
+	DB<4> v
+	8               'welcome' => q(Hello World),
+	9               'zip' => q(welcome),
+	10      );
+	11:     my @data = keys %data;
+	12:     print "All OK\n" if grep($key, keys %data);
+	13:     print "$data{$key}\n";
+	14:     print "done: '$data{$key}'\n";
+	15:     exit;      
+
+=begin original
+
+And if you wanted to list line 5 again, type 'l 5', (note the space):
+
+=end original
+
+そしてもし行番号 5 を再び見たいなら、'l 5' をタイプします
+(空白に注意してください):
+
+	DB<4> l 5
+	5:      my %data = (
+
+=begin original
+
+In this case, there's not much to see, but of course normally there's pages of
+stuff to wade through, and 'l' can be very useful.  To reset your view to the
+line we're about to execute, type a lone period '.':
+
+=end original
+
+この場合、見られるものはあまり多くはありませんが、もちろん普通は見渡すのに
+何ページにもなる内容があるので、'l' はとても有用です。
+見ている場所を実行しようとしているところにリセットするには、単一の '.' を
+タイプします:
+
+	DB<5> .
+	main::(./data_a:4):     my $key = 'welcome';  
+
+=begin original
+
+The line shown is the one that is about to be executed B<next>, it hasn't
+happened yet.  So while we can print a variable with the letter 'B<p>', at
+this point all we'd get is an empty (undefined) value back.  What we need to
+do is to step through the next executable statement with an 'B<s>':
+
+=end original
+
+表示されている行は B<次に> 実行されようとしているもので、まだ
+実行されていません。
+従って、ここで文字 'B<p>' を使って変数を表示できますが、この時点では
+表示されるのは空(未定義)値だけです。
+するべきことは、'B<s>' を使って次の実行可能文に進むことです:
+
+	DB<6> s
+	main::(./data_a:5):     my %data = (
+	main::(./data_a:6):             'this' => qw(that),
+	main::(./data_a:7):             'tom' => qw(and jerry),
+	main::(./data_a:8):             'welcome' => q(Hello World),
+	main::(./data_a:9):             'zip' => q(welcome),
+	main::(./data_a:10):    );   
+
+=begin original
+
+Now we can have a look at that first ($key) variable:
+
+=end original
+
+ここで最初の ($key) 変数を見ることができます:
+
+	DB<7> p $key 
+	welcome 
+
+=begin original
+
+line 13 is where the action is, so let's continue down to there via the letter
+'B<c>', which by the way, inserts a 'one-time-only' breakpoint at the given
+line or sub routine:
+
+=end original
+
+行 13 が処理の場所なので、文字 'B<c>' を使って、今度は「一回だけ」の
+ブレークポイントを与えられた行かサブルーチンに挿入することでそこまで
+進めていきましょう:
+
+	DB<8> c 13
+	All OK
+	main::(./data_a:13):    print "$data{$key}\n";
+
+=begin original
+
+We've gone past our check (where 'All OK' was printed) and have stopped just
+before the meat of our task.  We could try to print out a couple of variables
+to see what is happening:
+
+=end original
+
+チェック('All OK' が表示された場所)を通り過ぎて、作業の要点の直線で
+停止しました。
+何が起きているのかを見るために二つの変数を表示させようとすることが
+できます:
+
+	DB<9> p $data{$key}
+
+=begin original
+
+Not much in there, lets have a look at our hash:
+
+=end original
+
+あまりありませんが、ハッシュを見てみましょう:
+
+	DB<10> p %data
+	Hello Worldziptomandwelcomejerrywelcomethisthat 
+
+	DB<11> p keys %data
+	Hello Worldtomwelcomejerrythis  
+
+=begin original
+
+Well, this isn't very easy to read, and using the helpful manual (B<h h>), the
+'B<x>' command looks promising:
+
+=end original
+
+うーん、これはとても読みやすいというものではありません; そして親切な
+マニュアル (B<h h>) を使うと、'B<x>' コマンドが見込みがありそうです:
+
+	DB<12> x %data
+	0  'Hello World'
+	1  'zip'
+	2  'tom'
+	3  'and'
+	4  'welcome'
+	5  undef
+	6  'jerry'
+	7  'welcome'
+	8  'this'
+	9  'that'     
+
+=begin original
+
+That's not much help, a couple of welcomes in there, but no indication of
+which are keys, and which are values, it's just a listed array dump and, in
+this case, not particularly helpful.  The trick here, is to use a B<reference>
+to the data structure:
+
+=end original
+
+これはあまり助けにはなりません; ここには 2 つの "welcome" がありますが、
+どれがキーでどれが値かを示すものがなく、単に配列ダンプの一覧で、
+この場合、特に役に立つものではありません。
+ここでの技は、データ構造への B<リファレンス> を使うことです:
+
+	DB<13> x \%data
+	0  HASH(0x8194bc4)
+	   'Hello World' => 'zip'
+	   'jerry' => 'welcome'
+	   'this' => 'that'
+	   'tom' => 'and'
+	   'welcome' => undef  
+
+=begin original
+
+The reference is truly dumped and we can finally see what we're dealing with. 
+Our quoting was perfectly valid but wrong for our purposes, with 'and jerry'
+being treated as 2 separate words rather than a phrase, thus throwing the
+evenly paired hash structure out of alignment.
+
+=end original
+
+リファレンスが完全にダンプされて、ついに扱っているものが見えました。
+クォートは完全に有効でしたが、今回の目的には間違ったものでした;
+'and jerry' が熟語ではなく、2 つの別々の単語として扱われています;
+従って、2 つ組のハッシュ構造のアライメントがずれたのです。
+
+=begin original
+
+The 'B<-w>' switch would have told us about this, had we used it at the start,
+and saved us a lot of trouble: 
+
+=end original
+
+'B<-w>' オプションはこれについて教えてくれるので、最初に使っておけば、
+多くの問題から救ってくれていました:
+
+	> perl -w data
+	Odd number of elements in hash assignment at ./data line 5.    
+
+=begin original
+
+We fix our quoting: 'tom' => q(and jerry), and run it again, this time we get
+our expected output:
+
+=end original
+
+クォートを修正します: 'tom' => q(and jerry)、そして再実行すると、今度は
+予想通りの出力が得られます:
+
+	> perl -w data
+	Hello World
+
+=begin original
+
+While we're here, take a closer look at the 'B<x>' command, it's really useful
+and will merrily dump out nested references, complete objects, partial objects
+- just about whatever you throw at it:
+
+=end original
+
+ここにいる間に 'B<x>' コマンドをより近くで見てみると、これは本当に有用で、
+ネストしたリファレンス、完全なオブジェクト、オブジェクトの一部 - コマンドに
+与えたものは何でも - 楽しくダンプします:
+
+=begin original
+
+Let's make a quick object and x-plode it, first we'll start the debugger:
+it wants some form of input from STDIN, so we give it something non-committal,
+a zero:
+
+=end original
+
+簡単なオブジェクトを作って、見てみましょう; まずデバッガを起動します:
+これは STDIN から何らかの形の入力を要求するので、何か無害なもの - ゼロ - を
+入力します:
+
+ > perl -de 0
+ Default die handler restored.
+
+ Loading DB routines from perl5db.pl version 1.07
+ Editor support available.
+
+ Enter h or `h h' for help, or `man perldebug' for more help.
+
+ main::(-e:1):   0
+
+=begin original
+
+Now build an on-the-fly object over a couple of lines (note the backslash):
+
+=end original
+
+ここで、複数行を使ってその場でオブジェクトを構築します
+(バックスラッシュに注意してください):
+
+ DB<1> $obj = bless({'unique_id'=>'123', 'attr'=> \
+ cont: 	{'col' => 'black', 'things' => [qw(this that etc)]}}, 'MY_class')
+
+=begin original
+
+And let's have a look at it:
+
+=end original
+
+そして見てみましょう:
+
+  	DB<2> x $obj
+ 0  MY_class=HASH(0x828ad98)
+   		'attr' => HASH(0x828ad68)
+      	'col' => 'black'
+      	'things' => ARRAY(0x828abb8)
+         	0  'this'
+         	1  'that'
+         	2  'etc'
+   		'unique_id' => 123       
+  	DB<3>
+
+=begin original
+
+Useful, huh?  You can eval nearly anything in there, and experiment with bits
+of code or regexes until the cows come home:
+
+=end original
+
+便利でしょう?
+ここでほとんどなんでも eval できて、ちょっとしたコードや正規表現を
+いつまでも実験できます。
+
+ DB<3> @data = qw(this that the other atheism leather theory scythe)
+
+ DB<4> p 'saw -> '.($cnt += map { print "\t:\t$_\n" } grep(/the/, sort @data))
+ atheism
+ leather
+ other
+ scythe
+ the
+ theory
+ saw -> 6
+
+=begin original
+
+If you want to see the command History, type an 'B<H>':
+
+=end original
+
+コマンド履歴を見たいなら、'B<H>' をタイプします:
+
+ DB<5> H
+ 4: p 'saw -> '.($cnt += map { print "\t:\t$_\n" } grep(/the/, sort @data))
+ 3: @data = qw(this that the other atheism leather theory scythe)
+ 2: x $obj
+ 1: $obj = bless({'unique_id'=>'123', 'attr'=>
+ {'col' => 'black', 'things' => [qw(this that etc)]}}, 'MY_class')
+ DB<5>
+
+=begin original
+
+And if you want to repeat any previous command, use the exclamation: 'B<!>':
+
+=end original
+
+以前に使ったコマンドを繰り返したい場合は、感嘆符を使います: 'B<!>':
+
+ DB<5> !4
+ p 'saw -> '.($cnt += map { print "$_\n" } grep(/the/, sort @data))
+ atheism
+ leather
+ other
+ scythe
+ the
+ theory
+ saw -> 12
+
+=begin original
+
+For more on references see L<perlref> and L<perlreftut>
+
+=end original
+
+リファレンスについてのさらなる情報については L<perlref> と L<perlreftut> を
+参照してください。
+
+=head1 Stepping through code
+
+(コードをステップ実行する)
+
+=begin original
+
+Here's a simple program which converts between Celsius and Fahrenheit, it too
+has a problem:
+
+=end original
+
+以下は摂氏と華氏とを変換する単純なプログラムで、やはり問題を抱えています:
+
+ #!/usr/bin/perl -w
+ use strict;
+
+ my $arg = $ARGV[0] || '-c20';
+
+ if ($arg =~ /^\-(c|f)((\-|\+)*\d+(\.\d+)*)$/) {
+	my ($deg, $num) = ($1, $2);
+	my ($in, $out) = ($num, $num);
+	if ($deg eq 'c') {
+		$deg = 'f';
+		$out = &c2f($num);
+	} else {
+		$deg = 'c';
+		$out = &f2c($num);
+	}
+	$out = sprintf('%0.2f', $out);
+	$out =~ s/^((\-|\+)*\d+)\.0+$/$1/;
+	print "$out $deg\n";
+ } else {
+	print "Usage: $0 -[c|f] num\n";
+ }
+ exit;
+
+ sub f2c {
+	my $f = shift;
+	my $c = 5 * $f - 32 / 9;
+	return $c;
+ }
+
+ sub c2f {
+	my $c = shift;
+	my $f = 9 * $c / 5 + 32;
+	return $f;
+ }
+
+=begin original
+
+For some reason, the Fahrenheit to Celsius conversion fails to return the
+expected output.  This is what it does:
+
+=end original
+
+なぜか、華氏から摂氏への変換は推測される結果を返すのに失敗します。
+以下はどうなるかです:
+
+ > temp -c0.72
+ 33.30 f
+
+ > temp -f33.3
+ 162.94 c
+
+=begin original
+
+Not very consistent!  We'll set a breakpoint in the code manually and run it
+under the debugger to see what's going on.  A breakpoint is a flag, to which
+the debugger will run without interruption, when it reaches the breakpoint, it
+will stop execution and offer a prompt for further interaction.  In normal
+use, these debugger commands are completely ignored, and they are safe - if a
+little messy, to leave in production code.
+
+=end original
+
+全く一貫していません!
+手動でコードにブレークポイントをセットして、何が起きているかを見るために
+デバッガで実行してみます。
+ブレークポイントは、デバッガを中断なしで実行するためのフラグで、
+ブレークポイントに到達すると、実行を停止してさらなる対話のためにプロンプトを
+出します。
+通常の使用では、これらのデバッガコマンドは完全に無視され、これらは
+製品コードに残しても安全です - すこし乱雑かもしれませんが。
+
+	my ($in, $out) = ($num, $num);
+	$DB::single=2; # insert at line 9!
+	if ($deg eq 'c') 
+		...
+
+	> perl -d temp -f33.3
+	Default die handler restored.
+
+	Loading DB routines from perl5db.pl version 1.07
+	Editor support available.
+
+	Enter h or `h h' for help, or `man perldebug' for more help.
+
+	main::(temp:4): my $arg = $ARGV[0] || '-c100';     
+
+=begin original
+
+We'll simply continue down to our pre-set breakpoint with a 'B<c>':
+
+=end original
+
+'B<c>' をタイプして、単純に予めセットされたブレークポイントまで続けます:
+
+  	DB<1> c
+	main::(temp:10):                if ($deg eq 'c') {   
+
+=begin original
+
+Followed by a view command to see where we are:
+
+=end original
+
+引き続いて表示コマンドで今どこにいるかを見ます:
+
+	DB<1> v
+	7:              my ($deg, $num) = ($1, $2);
+	8:              my ($in, $out) = ($num, $num);
+	9:              $DB::single=2;
+	10==>           if ($deg eq 'c') {
+	11:                     $deg = 'f';
+	12:                     $out = &c2f($num);
+	13              } else {
+	14:                     $deg = 'c';
+	15:                     $out = &f2c($num);
+	16              }                             
+
+=begin original
+
+And a print to show what values we're currently using:
+
+=end original
+
+そして今使っている値を表示させます:
+
+	DB<1> p $deg, $num
+	f33.3
+
+=begin original
+
+We can put another break point on any line beginning with a colon, we'll use
+line 17 as that's just as we come out of the subroutine, and we'd like to
+pause there later on:
+
+=end original
+
+コロンの付いているどの行にも別のブレークポイントを置くことができます;
+サブルーチンから返ってきたばかりのところである 17 行目を使うことにして、
+あとからここで一旦停止したいとします:
+
+	DB<2> b 17
+
+=begin original
+
+There's no feedback from this, but you can see what breakpoints are set by
+using the list 'L' command:
+
+=end original
+
+これに対する反応はありませんが、一覧 'L' コマンドを使うことで、どの
+ブレークポイントがセットされているかを見ることができます:
+
+	DB<3> L
+	temp:
+ 		17:            print "$out $deg\n";
+   		break if (1)     
+
+=begin original
+
+Note that to delete a breakpoint you use 'B'.
+
+=end original
+
+ブレークポイントを削除するためには 'B' を使うことに注意してください。
+
+=begin original
+
+Now we'll continue down into our subroutine, this time rather than by line
+number, we'll use the subroutine name, followed by the now familiar 'v':
+
+=end original
+
+ここでサブルーチンの中に入っていくことにします; 今回は行番号ではなく、
+サブルーチン名を使います; その後、今となってはおなじみの 'v' を使います:
+
+	DB<3> c f2c
+	main::f2c(temp:30):             my $f = shift;  
+
+	DB<4> v
+	24:     exit;
+	25
+	26      sub f2c {
+	27==>           my $f = shift;
+	28:             my $c = 5 * $f - 32 / 9; 
+	29:             return $c;
+	30      }
+	31
+	32      sub c2f {
+	33:             my $c = shift;   
+
+=begin original
+
+Note that if there was a subroutine call between us and line 29, and we wanted
+to B<single-step> through it, we could use the 'B<s>' command, and to step
+over it we would use 'B<n>' which would execute the sub, but not descend into
+it for inspection.  In this case though, we simply continue down to line 29:
+
+=end original
+
+ここと 29 行目との間にサブルーチンがあり、そこを B<シングルステップ> したい
+場合、'B<s>' コマンドも使えますし、サブルーチンは実行するけれども
+サブルーチン内部は検査しないという 'B<n>' コマンドで
+ステップオーバーできます。
+しかし、この場合には、単に 29 行まで進めていきます:
+
+	DB<4> c 29  
+	main::f2c(temp:29):             return $c;
+
+=begin original
+
+And have a look at the return value:
+
+=end original
+
+そして返り値を見てみます:
+
+	DB<5> p $c
+	162.944444444444
+
+=begin original
+
+This is not the right answer at all, but the sum looks correct.  I wonder if
+it's anything to do with operator precedence?  We'll try a couple of other
+possibilities with our sum:
+
+=end original
+
+これは全く間違った答えですが、合計は正しいように見えます。
+演算子の優先順位が何かを行っているのでしょうか?
+合計に関してその他の可能性を試してみます:
+
+	DB<6> p (5 * $f - 32 / 9)
+	162.944444444444
+
+	DB<7> p 5 * $f - (32 / 9) 
+	162.944444444444
+
+	DB<8> p (5 * $f) - 32 / 9
+	162.944444444444
+
+	DB<9> p 5 * ($f - 32) / 9
+	0.722222222222221
+
+=begin original
+
+:-) that's more like it!  Ok, now we can set our return variable and we'll
+return out of the sub with an 'r':
+
+=end original
+
+:-) これはより似ています!
+よし、ここで独自の返り値をセットして、'r' を使ってサブルーチンから返ります:
+
+	DB<10> $c = 5 * ($f - 32) / 9
+
+	DB<11> r
+	scalar context return from main::f2c: 0.722222222222221
+
+=begin original
+
+Looks good, let's just continue off the end of the script:
+
+=end original
+
+良さそうです; スクリプトの最後まで実行していましょう:
+
+	DB<12> c
+	0.72 c 
+	Debugged program terminated.  Use q to quit or R to restart,
+  	use O inhibit_exit to avoid stopping after program termination,
+  	h q, h R or h O to get additional info.   
+
+=begin original
+
+A quick fix to the offending line (insert the missing parentheses) in the
+actual program and we're finished.
+
+=end original
+
+実際のプログラムの問題のある行に救急処置(不足していたかっこを挿入する)を
+施して、終わりです。
+
+=head1 Placeholder for a, w, t, T
+
+(a, w, t, T のためのプレースホルダ)
+
+=begin original
+
+Actions, watch variables, stack traces etc.: on the TODO list.
+
+=end original
+
+アクション、変数の監視、スタックトレースなど: TODO リストです。
+
+	a 
+
+	w 
+
+	t 
+
+	T
+
+=head1 REGULAR EXPRESSIONS
+
+(正規表現)
+
+=begin original
+
+Ever wanted to know what a regex looked like?  You'll need perl compiled with
+the DEBUGGING flag for this one:
+
+=end original
+
+正規表現がどのように見えるか知りたいと思いましたか?
+以下のようにするには perl を DEBUGGING フラグ付きでコンパイルする必要が
+あります:
+
+  > perl -Dr -e '/^pe(a)*rl$/i'
+  Compiling REx `^pe(a)*rl$'
+  size 17 first at 2
+  rarest char
+   at 0
+     1: BOL(2)
+     2: EXACTF <pe>(4)
+     4: CURLYN[1] {0,32767}(14)
+     6:   NOTHING(8)
+     8:   EXACTF <a>(0)
+    12:   WHILEM(0)
+    13: NOTHING(14)
+    14: EXACTF <rl>(16)
+    16: EOL(17)
+    17: END(0)
+  floating `'$ at 4..2147483647 (checking floating) stclass
+    `EXACTF <pe>' anchored(BOL) minlen 4
+  Omitting $` $& $' support.
+
+  EXECUTING...
+
+  Freeing REx: `^pe(a)*rl$'
+
+=begin original
+
+Did you really want to know? :-)
+For more gory details on getting regular expressions to work, have a look at
+L<perlre>, L<perlretut>, and to decode the mysterious labels (BOL and CURLYN,
+etc. above), see L<perldebguts>.
+
+=end original
+
+本当に知りたかったですか? :-)
+正規表現の動作に関する詳細については、L<perlre>, L<perlretut> を、
+(上述の BOL や CURLYN などの)不思議なラベルを解読するには、
+L<perldebguts> を参照してください。
+
+=head1 OUTPUT TIPS
+
+(出力の小技)
+
+=begin original
+
+To get all the output from your error log, and not miss any messages via
+helpful operating system buffering, insert a line like this, at the start of
+your script:
+
+=end original
+
+エラーログからの全ての出力を得て、親切な OS のバッファリングで
+メッセージを失わないようにするには、スクリプトの最初に以下のような行を
+挿入してください:
+
+	$|=1;	
+
+=begin original
+
+To watch the tail of a dynamically growing logfile, (from the command line):
+
+=end original
+
+動的に増え続けるログファイルの末尾を監視するには、(コマンドラインから):
+
+	tail -f $error_log
+
+=begin original
+
+Wrapping all die calls in a handler routine can be useful to see how, and from
+where, they're being called, L<perlvar> has more information:
+
+=end original
+
+全ての die 呼び出しをハンドラルーチンで囲むと、どこで、どのように
+呼び出されているかを知るのに有用です; L<perlvar> にさらなる情報があります:
+
+    BEGIN { $SIG{__DIE__} = sub { require Carp; Carp::confess(@_) } }
+
+=begin original
+
+Various useful techniques for the redirection of STDOUT and STDERR filehandles
+are explained in L<perlopentut> and L<perlfaq8>.
+
+=end original
+
+STDOUT と STDERR ファイルハンドルのリダイレクトに関する様々な便利な
+テクニックが L<perlopentut> と L<perlfaq8> に記述されています。
+
+=head1 CGI
+
+=begin original
+
+Just a quick hint here for all those CGI programmers who can't figure out how
+on earth to get past that 'waiting for input' prompt, when running their CGI
+script from the command-line, try something like this:
+
+=end original
+
+「入力待ち」プロンプトからどうやれば逃れられるのかが分からない全ての
+CGI プログラマへの簡単なヒントとして、
+CGI をコマンドラインから実行するときに、以下のようなものを試してください:
+
+	> perl -d my_cgi.pl -nodebug 
+
+=begin original
+
+Of course L<CGI> and L<perlfaq9> will tell you more.
+
+=end original
+
+もちろん L<CGI> と L<perlfaq9> にはもっと多くの情報があります。
+
+=head1 GUIs
+
+(GUI)
+
+=begin original
+
+The command line interface is tightly integrated with an B<emacs> extension
+and there's a B<vi> interface too.  
+
+=end original
+
+コマンドラインインターフェースは B<emacs> 拡張と密接に統合されていて、
+B<vi> インターフェースもあります。
+
+=begin original
+
+You don't have to do this all on the command line, though, there are a few GUI
+options out there.  The nice thing about these is you can wave a mouse over a
+variable and a dump of its data will appear in an appropriate window, or in a
+popup balloon, no more tiresome typing of 'x $varname' :-)
+
+=end original
+
+しかし、これら全てをコマンドラインで実行する必要はありません;
+いくつかの GUI の選択肢もあります。
+これらのよいところは、マウスカーソルを変数の上に移動させると適切な
+ウィンドウやバルーンにそのデータがダンプされ、もう 'x $varname' と
+タイプしなくていいことです :-)
+
+=begin original
+
+In particular have a hunt around for the following:
+
+=end original
+
+特に以下のものの辺りを調べてみてください:
+
+=begin original
+
+B<ptkdb> perlTK based wrapper for the built-in debugger
+
+=end original
+
+B<ptkdb> ビルドインデバッガのための perlTK ベースのラッパー
+
+=begin original
+
+B<ddd> data display debugger
+
+=end original
+
+B<ddd> データ表示デバッガ
+
+=begin original
+
+B<PerlDevKit> and B<PerlBuilder> are NT specific
+
+=end original
+
+B<PerlDevKit> と B<PerlBuilder> は NT 固有です
+
+=begin original
+
+NB. (more info on these and others would be appreciated).
+
+=end original
+
+注意せよ。
+(これらやその他のものに関するさらなる情報を頂ければ幸いです)。
+
+=head1 SUMMARY
+
+(まとめ)
+
+=begin original
+
+We've seen how to encourage good coding practices with B<use strict> and
+B<-w>.  We can run the perl debugger B<perl -d scriptname> to inspect your
+data from within the perl debugger with the B<p> and B<x> commands.  You can
+walk through your code, set breakpoints with B<b> and step through that code
+with B<s> or B<n>, continue with B<c> and return from a sub with B<r>.  Fairly
+intuitive stuff when you get down to it.  
+
+=end original
+
+B<use strict> と B<-w> を使ってどうやって良いコーディングを実践するかを
+見ました。
+B<perl -d scriptname> とすることで perl デバッガを起動でき、デバッガの
+B<p> や B<x> のコマンドでデータを検査できます。
+コードの中を通り抜けて、B<b> でブレークポイントを設定し、
+B<s> や B<n> でステップ実行を行い、B<c> で再開して、B<r> サブルーチンから
+戻ります。
+うんざりしたときにはかなり直感的な機能です。
+
+=begin original
+
+There is of course lots more to find out about, this has just scratched the
+surface.  The best way to learn more is to use perldoc to find out more about
+the language, to read the on-line help (L<perldebug> is probably the next
+place to go), and of course, experiment.  
+
+=end original
+
+もちろんもっと多くの調べるべきことがありますが、これは表面を
+なぞっただけです。
+より多くを学ぶための最善の方法は、言語に関してより多くを調べるために
+オンラインヘルプを読むために perldoc を使う(おそらく次に進むべき
+ところは L<perldebug> でしょう)ことと、もちろん実践です。
+
+=head1 SEE ALSO
+
+L<perldebug>, 
+L<perldebguts>, 
+L<perldiag>,
+L<perlrun>
+
+=head1 AUTHOR
+
+Richard Foley <richard.foley@rfi.net> Copyright (c) 2000
+
+=head1 CONTRIBUTORS
+
+(貢献者)
+
+=begin original
+
+Various people have made helpful suggestions and contributions, in particular:
+
+=end original
+
+様々な人々が有益な提案や貢献をしてくれました; 特に:
+
+Ronald J Kimball <rjk@linguist.dartmouth.edu>
+
+Hugo van der Sanden <hv@crypt0.demon.co.uk>
+
+Peter Scott <Peter@PSDT.com>
+
+=begin meta
+
+Translate: SHIRAKATA Kentaro <argrath@ub32.org> (5.10.0-)
+Status: completed
+
+=end meta
+

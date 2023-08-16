@@ -1,0 +1,3291 @@
+
+=encoding euc-jp
+
+=head1 名前
+
+CGI - 簡単なCGI（Common Gateway Interface）クラス
+
+=head1 概要
+
+  # 画面一杯のフォームを作成し、その値をエコーバックする
+  # CGIスクリプト
+
+  use CGI qw/:standard/;
+  print header,
+        start_html('A Simple Example'),
+        h1('A Simple Example'),
+        start_form,
+        "What's your name? ",textfield('name'),p,
+        "What's the combination?", p,
+        checkbox_group(-name=>'words',
+               -values=>['eenie','meenie','minie','moe'],
+               -defaults=>['eenie','minie']), p,
+        "What's your favorite color? ",
+        popup_menu(-name=>'color',
+               -values=>['red','green','blue','chartreuse']),p,
+        submit,
+        end_form,
+        hr;
+
+   if (param()) {
+       print "Your name is",em(param('name')),p,
+         "The keywords are: ",em(join(", ",param('words'))),p,
+         "Your favorite color is ",em(param('color')),
+         hr;
+   }
+
+=head1 要約
+
+このperlライブラリは簡単にWebのフォームを作成し、その内容を解析する
+ためperl5オブジェクトを使っています。このパッケージはCGIオブジェクト、
+現在の問い合わせ文字列の値が入ったエンティティ、そしてその他の状態変数を
+定義します。CGIオブジェクトのメソッドを使って、スクリプトに渡された
+キーワードやパラメータの値をチェックしたり、現在の取り合わせから
+取得した値で初期化したフォームを作成することが出来ます（これによって
+状態情報を保存します）。このモジュールはHTMLを生成し、入力と
+コーディング・エラーを減らす短い名前の関数を提供します。またファイルの
+アップロード、カスケーディング・スタイル・シート、サーバ・プッシュ、
+フレームを含めたCGIスクリプトのいくつかのさらに進んだ機能も提供します。
+
+CGI.pmはオブジェクト指向の機能を必要としない人たちのために、簡単な
+関数指向プログラミング・スタイルも提供します。
+
+CGI.pmの現在のバージョンは以下のサイトから利用できます：
+
+  http://www.genome.wi.mit.edu/ftp/pub/software/WWW/cgi_docs.html
+  ftp://ftp-genome.wi.mit.edu/pub/software/WWW/
+
+=head1 説明
+
+=head2 プログラミング・スタイル
+
+CGI.pmでは２つのプログラミング・スタイル、オブジェクト指向スタイルと
+関数指向スタイルがあります。オブジェクト指向スタイルでは、１つまたは
+複数のCGIオブジェクトを作成し、ページのさまなざな要素を作成するために
+オブジェクト・メソッドを使います。各オブジェクトはサーバーによって
+スクリプトに渡された名前付きパラメータのリストが出発点となります。
+オブジェクトを変更したり、ファイルやデータベースに格納し、それを元に
+戻すことが出来ます。というのも各オブジェクトはCGIスクリプトの
+"状態"(state)に対応しており、各オブジェクトのパラメータ・リストは、
+その他のものとは独立しているため、スクリプトの状態を保存し後から
+取り出すこともできるのです。
+
+以下にオブジェクト指向スタイルを使って、簡単な"Hello World"HTMLページを
+どのように作成するかの例を示します：
+
+   #!/usr/local/bin/perl -w
+   use CGI;                             # CGIルーチンのロード
+   $q = new CGI;                        # 新しいCGIオブジェクトの作成
+   print $q->header,                    # HTTPヘッダの作成
+         $q->start_html('hello world'), # HTMLの開始
+         $q->h1('hello world'),         # レベル１のヘッダ
+         $q->end_html;                  # HTMLの終わり
+
+関数指向スタイルでは、直接扱うことがまずない、１つのデフォルトの
+CGIオブジェクトがあります。CGIパラメータを取り出し、HTMLタグを作成し、
+クッキーを管理する等々のために、代りに関数を単に呼び出します。
+これは、よりすっきりしたプログラミング・インタフェースを提供しますが、
+一度に１つのCGIオブジェクトしか使えないよう制限します。以下の例
+は同じページで関数指向インターフェースを使っています。大きな違いは
+今度は名前空間に関数のセット（通常は"standard"の関数群）をインポートする
+必要があること、そしてCGIオブジェクトを作成する必要がないことです。
+
+   #!/usr/local/bin/perl
+   use CGI qw/:standard/;           # 標準(standard)のCGIルーチンをロードする
+   print header,                    # HTTPヘッダの作成
+         start_html('hello world'), # HTMLの開始
+         h1('hello world'),         # レベル１のヘッダ
+         end_html;                  # HTMLの終わり
+
+このドキュメントの例では主にオブジェクト指向スタイルを使います。
+CGI.pmでの関数指向プログラミングについての重要な情報は「関数のインポート方法」を
+ご覧下さい。
+
+=head2 CGI.PMルーチンの呼び出し
+
+ほとんどのCGI.pmルーチンはさまざまな引数を受け取ります。中には20もの
+オプションの引数を受取るものもあります！このインターフェースを簡単に
+するため、すべてのルーチンは以下のような名前付き引数呼び出しスタイルを
+使います:
+
+   print $q->header(-type=>'image/gif',-expires=>'+3d');
+
+各引数の名前の前にはダッシュがつきます。引数リストでは大文字／小文字や、
+順番は問題になりません。-type、-Type、-TYPEのすべてが受取られます。
+実際には、最初の引数だけがダッシュから始まる必要があります。最初の
+引数にダッシュがあれば、CGI.pmは後のものにもダッシュがあるものとします。
+
+さまざまなルーチンは一般に１つの引数だけで呼ばれます。それらのルーチンの
+場合、引数名なしに１つの引数を与えることが出来ます。header()は、そうした
+ルーチンの１つです。この場合、１つの引数はドキュメント・タイプです。
+
+   print $q->header('text/html');
+
+他のそのようなルーチンは下記で記述しています。
+
+名前付き引数はあるときはスカラを期待し、あるときは配列へのリファレンス、
+あるいはハッシュへのリファレンスを期待します。多くの場合、どんな種類の
+引数も渡すことができ、ルーチンはそれに対して最も適切なことを行います。
+例えばparam()ルーチンはCGIパラメータに１つあるいは複数の値を設定する
+ために使われます。２つのケースを以下に示します:
+
+   $q->param(-name=>'veggie',-value=>'tomato');
+   $q->param(-name=>'veggie',-value=>['tomato','tomahto','potato','potahto']);
+
+CGI.pmのルーチンの多くがモジュール内で特に定義されておらず、必要に応じて
+自動的に生成されます。これらは動的に生成されるページで使われ、HTMLを
+生成する"HTMLショートカット"ルーチンです。HTMLタグは属性(タグ自身に
+入っている属性="値"の組）と内容（開始と終了の組の間の部分）の両方を持ちます。
+属性と内容とを区別するため、CGI.pmはHTML属性をハッシュ・リファレンスで最初の
+引数として、そして内容があればその後の引数として、渡すような約束を使っています。
+それは以下のように機能します:
+
+   コード                          作成されるHTML
+   ----                           --------------
+   h1()                           <H1>
+   h1('some','contents');         <H1>some contents</H1>
+   h1({-align=>left});            <H1 ALIGN="LEFT">
+   h1({-align=>left},'contents'); <H1 ALIGN="LEFT">contents</H1>
+
+HTMLタグについては後で詳しく記述します。
+
+CGIを使い始めたばかりの人の多くが、HTMLタグ属性を囲む曲括弧を必要とする
+HTMLショートカットの呼び出し方と、曲括弧無しに属性の生成を管理する他の
+ルーチンの呼び出し方との違いに惑わされます。混乱しないで下さい。便宜上、
+曲括弧はHTMLを除くすべてでオプションです。もし好きであれば、名前付き
+引数を取る全てのルーチンも呼び出すときに曲括弧を使うことが出来ます。
+例えば:
+
+   print $q->header( {-type=>'image/gif',-expires=>'+3d'} );
+
+B<-w>スイッチを使うと、いくつかのCGI.pm引数はPerl組込関数と名前が
+ぶつかっていることを警告されるでしょう。これらのほとんどは、
+複数の値を持つメニュー(multi-valued menu)、ラジオボタン(radio button)、
+クラスター(cluster)などを作成するために使われる-values引数です。
+この警告を回避するためには、いくつかの選択肢があります:
+
+=over 4
+
+=item 1.
+
+もし他の名前が使えれば、引数に他の名前を使う。
+例えば-valueは-valuesのための別名です。
+
+=item 2.
+
+先頭を大文字化する。例. -Values 
+
+=item 3.
+
+引数名の周りをクォートで囲む。　例. '-values' 
+
+=back
+
+多くのルーチンが理解できない名前付き引数についても、なんらかの有効なことを
+行います。例えば、名前付きの引数として与えることにより標準ではない
+HTTPヘッダ・フィールドを作成することが出来ます:
+
+  print $q->header(-type  =>  'text/html',
+                   -cost  =>  'Three smackers',
+                   -annoyance_level => 'high',
+                   -complaints_to   => 'bit bucket');
+
+これは以下の標準ではないHTTPヘッダを作成します：
+
+   HTTP/1.0 200 OK
+   Cost: Three smackers
+   Annoyance-level: high
+   Complaints-to: bit bucket
+   Content-type: text/html
+
+アンダースコアが自動的にハイフンに変換される方法について注意してください。
+HTML作成ルーチンは異なる変換をします。
+
+この機能はHTTPとHTMLの"標準"に迅速に追いかけることを可能にします。
+
+=head2 新しい問い合わせオブジェクトの作成(オブジェクト指向スタイル）:
+
+     $query = new CGI;
+
+これは（POSTとGETメソッドの両方からの）入力を解析し、
+$queryと呼ばれるperl5オブジェクトに格納します。
+
+=head2 入力ファイルからの新しい問い合わせオブジェクトの作成 
+
+     $query = new CGI(INPUTFILE);
+
+もしファイル・ハンドルをnew()メソッドに与えると、ファイル（またはSTDINでもなんでも）
+からパラメータを読み込みます。デバッグ中、ファイルには以下に説明する
+形式ならば、何にでもすることができます（つまり改行で区切られたタグ=値の組が機能します）。
+便利なことに、このファイルのタイプはsave()メソッドにより作成されます。
+複数のレコードを保存し、元に戻すことが出来ます。
+
+Perl純粋主義者はこの文法がファイル・ハンドルを、ファイルハンドル・グロブさえも
+受取ることを知って喜ぶでしょう、これはファイルハンドルを渡す"公式の"方法です:
+
+    $query = new CGI(\*STDIN);
+
+CGIオブジェクトをFileHandleまたはIO::Fileオブジェクトで初期化することも
+出来ます。
+
+関数指向インターフェースを使っていて、CGI状態をファイル・ハンドルで
+初期化したければ、B<restore_parameters()>でおこないます。これはデフォルトの
+CGIオブジェクトを指定されたファイル・ハンドルで(再）初期化します。
+
+    open (IN,"test.in") || die;
+    restore_parameters(IN);
+    close IN;
+
+連想配列リファレンスから問い合わせオブジェクトを初期化することも出来ます:
+
+    $query = new CGI( {'dinosaur'=>'barney',
+               'song'=>'I love you',
+               'friends'=>[qw/Jessica George Nancy/]}
+            );
+
+あるいは適切にフォーマットされた、URLエスケープされた問い合わせ文字列から:
+
+    $query = new CGI('dinosaur=barney&color=purple');
+
+あるいは既に存在しているCGIオブジェクトから（現在、これはパラメータ・リストの
+複製を作りますが、autoescapingのようなオブジェクト特有のフィールドは
+複写しません）:
+
+    $old_query = new CGI;
+    $new_query = new CGI($old_query);
+
+空の問い合わせを作成するためには、空文字列または空のハッシュで初期化します：
+
+   $empty_query = new CGI("");
+
+       -または-
+
+   $empty_query = new CGI({});
+
+=head2 問い合わせからのキーワードのリストの取り出し:
+
+     @keywords = $query->keywords
+
+<ISINDEX>検索の結果としてスクリプトが呼び出されれば、解析されたキーワードは
+keywords()メソッドを使って配列として取得することが出来ます。
+
+=head2 スクリプトの渡された全てのパラメータの名前の取り出し:
+
+     @names = $query->param
+
+パラメータ付きでスクリプトが呼び出されると（例えば"name1=value1&name2=value2&name3=value3"）、
+param()メソッドはパラメータ名をリストで返します。もしスクリプトが<ISINDEX>スクリプトとして
+呼び出され、アンパサンドのない文字列が入っていれば（例えば、"value1+value2+value3"）、
+"+"で区切られたキーワードが入った"keywords"という名前の１つのパラメータになります。
+
+注意:バージョン1.5では、パラメータ名の配列はブラウザにより実行されたのと
+同じ順番でした。通常、この順序はパラメータがフォームで定義された順と
+同じです（しかしながら仕様には入っていないため保証はされません。）
+
+=head2 １つの名前つきパラメータの値を取り出す:
+
+    @values = $query->param('foo');
+
+          -または-
+
+    $value = $query->param('foo');
+
+名前付きパラメータの値を取り出すためにparam()メソッドに１つの引数を
+渡してください。もしそのパラメータが複数の値を持っていれば
+（例えばスクローリング・リスト(scrolling list)での複数の選択から）、
+配列で受取るようにすることが出来ます。そうでなければ、このメソッドは
+1つの値を返します。
+
+もし値が問い合わせ文字列で与えられなければ、つまり問い合わせで
+"name1=&name2=""または"name1&name2"であれば、空文字列を返します。
+これは2.63での新機能です。
+
+=head2 名前つきパラメータへの値の設定:
+
+    $query->param('foo','an','array','of','values');
+
+これは名前付きパラメータ'foo'の値として値の配列を設定します。これは、
+スクリプトが前に一度呼び出された後にフィールドの値を変更するための1つの
+方法です。（もう1つの方法はフォーム要素を作成するすべてのメソッドで
+受取られる -overrideパラメータを使うことです）
+
+param()は下記でさらに詳しく記述する呼び出しの名前付きパラメータ形式も
+理解します:
+
+    $query->param(-name=>'foo',-values=>['an','array','of','values']);
+
+                  -あるいは-
+
+    $query->param(-name=>'foo',-value=>'the value');
+
+=head2 名前つきパラメータに値を追加する:
+
+   $query->append(-name=>'foo',-values=>['yet','more','values']);
+
+これは値または値のリストを名前付きパラメータに追加します。
+既にあれば、その値はパラメータの最後に追加されます。そうでなければ
+パラメータが作成されます。このメソッドは名前付き引数呼び出し書式しか
+理解しないことに注意してください。
+
+=head2 すべてのパラメータの名前空間へのインポート:
+
+   $query->import_names('R');
+
+これは一連の変数を'R'名前空間に作成します。例えば$R::foo、@R:fooのように。
+キーワード・リストでは、変数@R:keywordがあります。名前空間が指定されなければ、
+この引数は'Q'を想定します。警告：'main'には何もインポートしないこと。
+それはセキュリティ上、大きな危険性があります！！！
+
+古いバージョンでは、このメソッドはB<import()>と呼ばれていました。
+バージョン2.20では、組込PerlモジュールB<import>演算子とぶつかることを
+避けるため、この名前は完全に削除されました。
+
+=head2 パラメータを完全に削除する:
+
+    $query->delete('foo','bar','baz');
+
+これは完全にパラメータをクリアします。それはスクリプト呼び出しの間で、
+渡されたものが欲しくないパラメータをリセットするのに便利なこともあります。
+
+関数呼び出しインターフェースを使っているのであれば、Perlの組込み演算子delete
+との衝突を避けるため、代りに"Delete()"を使ってください。
+
+
+=head2 すべてのパラメータを削除する:
+
+   $query->delete_all();
+
+これはCGIオブジェクトを完全にクリアします。これはフォームを作成するときに、
+すべてのデフォルトが取られることを保証するために便利です。
+
+関数呼び出しインターフェースを使っているならば、代りにDelete_all()を使って
+ください。
+
+=head2 パラメータリストへの直接アクセス:
+
+   $q->param_fetch('address')->[1] = '1313 Mockingbird Lane';
+   unshift @{$q->param_fetch(-name=>'address')},'George Munster';
+
+パラメータ・リストへアクセスする必要があれば、これまでのメソッドでは
+カバーされていません。その名前でB<param_fetch()>を呼び出すことにより、
+それへの直接のリファレンスを取得することが出来ます。これは名前付き
+パラメータへの配列リファレンスを返します。それは好きなように扱うことが
+出来ます。
+
+B<-name>を使って、名前付き引数スタイルを使うことも出来ます。
+
+=head2 パラメータリストのハッシュでの取り出し:
+
+    $params = $q->Vars;
+    print $params->{'address'};
+    @foo = split("\0",$params->{'foo'});
+    %params = $q->Vars;
+
+    use CGI ':cgi-lib';
+    $params = Vars;
+
+多くの人がすべてのパラメータリストを、CGIパラメータの名前をキーとし、
+そのパラメータの値を値とするハッシュとして取り出しがります。
+これをVars()メソッドが行います。スカラコンテキストで呼ばれると、
+タイされたハッシュ・リファレンスとしてパラメータリストを返します。
+キーを変更すると、元になっているCGIパラメータリストでのパラメータの
+値を変更します。配列コンテキストで呼ばれると、それは通常のハッシュ
+としてパラメータリストを返します。これによりパラメータリストの内容を
+読むことが出来ますが、変更することはできません。
+
+これを使うとき、複数の値を持つCGIパラメータについて気をつけなければ
+いけません。ハッシュはスカラーと配列のコンテキストを区別しないので、
+複数の値をもつパラメータは"\0"(null)文字で区切られた、パックされた
+文字列で返されます。それぞれの値を取り出すためにはパックされた
+文字列を分割しなければなりません。このやり方はPerlバージョン4のための
+cgi-lib.plモジュールで、Steve Brrennerによって導入されました。
+
+Vars()を関数として使いたければ、関数呼び出しセット :cgi-lib を
+インポートしてください。（CGI-LIBとの互換性についてのセクションも
+ご覧下さい）
+
+=head2 スクリプトの状態をファイルに保存する:
+
+    $query->save(FILEHANDLE)
+
+これはフォームの現在の状態を指定されたファイルハンドルに
+書き込みます。new()メソッドにファイルハンドルを与えることにより
+読み戻すことが出来ます。ファイルハンドルは、ファイル、パイプ、
+その他何にでもにすることが出来ることに注意してください！
+
+保存されるファイルの形式は以下の通りです:
+
+    NAME1=VALUE1
+    NAME1=VALUE1'
+    NAME2=VALUE2
+    NAME3=VALUE3
+    =
+
+名前と値の両方がURLエスケープされます。複数の値を持つCGIパラメータは
+名前を繰り返すことにより表すことができます。セッション・レコードは
+single=symbolによって範囲を決められます。何回もB<new>を呼ぶことにより、
+複数のレコードを書き出し、読み戻すことが出来ます。追記（append)モードで
+ファイルを開くことにより、複数のセッションにまたがって、これを行うことが
+出来ます、これにより原始的なゲスト・ブックやユーザの質問の履歴を
+作成することが出来ます。以下は複数のセッション・レコードを作成する
+短い例です:
+
+   use CGI;
+
+   open (OUT,">>test.out") || die;
+   $records = 5;
+   foreach (0..$records) {
+       my $q = new CGI;
+       $q->param(-name=>'counter',-value=>$_);
+       $q->save(OUT);
+   }
+   close OUT;
+
+   # 読み込みのために再オープン
+   open (IN,"test.out") || die;
+   while (!eof(IN)) {
+       my $q = new CGI(IN);
+       print $q->param('counter'),"\n";
+   }
+
+保存／復帰に使われるファイル・フォーマットはWhitehead Genome Centerの
+データ交換フォーマット"Boulderio"に使われているものと同じで、
+Boulderioユーティリティを使って扱ったり、さらにはデータベース化する
+ことができます。さらなる詳細は
+
+  http://stein.cshl.org/boulder/
+
+をご覧下さい。
+
+関数指向（非OO）からこの関数を使いたいのであれば、エクスポートされる
+このメソッドの名前はB<save_parameters()>です。
+
+
+=head2 CGIエラーの取り出し
+
+ユーザ入力を処理して切る間、特にアップロードされたファイルを処理している
+間にエラーが発生することがあります。これらのエラーが発生したとき、CGIは
+処理を止め、空のパラメータリストを返します。エラーの存在とその性質を
+I<cgi_error()>関数を使って調べることが出来ます。エラーメッセージは
+HTTPステータスコードのようにフォーマットされます。HTMLページに
+そのエラー・テキストを入れたり、HTTPステータスの値として使うことが
+できます:
+
+    my $error = $q->cgi_error;
+    if ($error) {
+    print $q->header(-status=>$error),
+          $q->start_html('Problems'),
+              $q->h2('Request not processed'),
+          $q->strong($error);
+        exit 0;
+    }
+
+関数指向インターフェース（次のセクションをご覧下さい）を使うとき、
+エラーは最初にI<param()>を呼んだときにだけ発生します。
+これに備えてください！
+
+=head2 関数指向インターフェースの使い方
+
+関数指向インタフェースを使うためには、どの CGI.pmルーチンまたは
+関数群をスクリプトの名前空間にインポートするかを指定しなければいけません。
+このインポートに関連して少しオーバーヘッドがありますが、大したことはありません。
+
+
+   use CGI <メソッドのリスト>;
+
+リストに入れられたメソッドは現在のパッケージにインポートされます;
+CGIオブジェクトを最初に作成することなく直接呼び出すことが出来ます。
+この例ではどのようにB<param()>とB<header()>メソッドをインポートし、それらを
+直接使うかを示しています:
+
+   use CGI 'param','header';
+   print header('text/plain');
+   $zipcode = param('zipcode');
+
+さらに多くの場合、名前でグループを参照することにより一般的な関数の組を
+インポートします。すべての関数の組の前には":html3"（HTML3標準で定義されたタグ用）
+のように、前に":"がつきます。
+
+以下にインポートできる関数の組のリストを示します:
+
+=over 4
+
+=item B<:cgi>
+
+B<param()>, B<path_info()>のような、CGIを扱うすべてのメソッドをインポート
+します。
+
+=item B<:form>
+
+B<textfield()>のような、フォームを作成するメソッドをインポートします。 
+
+=item B<:html2>
+
+HTML 2.0 標準要素を作成するすべてのメソッドをインポートします。 
+
+=item B<:html3>
+
+HTML 3.0 標準要素を作成するすべてのメソッドをインポートします。
+（<table>、<super> そして<sub>のような) 
+
+=item B<:html4>
+
+HTML 4 標準要素を作成するすべてのメソッドをインポートします。
+（<abbrev>, <acronym> そして <thead>のような）
+
+=item B<:netscape>
+
+Netscape特有のHTML拡張を作成するすべてのメソッドをインポートします。 
+
+=item B<:html>
+
+すべてのHTML作成ショートカットをインポートします（つまり'html2' + 
+'html3' + 'netscape'）... 
+
+=item B<:standard>
+
+"標準"の機能をインポートします。, 'html2', 'html3', 'html4', 'form' 
+そして 'cgi'。 
+
+=item B<:all>
+
+利用可能なすべてのメソッドをインポートします。全体のリストはCGI.pmの
+コードをご覧下さい。%EXPORT_TAGSという変数が定義されています。 
+
+=back
+
+CGI.pmの一部ではない関数名をインポートすると、モジュールはそれを
+新しいHTMLタグとして扱い、適切なサブルーチンを作成します。そこで
+他のHTMLタグと同じように使うことが出来ます。これは急速に発展する
+HTMLの"標準"を提供するためです。例えばMicrosoftは<gradient>という
+新しいタグを発表しています（これはマシンをリブートするまで、
+ユーザのデスクトップを回転する斜線でいっぱいにします）。新しい
+バージョンのCGI.pmを待つ必要はありません、それをすぐに使って
+みてください:
+
+   use CGI qw/:standard :html3 gradient/;
+   print gradient({-start=>'red',-end=>'blue'});
+
+実行スピードの点から、CGI.pmはロード・シンボルを指定するための
+標準のL<Exporter>の書式を使わないことに注意してください。これは将来
+変更されるかもしれません。
+
+もし状態管理CGI、またはフォーム作成メソッドのいずれかをインポート
+すると、あることを要求するメソッドのいずれかを最初に使ったときに、
+デフォルトのCGIオブジェクトが自動的に作成され初期化されます。
+これにはB<param()>, B<textfield()>, B<submit()> などが含まれます。
+（直接CGIオブジェクトにアクセスする必要があれば、
+グローバル変数B<$CGI::Q>があります)。CGI.pmメソッドをインポートする
+ことによって、以下のようにエレガントなスクリプトを書くことが出来ます:
+
+   use CGI qw/:standard/;
+   print 
+       header,
+       start_html('Simple Script'),
+       h1('Simple Script'),
+       start_form,
+       "What's your name? ",textfield('name'),p,
+       "What's the combination?",
+       checkbox_group(-name=>'words',
+              -values=>['eenie','meenie','minie','moe'],
+              -defaults=>['eenie','moe']),p,
+       "What's your favorite color?",
+       popup_menu(-name=>'color',
+          -values=>['red','green','blue','chartreuse']),p,
+       submit,
+       end_form,
+       hr,"\n";
+
+    if (param) {
+       print 
+       "Your name is ",em(param('name')),p,
+       "The keywords are: ",em(join(", ",param('words'))),p,
+       "Your favorite color is ",em(param('color')),".\n";
+    }
+    print end_html;
+
+=head2 プラグマ
+
+関数セットに加えて、多くのプラグマをインポートすることができます。
+プラグマの前には常にハイフンがつき、多くの方法でCGI.pm関数の動きを
+変更します。プラグマ、関数セットそして個々の関数はすべて同じuse()行で
+インポートすることができます。例えば、以下のuseステートメントは標準の
+関数セットをインポートし、デバッグ・モードを不可能にします
+（プラグマ -no_debug):
+
+   use CGI qw/:standard -debug/;
+
+プラグマの現在の一覧を以下に示します:
+
+=over 4
+
+=item -any
+
+I<use CGI -any>を使うとき、問い合わせオブジェクトが理解しない
+全てのメソッドはHTMLタグとして解釈されます。これにより次の
+I<アドホックな>NetscapeとMicrosoft特有のHTML拡張をサポートする
+ことが出来ます。これは新しく、まだサポートされていないタグを
+自由に使わせてくれます:
+
+   use CGI qw(-any);
+   $q=new CGI;
+   print $q->gradient({speed=>'fast',start=>'red',end=>'blue'});
+
+anyを使うと打ち間違えた<cite>どんな</cite>メソッド名も
+HTMLタグとして解釈されるので、使うときには注意するか、まったく
+使わないかのどちらかにしてください。
+
+=item -compile
+
+これは指定されたオートロードされるメソッドが後に延期されるのではなく、
+先にコンパイルされます。これはFastCGIやmod_perlなどのMalcom Beattieの
+Perlコンパイラにバリバリ食わせるようになっているような状況の下で、
+長時間、実行されるスクリプトには有効です。使おうとしているメソッド
+あるいはメソッド・ファミリと結合して使ってください。
+
+   use CGI qw(-compile :standard :html3);
+
+あるいは以下のようにさえも
+
+   use CGI qw(-compile :all);
+
+このようにして-compile プラグマを使うことは、コンパイルされた
+関数が現在の名前空間にインポートされる効果を常に持つことに注意して
+ください。インポートすることなしにコンパイルしたければ、代りに
+compile()メソッドを使ってください（下記をご覧下さい）:
+
+   use CGI();
+   CGI->compile();
+
+これはあなたはstartupスクリプトで全てのCGIルーチンを予めコンパイル
+しておき、各mod_perlスクリプトで個別に関数をインポートしたいかも
+しれないmod_perl環境では特に便利です。
+
+=item -nosticky
+
+これはCGI.pmにヒドゥン・フィールド .submit と .cgifieldsを
+作らせません。 GETメソッドでの問い合わせ文字列で
+ヒドゥン・フィールドを持ちたくないときに便利です。例えば、
+この方法で作られた検索スクリプトはブックマークに適した、
+検索パラメータを持ったurlになります。 
+
+=item -no_undef_params
+
+CGI.pmにパラメータリストでの未定義のパラメータを入れさせないようにします。
+
+=item -no_xhtml
+
+デフォルトでは、CGI.pm　バージョン2.69以降はXHTML 
+(http://www.w3.org/TR/xhtml1/)を出力します。-no_xhtmlプラグマは、
+この機能を止めます。この機能について
+Michalis Kabrianis <kabrianis@hellug.gr>に感謝します。
+
+=item -nph
+
+これはCGI.pmにNPH（解析されないヘッダno parsed header）スクリプトに
+適したヘッダを作成させます。サーバにそのスクリプトがNPHであると
+告げるのと同じように他のことをする必要があるかも知れません。
+NPHスクリプトについては下記をご覧下さい。 
+
+=item -newstyle_urls
+
+CGIパラメータ問い合わせ文字列の名前=値の組を、アンパサンドではなく
+セミコロンで分割します。例えば:
+
+   ?name=fred;age=24;favorite_color=3
+
+
+セミコロン区切りの問い合わせ文字列は常に受取られますが、 -newstyle_urls
+プラグマが指定されなければ、self_url()やquery_string()では出力されません。
+
+これはバージョン2.64でデフォルトになりました。
+
+=item -oldstyle_urls
+
+CGIパラメータ問い合わせ文字列の名前=値の組を、セミコロンではなく
+アンパサンドで分割します。これはもはやデフォルトではありません。 
+
+=item -autoload
+
+プログラム内の理解されないすべての関数が可能な評価のためにCGI.pmが
+参照されるようautoloaderをオーバーライドします。これにより、それらを
+シンボル・テーブルに加えることなく、すべてのCGI.pm関数を使うことが出来ます。
+これはメモリ消費を心配するmod_perlユーザに関連します。
+I<警告:> I<-autoload>が有効なとき"詩的モード(poetry mode)"（括弧のない関数）を
+使うことは出来ません。I<hr>ではなくI<hr()>を使うか、I<use subs qw/hr p header/>の
+ようなものをスクリプトの先頭に加えてください。 
+
+=item -no_debug
+
+これはコマンド行処理機能をオフにします。HTMLを作成するためCGI.pmをコマンド行から
+実行したいけれども、標準入力やコマンド行からのリクエストCGIパラメータを解析したく
+ないのであれば、このプラグマを使ってください:
+
+   use CGI qw(-no_debug :standard);
+
+=item -debug
+
+これはコマンド行処理機能をオンにします。コマンド行処理からCGI引数を
+読み込むことに加えて、CGI.pmは一旦停止し、STDINから引数を読み込もうとして、
+"(offline mode: enter name=value pairs on standard input)"という
+メッセージを出します。 
+　 
+さらなる詳細は「デバッグ」セクションをご覧ください。
+
+=item -private_tempfiles
+
+CGI.pmはアップロードされたファイルを処理することができます。
+通常、アップロードされたファイルはテンポラリ・ディレクトリにスプールされ、
+処理が終ると削除されます。しかし、これには「ファイル・アップロード」セクションでも
+説明しているように盗聴の危険性があります。それが秘密の情報であっても、
+アップロードの途中に他のCGIスクリプトの作成者が覗き見ることができます。
+UNIXシステムでは、-private_tempfilesプラグマは、テンポラリ・ファイルを
+開かれると、何かデータが書込まれる前に、すぐに削除されるようにします。
+これにより盗聴の危険性を減らしますが、完全ではなりません。
+（まだ潜在的に可能な状態です）アタッカーに厳しく対応するためには、
+プログラムは一時ファイル名をやって来たHTTTPヘッダの32ビットチェックサムを
+計算することで選択します。
+
+一時ファイルが他のCGIスクリプトが読むことが出来ないことを保証するには、
+スクリプトを実行するためにsuEXEC または CGI ラッパを使ってください。
+一時ファイルはモード 0600（ワールドもグループも読むことが出来ない）で
+作成されます。
+
+一時ディレクトリは以下のアルゴリズムを使って選択されます：
+
+    1. 現在のユーザ(例えば"nobody")がホーム・ディレクトリに"tmp"と
+       いうディレクトリを持っていれば、それを使います（Unixシステムのみ）
+
+    2. 環境変数TMPDIRがあれば、示された場所を使います
+
+    3. そうでなければ、以下の場所を当たります /usr/tmp, /var/tmp, C:\temp,
+    /tmp, /temp, ::Temporary Items, and \WWW_ROOT.
+
+それぞれの場所はそれがディレクトリであるか、書きこみ可能かをチェックされます。
+そうでなければアルゴリズムは次の選択を試してみます。
+
+=back
+
+=head2 HTMLタグ関数のインポートのための特別な形式
+
+メソッドの多くがHTMLを作成します。下記で説明するように、
+タグ関数は自動的に開始と終了の両方のタグを自動的に作成します。
+例えば：
+
+  print h1('Level 1 Header');
+
+は 以下のものを作成します。
+
+  <h1>Level 1 Header</h1>
+
+ときには開始と終了タグを自分自身で作成したいときがあるでしょう。
+この場合、以下のようにstart_I<タグ名>とend_I<タグ名>の形式を
+使うことができます:
+
+  print start_h1,'Level 1 Header',end_h1;
+
+いくつかの例外がありますが（下記で説明）、start_I<タグ名>とend_I<タグ名>関数は
+I<use CGI>したときに自動的に作成されません。しかし、その名前の前に
+アスタリスクを置くか、あるいは代わりに"start_I<タグ名>"や"end_I<タグ名>"を
+インポート・リストに要求することによって、I<start/end>関数を作成したいタグを
+指定することができます。
+
+例：
+
+  use CGI qw/:standard *table start_ul/;
+
+この例では、標準の関数に加えて以下の関数が作成されます：
+
+=over 4
+
+=item 1. start_table() (<TABLE> タグを作成) 
+
+=item 2. end_table() (</TABLE> タグを作成) 
+
+=item 3. start_ul() (<UL> タグを作成) 
+
+=item 4. end_ul() (</UL> タグを作成) 
+
+=back
+
+=head1 動的なドキュメント作成
+
+CGI.pmの関数ほとんどは実行中にドキュメントを作成することを扱います。
+一般的にはまずHTTPヘッダを作成し、その後にドキュメントそのものが続きます。
+CGI.pmはHTMLを作成するのと同じくらい、多くのさまざまなHTTPヘッダを
+作成するための関数を提供します！GIFイメージの作成についてはGD.pm
+モジュールをご覧ください。
+
+これらの関数のそれぞれはHTMLやHTTPの一部を作成します。それらは
+直接出力できるので、ブラウザ・ウィンドウに表示したり、文字列を
+追加したり、後で使うようにファイルに保存したりといったことができます。
+
+=head2 標準HTTPヘッダの作成:
+
+通常、CGIスクリプトで最初にやることはHTTPヘッダを出力することです。
+これはブラウザに予想されるドキュメントのタイプを伝え、言語や有効期限、
+ドキュメントをキャッシュするかどうかといった他のオプションの情報を
+与えます。ヘッダは、サーバー・プッシュやペイ・パー・ビューといった
+特別な目的のために使われることもあります。
+
+    print $query->header;
+
+         -あるいは-
+
+    print $query->header('image/gif');
+
+         -あるいは-
+
+    print $query->header('text/html','204 No response');
+
+         -あるいは-
+
+    print $query->header(-type=>'image/gif',
+                 -nph=>1,
+                 -status=>'402 Payment required',
+                 -expires=>'+3d',
+                 -cookie=>$cookie,
+                             -charset=>'utf-7',
+                             -attachment=>'foo.gif',
+                 -Cost=>'$2.00');
+
+header()はContent-type:ヘッダを返します。もし選択すれば、独自のMIMEタイプを
+作成することができます。そうでなければデフォルトはtext/htmlです。
+オプションの２番目のパラメータはステータス・コードと人間が読むことができる
+メッセージを指定します。例えば、204、"No response"を指定すると、ブラウザに
+何もしないように伝えるスクリプトを作ることができます。
+
+最後の例は、CGIメソッドへ引数を渡すための名前付き引数スタイルを示しています。
+理解されるパラメータはB<-type>, B<-status>, B<-expires>, そしてB<-cookie>です。
+他の名前がついたパラメータはすべて、最初のハイフンを落とされて、
+ヘッダ・フィールドに変えられます、あなたが望むすべてのHTTPヘッダを指定する
+ことが可能です。内部のアンダースコアはハイフンに変換されます:
+
+    print $query->header(-Content_length=>3002);
+
+ほとんどのブラウザはCGIスクリプトからの出力をキャッシュしません。
+スクリプトが新たに呼び出されるたびに、ブラウザはページをリロードします。
+この動きはB<-expires>で変更することができます。このパラメータで絶対または相対の
+有効期間を指定すると、いくつかのブラウザとプロキシー・サーバは指定された有効期限まで、
+そのスクリプトの出力をキャッシュします。以下の形式はすべて-expiresフィールドに
+対して適切です:
+
+    +30s                              今から30秒
+    +10m                              今から10分
+    +1h                               今から１時間
+    -1d                               昨日（つまり、できるだけ早く！）
+    now                               直後に
+    +3M                               ３ヶ月間
+    +10y                              １０年間
+    Thursday, 25-Apr-1999 00:40:33 GMT  指定された時刻と日付
+
+B<-cookie>パラメータはブラウザに、この後このスクリプトとの全ての
+トランザクション間、"魔法のクッキー"を提供することを伝えます。Netscape
+クッキーは有効期限のような面白い属性が入った特別なフォーマットを持っています。
+セッション・クッキーを作成し、取り出すためにはcookie()メソッドを使ってください。
+
+B<-nph>パラメータがtrue値に設定されれば、それはNPH（no-parse-header)
+スクリプトで機能するための正しいヘッダを出力させます。そのすべてのスクリプトが
+NPHであることを期待する、ある種のサーバで使うことは重要です。
+
+B<-charset>パラメータはブラウザに送信される文字セットを制御するために
+使うことが出来ます。与えられなければ、デフォルトはISO-8859-1です。
+副作用として、これはcharset()メソッドも設定します。
+
+B<-attachment>パラメータは添付にページを切り替えるために使うことが出来ます。
+ブラウザによっては、ページを表示する代りにファイルに保存するためのプロンプトを
+表示します。引数の値は保存されるファイルのための提案される名前です。
+これが機能するためには、B<-type>を"application/octet-stream"にしなければ
+いけないかもしれません。
+
+=head2 リダイレクション・ヘッダの作成
+
+   print $query->redirect('http://somewhere.else/in/movie/land');
+
+ときには、ドキュメントをあなた自身が作成するのではなく、おそらくURLを
+時刻やユーザの識別子をベースにより選択しながら、単にブラウザをどこかに
+リダイレクトしたいだけかもしれません。
+
+redirect()関数はブラウザを他のURLにリダイレクトします。もしこのような
+リダイレクトを使えば、headerも出力してはB<いけません>。
+
+私が提案できる1つのヒントは、あなたのサイトの別のドキュメントへの
+リダイレクトを作成したとき、相対リンクは正しく機能しないことです。これは、
+いくつかのサーバが使うよく考えられた最適化によるものです。それを解決する
+方法はリダイレクトするドキュメントの（http: 部分も含めた）完全なURLを
+使うことです。
+
+名前付き引数も使うことができます:
+
+    print $query->redirect(-uri=>'http://somewhere.else/in/movie/land',
+               -nph=>1);
+
+B<-nph>パラメータがtrue値に設定されれば、それはNPH（no-parse-header)
+スクリプトで機能するための正しいヘッダを出力させます。
+Microsoft Internet Information Server （訳者注：原文では Internet Explorer）の
+ように、そのすべてのスクリプトがNPHであることを期待する、ある種のサーバで
+使うことは重要です。
+
+=head2 HTMLドキュメント・ヘッダの作成
+
+   print $query->start_html(-title=>'Secrets of the Pyramids',
+                -author=>'fred@capricorn.org',
+                -base=>'true',
+                -target=>'_blank',
+                -meta=>{'keywords'=>'pharaoh secret mummy',
+                    'copyright'=>'copyright 1996 King Tut'},
+                -style=>{'src'=>'/styles/style1.css'},
+                -BGCOLOR=>'blue');
+
+HTTPヘッダを作成した後、ほとんどのCGIスクリプトはHTMLドキュメントの出力を
+始めます。start_html()ルーチンはページの見た目や動きを制御するたくさんの
+オプションの情報とともにページの先頭を作成します。
+
+このメソッドは閉じられたHTMLヘッダと開かれた<body>タグを返します。
+全てのパラメータはオプションです。名前付きパラメータ形式で、理解される
+パラメータは-title, -author, -base, -xbase そして -targetです
+（下記の説明をご覧ください）。Netscapeの非公式のBGCOLOR属性ような、
+指定されたすべての追加のパラメータは<body>タグに追加されます。
+追加のパラメータは前にハイフンをつけなければいけません。
+
+引数B<-xbase>は以下のように、<base>タグを現在の位置から変えるために
+HREFを提供することを可能にします
+
+    -xbase=>"http://home.mcom.com/"
+
+すべての相対リンクは、このタグからの相対と解釈されます。
+
+引数B<-target>はすべてのリンクとページ上のフォームのための
+デフォルトのターゲット・フレームを指定することができます。
+B<これはNetscapeブラウザでのみ機能する標準でないHTTP機能です!>
+これをどのように扱うかの詳細については、Netscapeのフレームに
+ついてのドキュメントをご覧ください。
+
+    -target=>"answer_window"
+
+すべての相対リングはこタグの相対だと解釈されます（訳者注：おそらく不要(?_?)）。
+B<-meta>引数でヘッダに任意のメタ情報を追加します。この引数はメタ情報の
+名前／値の組が入った連想配列へのリファレンスを期待します。
+これらは以下のような、ヘッダでの一連の<meta>タグに変わります:
+
+    <meta name="keywords" content="pharaoh secret mummy">
+    <meta name="description" content="copyright 1996 King Tut">
+
+<meta>タグのHTTP-EQUIVタイプを作るためには、以下で説明するB<-head>を
+使ってください。
+
+B<-style>タグはあなたのコードにカスケーディング・スタイルシートを
+入れるために使われます。さらに詳細な情報は「カスケーディング・スタイルシート」の
+セクションをご覧ください。
+
+B<-lang>引数は<html>タグにlanguage属性を入れるために使われます。
+指定されなかったときのデフォルトはUS Englishのための"en-US"です。例:
+
+    print $q->start_html(-lang=>'fr-CA');
+
+B<-encoding>引数を、XHTMLのためのキャラクタ・セットを指定するために使うことが
+出来ます。指定されなければデフォルトはiso-8859-1です。
+
+B<-head>タグで他の任意のHTML要素を<head>セクションに置くことができます。
+例えば、あまり使われない<link>要素をHEADセクションに置くためには、これを
+使ってください:
+
+    print start_html(-head=>Link({-rel=>'next',
+                          -href=>'http://www.capricorn.com/s2.html'}));
+
+複数のHTML要素を<head>セクションに入れるためには、単に
+配列リファレンスを渡してください:
+
+    print start_html(-head=>[ 
+                             Link({-rel=>'next',
+                   -href=>'http://www.capricorn.com/s2.html'}),
+                     Link({-rel=>'previous',
+                   -href=>'http://www.capricorn.com/s1.html'})
+                 ]
+             );
+
+そして、これがHTTP-EQIV <meta>タグの作成方法です：
+
+      print start_html(-head=>meta({-http_equiv => 'Content-Type',
+                                    -content    => 'text/html'}))
+
+JAVASCRIPTING: B<-script>, B<-noScript>, B<-onLoad>, B<-onMouseOver>,
+B<-onMouseOut>そしてB<-onUnload>パラメータがNetscape JavaScript呼出しを
+ページに追加するために使われます。B<-script>はJavaScript関数定義が
+入ったテキストのブロックを示さなければなりません。このブロックは
+（HTTPではなく）HTML内部の<script>ブロックに置かれます。たとえページが
+完全にロードされる前にユーザがストップ・ボタンを押したとしても、
+すべてのJavaScript関数が置かれるチャンスをあなたのページに与えるため、
+そのブロックはヘッダに置きます。CGI.pmはJavaScriptを知らないブラウザが、
+そのコードで息が詰まることのないような方法で、そのスクリプトをフォーマット
+しようとします：それにも関らず、残念ながらChimera for Unixのように
+混乱してしまうブラウザがいくつかあります。
+
+B<-onLoad>B<-onUnload>パラメータは、それぞれブラウザによって、
+そのページが開かれたときと閉じられたときに実行されるJavaScriptコードを
+示します。通常これらのパラメータはB<-script>フィールドで定義された
+関数を呼びます:
+
+      $query = new CGI;
+      print $query->header;
+      $JSCRIPT=<<END;
+      // 馬鹿馬鹿しいことをたずねる
+      function riddle_me_this() {
+     var r = prompt("What walks on four legs in the morning, " +
+               "two legs in the afternoon, " +
+               "and three legs in the evening?");
+     response(r);
+      }
+      // 馬鹿馬鹿しい答えを取得
+      function response(answer) {
+     if (answer == "man")
+        alert("Right you are!");
+     else
+        alert("Wrong!  Guess again.");
+      }
+      END
+      print $query->start_html(-title=>'The Riddle of the Sphinx',
+                   -script=>$JSCRIPT);
+
+JavaScriptを持っていないブラウザ（あるいはJavaScriptがオフになっているブラウザ）で
+表示される、いくつかのHTMLテキストを渡すためにはB<-noScript>パラメータを使ってください。
+
+Netscape 3.0 はLANGUAGEとSRCを含めて、<script>タグの多くの属性を理解します。
+後者はソースを持った各ページに散乱させるのではなく、JavaScriptpコードを
+ファイルまたはCGIスクリプトに保管することを可能にするため、特に興味深いものです。
+この属性を使うためには、B<-script>パラメータに１つまたはそれ以上の-language、-src
+や-codeが入ったハッシュ・リファレンスを渡してください:
+
+    print $q->start_html(-title=>'The Riddle of the Sphinx',
+             -script=>{-language=>'JAVASCRIPT',
+                                   -src=>'/javascript/sphinx.js'}
+             );
+
+    print $q->(-title=>'The Riddle of the Sphinx',
+           -script=>{-language=>'PERLSCRIPT',
+             -code=>'print "hello world!\n;"'}
+           );
+
+
+最後の機能は複数の<script>セクションをヘッダに入れることを可能にします。
+配列リファレンスとしてスクリプト・セクションのリストを渡すだけです。
+これはJavaScriptの異なる方言のための異なるソースを指定することができます。例えば:
+
+     print $q->start_html(-title=>'The Riddle of the Sphinx',
+                          -script=>[
+                                    { -language => 'JavaScript1.0',
+                                      -src      => '/javascript/utilities10.js'
+                                    },
+                                    { -language => 'JavaScript1.1',
+                                      -src      => '/javascript/utilities11.js'
+                                    },
+                                    { -language => 'JavaScript1.2',
+                                      -src      => '/javascript/utilities12.js'
+                                    },
+                                    { -language => 'JavaScript28.2',
+                                      -src      => '/javascript/utilities219.js'
+                                    }
+                                 ]
+                             );
+
+これがちょっとヒドいと見えれば、私のアドバイスを聞いてストレートなCGIスクリプトで
+我慢してください。
+
+JavaScriptについての更なる情報については
+
+   http://home.netscape.com/eng/mozilla/2.0/handbook/javascript/
+
+をご覧ください。
+
+古いスタイルの位置によるパラメータは以下の通りです。
+
+=over 4
+
+=item B<パラメータ:>
+
+=item 1.
+
+タイトル
+
+=item 2.
+
+作者のe-mailアドレス（もしあれば<link ref="MADE"> タグを作成します） 
+
+=item 3.
+
+<base>タグをヘッダに入れたければ、'true'フラグ。これはドキュメントが
+動いたけれども、ドキュメントの階層は移植しないとき、相対アドレスを
+絶対アドレスに解決するのを助けます。注意して使ってください。
+
+=item 4, 5, 6...
+
+他のすべてのパラメータは<body>タグに入れたいものです。ここは色や壁紙の
+パターンのような、Netscape拡張を置くのに適した場所です。
+
+=back
+
+=head2 HTMLドキュメントの終わり:
+
+    print $query->end_html
+
+</body></html> タグを出力することでHTMLドキュメントを終らせます。
+
+=head2 状態情報を保持し自分自身を参照するURLの作成:
+
+    $myself = $query->self_url;
+    print q(<a href="$myself">I'm talking to myself.</a>);
+
+self_url()は選択されたとき、今動いているすべての状態情報で、
+このスクリプトを再度呼び出すURLを返します。内部のアンカーを
+使ってドキュメントの中でジャンプしたいけれども、フォームの現在の
+内容を壊したくないときにとても有効です。以下のようにするとうまくいきます。
+
+     $myself = $query->self_url;
+     print "<a href=\"$myself#table1\">See table 1</a>";
+     print "<a href=\"$myself#table2\">See table 2</a>";
+     print "<a href=\"$myself#yourself\">See for yourself</a>";
+
+何を返すかを更に制御したければ、代わりにB<url()>メソッドを使ってください。
+
+処理されていない問い合わせ文字列はquery_string()で取り出すこともできます:
+
+    $the_string = $query->query_string;
+
+=head2 スクリプトのURLを取得する
+
+    $full_url      = $query->url();
+    $full_url      = $query->url(-full=>1);  #別の書き方
+    $relative_url  = $query->url(-relative=>1);
+    $absolute_url  = $query->url(-absolute=>1);
+    $url_with_path = $query->url(-path_info=>1);
+    $url_with_path_and_query = $query->url(-path_info=>1,-query=>1);
+    $netloc        = $query->url(-base => 1);
+
+B<url()>はスクリプトのURLをさまざまなフォーマットで返します。何も
+引数なしで呼ばれれば、ホスト名とポート番号を含んだURLのフルの形式を
+返します。
+
+    http://your.host.com/path/to/script.cgi
+
+このフォーマットを以下の名前付き引数で変更することができます:
+
+=over 4
+
+=item B<-absolute>
+
+trueであれば、絶対URLを作成します。例えば
+
+    /path/to/script.cgi
+
+=item B<-relative>
+
+相対URLを作成します。異なるパラメータでスクリプトを
+もう一度呼びたいときに、これは便利です。例えば:
+
+    script.cgi
+
+=item B<-full>
+
+何も引数なしに呼んだのとまったく同じく、フルのURLを作成します。
+これは-relative と-absoluteを上書きします。 
+
+=item B<-path> (B<-path_info>)
+
+URLに追加のパス情報を追加します。これはB<-full>,B<-absolute>または
+B<-relative>と一緒にすることができます。B<-path_info>がシノニムとして
+提供されます。 
+
+=item B<-query> (B<-query_string>)
+
+URLに問い合わせ文字列を追加します。これはB<-full>,B<-absolute>または
+B<-relative>と一緒にすることができます。B<-query_string>がシノニム
+として提供されます。 
+
+=item B<-base>
+
+http://www.foo.com:8000 のように単にプロトコルとネットでの位置を生成します。
+
+=back
+
+=head2 POSTとURLパラメータの混合
+
+   $color = $query-&gt;url_param('color');
+
+問い合わせ文字列（引数が後ろについた"?"マーク）が入ったURLへ
+POSTするフォームを作成することにより、スクリプトはフォームと同じように
+CGIパラメータをURLで受け取ることは可能です。B<param()>メソッドは、
+URLの問い合わせ文字列を無視し、常にPOSTされたフォームの内容を返します。
+URLパラメータを取り出すためにはB<url_param()>メソッドを呼び出してください。
+B<param()>と同じように使ってください。大きな違いはパラメータを読むことは常に
+できますが、設定はできません。
+
+いかなる状況においても、URL問い合わせ文字列の内容がPOSTされたフォームの
+同じ名前のCGIパラメータを干渉することはありません。URL問い合わせ文字列と
+GETメソッドでサブミットされるフォームとを混ぜてみると、その結果はあなたが
+予想しなかったことになるでしょう。
+
+=head1 標準HTML要素の作成：
+
+HTML 3 とHTML 4タグで全てでなければ、CGI.pmは一般的なHTMLショートカット・
+メソッドの大半を定義します。HTMLショートカットは１つのHTMLの後に名づけられ、
+出力でき、好きなように扱うことができるHTMLテキストの一部を返します。
+各ショートカットは文字列に追加したり、ファイルの保存したり、または最も
+一般的にはブラウザ・ウィンドウで表示するように出力することができる
+HTMLコードを返します。
+
+この例はHTMLメソッドをどのように使うかを示します：
+
+   $q = new CGI;
+   print $q->blockquote(
+             "Many years ago on the island of",
+             $q->a({href=>"http://crete.org/"},"Crete"),
+             "there lived a Minotaur named",
+             $q->strong("Fred."),
+            ),
+       $q->hr;
+
+この結果は以下のHTMLコードになります（読みやすくするために改行を
+入れています）
+
+   <blockquote>
+   Many years ago on the island of
+   <a href="http://crete.org/">Crete</a> there lived
+   a minotaur named <strong>Fred.</strong> 
+   </blockquote>
+   <hr>
+
+HTMLショートカットの呼出しの書き方が不格好だと思えば、
+名前空間にインポートし、オブジェクト的な書き方を完全に無くすことが
+できます（詳細は次のセクションをご覧ください）:
+
+   use CGI ':standard';
+   print blockquote(
+      "Many years ago on the island of",
+      a({href=>"http://crete.org/"},"Crete"),
+      "there lived a minotaur named",
+      strong("Fred."),
+      ),
+      hr;
+
+=head2 HTMLショートカットに引数を与える
+
+HTMLメソッドは0、1つまたは複数の引数を受け取ります。もし引数を
+与えなければ1つのタグを得ます:
+
+   print hr;    #  <hr>
+
+もし１つまたは複数の文字列引数を与えれば、スペースでつなげられ、
+開始と終了タグに囲まれます:
+
+   print h1("Chapter","1"); # <h1>Chapter 1</h1>"
+
+もし最初の引数が連想配列リファレンスであれば、その連想配列のキーと
+値はHTMLタグの属性になります:
+
+   print a({-href=>'fred.html',-target=>'_new'},
+      "Open a new frame");
+
+        <a href="fred.html",target="_new">Open a new frame</a>
+
+もしそうしたければ、属性名の前につくダッシュをはずすことができます:
+
+   print img {src=>'fred.gif',align=>'LEFT'};
+
+       <img align="LEFT" src="fred.gif">
+
+HTMLタグ属性が引数を持たないこともあります。例えば順序付きリストは
+COMPACTとして印をつけることができます。この書き方はundef文字列を示す
+引数になります:
+
+   print ol({compact=>undef},li('one'),li('two'),li('three'));
+
+CGI.pmバージョン2.41より以前では、空('')文字列を属性引数として与える
+ことはundefを与えるのと同じでした。しかし、これは<IMG ALT="">形式の
+タグを作りたい人たちに合わせるために変更されました。違いは以下の2つの
+コードで示されます:
+
+   コード                 結果
+   img({alt=>undef})      <img alt>
+   img({alt=>''})         <img alt="">
+
+=head2 HTMLショートカットの分配されるプロパティ
+
+HTMLショートカットの素晴らしい機能の1つに、それらが分配されることが
+あります。リストへのB<リファレンス>が入った引数を与えると、そのタグは
+リストの各要素をまたがって分配されます。例えば、順序付きのリストを
+作る方法の１つを以下に示します:
+
+   print ul(
+             li({-type=>'disc'},['Sneezy','Doc','Sleepy','Happy'])
+           );
+
+これは結果として以下のようなHTML出力になります:
+
+   <ul>
+     <li type="disc">Sneezy</li>
+     <li type="disc">Doc</li>
+     <li type="disc">Sleepy</li>
+     <li type="disc">Happy</li>
+   </ul>
+
+これはテーブルを作るのとにとても便利です。例えば:
+
+   print table({-border=>undef},
+           caption('When Should You Eat Your Vegetables?'),
+           Tr({-align=>CENTER,-valign=>TOP},
+           [
+              th(['Vegetable', 'Breakfast','Lunch','Dinner']),
+              td(['Tomatoes' , 'no', 'yes', 'yes']),
+              td(['Broccoli' , 'no', 'no',  'yes']),
+              td(['Onions'   , 'yes','yes', 'yes'])
+           ]
+           )
+        );
+
+=head2 HTMLショートカットとリストの挿入
+
+この小さなコードについて考えてみてください：
+
+   print blockquote(em('Hi'),'mom!'));
+
+これは通常に、おそらく期待した文字列を返します、すなわち:
+
+   <blockquote><em>Hi</em> mom!</blockquote>
+
+要素"Hi"と要素"mom!"の間のスページに注意してください。CGI.pmは
+配列を間に入れた場所に追加のスペースをおきます。これは特別な$"変数に
+より制御されます。時には、例えば一連のイメージの並べようとしているときなど、
+この追加のスペースはあなたの望んでいたものではありません。この場合、
+$"を空文字列に変更することによって簡単に変更することができます。
+
+   {
+      local($") = '';
+      print blockquote(em('Hi'),'mom!'));
+    }
+
+コードをここで示したようにブロックにいれることを提案します。そうしなければ
+明示的にリセットするまで、$"の変更が後のコードに影響を与えます。
+
+=head2 標準ではないHTMLショートカット
+
+いくつかのHTMLタグは多様性のために標準パターンに従いません。
+
+B<comment()>はHTMLコメント(<!-- comment -->)を作成します。
+以下のように呼び出してください
+
+    print comment('here is my comment');
+
+組み込みPerl関数とぶつかるので、以下の関数は先頭の文字が大文字になります:
+
+    Select
+    Tr
+    Link
+    Delete
+    Accept
+    Sub
+
+さらにstart_html()、end_html()、start_form()、end_form()、start_multipart_form()
+そして全てのフォームタグは特別です。それぞれのセクションをご覧ください。
+
+=head2 HTMLの自動エスケープ
+
+デフォルトでは、フォーム作成関数用により作成されるすべてのHTMLは
+escapeHTML()という関数を通ります:
+
+=over 4
+
+=item $escaped_string = escapeHTML("unescaped string");
+
+文字列に入っているHTMLフォーマットの文字をエスケープ。
+
+=back
+
+文字セットISO-8859-1(デフォルト)を指定すると、標準のHTMLエスケープの
+ルールが使われます。"<"文字は"&lt;"、">"は"&gt;","&"は"&amp"、クォート文字は
+"&quot"になります。さらに0x8bと0x9b文字、これは多くのWindowsベースのブラウザは
+左と右の斜め括弧に解釈されるのですが、は数値のHTMLエントリ（"&#139"と"&#155"）に
+置きかえられます。charset()メソッドを明示的に呼び出すか、header()に-charset引数を
+渡すことにより、手で文字設定を変更したら、CGI.pmはすべての可能性のある
+エンコーディングのための検索テーブルを持たないので、B<すべての>文字は数値エントリに
+よって置きかえられます。
+
+自動エスケープはh1()のような他のショートカットには適用されません。人々が
+ゲストブックなどにいれるかもしれない困った書き方からあなたのページを守るため、
+信用できないデータにescapeHTML()を呼ぶべきです。文字セットを変更するには、
+charset()を使ってください。自動エスケープを完全に止めるにはautoEscape(0)を
+使ってください：
+
+=over 4
+
+=item $charset = charset([$charset]);
+
+現在の文字セットを取得あるいは設定します 
+
+=item $flag = autoEscape([$flag]);
+
+自動エスケープ・フラグの値を取得または設定します。 
+
+=back
+
+=head2 HTMLをきれいに出力(PRETTY-PRINTING)
+
+デフォルトでは、これらの関数により作成されるすべてのHTMLは、
+改行やインデントのない１つの長い行になります。これは汚いですが、
+ドキュメントの大きさを10%−20%減らします。きれいな出力を取得するには、
+Brian Paulsenによって作成されたサブクララス、L<CGI::Pretty>を
+使ってください。
+
+=head1 フォームの作成：
+
+I<一般的な注意点>　様々なフォーム・作成メソッドは、すべて呼び出し元に要求された
+フォーム要素を作成するタグが入った文字列を返します。あなたはこれらの文字列を
+実際に出力する責任があります。このように設定されるので、フォーム要素の周りに
+フォーマットするタグを置くことが出来ます。
+
+I<他の注意点>フォームに指定するデフォルトの値は、（問い合わせ文字列がない時）
+スクリプトが呼び出されたB<最初のとき>だけ使われます。その後のスクリプト呼び出し
+では（問い合わせ文字列があるとき）、たとえ空白であっても前の値が使われます。
+
+前の値からフィールドの値を変更したければ２つの選択肢があります:
+
+(1) 設定するためにparam()メソッドを呼び出す。
+
+(2) -override (別名 -force) パラメータを使う（バージョン2.15での新しい機能）。
+これは前の値に関係なく、デフォルトの値が使われるように強制します： 
+
+   print $query->textfield(-name=>'field_name',
+               -default=>'starting value',
+               -override=>1,
+               -size=>50,
+               -maxlength=>80);
+
+I<さらにもう１つの注意> デフォルトでは、フォーム要素のテキストとラベルは
+HTMLルールにしたがってエスケープされます。つまりボタンのためのラベルとして
+"<CLICK ME>"を安全に使うことが出来ます。しかしそのために、フィールドにAの
+ような特殊なHTML文字の並びをいれることができません。自動的なエスケープを
+オフにしたければ、CGIオブジェクトを作成した直後にautoEscape()メソッドを
+falseで呼び出してください:
+
+   $query = new CGI;
+   $query->autoEscape(undef);
+
+=head2 ISINDEXタグの作成
+
+   print $query->isindex(-action=>$action);
+
+     -あるいは-
+
+   print $query->isindex($action);
+
+<isindex> タグを出力します。あまり面白くはありません。
+パラメータ -actionは、問い合わせを処理するスクリプトのURLを指定します。
+デフォルトでは現在のスクリプトで問い合わせを処理します。
+
+=head2 フォームの開始と終了
+
+    print $query->start_form(-method=>$method,
+                -action=>$action,
+                -enctype=>$encoding);
+      <... さまざまなフォームの内容 ...>
+    print $query->endform;
+
+    -あるいは-
+
+    print $query->start_form($method,$action,$encoding);
+      <... さまざまなフォームの内容 ...>
+    print $query->endform;
+
+start_form()は<form>タグを指定したオプションのメソッド、
+アクション、フォーム・エンコーディングと一緒に返します。デフォルトは
+以下の通りです:
+
+    method: POST
+    action: this script
+    enctype: application/x-www-form-urlencoded
+
+endform()は</form>タグを返します。
+
+Start_form()のenctype引数はブラウザがフォームをサーバに送信する前にフォームの
+様々なフィールドをどのようにパッケージするかを伝えます。以下の2つの値が
+指定できます:
+
+B<注意:> このメソッドは以前startform()という名前でした。そしてstartform()は、
+まだエリアスとして理解されます。
+
+=over 4
+
+=item B<application/x-www-form-urlencoded>
+
+これはNetscape 2.0より前のすべてのブラウザによって使われた古いタイプの
+エンコーディングです。多くのCGIスクリプトと互換性があり、テキスト・データが
+入った短いフィールドに適しています。便利なようにCGI.pmは、
+このエンコーディング・タイプの名前をB<&$CGI::URL_ENCODED>に格納しています。 
+
+=item B<multipart/form-data>
+
+これはNetscape 2.0によって導入された新しいタイプのエンコーディングです。
+これは非常に大きなフィールドを持ったフォームやバイナリ・データを
+転送するフォームに適しています。最も重要なことは、これはNetscape 2.0 フォームの
+"ファイル・アップロード"機能を可能にすることです。便利なようにCGI.pmは、
+このエンコーディング・タイプの名前をB<&CGI::MULTIPART>に格納しています。
+
+CGI.pmやそれらを扱うように設計されているほかのライブラリを使わなければ、
+CGIスクリプトはこのタイプのエンコーディングを使うフォームを簡単には
+解釈できません。
+
+=back
+
+互換性のため、start_form()メソッドはデフォルトでは古い形を使います。
+デフォルトで新しい形式を使いたければ、B<start_form()>の代りに
+B<start_multipart_form()>を呼ぶことが出来ます。
+
+JAVASCRIPTING: B<-name>とB<-onSubmit>パラメータがJavaScriptでの
+使用のために提供されています。-nameパラメータはJavaScript関数に
+よって識別され、扱えるようにフォームの名前を与えます。-onSubmitは
+フォームがサーバにサブミットされる直前に実行されるJavaScript関数を
+示さなければなりません。この機会を使って、フォームの内容に矛盾が
+ないか、すべて入っているかをチェックすることができます。何か
+おかしな事を見つけたら、アラートボックスを表示したり、自分でそれを
+修正するかもしれません。この関数からfalseを返すことによって
+サブミットを中止することが出来ます。
+
+通常JavaScriptの固まりはHTMLヘッダでの<script>ブロックで定義され、
+-onSubmitはこれらの関数呼び出しの1つを指します。詳細については
+start_html()をご覧下さい。
+
+=head2 テキスト・フィールドの作成
+
+    print $query->textfield(-name=>'field_name',
+                -default=>'starting value',
+                -size=>50,
+                -maxlength=>80);
+    -あるいは-
+
+    print $query->textfield('field_name','starting value',50,80);
+
+textfield()はテキスト入力フィールドを返します。
+
+=over 4
+
+=item B<パラメータ>
+
+=item 1.
+
+最初のパラメータは必須で、フィールド名です (-name)。 
+
+=item 2.
+
+2番目のパラメータはオプションで、フィールド内容のデフォルト文字列です (-default)。 
+
+=item 3.
+
+3番目のパラメータはオプションで、文字数によるフィールドの大きさです (-size)。 
+
+=item 4.
+
+4番目のパラメータはオプションで、そのフィールドが受けつける最大文字数です (-maxlength)。 
+
+=back
+
+これらすべてのメソッドでは、フィールドはそのスクリプトの以前の呼び出し
+からの内容で初期化されます。フォームが処理されたとき、テキスト・フィールドの
+値は以下のように取り出すことが出来ます:
+
+       $value = $query->param('foo');
+
+そのスクリプトが1度呼び出された後に初期値でリセットしたければ、
+以下のようにすることが出来ます:
+
+       $query->param('foo',"I'm taking over this value!");
+
+2.15での新機能：フィールドを前の値にしたくなければ、-override(別名　-force）
+パラメータを使うことにより、現在の値に強制することが出来ます:
+
+    print $query->textfield(-name=>'field_name',
+                -default=>'starting value',
+                -override=>1,
+                -size=>50,
+                -maxlength=>80);
+
+JAVASCRIPTING: JavaScriptイベント・ハンドラを登録するために、B<-onChange>、 
+B<-onFocus>、B<-onBlur>、B<-onMouseOver>、B<-onMouseOut>そしてB<-onSelect>
+パラメータを提供することが出来ます。onChangeハンドラはユーザが
+テキスト・フィールドの内容を変更するといつでも呼び出されます。
+よければテキストの有効性チェックをすることができます。
+onFocusとonBlurはそれぞれ、挿入ポイントがテキスト・フィールドに
+入ったとき、テキスト・フィールドから抜けたときに呼ばれます。
+onSelectは選択されているテキストの部分を変えたときに呼ばれます。
+
+=head2 大きなテキスト・フィールドの作成
+
+   print $query->textarea(-name=>'foo',
+              -default=>'starting value',
+              -rows=>10,
+              -columns=>50);
+
+    -あるいは
+
+   print $query->textarea('foo','starting value',10,50);
+
+textarea()は、まるでテキストフィールドのようですが、複数行テキスト
+入力ボックスのために行と列を指定することが出来ます。そのフィールドに
+開始する値を与えることができます。それは長くしたり、複数行にすることができます。
+
+JAVASCRIPTING: B<-onChange>, B<-onFocus>, B<-onBlur>,B<-onMouseOver>,
+B<-onMouseOut>そしてB<-onSelect>パラメータが理解されます。
+詳細はtextfield()をご覧下さい。
+
+=head2 パスワード・フィールドの作成
+
+   print $query->password_field(-name=>'secret',
+                -value=>'starting value',
+                -size=>50,
+                -maxlength=>80);
+    -あるいは-
+
+   print $query->password_field('secret','starting value',50,80);
+
+password_field()は、その内容がwebページでは星印で表示されることを
+除いては、textfiled()と同じです。
+
+JAVASCRIPTING: B<-onChange>, B<-onFocus>, B<-onBlur>,B<-onMouseOver>,
+B<-onMouseOut>そしてB<-onSelect>パラメータが理解されます。
+詳細はtextfield()をご覧下さい。
+
+=head2 ファイル・アップロード・フィールドの作成
+
+    print $query->filefield(-name=>'uploaded_file',
+                -default=>'starting value',
+                -size=>50,
+                -maxlength=>80);
+    -あるいは-
+
+    print $query->filefield('uploaded_file','starting value',50,80);
+
+filefield()はNetscape2.0ブラウザのためのファイル・アップロード・フィールドを
+返します。利点をすべて生かすためには、そのフォームに
+I<新しいマルチパート・エンコーディング・スキームを使わなければなりません>。
+これはエンコーディング・タイプをB<&CGI::MULTIPART>でB<start_form()>を呼び出すか、
+普通のB<start_form()>の代りに新しいメソッドB<start_multipart_form()>を呼び出すかの
+どちらかで行うことが出来ます。
+
+=over 4
+
+=item B<パラメータ>
+
+=item 1.
+
+最初のパラメータは必須で、フィールド名です(-name) 。 
+
+=item 2.
+
+2番目のパラメータはオプションで、デフォルトのファイル名として
+使われるフィールド内容のための初期値です (-default)。
+
+セキュリティ上の理由から、ブラウザはこのフィールドには注意を
+払いません、そのため初期値は常にブランクになります。さらに
+悪いことに、フィールドはその"stickyな"動きを失い、
+前の内容を忘れてしまいます。しかしHTML仕様では初期値フィールドが
+要求されています、多分いくつかのブラウザは最終的にはそれをサポートでしょう。
+
+=item 3.
+
+3番目のパラメータはオプションで、フィールドの大きさを文字数で
+指定します (-size)。 
+
+=item 4.
+
+4番目のパラメータはオプションで、そのフィールドが受取る最大文字数です (-maxlength)。 
+
+=back
+
+フォームが処理されると、param()を呼ぶことによって入力されたファイル名を
+取得することが出来ます:
+
+       $filename = $query->param('uploaded_file');
+
+ブラウザによってちょっとずつ違う名前を返します。あるブラウザは
+ファイル名だけを返します。あるものはユーザのマシンのパスの書き方を
+使ったファイルへのフルパスを返します。いずれにせよ返される名前は常に
+I<ユーザの>マシンでのファイル名で、CGI.pmがアップロードのスプーリングのさいに
+作成する一時ファイルの名前には関連しません（以下をご覧ください）。
+
+返されるファイル名はファイル・ハンドルでもあります。標準のPerlファイル読み込み
+呼び出しを使ってファイルの内容を読むことが出来ます:
+
+    # テキストファイルを読み込み、出力します
+    while (<$filename>) {
+       print;
+    }
+
+    # バイナリ・ファイルをどこか安全なところへコピーします
+    open (OUTFILE,">>/usr/local/web/users/feedback");
+    while ($bytesread=read($filename,$buffer,1024)) {
+       print OUTFILE $buffer;
+    }
+
+しかしアップロード・フィールドの2つの性質に絡んで問題があります。
+C<use strict>を使っていると、Perlは文字列をファイルハンドルとして使うと
+文句をいうでしょう。これはファイルの読み込みをC<no strict>プラグマを含んだ
+ブロックにいれることで回避することが出来ます。さらに深刻なことは、
+リモート・ユーザがアップロード・フィールドにゴミをいれると、param()は
+文字列ではあっても、ファイル・ハンドルではない可能性があります。
+
+安全のためには、I<upload()>関数(バージョン2.47での新機能）を使って
+ください。アップロード・フィールドでこれを呼ぶと、I<upload()>は
+ファイル・ハンドル、あるいはパラメータが正しいファイル・ハンドル
+でなければundefを返します。
+
+     $fh = $query->upload('uploaded_file');
+     while (<$fh>) {
+       print;
+     }
+
+配列コンテキストでは、upload()はファイル・ハンドルの配列を返します。
+これにより同じ名前の複数のuploadフィールドを使うフォームを作成する
+ことが可能になります。
+
+これは推奨される表現です。
+
+ファイルがアップロードされるとき、ブラウザは通常、ヘッダのフォーマットの
+中にいくつかの情報を一緒に送信します。その情報には通常、MIME content typeが
+入っています。将来のブラウザは他の情報も送信するかもしれません（変更日や
+大きさなのような）。この情報を取り出すためには、uploadInfo()を呼び出してください。
+それはすべてのドキュメント・ヘッダが入った連想配列へのリファレンスを返します
+
+       $filename = $query->param('uploaded_file');
+       $type = $query->uploadInfo($filename)->{'Content-Type'};
+       unless ($type eq 'text/html') {
+      die "HTML FILES ONLY!";
+       }
+
+"text"と"binary"データ・モードを理解するマシンを使っているのであれば、
+それをいつ、どのように使うかを確認してください（ラクダ本をご覧下さい）。
+そうでなければ、ファイル・アップロードの間にバイナリファイルが
+おかしくなることを発見するでしょう。
+
+ときどきアップロードされたファイルを解析している途中に問題が発生します。
+通常それはユーザがアップロードが完了する前に"Stop"を押したときにおこります。
+
+この場合、CGI.pmはアップロードされたファイルの名前の代りにundefを、
+I<cgi_error()>に文字列"400 Bad Request (malformed multipart POST)"を
+設定します。このエラーメッセージはブラウザに送信するステータス・コードに
+入れることができるように考えられています。例えば:
+
+   $file = $query->upload('uploaded_file');
+   if (!$file && $query->cgi_error) {
+      print $query->header(-status=>$query->cgi_error);
+      exit 0;
+   }
+
+もしも望むなら、エラーについて不満をいうために独自のHTMLページを自由に
+作ることができます。
+
+WindowsプラットホームでCGI.pmを使っていて、バイナリファイルがバイナリファイルは
+少し大きくなるのに、テキストファイルは同じままであることを発見したならば、
+あなたは出力のファイルにバイナリモードを有効にすることを忘れています。
+アップロードされたファイルをディスクに書き出すための全てのハンドルに
+binmode()を確実に呼び出してください。
+
+JAVASCRIPTING: B<-onChange>, B<-onFocus>, B<-onBlur>,
+B<-onMouseOver>,B<-onMouseOut>そしてB<-onSelect>パラメータが
+理解されます。詳細はtextfield()をご覧下さい。
+
+=head2 ポップアップ・メニューの作成
+
+   print $query->popup_menu('menu_name',
+                ['eenie','meenie','minie'],
+                'meenie');
+
+      -あるいは-
+
+   %labels = ('eenie'=>'your first choice',
+          'meenie'=>'your second choice',
+          'minie'=>'your third choice');
+   %attributes = ('eenie'=>{'class'=>'class of first choice'});
+   print $query->popup_menu('menu_name',
+                ['eenie','meenie','minie'],
+          'meenie',\%labels,\%attributes);
+
+    -あるいは (名前付きパラメータ形式)-
+
+   print $query->popup_menu(-name=>'menu_name',
+                -values=>['eenie','meenie','minie'],
+                -default=>'meenie',
+          -labels=>\%labels,
+          -attributes=>\%attributes);
+
+popup_menu() はメニューを作成します。
+
+=over 4
+
+=item 1.
+
+最初のパラメータは必須で、メニューの名前です (-name)。 
+
+=item 2.
+
+2番目の引数(-values)は必須で 、メニューでのメニュー項目が入った
+配列リファレンスです。例のように無名配列をメソッドに渡すことが
+出来ます。また"\@foo"のように名前付き配列へのリファレンスにすることも出来ます. 
+
+=item 3.
+
+3番目の引数(-default)はオプションで、デフォルトで選択されるメニューの
+名前です。指定されなければ最初の項目がデフォルトです。前に選択された値が
+問い合わせをまたがって維持されます。 
+
+=item 4.
+
+4番目のパラメータ (-labels)はオプションで、ユーザに見えるラベルのための値と
+スクリプトに返される値とを違うものにしたい人のために提要されています。
+メニューの値とユーザに見えるラベルとを関連付ける連想配列へのポインタです。
+このパラメータを空にしておくと、デフォルトでメニューの値は表示された
+ものになります（もしそうしたければラベルを未定義にしておくこともできます） 
+
+=item 5.
+
+5番目のパラメータ (-attributes)はオプションで、汎用的なHTML属性を
+個別のメニュー要素に与えるために提供されます。メニューの値を
+属性の名前をキーとし属性の値を値とする他の連想配列に関連付ける
+連想配列へのポインタになります。
+
+=back
+
+フォームが処理されるとき、ポップアップ・メニューの選択された値は
+以下のようにして取り出すことが出来ます:
+
+      $popup_menu_value = $query->param('menu_name');
+
+JAVASCRIPTING: popup_menu()は以下のイベント・ハンドラを理解します:
+B<-onChange>, B<-onFocus>, B<-onMouseOver>, B<-onMouseOut>, そして
+B<-onBlur>。いつこれらのハンドラが呼ばれるかの詳細はtextfield()を
+ご覧下さい。 
+
+=head2 オプション・グループの作成
+
+名前付きパラメータのスタイル
+
+  print $query->popup_menu(-name=>'menu_name',
+                  -values=>[qw/eenie meenie minie/,
+                            $q->optgroup(-name=>'optgroup_name',
+                                         -values ['moe','catch'],
+                                         -attributes=>{'catch'=>{'class'=>'red'}}),
+                  -labels=>{'eenie'=>'one',
+                            'meenie'=>'two',
+                            'minie'=>'three'},
+                  -default=>'meenie');
+
+  古いスタイル
+  print $query->popup_menu('menu_name',
+                  ['eenie','meenie','minie',
+                   $q->optgroup('optgroup_name', ['moe', 'catch'],
+                         {'catch'=>{'class'=>'red'}})],'meenie',
+                  {'eenie'=>'one','meenie'=>'two','minie'=>'three'});
+
+optgroupはポップアップ・メニューの中にオプション・グループを作成します。
+
+=over 4
+
+=item 1.
+
+最初のパラメータ(B<-name>)は必須で、optgroupのlabel属性であり、
+問い合わせのパラメータ・リストにはB<挿入されません>。
+
+=item 2.
+
+2番目の引数(B<-values>)は必須で 、メニューでのメニュー項目が
+入った配列リファレンスです。例のように無名配列をメソッドに渡すことが
+出来ます。また\@fooのように名前付き配列へのリファレンスにすることも
+出来ます. もしハッシュ・リファレンスを渡せば、キーがメニューの値として
+使われ、値はメニューのラベルとして使われます(下記の-labelsをご覧ください）。
+
+=item 3.
+
+3番目のパラメータ (B<-labels>)はオプションで、メニュー項目の1つあるいは複数の
+ユーザーに見えるラベルが入った連想配列へのリファレンスを渡すことを
+可能にします。ユーザメニュー文字列を見て、ブラウザにはあなたに違う値を
+返すことを可能にします。これを指定しないと、valueの文字列が代わりに
+使われます。(この例では"eenie", "meenie" そして "minie"になります)。
+これは-valuesパラメータにハッシュ・リファレンスを使うのと同じです。
+
+=item 4.
+
+4番目の引数(B<-labeled>)はオプションで、true値に設定することができます。
+valueが、optgroupの中のオプション各オプション項目のためのlabel属性として
+使われることを示します。
+
+=item 5.
+
+5番目の引数(-novals)はオプションで、true値に設定することができます。
+optgroupの中の各オプション項目でのval属性を抑止することを示します。
+
+詳細についてはW3Cでのoptgroupについての議論をご覧ください。
+(http://www.w3.org/TR/REC-html40/interact/forms.html#edef-OPTGROUP)
+
+=item 6.
+
+6番目の引数(-attributes)はオプションで、個別のメニュー項目に共通の
+HTML属性のいずれかに代入するために提供されます。メニューの値を
+属性の名前をキー、属性の値を値とする連想配列に関連付ける
+連想配列へのポインタとなります。
+
+=back
+
+=head2 スクローリング・リストの作成
+
+   print $query->scrolling_list('list_name',
+                ['eenie','meenie','minie','moe'],
+        ['eenie','moe'],5,'true',{'moe'=>{'class'=>'red'}});
+      -あるいは-
+
+   print $query->scrolling_list('list_name',
+                ['eenie','meenie','minie','moe'],
+                ['eenie','moe'],5,'true',
+        \%labels,%attributes);
+
+    -あるいは-
+
+   print $query->scrolling_list(-name=>'list_name',
+                -values=>['eenie','meenie','minie','moe'],
+                -default=>['eenie','moe'],
+                -size=>5,
+                -multiple=>'true',
+        -labels=>\%labels,
+        -attributes=>\%attributes);
+
+scrolling_list()はスクローリング・リストを作成します。
+
+=over 4
+
+=item B<パラメータ:>
+
+=item 1.
+
+最初と2番目の引数はリストの名前(-name) と値 (-values)です。
+ポップアップメニュー（訳者注：スクローリングリストの間違いらしい）では、
+2番目の引数は配列リファレンスでなければなりません。 
+
+=item 2.
+
+3番目の引数(-default)はオプションで、デフォルトで選択される値が
+入ったリストへのリファレンスか、選択される1つの値のどちらかにすることが
+できます。この引数がないか未定義であれば、リストがはじめて表示されたとき
+には何も選択されません。名前付きパラメータのバージョンでは、この
+パラメータにシノニム"-defaults"を使うことが出来ます。 
+
+=item 3.
+
+4番目の引数はオプションで、リストの大きさです (-size)。 
+
+=item 4.
+
+5番目の引数はオプションで、同時に複数の選択を許すためにはtrueを
+設定します (-multiple)。そうでなければ一度には1つのだけが許されます。 
+
+=item 5.
+
+6番目の引数はオプションで、リスト要素のための長い、ユーザに見える
+ラベルが入った連想配列へのポインタです (-labels)。提供されなければ
+値(values)が表示されます。 
+
+=item 6.
+
+7番目(訳注:原文では6th)の引数(-attributes)はオプションで、個別のメニュー項目に共通の
+HTML属性のいずれかに代入するために提供されます。メニューの値を
+属性の名前をキー、属性の値を値とする連想配列に関連付ける
+連想配列へのポインタとなります。
+
+このフォームが処理されるとき、選択されたリスト要素はパラメータ名
+'list_name'のリストで返されます。選択された要素の値は以下の
+ようにして取り出すことが出来ます:
+
+      @selected = $query->param('list_name');
+
+=back
+
+JAVASCRIPTING: scrolling_list()は以下のイベント・ハンドラを理解します:
+B<-onChange>, B<-onFocus>, B<-onMouseOver>, B<-onMouseOut>, そして
+B<-onBlur>。いつこれらのハンドラが呼ばれるかの詳細はtextfield()を
+ご覧下さい。 
+
+=head2 関連付けられたチェックボックスのグループの作成
+
+   print $query->checkbox_group(-name=>'group_name',
+                -values=>['eenie','meenie','minie','moe'],
+                -default=>['eenie','moe'],
+                -linebreak=>'true',
+        -labels=>\%labels,
+        -attributes=>\%attributes);
+
+   print $query->checkbox_group('group_name',
+                ['eenie','meenie','minie','moe'],
+        ['eenie','moe'],'true',\%labels,
+        {'moe'=>{'class'=>'red'}});
+
+   HTML3 互換のブラウザのみ:
+
+   print $query->checkbox_group(-name=>'group_name',
+                -values=>['eenie','meenie','minie','moe'],
+                -rows=2,-columns=>2);
+
+
+checkbox_group()は同じ名前によって関連付けられたチェックボックスの
+リストを作成します。
+
+=over 4
+
+=item B<パラメータ:>
+
+=item 1.
+
+最初と2番目の引数はそれぞれ、チェックボックスの名前と値 (-nameと-values)
+です。ポップアップ・メニューと同じように、2番目の引数は配列リファレンスで
+なければなりません。これらの値は、チェックボックスの隣に出力されるユーザが
+読むことが出来るラベルであり、また問い合わせ文字列でスクリプトに渡される
+値でもあります。 
+
+=item 2.
+
+3番目の引数(-default)はオプションで、デフォルトでチェックされる値が
+入ったリストへのリファレンスか、チェックされる1つの値のどちらかにする
+ことができます。この引数がないか、未定義であれば、最初にリストが表示
+されたときには何も選択されません。 
+
+=item 3.
+
+4番目の引数 (-linebreak)はオプションで、trueに設定されると垂直な
+リストで表示されるようチェックボックスの間に改行をいれます。
+そうでなければ水平に一緒になって並べられます。 
+
+=item 4.
+
+5番目の引数はオプションで、チェックボックスの値とチェックボックスの
+隣に出力されるユーザに見えるラベルとを関連付ける連想配列へのポインタ
+です(-labels)。与えられなければ値（values)がデフォルトとして使われます。 
+
+=item 5.
+
+(ネットスケープのような)B<HTML3互換ブラウザ>の利点として、オプションの
+パラメータとしてB<-rows>とB<-columns>を取ることができます。これらの
+パラメータは、checkbox_groupを指定された数の行と列で整形された
+チェックボックス・グループが入ったHTML3互換のテーブルを
+返させるようにします。そうしたければ、-columnsだけを与えることも
+できます;check_groupは正しい行数をあなたに代って計算します。
+
+=item 6.
+
+7番目(訳注:原文ではsixth)の引数(-attributes)はオプションで、
+個別のメニュー項目に共通のHTML属性のいずれかに代入するために
+提供されます。メニューの値を属性の名前をキー、属性の値を
+値とする連想配列に関連付ける連想配列へのポインタとなります。
+
+返されるテーブルでの行と列のヘッダを入れるために、B<-rowheaders>と
+B<-colheaders>パラメータを使うことが出来ます。これらは両方とも
+使用するヘッダの配列へのポインタを受取ります。そのヘッダは
+単なる飾りです。チェックボックスの解析を理解しません　--　それらは
+まだ名前がついた１つのユニットです。
+
+=back
+
+フォームが処理されるとき、すべてのチェックされたボックスは
+パラメータ名'group_name'のリストとして返されます。"on"の値の
+チェックボックスは以下のようにして取り出すことが出来ます:
+
+      @turned_on = $query->param('group_name');
+
+checkbox_group()によって返される値は実際にはボタン要素の
+配列です。以下のようにして、それらを取得し、テーブル、リストあるいは
+その他の作成方法で使うことが出来ます:
+
+    @h = $query->checkbox_group(-name=>'group_name',-values=>\@values);
+    &use_in_creative_way(@h);
+
+JAVASCRIPTING: checkbox_group()はB<-onClick>パラメータを
+理解します。これは、そのグループの中のボタンのどれかを
+ユーザがクリックするたびに実行される、JavaScriptコードの一部、
+あるいは関数を指定します。"this"変数を使って、クリックされた
+ボタンの識別子を取り出すことが出来ます。
+
+=head2 独立したチェックボックスの作成
+
+    print $query->checkbox(-name=>'checkbox_name',
+               -checked=>1,
+               -value=>'ON',
+               -label=>'CLICK ME');
+
+    -あるいは-
+
+    print $query->checkbox('checkbox_name','checked','ON','CLICK ME');
+
+checkbox()は他とは論理的に関連付けられない独立したチェックボックスを
+作成するために使われます。
+
+=over 4
+
+=item B<パラメータ:>
+
+=item 1.
+
+最初のパラメータは必須で、チェックボックスのための名前です (-name)。
+それはチェックボックスの隣に出力されるユーザが読むことができるラベル
+としても使われます。 
+
+=item 2.
+
+2番目のパラメータ(-checked) はオプションで、デフォルトで
+チェックボックスがonとすることを指定します。 
+シノニムは-selected と-onです。 
+
+=item 3.
+
+3番目のパラメータ(-value)はチェックされたときのチェックボックスの
+値を指定します。指定されなければ"on"が想定されます。 
+
+=item 4.
+
+4番目のパラメータ(-label) はチェックボックスにつけられるユーザが
+読むことが出来るラベルです。指定されなければ、チェックボックスの名前が
+使われます。 
+
+=back
+
+
+チェックボックスの値は以下のようにして取り出すことが出来ます:
+
+    $turned_on = $query->param('checkbox_name');
+
+JAVASCRIPTING: checkbox()はB<-onClick>パラメータを理解します。
+さらに詳細な情報はcheckbox_group()をご覧下さい。
+
+=head2 ラジオボタン・グループの作成
+
+   print $query->radio_group(-name=>'group_name',
+                 -values=>['eenie','meenie','minie'],
+                 -default=>'meenie',
+                 -linebreak=>'true',
+           -labels=>\%labels,
+           -attributes=>\%attributes);
+
+    -あるいは-
+
+   print $query->radio_group('group_name',['eenie','meenie','minie'],
+            'meenie','true',\%labels,\%attributes);
+
+
+   HTML3-互換ブラウザのみ：
+
+   print $query->radio_group(-name=>'group_name',
+                 -values=>['eenie','meenie','minie','moe'],
+                 -rows=2,-columns=>2);
+
+radio_group()は論理的に関連付けられたラジオボタンのセット
+（グループのメンバーの1つがオンになると、他はオフになります）を
+作成します。
+
+=over 4
+
+=item B<パラメータ:>
+
+=item 1.
+
+最初の引数はグループ名で必須です (-name)。 
+
+=item 2.
+
+2番目の引数(-values) はラジオボタンのための値のリストです。
+ページ上で表示される値とラベルはインデントされます。2番目の引数には
+配列リファレンスか、上記に示されたような無名配列、または"\@foo"のような
+名前付き配列をリファレンスにしたもの渡してください。 
+
+=item 3.
+
+3番目のパラメータ(-default) はオプションで、オンするデフォルトボタンの
+名前です。指定されなければ最初の要素がデフォルトになります。
+何もボタンが選択されていない状態で開始するために、"-"のような存在しない
+ボタン名を指定することが出来ます。 
+
+=item 4.
+
+4番目のパラメータは(-linebreak) オプションで、ボタンの間に改行を入れ、
+垂直なリストを作成するために'true'に設定することが出来ます。 
+
+=item 5.
+
+5番目のパラメータ(-labels)はオプションで、ラジオボタンの値と表示のときに
+使われるユーザに見えるラベルとを関連付ける連想配列へのポインタです。
+与えられなければ、値そのものが表示されます。 
+
+=item 6.
+
+(Netscapeのような)B<HTML3互換ブラウザ>は、さらにオプションのパラメータ、
+B<-rows>とB<-columns>を取ることが出来ます。これらのパラメータは
+radio_group()に、指定された行数、列数でフォーマットされたラジオボタンの
+グループが入ったHTML3互換のテーブルを返すようにします。もし望めば、
+ -columnsパラメータだけを与えることが出来ます;radio_groupは
+正しい行数をあなたに代って計算します。
+
+=item 6.
+
+7番目(訳注:原文ではsixth)の引数(-attributes)はオプションで、
+個別のメニュー項目に共通のHTML属性のいずれかに代入するために
+提供されます。メニューの値を属性の名前をキー、属性の値を
+値とする連想配列に関連付ける連想配列へのポインタとなります。
+
+返されるテーブルに行と列のヘッダを入れるために、B<-rowheader>と
+B<-colheader>パラメータを使うことが出来ます。これらは両方とも
+使用するヘッダの配列へのポインタを受取ります。ヘッダは
+単なる飾りです。それらはラジオボタンの解析を理解しません--
+それらはまだ名前がついた１つのユニットです。
+
+=back
+
+フォームが処理されるとき、選択されたラジオボタンは以下の
+ようにして取り出すことが出来ます:
+
+      $which_radio_button = $query->param('group_name');
+
+radio_group()により返される値は実際にはボタン要素の配列です。
+以下のようにしてそれらを取得し、テーブル、リストあるいは、その他の
+作成方法で使うことが出来ます:
+
+    @h = $query->radio_group(-name=>'group_name',-values=>\@values);
+    &use_in_creative_way(@h);
+
+（訳者注：サブミット・ボタンほうに紛れ込んでいましたが、本来はここでしょう）
+
+JAVASCRIPTING: radio_group() はB<-onClick>パラメータを理解します。
+さらなる詳細はcheckbox_group()をご覧下さい。
+
+=head2 サブミット・ボタンの作成
+
+   print $query->submit(-name=>'button_name',
+            -value=>'value');
+
+    -あるいは-
+
+   print $query->submit('button_name','value');
+
+submit()は問い合わせサブミット・ボタンを作成します。
+すべてのフォームはこれらのいずれかを持たなければいけません。
+
+=over 4
+
+=item B<パラメータ:>
+
+=item 1.
+
+最初の引数(-name) はオプションです。フォームにたくさんのサブミット・ボタンを
+持っていて、それらを区別したければ、名前を与えることが出来ます。 名前は
+ユーザに見えるラベルとしても使われます。古いブラウザには、これを正しく扱わず、
+ボタンからB<まったく送信しない>ものもあることに注意してください。 
+
+=item 2.
+
+2番目の引数 (-value) もオプションです。これはボタンに問い合わせ文字列で
+スクリプトに渡される値を与えます。
+
+=back
+
+それぞれに異なる値を使うことによりどのボタンが押されたかを
+見分けることが出来ます:
+
+     $which_one = $query->param('button_name');
+
+=head2 リセット・ボタンの作成
+
+   print $query->reset
+
+reset()は"リセット"ボタンを作成します。必ずしもデフォルトではなく、
+最後にスクリプトが呼ばれたときからの値をそのフォームに再設定する
+ことに注意してください。
+
+これがPerlに組込まれているreset()とぶつかることに注意してください。
+元のreset関数を取得するにはCORE::reset()を使ってください。
+
+=head2 デフォルト・ボタンの作成
+
+   print $query->defaults('button_label')
+
+defaults()は、呼び出されたとき、フォームを完全にデフォルトに
+リセットし、ユーザがそれまで行ったすべての変更を洗い流してしまう
+ボタンを作成します。
+
+=head2 ヒドゥン・フィールドの作成
+
+    print $query->hidden(-name=>'hidden_name',
+                 -default=>['value1','value2'...]);
+
+        -または-
+
+    print $query->hidden('hidden_name','value1','value2'...);
+
+hidden()はユーザには見えないテキスト・フィールドを作成します。
+これはあるスクリプトの呼び出しから次へ状態変数情報を渡すのに便利です。
+
+=over 4
+
+=item B<パラメータ:>
+
+=item 1.
+
+最初の引数は必須で、このフィールドの名前を指定します (-name)。 
+
+=item 2.  
+
+2番目の引数も必須で、その値を指定します (-default)。呼び出しの
+名前付きパラメータ形式では、1つの値またはリスト全体へのリファレンスを
+指定することが出来ます。 
+
+=back
+
+ヒドゥン・フィールドの値は以下のようにして取り出してください:
+
+     $hidden_value = $query->param('hidden_name');
+
+他のすべてのフォーム要素と同じように、ヒドゥン・フィールドは"sticky"で
+あることに注意してください。スクリプトが一度呼び出された後に、何か
+他の値でヒドゥン・フィールドを置き換えたければ、手動でおこなう必要が
+あります:
+
+     $query->param('hidden_name','new','values','here');
+
+=head2 クリッカブル・イメージ・ボタンの作成
+
+     print $query->image_button(-name=>'button_name',
+                -src=>'/source/URL',
+                -align=>'MIDDLE');      
+
+    -あるいは-
+
+     print $query->image_button('button_name','/source/URL','MIDDLE');
+
+image_button()はクリッカブルなイメージを作成します。クリックされると、
+スクリプトへクリックの位置が"bottun_name.x"と"button_name.y"として
+返されます。"button_name"のところはそれに指定した名前です。
+
+JAVASCRIPTING: image_buttonはB<-onClick>パラメータを理解します。
+さらなる詳細はcheckbox_group()をご覧下さい。
+
+=over 4
+
+=item B<パラメータ:>
+
+=item 1.
+
+最初の引数(-name) は必須で、このフィールドの名前を指定します。 
+
+=item 2.
+
+2番目の引数(-src) も必須で、URLを指定します。 
+
+=item 3.
+
+3番目のオプション(-align, optional) はアラインメントのタイプで、
+TOP, BOTTOMまたはMIDDLEを指定することが出来ます。
+
+=back
+
+このボタンの値は以下のようにして取り出してください：
+     $x = $query->param('button_name.x');
+     $y = $query->param('button_name.y');
+
+=head2 JAVASCRIPTアクション・ボタンの作成
+
+     print $query->button(-name=>'button_name',
+              -value=>'user visible label',
+              -onClick=>"do_something()");
+
+    -あるいは-
+
+     print $query->button('button_name',"do_something()");
+
+button()はNetscape 2.0のJavaScriptと互換性のあるボタンを作成します。
+B<-onClick>パラメータで示されるJavaScriptのコードが実行されます。
+Netscapeではないブラウザでは、このフォーム要素は多分表示すら
+されないでしょう。
+
+=head1 HTTPクッキー
+
+Netscapeブラウザ　バージョン1.1以上とInternet Explorerのすべての
+バージョンはブラウザ・セッションでの状態を保持することを助けるように
+設計された、いわゆる"クッキー"をサポートしています。CGI.pmはクッキーを
+サポートするさまざまなメソッドを持っています。
+
+クッキーは、CGI問い合わせ文字列の名前付きパラメータによく似た、
+名前=値の組みです。CGIスクリプトは１つまたは複数のクッキーを作り、
+HTTPヘッダに入れてブラウザに送信します。ブラウザは特定のWebサーバに
+所属するクッキーのリストを保持し、その後の対話の間、CGIスクリプトに
+返します。
+
+必須の名前=値の組に加えて、各クッキーはさまざまなオプションの属性を
+持っています:
+
+=over 4
+
+=item 1. 有効期限(expiration time)
+
+これはクッキーの有効期限を示す時刻／日付の文字列（特別なGMTフォーマット
+による）です。ユーザがブラウザを終了させ、再起動したならば、
+この有効期限が来るまで、クッキーは保存され、スクリプトに返されます。
+有効期限が指定されなければ、クッキーはユーザがブラウザを終わらせるまで
+有効です。
+
+=item 2. ドメイン(domain)
+
+これはクッキーが有効であるドメイン名の全体あるいは一部です。
+ブラウザはドメイン名の一部がマッチする、すべてのホストにクッキーを
+返します。例えばドメイン名に".capricorn.com"を指定すれば、
+ブラウザは"www.capricorn.com", "www2.capricorn.com", 
+"feckless.capricorn.com"などのマシンのすべて実行されているWebサーバに
+クッキーを返します。".edu"のように最上位のドメインにマッチしようと
+することを防ぐよう、ドメイン名は少なくとも２つのピリオドが入って
+いなければなりません。もしドメインが指定されなければ、ブラウザは
+クッキーが作成されたホストのサーバにだけクッキーを返します。
+
+=item 3. パス(path)
+
+クッキークリプトのURLをpath属性を与えると、ブラウザはクッキーを
+返す前にあなたのスクリプトのURLをチェックします。例えばパスを
+"/cgi-bin"と指定すれば、"/cgi-bin/tally.pl", "/cgi-bin/order.pl",
+"/cgi-bin/customer_service/complain.pl"のそれぞれのスクリプトには
+返されますが、"/cgi-private/site_admin.pl'"には返されません。
+デフォルトではパスは"/"で、これはあなたのサイトのすべての
+CGIスクリプトにクッキーが送信させます。
+
+=item 4. "安全"フラグ("secure" flag) 
+
+もし"secure"属性が設定されると、クッキーはCGIリクエストがSSLのような
+セキュアなチャンネルで発生された場合にのみ送信されます。
+
+=back
+
+HTTPクッキーへのインタフェースはB<cookie()>メソッドです:
+
+    $cookie = $query->cookie(-name=>'sessionID',
+                 -value=>'xyzzy',
+                 -expires=>'+1h',
+                 -path=>'/cgi-bin/database',
+                 -domain=>'.capricorn.org',
+                 -secure=>1);
+    print $query->header(-cookie=>$cookie);
+
+B<cookie()>は新しいクッキーを作成します。そのパラメータには
+以下のものがあります:
+
+=over 4
+
+=item B<-name>
+
+クッキーの名前（必須）。これにはどんな文字列でも指定できます。
+ブラウザは、そのクッキー名を空白が入らない、英数字に限定しますが、
+CGI.pmは背後でクッキーをエスケープ、アンエスケープすることにより、
+これらの制限を取り払います。 
+
+=item B<-value>
+
+クッキーの値。これにはすべてのスカラ値、配列リファレンス、さらに
+連想配列リファレンスさえも指定できます。例えば完全な連想配列を
+クッキーに以下のようにして格納することが出来ます:
+
+    $cookie=$query->cookie(-name=>'family information',
+                   -value=>\%childrens_ages);
+
+=item B<-path>
+
+オプションで、上記で説明したようにクッキーが有効になるパスの一部。 
+
+=item B<-domain>
+
+オプションで、上記で説明したようにクッキーが有効になるドメインの一部。 
+
+=item B<-expires>
+
+オプションで、このクッキーの有効期限。フォーマットはB<header()>メソッドに
+ついてのセクションで説明したのと同じ:
+
+    "+1h"  今から１時間
+
+=item B<-secure>
+
+trueに設定されれば、このクッキーは安全なSSLセッションでのみ
+使われます。 
+
+=back
+
+cookie()によって作成されたクッキーは、header()メソッドによって返される
+文字列で、HTTPヘッダの中に入れられなければなりません:
+
+    print $query->header(-cookie=>$my_cookie);
+
+複数のクッキーを作成するには、header()に配列リファレンスを指定してください：
+
+    $cookie1 = $query->cookie(-name=>'riddle_name',
+                  -value=>"The Sphynx's Question");
+    $cookie2 = $query->cookie(-name=>'answers',
+                  -value=>\%answers);
+    print $query->header(-cookie=>[$cookie1,$cookie2]);
+
+クッキーを取り出すには、cookie()メソッドをB<-value>パラメータなしで
+呼び出すことによって名前で要求します:
+
+    use CGI;
+    $query = new CGI;
+    $riddle = $query->cookie('riddle_name');
+        %answers = $query->cookie('answers');
+
+"riddle_name"クッキーのように、1つのスカラーの値で作成されたクッキーは、
+その形で帰されます。配列やハッシュを持っているクッキーも取り出すことが
+出来ます。
+
+クッキーとCGI名前空間は分かれています。もし'answers'という名前の
+パラメータと'answers'という名前のクッキーを持っていれば、param()と
+cookie()によって取り出される値はそれぞれ独立しています。
+しかしながら、CGIパラメータをクッキーにしたり、その逆も簡単です:
+
+   # CGIパラメータをクッキーにする
+   $c=$q->cookie(-name=>'answers',-value=>[$q->param('answers')]);
+   # その逆
+   $q->param(-name=>'answers',-value=>[$q->cookie('answers')]);
+
+クッキーをどのように効率よく使うかについての、いくつかのアイデアに
+ついては、例のスクリプトB<cookie.cgi>をご覧下さい。
+
+=head1 フレームの利用
+
+CGI.pmスクリプトではHTML4フレーム機能を使って、たくさんのブラウザ・パネルと
+ウィンドウに書き込むことができます。プログラム的に新しいフレームを定義する
+ためには3つのテクニックがあります：ぽ
+
+=over 4
+
+=item 1. <Frameset>ドキュメントの作成
+
+HTTPヘッダを出力した後、start_html()呼び出しを使って標準の
+HTMLドキュメントを作成する代りに、ページにフレームを定義する
+<frameset>ドキュメントを作成します。各フレームのSRCとして
+スクリプトを（適切なパラメータをつけて）指定します。
+
+CGI.pmには<frameset>セクションを作成するのに特別なサポートは
+ありません。しかしHTMLはとても簡単に書けます。詳細については
+ネトスケープのホームページにあるフレームのドキュメントをご覧ください。
+
+  http://home.netscape.com/assist/net_sites/frames.html
+
+=item 2. HTTPヘッダでドキュメントの出力先を指定
+
+header()にB<-target>を指定することが出来ます：
+
+    print $q->header(-target=>'ResultsWindow');
+
+これはブラウザにスクリプトの出力を"ResultsWindow"という名前の
+フレームにロードするように伝えます。もしその名前のフレームがなければ、
+ブラウザは新しいウィンドウを立ち上げ、それにスクリプトのドキュメントを
+ロードします。ターゲットに使うことが出来る特別な名前がたくさんあります。
+詳細についてはネットスケープのホームページにあるフレームのドキュメントを
+ご覧ください。
+
+=item 3. <form>タグでドキュメントの出力先を指定
+
+FORMタグそれ自身にロードするフレームを指定することが出来ます。
+CGI.pmでは以下のようになります:
+
+    print $q->start_form(-target=>'ResultsWindow');
+
+フォームによりスクリプトが再び呼び出されると、その出力は"ResultsWindow"という
+名前のフレームにロードされます。それがまだなければ新しいウィンドウが
+作成されます。
+
+=back
+
+examplesディレクトリにあるスクリプト"frameset.cgi"は、フォームと
+レスポンスが隣り合ったフレームに存在するページを作成する1つの方法を
+示しています。
+
+=head1 カスケーディング・スタイル・シートの限定サポート
+
+CGI.pm はHTML3のカスケーディング・スタイル・シート(css)を限定付きで
+サポートします。スタイルシートをドキュメントに組込むためには、
+start_html()メソッドにB<-style>パラメータを渡します。このパラメータの
+値にはスカラー、この場合は直接<style>セクションに組込まれます。
+あるいはハッシュ・リファレンスを指定することが出来ます。後者の場合は、
+１つあるいは複数のB<-src>またはB<-code>を持ったハッシュを指定しなければ
+いけません。B<-src>は完全に定義されたスタイルシートを見つけることが
+出来るURLを示します。B<-code>は<style>セクションに組込まれるスカラー値を
+示します。B<-code>でのスタイルの定義は、B<-src>での同じ名前のもので
+上書きされます。これゆえに名前が"cascading"（滝のように落ちる）なのです。
+
+B<-style>によって示されるハッシュに、オプションのB<-type>を加えることにより
+スタイルシートの種類を指定することも出来ます。もし指定されなければ、
+そのスタイルはデフォルトの'text/css'です。
+
+ドキュメントの本体(Body)でスタイルを参照するためには、HTML要素に
+B<-class>を加えます:
+
+    print h1({-class=>'Fancy'},'Welcome to the Party');
+
+あるいは、その場でB<-style>パラメータでスタイルを定義します:
+
+    print h1({-style=>'Color: red;'},'Welcome to Hell');
+
+テキストのセクションにスタイルを適用するため、新しいB<span()>を
+使うことも出来ます:
+
+    print span({-style=>'Color: red;'},
+           h1('Welcome to Hell'),
+           "Where did that handbasket get to?"
+           );
+
+B<span()>メソッドを使えるようにするためには":html3"をインポートしなければ
+いけないことに注意してください。CSS使用の簡単で汚い例を以下に示します。
+さらなる詳細はhttp://www.w3.org/pub/WWW/TR/Wd-css-1.html にあるCSSの仕様を
+ご覧下さい。
+
+    use CGI qw/:standard :html3/;
+
+    #ここはページに直接組込まれるスタイルシートです
+    $newStyle=<<END;
+    <!-- 
+    P.Tip {
+    margin-right: 50pt;
+    margin-left: 50pt;
+        color: red;
+    }
+    P.Alert {
+    font-size: 30pt;
+        font-family: sans-serif;
+      color: red;
+    }
+    -->
+    END
+    print header();
+    print start_html( -title=>'CGI with Style',
+              -style=>{-src=>'http://www.capricorn.com/style/st1.css',
+                       -code=>$newStyle}
+                 );
+    print h1('CGI with Style'),
+          p({-class=>'Tip'},
+        "Better read the cascading style sheet spec before playing with this!"),
+          span({-style=>'color: magenta'},
+           "Look Mom, no hands!",
+           p(),
+           "Whooo wee!"
+           );
+    print end_html;
+
+ドキュメントに複数のスタイルシートを組み込むためにはB<-style>に
+配列リファレンスを渡してください。
+
+=head1 デバッグ方法
+
+コマンドラインからスクリプトを実行するか、perlデバッガのなかで
+実行するならば、キーワードのリストやパラメータ=値の組をコマンド行や
+標準入力からスクリプトに渡すことが出来ます（環境変数からスクリプトに
+読み込むような仕組みについて心配する必要はありません）。キーワードを
+以下のようにして渡すことが出来ます:
+
+    your_script.pl keyword1 keyword2 keyword3
+
+あるいは:
+
+   your_script.pl keyword1+keyword2+keyword3
+
+あるいは:
+
+    your_script.pl name1=value1 name2=value2
+
+あるいは:
+
+    your_script.pl name1=value1&name2=value2
+
+この機能を無効にするには、-no_debugプラグマを使ってください。
+
+POSTメソッドをテストするために、-debugプラグマでフルのデバッグを
+可能にすることができます。これは改行で区切った名前=値の組み合わせを
+標準入力からスクリプトに食わせることができます。
+
+デバッグのとき、よく知っているシェルのマナーで、文字をエスケープする
+ためにクォートとバックスラッシュを使うことが出来ます。パラメータ=値の組で、
+空白や他の変わった文字を置かせるためには以下のようにします:
+
+   your_script.pl "name1='I am a long value'" "name2=two\ words"
+
+=head2 すべての名前／値の組み合わせをダンプする方法
+
+Dump()メソッドはすべての問い合わせの名前／組が入った、ネストした
+リストとしてきれいに整形されたされた文字列を作成します。
+こればデバッグの目的には有効です:
+
+    print $query->Dump
+
+
+これは以下のようなものを作成します:
+
+    <ul>
+    <li>name1
+    <ul>
+    <li>value1
+    <li>value2
+    </ul>
+    <li>name2
+    <ul>
+    <li>value1
+    </ul>
+    </ul>
+
+ショートカットとして、完全なCGIオブジェクトを文字列に入れることが
+出来ます。そしてそれは上記に示されるきれいなHTMLダンプで置きかえられます:
+
+    $query=new CGI;
+    print "<h2>Current Values</h2> $query\n";
+
+=head1 環境変数の取り出し
+
+いくつかのより便利な環境変数がこのインターフェースを通して
+取り出すことが出来ます。メソッドを以下に示します:
+
+=over 4
+
+=item B<Accept()>
+
+リモートのブラウザが受取るMIMEタイプのリストを返します。 
+$query->Accept('text/html')のように、もしこのメソッドにMIMEタイプに
+対応する１つの引数を渡せば、このタイプについてのブラウザの優先順位に
+対応する0.0（欲しくありません）から1.0までの浮動小数点値を返します。
+ブラウザの受取リストでのGlob型(例えば text/*)は正確に扱われます。
+
+Perlのaccept()関数とぶつかることを避けるために、2.43と2.44の間で
+先頭文字が大文字に変更されたことに注意してください。
+
+=item B<raw_cookie()>
+
+Netscapeブラウザ　バージョン1.1以上とInternet Explorerのすべての
+バージョンによるHTTP拡張であるHTTP_COOKIE変数を返します。クッキーは
+特別なフォーマットを持っており、このメソッドは単にそのままの形式を
+返します（いわばクッキーのタネ？）。調理されたクッキーを設定し、
+取得する方法については、cookie()をご覧下さい。
+
+パラメータなしで呼ばれると、raw_cookie()はパックされたクッキー構造体を
+返します。";"の文字並びで分割(split)することにより、ここのクッキーに
+分けることが出来ます。クッキーの名前をつけて呼び出すと、クッキーの
+B<エスケープされていない>形式を取り出します。名前を取得するために、
+通常のcookie()メソッドを使ったり、CGI::Cookieモジュールからの
+raw_fetchメソッドを使うことが出来ます。
+
+=item B<user_agent()>
+
+HTTP_USER_AGENT 変数を返します。このメソッドに１つの引数を与えると、
+それにパターンマッチを試み、 $query->user_agent(netscape); のようなことを
+おこなうことを可能にします。 
+
+=item B<path_info()>
+
+スクリプトからの追加パス情報を返します。
+例えば/cgi-bin/your_script/additional/stuffを取り出すと、
+$query->path_info()は結果として"addtional/stuff"を返します。
+
+注意：Microsoft Internet Information Server は追加のパス情報の見方で
+おかしくなっています。Perl DLLライブラリを使うと、IISサーバは
+Perlスクリプトとして追加パス情報を実行しようとします。もし通常の
+ファイル関連マッピングを使えば、パス情報は環境変数に表れますが正しくありません。
+これをおこなう一番よいことは、IISで使用するようなCGIでは追加パス情報を使うことを
+避けることです。
+
+=item B<path_translated()>
+
+path_info()と同様、しかし追加パス情報を物理パス情報に変換します。
+例えば"/usr/local/etc/httpd/htdocs/addtional/stuff"。
+
+変換されたパスについてもMicrosoft IISはイカレています。
+
+=item B<remote_host()>
+
+リモート・ホスト名または、もし前者が使えなければIPアドレスの
+どちらかを返します。
+
+=item B<script_name()>
+
+自分を参照するスクリプトのため、URLの一部としてスクリプト名を
+返します。 
+
+=item B<referer()>
+
+ブラウザがスクリプトを取り出す前に見ていたページのURLを返します。
+すべてのブラウザに利用できるわけではありません。 
+
+=item B<auth_type ()>
+
+もしあれば、このスクリプトのために使われた、
+authorization/verification （認証/検証）方法を返します。 
+
+=item B<server_name ()>
+
+サーバの名前、通常はマシンのホスト名を返します。 
+
+=item B<virtual_host ()>
+
+バーチャル・ホストを使っているとき、ブラウザがコンタクト
+しようとしたホストの名前を返します。 
+
+=item B<server_port ()>
+
+サーバ・ソフトウェアとバージョン番号を返します。 
+
+=item B<server_software ()>
+
+サーバ・ソフトウェアとバージョン番号を返します。 
+
+=item B<remote_user ()>
+
+このスクリプトが保護されていれば、ユーザ検証に使われた
+authorization/verification 名を返します。 
+
+=item B<user_name ()>
+
+さまざまな異なる技術を使ってリモートユーザの名前を取得しようと
+します。これはMosaicのような古いブラウザでのみ機能します。
+新しいブラウザはプライバシーの理由からユーザ名を報告しません!
+
+=item B<request_method()>
+
+スクリプトにアクセスするために使われたメソッドを返します。
+通常は'POST'、'GET'または'HEAD'のどれかです。 
+
+=item B<content_type()>
+
+POSTで送信されてきたデータのcontent_typeを返します。一般には
+multipart/form-data または application/x-www-form-urlencodedです。
+
+=item B<http()>
+
+引数なしで呼ばれると、それぞれリクエストでの似たような
+HTTPヘッダ・フィールドに対応する、HTTP_USER_AGENT、HTTP_ACCEPT_LANGUAGE、
+そしてHTTP_ACCEPT_CHARSETのようなものが入った環境変数のリストを返します。
+HTTPヘッダ・フィールドの名前付きで呼ばれると、その値を返します。
+大文字／小文字、アンダースコアの代わりにハイフンを使うことは区別されません。
+
+例えば、この３つの例はすべて同値です:
+
+   $requested_language = $q->http('Accept-language');
+   $requested_language = $q->http('Accept_language');
+   $requested_language = $q->http('HTTP_ACCEPT_LANGUAGE');
+
+=item B<https()>
+
+I<http()>と同じ。しかしSSLプロトコルが有効なときに現れる
+HTTPS環境変数を扱います。SSLがオンになっているかどうかを判定するためにも
+使うことができます。 
+
+=back
+
+=head1 NPHスクリプトの使い方
+
+NPHまたは"解析されないヘッダ"("no-parsed-header")、では、完全な
+HTTPヘッダを直接ブラウザに送信することにより、スクリプトはサーバを
+完全にバイパスします。これはパフォーマンスの面で少し利点があります。
+しかしほとんどは、サーバ・プッシュやPICSヘッダのような、サーバによって
+直接にはサポートされていないHTTP拡張の利点を得るために使われます。
+
+CGIスクリプトをNPHとして示すため、さまざまな約束が使われます。
+多くのUnixサーバはスクリプトの名前の始まりに接頭辞"nph-"があるかを
+見ます。これに対してMacintosh WebSTARサーバと Microsoftの
+Internet Information Serverは、スクリプト出力の先頭行をチェックする
+ことによりNPHスクリプトであるかを判定しようとします。
+
+CGI.pmは特別はNPHモードでNPHスクリプトをサポートします。
+このモードではCGI.pmはheader()やredirect()メソッドが呼ばれると
+必要となる特殊なヘッダ情報を出力します。
+
+Microsoft Internet Information Server はNPHモードを必要とします。
+version 2.30では、CGI.pmはIISの元で実行されたとき自動的に検知し、
+自分自身でこのモードにします。手動でこのモードにする必要はありません。
+しかしそうしたからといって、何も問題はありません。 しかしながら
+サービスパック6を提供しているのであれば、注意してください。
+クッキーが設定されている間、リダイレクトするという機能も含めて、
+NPHスクリプトの機能の多くがMicrosoftからの特別なパッチなしには
+IISではb<まったく機能しません>。このURLをご覧ください
+http://support.microsoft.com/support/kb/articles/Q280/3/41.ASP:
+Non-Parsed Headers Stripped From CGI Applications That Have nph-
+Prefix in Name. (名前がnph-で始まらないCGIアプリケーションからの
+解析されないヘッダの除去)
+
+=over 4
+
+=item B<use>ステートメントで
+
+スクリプトにインポートされるシンボルのリストに単に"-nph"プラグマを
+追加してください:
+
+      use CGI qw(:standard -nph)
+
+=item B<nph()>メソッドの呼出し
+
+CGI.pmをプログラムで使った後のどこかの時点で、非0のパラメータで
+B<nph()>を呼び出してください。
+
+      CGI->nph(1)
+
+=item B<-nph>パラメータを使う
+
+B<header()>とB<redirect()>ステートメントで:
+
+      print $q->header(-nph=>1);
+
+=back
+
+=head1 サーバー・プッシュ
+
+CGI.pmは、サーバ・プッシュを実装するために必要な種類である
+マルチパート・ドキュメントを作成するために簡単な4つの関数を提供しています。
+これらの関数はありがたいことに Ed Jordan <ed@fidalgo.net>によって
+提供されました。これらを名前空間にインポートするためには、":push"セットを
+インポートしなければいけません。またスクリプトをNPHモードとし、バッファリングの
+問題を避けるために$｜を1に設定したほうがよいでしょう。
+
+サーバ・プッシュをデモンストレーションする簡単なスクリプトを以下にしめします:
+
+  #!/usr/local/bin/perl
+  use CGI qw/:push -nph/;
+  $| = 1;
+  print multipart_init(-boundary=>'----here we go!');
+  foreach (0 .. 4) {
+      print multipart_start(-type=>'text/plain'),
+            "The current time is ",scalar(localtime),"\n";
+      if ($_ < 4) {
+              print multipart_end;
+      } else {
+              print multipart_final;
+      }
+      sleep 1;
+  }
+
+このスクリプトはB<multipart_init()>を呼ぶことによってサーバ・プッシュを
+初期化しています。そしてB<multipart_start()>を呼ぶことによって新しい
+マルチパート・セクションを始め、現在のローカル・タイムを出力し、
+B<multipart_end()>でマルチパート・セクションを終わらせているループに
+入ります。そして1秒スリープした後、再び開始します。最後の繰り返しでは
+B<multipart_end()>ではなくB<multipart_final()>でマルチパート・
+セクションを終了させています。
+
+=over 4
+
+=item multipart_init()
+
+  multipart_init(-boundary=>$boundary);
+
+マルチパート・システムを初期化します。-boundary 引数はドキュメントの
+部分を分割するために使われるMIMEバウンダリ文字列を指定します。
+指定されなければ、CGI.pmはあなたに代わって合理的なバウンダリを選択します。
+
+=item multipart_start()
+
+  multipart_start(-type=>$type)
+
+指定されたMIMEタイプを使ってマルチパート・ドキュメントの新しい部分を
+開始します。指定されなければ、text/htmlが想定されます。
+
+=item multipart_end()
+
+  multipart_end()
+
+部分(part)を終わらせます。multipart_end()の代わりにmultipart_final()を
+呼ばなければならないマルチパート・ドキュメントの最後の部分の終わりを
+除いて、multipart_start()を呼ぶ毎にmultpart_end()を
+呼ぶ事を忘れては行けません。
+
+=item multipart_final()
+
+  multipart_final()
+
+全ての部分を終了させます。マルチパート・ドキュメントの最後の部分の
+終了のときにはmultipart_end()ではなく、multipart_final()を呼ばなければ
+なりません。
+
+=back
+
+サーバ・プッシュ・アプリケーションに興味のあるユーザはCGI::Pushモジュールも
+見るべきです。
+
+Netscape Navigatorだけがサーバー・プッシュをサポートしています。
+Internet Explorerブラウザはサポートしていません。
+
+=head1 サービス不能(DoS)攻撃の回避
+
+CGI.pmでの潜在的な問題は、デフォルトではPOSTされたフォームがどんなに大きくても
+処理しようとすることです。ずるがしこいハッカーは数メガバイトの巨大な
+POSTをCGIスクリプトに送信することにより、あたなのサイトを攻撃することが
+出来ます。CGI.pmはPOST全体を変数に読み込もうとし、メモリがなくなるまで、
+その大きさは巨大に成長します。スクリプトがメモリを占有しようとする間、
+システムは劇的に遅くなるかもしれません。これがサービス不能(DoS)攻撃の形です。
+
+他の可能な攻撃はリモードユーザがCGI.pmに巨大なファイルのアップロードを
+受取ることを強要することです。CGI.pmは、例えあなたのスクリプトがアップロード
+されるファイルを受けることを予想していなくても、アップロードを受けつけ、
+それを一時ディレクトリに格納しようとします。CGI.pmはそれが終わったとき、
+自動的にファイルを削除します、しかしその間にリモートユーザがサーバの
+ディスク空間をいっぱいにしてしまうかも知れません。他の問題を起こしながら。
+
+サービス・アタックの拒否を避ける一番よい方法は、CGIスクリプトが使うことが
+できるメモリ量、CPU時間、ディスク容量を制限することです。いつくかのWebサーバは
+これを実現する組込み機能を持っています。その他の場合、シェルのI<limit>または
+I<ulimit>をCGIの資源使用に上限を設定ために使うことが出来ます。
+
+CGI.pmもサービス・アタックの拒否に対するいくかの簡単な組込まれた保護を
+持っていますが、使えるようになる前に活性化させなければなりません。
+これらはCGI名前空間での２つのグローバル変数の形を取ります:
+
+=over 4
+
+=item B<$CGI::POST_MAX>
+
+負でない整数が設定されると、この変数はPOSTされるサイズの上限を
+バイト数で設定します。CGI.pmは上限よりも大きいPOSTを検知すると、
+エラーメッセージとともにすぐにexitします。この値は通常のPOSTと
+マルチパートPOSTの両方に影響を与えます。つまりファイル・アップロードの
+最大の大きさも制限するということです。
+これは1メガバイトのように合理的に大きい値を設定しなければいけません。
+
+=item B<$CGI::DISABLE_UPLOADS>
+
+非0の値が設定されると、これはファイルのアップロードを完全に
+不可能にします。他のフォームの値は通常通り機能します。 
+
+=back
+
+これらの変数を以下の2つの方法のどちらかで使うことが出来ます:
+
+=over 4
+
+=item B<1. スクリプト毎に>
+
+"use"ステートメントのすぐ後に、スクリプトの先頭でその変数を設定します:
+
+    use CGI qw/:standard/;
+    use CGI::Carp 'fatalsToBrowser';
+    $CGI::POST_MAX=1024 * 100;  # max 100K posts
+    $CGI::DISABLE_UPLOADS = 1;  # no uploads
+
+=item B<2. すべてのスクリプトでグローバルに>
+
+CGI.pmを開き$POST_MAXと$DISABLE_UPLOADSのための定義を見つけ、
+それを望んでいる値に設定します。ファイルの先頭の近くinitialize_globals()
+という名前のサブルーチンの中で見つけるでしょう。
+
+=back
+
+$POST_MAXバイトよりも大きなPOSTを送信しようとするとI<param()>に
+空のCGIパラメータを返させます。このイベントはCGIオブジェクトを
+作成した後もしくは関数指向インターフェースを使っていれば最初に
+<param()>を呼び出した後に、I<cgi_error()>をチェックすることで
+調べることができます。もしPOSTが中断されていれば、cgi_error()は
+"413 POST too large"というメッセージを返します。
+
+このエラーメッセージは実際にはHTTPプロトコルで定義されており、
+そしてCGIスクリプトのステータス・コードとしてブラウザに返される
+ようになっています。例えば:
+
+   $uploaded_file = param('upload');
+   if (!$uploaded_file && cgi_error()) {
+      print header(-status=>cgi_error());
+      exit 0;
+   }
+
+しかしながら、すべてのブラウザが現在のところ、このステータスで
+何をすべきか分かっているかははっきりしません。問題のユーザに
+警告するHTMLページを作るだけの方がよいかもしれません。
+
+=head1 CGI-LIB.PLとの互換性
+
+cgi-lib.plを使っている既にあるプログラムの移植を簡単にするため、
+互換性ルーチン"ReadParse"が提供されています。移植は簡単です:
+
+旧バージョン
+    require "cgi-lib.pl";
+    &ReadParse;
+    print "The value of the antique is $in{antique}.\n";
+
+新バージョン
+    use CGI;
+    CGI::ReadParse
+    print "The value of the antique is $in{antique}.\n";
+
+CGI.pmのReadParse()ルーチンは%inという名前のtieされた変数を作成します。
+それは問い合わせ変数を取得するためにアクセスされます。
+ReadParseのように独自の変数を提供することも出来ます。
+@inと$in変数の作成のように、ReadParseのあまり頻繁には使われない
+機能はサポートされていません。
+
+一度ReadParseを使えば、以下のように問い合わせオブジェクトそれ自身を
+取り出すことが出来ます:
+
+    $q = $in{CGI};
+    print $q->textfield(-name=>'wow',
+            -value=>'does this really work?');
+
+これにより、古いスクリプトを頭から書きなおすことなく、CGI.pmの
+より興味深い機能を使い始めることが出来ます。
+
+=head1 作者情報(AUTHOR INFORMATION)
+
+Copyright 1995-1998, Lincoln D. Stein.  All rights reserved.  
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+バグレポートとコメントはこちらへ:lstein@cshl.org。バグレポートを送る
+ときにはCGI.pmのバージョン、Perlのバージョン、Webサーバの名前と
+バージョン、そして使用しているオペレーティング・システムの名前と
+バージョンを教えてください。もし問題が離れた場所にあるブラウザにさえも
+依存していれば、影響されるブラウザについての情報を教えてください。
+
+=head1 謝辞
+
+以下の方々に感謝します:
+
+=over 4
+
+=item Matt Heffron (heffron@falstaff.css.beckman.com)
+
+=item James Taylor (james.taylor@srs.gov)
+
+=item Scott Anguish <sanguish@digifix.com>
+
+=item Mike Jewell (mlj3u@virginia.edu)
+
+=item Timothy Shimmin (tes@kbs.citri.edu.au)
+
+=item Joergen Haegg (jh@axis.se)
+
+=item Laurent Delfosse (delfosse@delfosse.com)
+
+=item Richard Resnick (applepi1@aol.com)
+
+=item Craig Bishop (csb@barwonwater.vic.gov.au)
+
+=item Tony Curtis (tc@vcpc.univie.ac.at)
+
+=item Tim Bunce (Tim.Bunce@ig.co.uk)
+
+=item Tom Christiansen (tchrist@convex.com)
+
+=item Andreas Koenig (k@franz.ww.TU-Berlin.DE)
+
+=item Tim MacKenzie (Tim.MacKenzie@fulcrum.com.au)
+
+=item Kevin B. Hendricks (kbhend@dogwood.tyler.wm.edu)
+
+=item Stephen Dahmen (joyfire@inxpress.net)
+
+=item Ed Jordan (ed@fidalgo.net)
+
+=item David Alan Pisoni (david@cnation.com)
+
+=item Doug MacEachern (dougm@opengroup.org)
+
+=item Robin Houston (robin@oneworld.org)
+
+=item ...そしてさらに多くの本当に多くの人たちに... 
+
+
+提案とバグ・フィックスに対して。
+
+=back
+
+=head1 単純なフォーム・ベースのスクリプトの完全な例
+
+
+    #!/usr/local/bin/perl
+
+    use CGI;
+
+    $query = new CGI;
+
+    print $query->header;
+    print $query->start_html("Example CGI.pm Form");
+    print "<h1> Example CGI.pm Form</h1>\n";
+    &print_prompt($query);
+    &do_work($query);
+    &print_tail;
+    print $query->end_html;
+
+    sub print_prompt {
+       my($query) = @_;
+
+       print $query->start_form;
+       print "<em>What's your name?</em><br>";
+       print $query->textfield('name');
+       print $query->checkbox('Not my real name');
+
+       print "<p><em>Where can you find English Sparrows?</em><br>";
+       print $query->checkbox_group(
+                 -name=>'Sparrow locations',
+                 -values=>[England,France,Spain,Asia,Hoboken],
+                 -linebreak=>'yes',
+                 -defaults=>[England,Asia]);
+
+       print "<p><em>How far can they fly?</em><br>",
+        $query->radio_group(
+            -name=>'how far',
+            -values=>['10 ft','1 mile','10 miles','real far'],
+            -default=>'1 mile');
+
+       print "<p><em>What's your favorite color?</em>  ";
+       print $query->popup_menu(-name=>'Color',
+                    -values=>['black','brown','red','yellow'],
+                    -default=>'red');
+
+       print $query->hidden('Reference','Monty Python and the Holy Grail');
+
+       print "<p><em>What have you got there?</em><br>";
+       print $query->scrolling_list(
+             -name=>'possessions',
+             -values=>['A Coconut','A Grail','An Icon',
+                   'A Sword','A Ticket'],
+             -size=>5,
+             -multiple=>'true');
+
+       print "<p><em>Any parting comments?</em><br>";
+       print $query->textarea(-name=>'Comments',
+                  -rows=>10,
+                  -columns=>50);
+
+       print "<p>",$query->reset;
+       print $query->submit('Action','Shout');
+       print $query->submit('Action','Scream');
+       print $query->endform;
+       print "<hr>\n";
+    }
+
+    sub do_work {
+       my($query) = @_;
+       my(@values,$key);
+
+       print "<h2>Here are the current settings in this form</h2>";
+
+       foreach $key ($query->param) {
+          print "<strong>$key</strong> -> ";
+          @values = $query->param($key);
+          print join(", ",@values),"<br>\n";
+      }
+    }
+
+    sub print_tail {
+       print <<END;
+    <hr>
+    <address>Lincoln D. Stein</address><br>
+    <a href="/">Home Page</a>
+    END
+    }
+
+=head1 バグ
+
+どうか報告してください。
+
+=head1 参考資料
+
+L<CGI::Carp>, L<CGI::Fast>, L<CGI::Pretty>
+
+=head1 翻訳者
+
+川合孝典(GCD00051@nifty.ne.jp)
+

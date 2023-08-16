@@ -1,0 +1,724 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+perlfork - Perl's fork() emulation
+
+=end original
+
+perlfork - Perl の fork エミュレーション
+
+=head1 SYNOPSIS
+
+=begin original
+
+    NOTE:  As of the 5.8.0 release, fork() emulation has considerably
+    matured.  However, there are still a few known bugs and differences
+    from real fork() that might affect you.  See the "BUGS" and
+    "CAVEATS AND LIMITATIONS" sections below.
+
+=end original
+
+    注意: 5.8.0 のリリースと共に、fork() エミュレーションはかなり成熟し
+    ています。しかしながら、またいくつかのバグや実際の fork() との差違
+    が知られています。後述の "バグ" 及び "警告と制限" の章も参照してく
+    ださい。
+
+=begin original
+
+Perl provides a fork() keyword that corresponds to the Unix system call
+of the same name.  On most Unix-like platforms where the fork() system
+call is available, Perl's fork() simply calls it.
+
+=end original
+
+Perl は同名の Unix システムコールに対応するキーワード fork() を
+提供しています。
+fork() システムコールが存在する大抵の Unix 風プラットフォームでは
+Perl の fork() は単純にそれを呼ぶだけです。
+
+=begin original
+
+On some platforms such as Windows where the fork() system call is not
+available, Perl can be built to emulate fork() at the interpreter level.
+While the emulation is designed to be as compatible as possible with the
+real fork() at the level of the Perl program, there are certain
+important differences that stem from the fact that all the pseudo child
+"processes" created this way live in the same real process as far as the
+operating system is concerned.
+
+=end original
+
+Windows といった fork() システムコールを持っていないいくつかの
+プラットフォームでは、インタプリタレベルで fork() のエミュレーションを
+構築します。
+エミュレーションは Perl プログラムのレベルに於いて
+本物の fork() とできる限り互換がとれるように設計されていますが,
+この方法で生成される全ての仮想的な子「プロセス」は
+オペレーティングシステムが関与する限りでは同じ実プロセスとして
+存在するためにいくらかの重要な違いが存在します。
+
+=begin original
+
+This document provides a general overview of the capabilities and
+limitations of the fork() emulation.  Note that the issues discussed here
+are not applicable to platforms where a real fork() is available and Perl
+has been configured to use it.
+
+=end original
+
+このドキュメントでは fork() エミュレーションの能力と限界の概要を
+提供します。
+ここで述べられていることは本物の fork() が存在して
+Perl がそれを使うように設定されているプラットフォームには
+当てはまりません。
+
+=head1 DESCRIPTION
+
+=begin original
+
+The fork() emulation is implemented at the level of the Perl interpreter.
+What this means in general is that running fork() will actually clone the
+running interpreter and all its state, and run the cloned interpreter in
+a separate thread, beginning execution in the new thread just after the
+point where the fork() was called in the parent.  We will refer to the
+thread that implements this child "process" as the pseudo-process.
+
+=end original
+
+fork() エミュレーションは Perl インタプリタのレベルで実装されて
+います。
+これの意味するところはおおざっぱに言うと fork() の実行は実際には
+実行しているインタプリタとその状態の全てを複製し、
+複製されたインタプリタを別のスレッドで、親で fork() が呼び出された
+すぐ後から実行を始めることです。
+仮想的なプロセスとしてこの子「プロセス」を実装しているスレッドに
+着目します。
+
+=begin original
+
+To the Perl program that called fork(), all this is designed to be
+transparent.  The parent returns from the fork() with a pseudo-process
+ID that can be subsequently used in any process manipulation functions;
+the child returns from the fork() with a value of C<0> to signify that
+it is the child pseudo-process.
+
+=end original
+
+fork() を呼び出した Perl プログラムにとって、この全ては透過的であるように
+設計されています。
+親プロセスは fork() からその後の
+プロセス操作関数で使うことのできる仮想プロセス ID を伴って戻り、
+子プロセスでは子仮想プロセスであることを示す値 C<0> を伴って
+戻ります。
+
+=head2 Behavior of other Perl features in forked pseudo-processes
+
+(fork された擬似プロセスの中でのその他の Perl の機能の振る舞い)
+
+=begin original
+
+Most Perl features behave in a natural way within pseudo-processes.
+
+=end original
+
+大抵の Perl の機能は仮想プロセスでも自然に振る舞います。
+
+=over 8
+
+=item $$ or $PROCESS_ID
+
+($$ 及び $PROCESS_ID)
+
+=begin original
+
+This special variable is correctly set to the pseudo-process ID.
+It can be used to identify pseudo-processes within a particular
+session.  Note that this value is subject to recycling if any
+pseudo-processes are launched after others have been wait()-ed on.
+
+=end original
+
+この特殊変数は適切に仮想プロセス ID に設定されます。
+これは特定のセッションに於いて仮想プロセスを識別するために
+使うことができます。
+この値は wait() された後に起動された
+仮想プロセスでは再利用されることに注意して下さい。
+
+=item %ENV
+
+=begin original
+
+Each pseudo-process maintains its own virtual environment.  Modifications
+to %ENV affect the virtual environment, and are only visible within that
+pseudo-process, and in any processes (or pseudo-processes) launched from
+it.
+
+=end original
+
+各仮想プロセスはそれぞれの仮想環境を持っています。
+%ENV の変更は仮想環境に作用し、その仮想プロセスと、そこから起動した
+全てのプロセス(及び仮想プロセス)でのみ見ることができます。
+
+=item chdir() and all other builtins that accept filenames
+
+(chdir() 及びファイル名を受け取る他の全ての組み込み関数)
+
+=begin original
+
+Each pseudo-process maintains its own virtual idea of the current directory.
+Modifications to the current directory using chdir() are only visible within
+that pseudo-process, and in any processes (or pseudo-processes) launched from
+it.  All file and directory accesses from the pseudo-process will correctly
+map the virtual working directory to the real working directory appropriately.
+
+=end original
+
+各仮想プロセスはそれぞれに仮想的なカレントディレクトリの主題(idea)を
+持っています。
+chdir() を使ったカレントディレクトリの変更はその
+仮想プロセスと、そこから起動した全てのプロセス(及び仮想プロセス)でのみ
+見ることができます。
+仮想プロセスからの全てのファイル及びディレクトリアクセスは
+仮想作業ディレクトリから実作業ディレクトリへと適切に
+正しく変換されます。
+
+=item wait() and waitpid()
+
+(wait() 及び waitpid())
+
+=begin original
+
+wait() and waitpid() can be passed a pseudo-process ID returned by fork().
+These calls will properly wait for the termination of the pseudo-process
+and return its status.
+
+=end original
+
+wait() 及び waitpid() に fork() から返される仮想プロセス ID を
+渡すことができます。
+これらの呼び出しは仮想プロセスの終了を適切に待ち、
+その状態を返します。
+
+=item kill()
+
+=begin original
+
+kill() can be used to terminate a pseudo-process by passing it the ID returned
+by fork().  This should not be used except under dire circumstances, because
+the operating system may not guarantee integrity of the process resources
+when a running thread is terminated.  Note that using kill() on a
+pseudo-process() may typically cause memory leaks, because the thread that
+implements the pseudo-process does not get a chance to clean up its resources.
+
+=end original
+
+kill() は fork() から返された ID を渡すことで仮想プロセスを
+停止することができます。
+しかしこれは悲惨な状況下以外では使うべきではありません、
+なぜならオペレーティングシステムは実行しているスレッドが終了した
+時ではプロセスリソースの完全性を保証しないかもしれないからです。
+仮想プロセスに対して kill() を使うと大抵メモリリークを引き起こします;
+これは仮想プロセスを実装しているスレッドにはそのリソースを解放する
+タイミングをとれないためです。
+
+=item exec()
+
+=begin original
+
+Calling exec() within a pseudo-process actually spawns the requested
+executable in a separate process and waits for it to complete before
+exiting with the same exit status as that process.  This means that the
+process ID reported within the running executable will be different from
+what the earlier Perl fork() might have returned.  Similarly, any process
+manipulation functions applied to the ID returned by fork() will affect the
+waiting pseudo-process that called exec(), not the real process it is
+waiting for after the exec().
+
+=end original
+
+仮想プロセスでの exec() 呼び出しは実際には要求された実行形式を
+別のプロセス空間で呼び出し、そのプロセスの終了ステータスと
+同じステータスで終了するように待機します。
+これは実行している実行形式が持っているプロセス ID がそれに先立つ
+Perl の fork() で返されたプロセス ID は異なることを意味します。
+同じように、fork() によって返された ID を渡すプロセス操作関数は
+exec() の後で待っている実プロセスではなく、exec() を呼び出した
+仮想プロセスに対して作用します。
+
+=begin original
+
+When exec() is called inside a pseudo-process then DESTROY methods and
+END blocks will still be called after the external process returns.
+
+=end original
+
+exec() が擬似プロセスの内側で呼び出されると、DESTROY メソッドと
+END ブロックは外部プロセスが返ってきた後に呼び出されるままです。
+
+=item exit()
+
+=begin original
+
+exit() always exits just the executing pseudo-process, after automatically
+wait()-ing for any outstanding child pseudo-processes.  Note that this means
+that the process as a whole will not exit unless all running pseudo-processes
+have exited.  See below for some limitations with open filehandles.
+
+=end original
+
+exit() はいつでも、起動中の子仮想プロセスを自動的に wait() してから、
+実行している仮想プロセスを終了させます。
+これはそのプロセスは全ての
+実行中の仮想プロセスが終了するまでしばらくの間終了しないことを
+意味します。
+オープンしたファイルハンドルに関する制限については以下を参照してください。
+
+=item Open handles to files, directories and network sockets
+
+(ファイル、ディレクトリ、及びネットワークソケットに対する開いているハンドル)
+
+=begin original
+
+All open handles are dup()-ed in pseudo-processes, so that closing
+any handles in one process does not affect the others.  See below for
+some limitations.
+
+=end original
+
+全ての開いているハンドルは子プロセスで dup() されるので、
+どこかのプロセスでハンドルを閉じても他には影響しません。
+いくつかの制限については続きを見て下さい。
+
+=back
+
+=head2 Resource limits
+
+(リソースの制限)
+
+=begin original
+
+In the eyes of the operating system, pseudo-processes created via the fork()
+emulation are simply threads in the same process.  This means that any
+process-level limits imposed by the operating system apply to all
+pseudo-processes taken together.  This includes any limits imposed by the
+operating system on the number of open file, directory and socket handles,
+limits on disk space usage, limits on memory size, limits on CPU utilization
+etc.
+
+=end original
+
+オペレーシングシステムから見ると、fork() エミュレーションから生成された
+仮想プロセスは単なる同じプロセス内のスレッドです。
+これはオペレーシングシステムによって科せられた全てのプロセスレベルの制限は
+全ての仮想プロセスで一緒に割り当てられます。
+これには開いているファイル、
+ディレクトリ、ソケットの数の制限、ディスク使用量の制限、
+メモリサイズの制限、CPU 使用量の制限等が含まれます。
+
+=head2 Killing the parent process
+
+(親プロセスの kill)
+
+=begin original
+
+If the parent process is killed (either using Perl's kill() builtin, or
+using some external means) all the pseudo-processes are killed as well,
+and the whole process exits.
+
+=end original
+
+親プロセスが kill (Perl の kill() 組み込み関数若しくは外部の同等の
+物で)されると、全ての仮想プロセスも同様に kill され、プロセス全体が
+終了します。
+
+=head2 Lifetime of the parent process and pseudo-processes
+
+(親プロセスと仮想プロセスの生存期間)
+
+=begin original
+
+During the normal course of events, the parent process and every
+pseudo-process started by it will wait for their respective pseudo-children
+to complete before they exit.  This means that the parent and every
+pseudo-child created by it that is also a pseudo-parent will only exit
+after their pseudo-children have exited.
+
+=end original
+
+通常のイベントの進み方であれば、親プロセスとそこから起動された
+それぞれの仮想プロセスは終了する前に各自の仮想子プロセスを待つでしょう。
+これは親プロセスとそこから起動されたそれぞれのそれがまた
+仮想親プロセスである仮想子プロセスはそれらの仮想子プロセスが終了した
+後でのみ終了するでしょう。
+
+=begin original
+
+A way to mark a pseudo-processes as running detached from their parent (so
+that the parent would not have to wait() for them if it doesn't want to)
+will be provided in future.
+
+=end original
+
+仮想プロセスがその親プロセスから detach して実行している
+(つまり親は必要がないのなら wait() する必要がない)とマークする方法は
+今後提供されるでしょう。
+
+=head2 CAVEATS AND LIMITATIONS
+
+(警告及び制限)
+
+=over 8
+
+=item BEGIN blocks
+
+(BEGIN ブロック)
+
+=begin original
+
+The fork() emulation will not work entirely correctly when called from
+within a BEGIN block.  The forked copy will run the contents of the
+BEGIN block, but will not continue parsing the source stream after the
+BEGIN block.  For example, consider the following code:
+
+=end original
+
+fork() エミュレーションは BEGIN ブロックで呼ばれた時には完全には
+正しく動作しません。
+fork された複製は BEGIN ブロックの内容を実行しますが、BEGIN ブロックの後の
+ソースストリームのパースを継続しません。
+例えば、次のコードを考えてみます:
+
+    BEGIN {
+        fork and exit;		# fork child and exit the parent
+	print "inner\n";
+    }
+    print "outer\n";
+
+=begin original
+
+This will print:
+
+=end original
+
+これは次のように出力します:
+
+    inner
+
+=begin original
+
+rather than the expected:
+
+=end original
+
+本来は次のようであるはずです:
+
+    inner
+    outer
+
+=begin original
+
+This limitation arises from fundamental technical difficulties in
+cloning and restarting the stacks used by the Perl parser in the
+middle of a parse.
+
+=end original
+
+この制限はパース途中の Perl パーサによって使われるスタックの
+複製と再開における基礎技術の複雑さに起因しています。
+
+=item Open filehandles
+
+(開いているファイルハンドル)
+
+=begin original
+
+Any filehandles open at the time of the fork() will be dup()-ed.  Thus,
+the files can be closed independently in the parent and child, but beware
+that the dup()-ed handles will still share the same seek pointer.  Changing
+the seek position in the parent will change it in the child and vice-versa.
+One can avoid this by opening files that need distinct seek pointers
+separately in the child.
+
+=end original
+
+fork() した時点で開いている全てのファイルハンドルは dup() されます。
+つまり、ファイルは親と子とで独立して閉じることができます; しかし
+dup() されたハンドルはまだ同じシークポインタを共有していることに
+注意して下さい。
+親でシーク位置を変更するとそれは子にも波及し、その逆も同様です。
+これは子供と分離したシークポインタが必要なファイルを開くことで
+無効にできます。
+
+=begin original
+
+On some operating systems, notably Solaris and Unixware, calling C<exit()>
+from a child process will flush and close open filehandles in the parent,
+thereby corrupting the filehandles.  On these systems, calling C<_exit()>
+is suggested instead.  C<_exit()> is available in Perl through the 
+C<POSIX> module.  Please consult your systems manpages for more information
+on this.
+
+=end original
+
+いくつかの OS (特に Solaris や Unixware) では、子プロセスから C<exit()> が
+呼び出されると、親のオープンしているファイルハンドルはフラッシュされて
+閉じられるので、結果としてファイルハンドルが壊れます。
+これらのシステムでは、代わりに C<_exit()> を呼ぶべきです。
+C<_exit()> は C<POSIX> モジュールを通して Perl で利用可能です。
+これに関するさらなる情報についてはシステムの man ページを参考にしてください。
+
+=item Forking pipe open() not yet implemented
+
+(pipe open() の fork はまだ実装されていません)
+
+=begin original
+
+The C<open(FOO, "|-")> and C<open(BAR, "-|")> constructs are not yet
+implemented.  This limitation can be easily worked around in new code
+by creating a pipe explicitly.  The following example shows how to
+write to a forked child:
+
+=end original
+
+C<open(FOO、"|-")> 及び C<open(BAR、"-|")> 構成子は実装されていません。
+この制限は明示的にパイプを作る新しいコードで簡単に取り除けます。
+以下の例で fork された子に書き出す方法を示します:
+
+    # simulate open(FOO, "|-")
+    sub pipe_to_fork ($) {
+	my $parent = shift;
+	pipe my $child, $parent or die;
+	my $pid = fork();
+	die "fork() failed: $!" unless defined $pid;
+	if ($pid) {
+	    close $child;
+	}
+	else {
+	    close $parent;
+	    open(STDIN, "<&=" . fileno($child)) or die;
+	}
+	$pid;
+    }
+
+    if (pipe_to_fork('FOO')) {
+	# parent
+	print FOO "pipe_to_fork\n";
+	close FOO;
+    }
+    else {
+	# child
+	while (<STDIN>) { print; }
+	exit(0);
+    }
+
+=begin original
+
+And this one reads from the child:
+
+=end original
+
+そしてこちらは子から読む時です:
+
+    # simulate open(FOO, "-|")
+    sub pipe_from_fork ($) {
+	my $parent = shift;
+	pipe $parent, my $child or die;
+	my $pid = fork();
+	die "fork() failed: $!" unless defined $pid;
+	if ($pid) {
+	    close $child;
+	}
+	else {
+	    close $parent;
+	    open(STDOUT, ">&=" . fileno($child)) or die;
+	}
+	$pid;
+    }
+
+    if (pipe_from_fork('BAR')) {
+	# parent
+	while (<BAR>) { print; }
+	close BAR;
+    }
+    else {
+	# child
+	print "pipe_from_fork\n";
+	exit(0);
+    }
+
+=begin original
+
+Forking pipe open() constructs will be supported in future.
+
+=end original
+
+pipe open() の fork は今後実装されるでしょう。
+
+=item Global state maintained by XSUBs 
+
+(XSUB の保持しているグローバル状態)
+
+=begin original
+
+External subroutines (XSUBs) that maintain their own global state may
+not work correctly.  Such XSUBs will either need to maintain locks to
+protect simultaneous access to global data from different pseudo-processes,
+or maintain all their state on the Perl symbol table, which is copied
+naturally when fork() is called.  A callback mechanism that provides
+extensions an opportunity to clone their state will be provided in the
+near future.
+
+=end original
+
+それ自身でグローバル状態を保持している外部関数(XSUBs; external
+subroutines)は正しく動作しないでしょう。
+そのような XSUB は、異なる仮想プロセスからグローバルデータに対して同時に
+アクセスするのを防ぐためのロックも保持するが、その全ての状態を
+fork() 時に自然と複製される Perl シンボルテーブル上に置くかする
+必要があるでしょう。
+拡張に対して複製するタイミングを提供するコールバック機構は近い将来
+提供されるでしょう。
+
+=item Interpreter embedded in larger application
+
+(大きなアプリケーションに埋め込まれているインタプリタ)
+
+=begin original
+
+The fork() emulation may not behave as expected when it is executed in an
+application which embeds a Perl interpreter and calls Perl APIs that can
+evaluate bits of Perl code.  This stems from the fact that the emulation
+only has knowledge about the Perl interpreter's own data structures and
+knows nothing about the containing application's state.  For example, any
+state carried on the application's own call stack is out of reach.
+
+=end original
+
+fork() エミュレーションは Perl インタプリタを埋め込んでいて
+Perl コードを評価(eval)する Perl API を少しだけ呼び出すような
+アプリケーションの内部で実行されている時には、予期したように
+振る舞わないかもしれません。
+これは、エミュレーションは Perl インタプリタ自身の持っているデータ構造しか
+知らず、格納しているアプリケーションの
+状態に関しては何も知らないために生じます。
+例えば、アプリケーションの自分のコールスタックで継続している状態は
+手の届かないところにあります。
+
+=item Thread-safety of extensions
+
+(エクステンションのスレッド安全性)
+
+=begin original
+
+Since the fork() emulation runs code in multiple threads, extensions
+calling into non-thread-safe libraries may not work reliably when
+calling fork().  As Perl's threading support gradually becomes more
+widely adopted even on platforms with a native fork(), such extensions
+are expected to be fixed for thread-safety.
+
+=end original
+
+fork() エミュレーションはコードを複数のスレッドで実行するために、
+スレッドセーフでないライブラリを呼び出すエクステンションは fork() を
+呼び出すと正しく動作しないかもしれません。
+Perl のスレッドサポートは徐々にネイティブな fork() を持っている
+プラットフォームにも広く導入されてきているので、そのようなエクステンションは
+スレッドセーフに修正するように期待されています。
+
+=back
+
+=head1 BUGS
+
+=over 8
+
+=item *
+
+=begin original
+
+Having pseudo-process IDs be negative integers breaks down for the integer
+C<-1> because the wait() and waitpid() functions treat this number as
+being special.  The tacit assumption in the current implementation is that
+the system never allocates a thread ID of C<1> for user threads.  A better
+representation for pseudo-process IDs will be implemented in future.
+
+=end original
+
+仮想プロセス ID を負の整数値とすることは整数 C<-1> を破壊します;
+なぜなら wait() や waitpid() といった関数はその値を
+特殊な物として扱うためです。
+現在の実装においては、システムはユーザスレッドに対してスレッド ID C<1> を
+割り当てることはないと暗黙に仮定しています。
+よりよい仮想プロセス ID の表現は今後実装されるでしょう。
+
+=item *
+
+=begin original
+
+In certain cases, the OS-level handles created by the pipe(), socket(),
+and accept() operators are apparently not duplicated accurately in
+pseudo-processes.  This only happens in some situations, but where it
+does happen, it may result in deadlocks between the read and write ends
+of pipe handles, or inability to send or receive data across socket
+handles.
+
+=end original
+
+特定のケースで、pipe()、socket()、そして accept() 演算子によって
+生成された OS レベルのハンドルは仮想プロセスできちんと
+複製されないことがあるようです。
+これは特定の状況でのみ発生しますが、これが発生する場所では、
+パイプハンドルの読み書き間でのデッドロックやソケットハンドルに対する
+送受信ができないといったことが起こるようです。
+
+=item *
+
+=begin original
+
+This document may be incomplete in some respects.
+
+=end original
+
+このドキュメントは何カ所か不完全かもしれません。
+
+=back
+
+=head1 AUTHOR
+
+=begin original
+
+Support for concurrent interpreters and the fork() emulation was implemented
+by ActiveState, with funding from Microsoft Corporation.
+
+=end original
+
+並列インタプリタと fork() エミュレーションのサポートは
+Microsoft Corporation の資金援助で ActiveState によって実装されました。
+
+=begin original
+
+This document is authored and maintained by Gurusamy Sarathy
+E<lt>gsar@activestate.comE<gt>.
+
+=end original
+
+このドキュメントは Gurusamy Sarathy E<lt>gsar@activestate.comE<gt>
+によって書かれ、メンテナンスされています。
+
+=head1 SEE ALSO
+
+L<perlfunc/"fork">, L<perlipc>
+
+=cut
+
+=begin meta
+
+Translate: 山科 氷魚 (YAMASHINA Hio) <hio@hio.jp>
+Update: SHIRAKATA Kentaro <argrath@ub32.org> (5.10.0-)
+Status: completed
+
+=end meta
+

@@ -1,0 +1,488 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+CGI::Lite - WWWフォームとクッキーの処理およびデコードためのPerlモジュール
+
+=head1 概要
+
+    use CGI::Lite;
+
+    $cgi = new CGI::Lite;
+
+    $cgi->set_platform ($platform);
+    
+        $platformは以下のいずれかにすることができます(大文字、小文字は区別されません):
+        Unix, Windows, Windows95, DOS, NT, PC, Mac あるいは Macintosh
+
+    $cgi->set_file_type ('handle' or 'file');
+    $cgi->add_timestamp (0, 1 あるいは 2);  
+
+        where 0 = タイムスタンプなし
+              1 = 全てのファイルにタイムスタンプ (デフォルト)
+              2 = ファイルが存在する場合にのみタイムスタンプ
+
+    $cgi->filter_filename (\&subroutine);
+
+    $size = $cgi->set_buffer_size ($some_buffer_size);
+
+    $status = $cgi->set_directory ('/some/dir');
+    $cgi->set_directory ('/some/dir') || die "Directory doesn't exist.\n";
+
+    $cgi->close_all_files;
+
+    $cgi->add_mime_type ('application/mac-binhex40');
+    $status = $cgi->remove_mime_type ('application/mac-binhex40');
+    @list = $cgi->get_mime_types;
+
+    $form = $cgi->parse_form_data;
+    %form = $cgi->parse_form_data;
+
+    または
+
+    $form = $cgi->parse_form_data ('GET', 'HEAD' あるいは 'POST');
+
+    $cookies = $cgi->parse_cookies;
+    %cookies = $cgi->parse_cookies;
+
+    $status  = $cgi->is_error;
+    $message = $cgi->get_error_message;
+
+    $cgi->return_error ('error 1', 'error 2', ...);
+
+    $keys = $cgi->get_ordered_keys;
+    @keys = $cgi->get_ordered_keys;
+
+    $cgi->print_data;
+
+    $cgi->print_form_data;   (deprecated as of v1.8)
+    $cgi->print_cookie_data; (deprecated as of v1.8)
+
+    $new_string = $cgi->wrap_textarea ($string, $length);
+
+    @all_values = $cgi->get_multiple_values ($reference);
+
+    $cgi->create_variables (\%form);
+    $cgi->create_variables ($form);
+
+    $escaped_string = browser_escape ($string);
+
+    $encoded_string = url_encode ($string);
+    $decoded_string = url_decode ($string);
+
+    $status = is_dangerous ($string);
+    $safe_string = escape_dangerous_chars ($string); # ***これは使わないでください***
+
+=head1 説明
+
+非常に簡単なやり方で、ファイルのアップロードやクッキーも含めて
+formやquery情報をデコードするため、このモジュールを使うことができます;
+あなたはデコードする処理の背後での実際の細部について心配する必要はありません。
+
+=head1 メソッド
+
+以下のメソッドを使ってフォームとクッキーを処理することができます:
+
+=over 4
+
+=item B<parse_form_data>
+
+これは以下のタイプのリクエストを扱います:GET、HEAD そして POST。
+デフォルトではCGI::Liteはquery/form情報のどちらのやり方でデコード
+するかを判定するため環境変数REQUEST_METHODを使います。
+しかしv1.8からは、CGI::Liteに情報を特定の方法でデコードすることを
+強制させるため適切なリクエスト・メソッドを、この関数に渡すことが
+
+multipart/form-dataでは、アップロードされたファイルはユーザにより
+選択されたディレクトリ(B<set_directory>をご覧ください)に格納されます。
+もしタイムスタンプ・モードが有効になっていれば(B<add_timestamp>を
+ご覧ください)、ファイルは以下の形式で名前が付けられます:
+
+    timestamp__filename
+
+filenameのところは"Content-disposition"ヘッダで指定されます。
+I<注意:>, ブラウザURLはファイルの名前をURLエンコードします。
+このモジュールはセキュリティ上の理由から、その情報をデコード
+しようとはI<しません>。しかしながらサブルーチンを作成し、
+B<filter_filename>メソッドで利用することにより、そうすることが
+できます。
+
+I<戻り値>
+
+全てのキー/値の組み合わせが入った、ハッシュまたはハッシュへの
+リファレンスを返します。ファイル情報が入ったフィールドについては、
+値にはファイルへのパス、あるいはファイルハンドルが入っています
+(B<set_file_type>メソッドをご覧ください).
+
+=item B<parse_new_form_data>
+
+parse_form_dataと同等。ただしリクエストを処理する前にCGIオブジェクトの
+状態をクリアします。これは、CGIオブジェクトが複数のリクエストのために
+再利用される、常駐アプリケーション(例えばFCGI)で便利です。例えば
+
+    $CGI = new CGI::Lite;
+    while (FCGI::accept > 0)
+    {
+        $Query = $CGI->parse_new_form_data();
+        <問い合わせの処理>
+    }
+
+=item B<parse_cookies>
+
+ブラウザから渡されたクッキーをデコードし、解析します。このメソッドは
+B<parse_form_data>とほとんど同じように働きます。
+
+=item B<is_error>
+
+v1.8から、解析するさいのエラーは別に扱われます。このメソッドを
+使って、B<parse_form_data> あるいは B<parse_cookies>のいずれかを
+呼び出した後、潜在的なエラーをチェックすることができます。
+
+I<戻り値>
+
+    0 成功
+    1 失敗
+
+=item B<get_error_message>
+
+form/query情報やクッキーを解析するさいエラーが発生したならば、
+エラーメッセージを取り出すため、このメソッドを使うことが出来ます。
+B<is_error>メソッドを呼び出すことにより、エラーをチェックすることが
+できるということをお忘れなく。
+
+I<戻り値>
+
+エラー・メッセージ
+
+=item B<return_error>
+
+このメソッドを使って、ブラウザにエラーを返し終了することができます。
+
+=item B<set_platform>
+
+このメソッドを使って、Webサーバがどこで走っているプラットホームを
+設定することができます。CGI::Liteは、そのプラットホームでそれらが
+適切に表示できるよう、アップロードされたファイルの行末(EOL)文字を
+変換するために、この情報を使います。(B<add_mime_type>と
+B<remove_mime_type>メソッドをご覧ください)。
+
+以下のいずれかを指定することができます(大文字、小文字は区別されません):
+
+    Unix                                  EOL: \012      = \n
+    Windows, Windows95, DOS, NT, PC       EOL: \015\012  = \r\n
+    Mac あるいは Macintosh                EOL: \015      = \r
+
+"Unix"がデフォルトです。
+
+=item B<set_directory>
+
+アップロードされたファイルが格納されるディレクトリを設定するために
+使われます(I<multipart/form-data>エンコーディング・スキームに
+だけ適用されます)。
+
+この関数はB<parse_form_data>を呼び出すI<前に>、呼ばれなければなりません。
+そうでなければディレクトリは"/tmp"がデフォルトになります。
+アプリケーションが何らかの理由で、そのディレクトリに書き込むことことが
+できなければ、エラーステータスが返されます。
+
+I<戻り値>
+
+    0  失敗
+    1  成功
+
+=item B<close_all_files>
+
+"handle"がついたB<set_file_type>を呼び出した結果としてオープンされている、
+アップロードされたファイルの全てを、このメソッドを呼び出すことにより1回で
+クローズすることができます。
+
+=item B<add_mime_type>
+
+デフォルトでは、特定のMIMEタイプ(つまり text/plain, text/htmlなど)を
+持ったアップロードされたファイルでのEOL文字が変換されます。
+このメソッドを使ってMIMEタイプのリストに追加することができます。例えば、
+CGI::LiteにアップロードされたI<application/mac-binhex40>のファイルの
+EOL文字を変換させたければ、以下のようにします:
+
+    $cgi->add_mime_type ('application/mac-binhex40');
+
+=item B<remove_mime_type>
+
+このメソッドはB<add_mime_type>の逆です。これにより特定のMIMEタイプを
+はずすことが出来ます。例えば、CGI::Liteにアップロードされた
+I<text/html>のファイルのEOL文字を変換させたくなければ、以下のようにします:
+
+    $cgi->remove_mime_type ('text/html');
+
+I<戻り値>
+
+    0  失敗
+    1  成功
+
+=item B<get_mime_types>
+
+EOL変換が実行されるMIMEタイプのリストを、リファレンスあるいは
+実際のリストのどちらかで返します。
+
+=item B<set_file_type>
+
+B<parse_form_data>メソッドを呼び出したとき、デフォルトではアップロード
+されたファイルのI<名前>が返されます。しかしこのメソッドに文字列"handle"を
+渡すと、そのファイルへのI<ハンドル>が返されます。しかしハンドルの名前は
+そのファイルに対応しています。
+
+この関数はB<parse_form_data>を呼び出すI<前に>呼ばなければなりません。
+そうでなければ、これは機能しません。
+
+=item B<add_timestamp>
+
+デフォルトでは、アップロードされたファイルの前にタイムスタンプが追加
+されます。しかしタイムスタンプ・モードを完全に無効にするオプション(値0)や、
+ファイルが存在している場合にのみタイムスタンプを追加する(値0)オプションも
+あります。
+
+=item B<filter_filename>
+
+このメソッドを使って、アップロードされたファイルを名付ける方法を
+変更することができます。例えば、アップロードされたファイル名を
+すべて大文字にしたければ、以下のようなコードを使うことができます:
+
+    $cgi->filter_filename (\&make_uppercase);
+    $cgi->parse_form_data;
+
+    .
+    .
+    .
+
+    sub make_uppercase
+    {
+        my $file = shift;
+
+        $file =~ tr/a-z/A-Z/;
+        return $file;
+    }
+
+=item B<set_buffer_size>
+
+このメソッドによりマルチパート・フォーム・データを扱うときのバッファの大きさを
+指定することが出来ます。しかしアルゴリズムが実際に使用するI<実際の>バッファの
+大きさは、あなたが指定した3倍にもなるI<こともあります>。これにより境界文字列が
+複数の読み込みによって"分割"されないということが保障されます。そこでバッファの
+大きさを指定するときには、このことを頭に入れて置いてください。
+
+256バイトよりも小さくしたり、マルチパート・フォームデータの合計よりも
+大きく設定することはできません。デフォルトの値は1024バイトです。
+
+I<戻り値>
+
+バッファ・サイズ
+
+=item B<get_ordered_keys>
+
+フォーム・フィールド/クッキーが解析された順序で入っている配列へのリファレンス
+あるいは配列そのもののどちらかを返します。
+
+I<戻り値>
+
+順に並べられたキー
+
+=item B<print_data>
+
+(フォーム・データあるいはクッキー情報の)全てのキー/値の組み合わせを順に
+並べられた形式で表示しますメソッドB<print_form_data>とB<print_cookie_data>は
+バージョン1.8からは廃棄予定になっており、将来のバージョンでは削除されます。
+
+=item B<print_form_data>
+
+v1.8からは廃棄予定。B<print_data>をご覧ください。
+
+=item B<print_cookie_data> (deprecated as of v1.8)
+
+v1.8からは廃棄予定。B<print_data>をご覧ください。
+
+=item B<wrap_textarea>
+
+この関数を使って長い文字列を、キャリッジ・リターンと改行(B<set_platform>を
+ご覧ください)の組み合わせにより固定長に分割されたものに"包む"ことが出来ます。
+このメソッドに渡す必要がある2つの引数は、その文字列と、行を分割するものを
+いれたいと思っている長さです。
+
+I<戻り値>
+
+変更された文字列
+
+=item B<get_multiple_values>
+
+このモジュールがv1.7と大きく変更されたことの一つに、単一のキーへの複数の
+値が、ヌル文字("\0")によって区切られた文字列ではI<なく>、配列への
+リファレンスで返されることがあります。この関数を実際の配列を返す
+ために使うことも出来ます。そしてこのメソッドにスカラーの値を渡すと、
+それは単にその値を返すでしょう。
+
+1.7よりも古いバージョンのものとの後方互換性を持たせることはできません
+でした。申し訳ない!
+
+I<戻り値>
+
+複数の値が入った配列
+
+=item B<create_variables>
+
+時には、ハッシュでのさまざまなキーを表すスカラ変数を持つことが便利
+でしょう。このメソッドを使うことにより、それを行うことが出来ます。
+以下のようなハッシュを持っているとします:
+
+    %form = ('name'   => 'shishir gundavaram',
+         'sport'  => 'track and field',
+         'events' => '100m');
+
+もし以下のように、このメソッドを呼ぶと:
+
+    $cgi->create_variables (\%hash);
+
+それは3つのスカラ変数:$name, $sport そして $eventsを作成します。
+どう？便利でしょ。
+
+=item B<browser_escape>
+
+ブラウザにとって特別な意味を持つ文字があります。これらの文字には
+以下のものが含まれます:"<" そして ">"。これらの"特別な"文字を表示した
+ければ、それらを以下の書式を使ってエスケープする必要があります:
+
+    &#ascii;
+
+このメソッドは、まさにそれを行います。
+
+I<戻り値>
+
+エスケープされた文字列。
+
+=item B<url_encode>
+
+このメソッドはあなたが渡した文字列をURLエンコードします。CGIアプリケーション
+へのクエリ文字列として渡したい、いかなるデータもエンコードすることができます。
+
+I<戻り値>
+
+URLエンコードされた文字列。
+
+=item B<url_decode>
+
+文字列をURLデコードするため、このメソッドを使うことが出来ます。
+
+I<戻り値>
+
+URLデコードされた文字列。
+
+=item B<is_dangerous>
+
+このメソッドは危険なメタ文字が存在するかどうかをチェックします。
+
+I<戻り値>
+
+    0 安全
+    1 危険
+
+=item B<escape_dangerous_chars>
+
+このメソッドを使って全てのメタ文字を"エスケープ"することができます。
+この関数を使うことはまったくお勧めできません。
+Ronald F. Guilmetteによる勧告のために
+http://use.perl.org/~cbrooks/journal/10542と
+http://msgs.securepoint.com/cgi-bin/get/bugtraq0302/94.htmlをご覧ください。
+この関数をより安全にするRonaldのパッチが適用されています。しかし
+バグトラック・メーリング・リストで指摘されているように、
+コマンドを実行するとき、外部シェルをまったく実行しないほうがずっと
+よいことです。どうか勧告とWWWセキュリティFAQをお読みください。
+
+I<戻り値>
+
+エスケープされた文字列。
+
+=back
+
+=head1 参考資料
+
+もしより包括的なCGIモジュールを探しているのであれば、CGI::*モジュールや
+CGI.pmを利用することができます。両方ともDr. Lincoln Stein 
+I<(lstein@genome.wi.mit.edu)>によりメンテナンスされ、あなたの身近な
+CPANミラーや彼のWebサイトで見つけることが出来るでしょう:
+
+I<http://www-genome.wi.mit.edu/WWW/tools/scripting>
+
+=head1 謝辞(=ACKNOWLEDGMENTS)
+
+バグを見つけ、提案をしてくれたことについて以下の方々に感謝
+いたします:
+
+=over 4
+
+=item Eric D. Friedman (friedman@uci.edu)   
+
+=item Thomas Winzig (tsw@pvo.com)
+
+=item Len Charest (len@cogent.net)
+
+=item Achim Bohnet (ach@rosat.mpe-garching.mpg.de)
+
+=item John E. Townsend (John.E.Townsend@BST.BLS.com)
+
+=item Andrew McRae (mcrae@internet.com)
+
+=item Dennis Grant (dg50@chrysler.com)
+
+=item Scott Neufeld (scott.neufeld@mis.ussurg.com)
+
+=item Raul Almquist (imrs@ShadowMAC.org)
+
+=item そしてそのほかの多くの人たちに!
+
+=back
+
+=head1 著作権情報(=COPYRIGHT INFORMATION)
+    
+
+     Copyright (c) 1995, 1996, 1997 by Shishir Gundavaram
+                     All Rights Reserved
+
+ Permission to use, copy, and  distribute  is  hereby granted,
+ providing that the above copyright notice and this permission
+ appear in all copies and in supporting documentation.
+
+=head1 翻訳者
+
+川合孝典(GCD00051@nifty.ne.jp)
+
+=head2 訳者注:READMEからの抜粋
+
+Note from the CPAN administration: The CGI::Lite module seems to be
+abandoned by its original author. We cannot contact him anymore. The
+2.0 release has been made on 2000-08-20. This 2.001 release is just an
+emergency release that fixes the most urgent security need. It is not
+endorsed by the original author. It was put together by me after the
+advisory http://msgs.securepoint.com/cgi-bin/get/bugtraq0302/94.html
+on the bugtraq mailing list. Thanks to Ronald F. Guilmette for
+bringing up this issue.
+
+I do not and will not maintain CGI::Lite and would welcome volunteers
+to take it over.
+
+2002-02-17
+andreas koenig
+
+CPAN管理者からの注意:CGI::Liteモジュールは元の作者によって捨てられたようです。
+私たちはもはや彼にコンタクトをとることができません。2.0リリースは2000-08-20に
+作られました。この2.001リリースはもっとも切迫したセキュリティ上の必要を
+修正しただけの緊急リリース(emergency release)に過ぎません。これは
+元の作者によって支持されていません。これは私によってバグトラック・メーリングリスト
+でのhttp://msgs.securepoint.com/cgi-bin/get/bugtraq0302/94.htmlの勧告
+に従って、私が組み立てました。この問題を持ち出してきてくれたことについて
+Ronald F. Guilmetteに感謝します。
+
+私はCGI::Liteをメンテナンスしませんし、その気もありません。そしてこれを
+引き継いでくれえるボランティアを歓迎します。
+
+2002-02-17
+andreas koenig
+

@@ -1,0 +1,248 @@
+
+=encoding euc-jp
+
+=head1 名前
+
+Logfile - ログファイルからレポートを生成するためのPerl拡張
+
+=head1 概要
+
+  use Logfile::Cern;
+
+  $l = new Logfile::Cern  File  => 'cache.log.gz', 
+                          Group => [Domain,File,Hour];
+  $l->report(Group => File,   Sort => Records);
+  $l->report(Group => Domain, Sort => Bytes);
+  $l->report(Group => Hour, List => [Bytes, Records]);
+
+  use Logfile::Wftp;
+
+  [...]
+
+=head1 説明
+
+Logfile拡張は各種のサーバーのログファイルからさまざまなレポートを
+生成することを助けてくれます。通常、ログファイルからどんな情報を取り出すかに
+ついての制限はありません。
+
+=head2 ファイルの読込
+
+C<Logfile>をサブクラス化することによってパッケージをカスタマイズすることができます。
+
+サブクラスはファイルハンドルC<$self-E<gt>{Fh}>から次のレコードを
+読み込み、C<Logfile::Record>型のオブジェクトを返す関数C<next>を
+提供しなければなりません。さらにさまざまなレコードフィールドを
+標準化するためにC<norm>を指定することが出来ます。
+
+以下にC<Logfile::Cern>クラスの短くされたバージョンを示します:
+
+  package Logfile::Cern;
+  @ISA = qw ( Logfile::Base ) ;
+
+  sub next {
+      my $self = shift;
+      my $fh = $self->{Fh};
+
+      *S = $fh;
+      my ($line,$host,$user,$pass,$rest,$date,$req,$code,$bytes);
+
+      ($host,$user,$pass,$rest) = split ' ', $line, 4;
+      ($rest =~ s!\[([^\]]+)\]\s*!!) && ($date = $1);
+      ($rest =~ s!\"([^\"]+)\"\s*!!) && ($req = (split ' ', $1)[1]);
+      ($code, $bytes) = split ' ', $rest;
+      Logfile::Record->new(Host  => $host,
+                           Date  => $date,
+                           File  => $req,
+                           Bytes => $bytes);
+  }
+
+上記で述べたように、一般的には自由にレコード内でフィールドとして
+入力するものを選択することができます。しかし:
+
+=over 5
+
+=item B<Date>
+
+これは適切な日付文字列でなければなりません。
+エポック(=epoch)開始からの経過秒数に変換するために
+モジュールF<GetDate>とF<Date::DateParse>が試されます。
+もし両方ともC<use>できなければ、crudeな組み込みモジュールが
+使われます。
+
+レコードコンストラクタはB<Date>を格納できるようにC<yymmdd>形式に
+置換します。またフィールドB<Hour>もpadすることができます。
+
+=item B<Host>
+
+B<Host>を設定すると、完全に修飾されたドメイン名(ホスト名.ドメイン)の
+ドメインsuffix国の冗長な名前フィールドB<Domain>も設定します。
+C<foo.bar.PG>はC<Papua New>に対応付けられます。ドットが入っていない
+ホスト名はドメインB<Local>に結び付けられます。IP番号は
+ドメインB<Unresolved>に結び付けられます。
+ドメイン名での短い名前から長い名前への対応付けは、B<Net::Country>拡張の
+中で行われます。これは別の場面で便利かもしれません:
+
+  use Net::Country;
+  $germany = Net::Country::Name('de');
+
+=item B<Records>
+
+これはC<Record>コンストラクタの中で常に1に設定されます。そのため
+このフィールドがC<next>関数からの成功した戻り値の数を返します。
+
+=back
+
+以下にオプションのC<norm>メソッドの短くされたバージョンを示します:
+
+  sub norm {
+      my ($self, $key, $val) = @_;
+
+      if ($key eq File) {
+          $val =~ s/\?.*//;                             # remove query
+          $val =~ s!%([\da-f][\da-f])!chr(hex($1))!eig; # decode escapes
+      }
+      $val;
+  }
+
+コンストラクタはログファイルを読み込み、1つあるいは複数のインデックスを
+組み立てます。
+
+  $l = new Logfile::Cern  File => 'cache.log.gz', 
+                          Group => [Host,Domain,File,Hour,Date];
+
+追加のインデックスを作成するためにはほとんど空間は要りませんが、
+時間のオーバーヘッドはいくらかあります。もしB<File>が与えられなければ、
+B<STDIN>が使われます。Groupパラメータはフィールド名あるいはフィールド名の
+リストへのリファレンスにすることができます。コンストラクタへの引数として
+与えられたフィールド名だけが、レポート生成に使うことが出来ます。
+
+=head2 レポート生成
+
+レポートのために使われるインデックスはB<Group>パラメータで
+与えられなければなりません。B<Sort>が与えられなければ、出力は
+インデックス・フィールドによってソートされます。また
+B<Top>や B<Limit>によって出力を切り捨てることもできます。
+
+レポート・ジェネレータは与えられたインデックスのフィールドB<Bytes>と
+B<Records>をリストにします。オプションB<List>は1つのフィールド名、
+あるいはフィールド名の配列へのリストにすることができます。それは
+B<Group>フィールドに加えてリストにされるフィールドを指定します。
+B<List>のデフォルトはレコードです。
+
+  $l->report(Group => Domain, List => [Bytes, Records])
+
+出力はB<Sort>によって上書きされなければ、B<Group>フィールドによって
+ソートされます。デフォルトのソート順序は、B<Date>とB<Hour>B<Hour>の
+昇順、そしてその他のフィールドの降順になります。この順番は、
+B<Reverse>オプションを使って逆にすることができます。
+
+
+このコードは
+
+  $l->report(Group => File, Sort => Records, Top => 10);
+
+以下のように出力します:
+
+  File                          Records 
+  =====================================
+  /htbin/SFgate               30 31.58% 
+  /freeWAIS-sf/*              22 23.16% 
+  /SFgate/SFgate               8  8.42% 
+  /SFgate/SFgate-small         7  7.37% 
+  /icons/*                     4  4.21% 
+  /~goevert                    3  3.16% 
+  /journals/SIGMOD             3  3.16% 
+  /SFgate/ciw                  2  2.11% 
+  /search                      1  1.05% 
+  /reports/96/                 1  1.05% 
+
+以下にもう一つ例を示します。これもF<t/*>ファイルも見てください:
+
+  $l->report(Group => Domain, Sort => Bytes);
+
+  Domain                  Records 
+  ===============================
+  Germany               12 12.63% 
+  Unresolved             8  8.42% 
+  Israel                34 35.79% 
+  Denmark                4  4.21% 
+  Canada                 3  3.16% 
+  Network                6  6.32% 
+  US Commercial         14 14.74% 
+  US Educational         8  8.42% 
+  Hong Kong              2  2.11% 
+  Sweden                 2  2.11% 
+  Non-Profit             1  1.05% 
+  Local                  1  1.05% 
+  
+  $l->report(Group => Hour, List => [Bytes, Records]);
+
+  Hour            Bytes          Records 
+  ======================================
+  07      245093 17.66%        34 35.79% 
+  08      438280 31.59%        19 20.00% 
+  09      156730 11.30%        11 11.58% 
+  10      255451 18.41%        16 16.84% 
+  11      274521 19.79%        10 10.53% 
+  12       17396  1.25%         5  5.26% 
+
+
+=head2 レポートのオプション
+
+=over 5
+
+=item B<Group> C<=E<gt>> I<field>
+
+必須。I<field>はコンストラクタに渡されたフィールドの1つでなければなりません。
+
+=item B<List> C<=E<gt>> I<field>
+
+=item B<List> C<=E<gt>> [I<field>, I<field>]
+
+I<field>のための集計を一覧にします。デフォルトはB<Records>です。
+
+=item B<Sort> C<=E<gt>> I<field>.
+
+I<field>によって出力をソートします。デフォルトではB<Date>とB<Hour>は昇順にソートされ、
+その他のフィールドは降順にソートされます。
+
+=item B<Reverse> C<=E<gt> 1> 
+
+ソート順を逆にします。
+
+=item B<Top> C<=E<gt>> I<number>
+
+先頭からI<number>行の集計だけを出力します。
+
+=item B<Limit> C<=E<gt>> I<number>
+
+I<number>よりも大きなB<Sort>フィールドを持った集計だけを出力します
+(昇順の場合にはよりnumberよりも小さい数)。
+
+=back
+
+現在のところレポートは単純にSTDOUTに出力されます。
+
+=head1 作者
+
+Ulrich Pfeifer E<lt>F<pfeifer@wait.de>E<gt>
+
+=head1 ニュース
+
+perl 5.005用にstrict refsのバグを修正。
+
+James Downsによって報告された含まれている日付解析への落ち込みでの
+バグを修正。
+
+Fred Korzによって提案されたようにy2kバグを修正。私は2桁バージョンを
+出来る限り後方互換性を持てるように選択しました。C<20>は明らかに
+今からでは少ない年数です ;-) 出力カラムは今後、いかなる場合でも
+空白によって分けられます。
+
+=head1 参考資料
+
+perl(1).
+
+=head1 翻訳者
+
+川合孝典(GCD00051@nifty.ne.jp)

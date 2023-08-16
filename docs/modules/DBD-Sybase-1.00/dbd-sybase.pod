@@ -1,0 +1,667 @@
+
+=encoding euc-jp
+
+=head1 DBD::Sybase - ドライバとデータベースの特徴
+
+=begin docbook
+<sect1></sect1>
+
+=end docbook
+
+
+=head2 ドライバ名、バージョン、作者、連絡先の詳細
+
+このドライバはDBD::Sybase version 0.90です。
+
+このドライバの作者はMichael Peppler です。彼に連絡するときには、
+dbi-usersメーリングリストか、mpeppler@peppler.org にお願いします。
+
+
+=head2 サポートされているデータベース　バージョンとオプション
+
+DBD::SybaseモジュールはSybase 10.x , 11.xそして12.x、さらに制限付きで
+Microsoft MS-SQL 6.x, 7.x　(SP2で)へのアクセスをサポートしています。
+OpenClient 10.x あるいは 11.x が使用可能であれば、DBD::Sybaseは
+Sybase 4.x サーバへの接続にも使うことが出来ます。
+
+さらにDBD::SybaseはOpenClientの再実装であるFreeTDSとともに、
+Sybase OpenClientが利用できないプラットホームから
+MS-SQLやSybaseサーバーへの接続に使うことができます。
+詳細はhttp://www.freetds.orgを、ご覧ください。
+
+=head2 接続の書き方
+
+DBD::SybaseのためのDSNの一般的な形は"dbi:Sybase:属性=値;属性=値"です。
+以下の属性がサポートされています:
+
+=over 8
+
+=item server
+
+接続するSybaseサーバを指定します。 
+
+=item database
+
+serverの中でのデフォルトなるデータベースを("use $database"を介して)
+指定します。 
+
+=item charset
+
+クライアントが使う文字セットを指定します。クライアントのデフォルトの
+文字セットがサーバとは違うとき便利です。これを使うと、ある文字から
+他の文字への自動的な文字変換が可能になります。 
+
+=item packetSize
+
+ネットワークのパケットサイズを指定します。大きなパケットサイズを指定すると
+ネットワーク・スループットを上げることが出来ます。サーバーの構成値を
+変更する必要があるかもしれませんので、この使い方についてはSybaseの
+ドキュメントをご覧下さい。 
+
+=item hostname
+
+このプロセスのためにsysprocessesテーブルに格納されるホスト名を指定します。
+
+=item loginTimeout
+
+DBI->connect() がSybaseサーバからのレスポンスを待つ秒数を指定します。
+デフォルトは60秒です。（これは0.14リリースで追加されました） 
+
+=item timeout
+
+DBD::SybaseがSybaseサーバからのレスポンスを待つ秒数を指定します。
+その時間内に何も返事がなければ、コマンドはタイムアウト・エラーで失敗し、
+その接続には死んでいるというマークがつけられます。デフォルトはタイムアウト
+なしです。timeoutを0にするとタイムアウトなしと同じになります。
+（これは0.14リリースで追加されました） 
+
+=item interfaces
+
+代わりとなるI<インターフェース>ファイルの場所を指定します:
+
+=item scriptName
+
+sp_who（つまりsysprocessesテーブルでのI<program_name>カラム）で
+表示される、この接続の名前を指定します。 
+
+=item hostname
+
+sp_who表示されるhostname（そしてsysprocessesのhostnameカラムに格納
+される）を指定します..
+
+=item tdsLevel
+
+サーバへの接続のときに使われるTDS プロトコル・レベルを指定します。
+正しい値はCS_TDS_40、CS_TDS_42、CS_TDS_46、CS_TDS_495、CS_TDS_50です。
+通常、これは自動的にクライアントとサーバでネゴシエートされます。
+しかし場合によっては、クライアントによってより低いレベルに設定する
+必要があります。 
+
+    $dbh->DBI->connect("dbi:Sybase:tdsLevel=CS_TDS_42", $user, $password);
+
+B<注意>：tdsLevel を CS_TDS_495 より低く設定すると、いくつかの機能、特に?-形式の
+プレースホルダや連続の非自動コミットモードなど、いくつかの機能が失われます。
+
+=item encryptPassword
+
+CT-Libによってサポートされているクライアント・パスワード暗号の利用を
+指定します。暗号化されたパスワードを使うためには値を1に指定してください。
+
+    $dbh->DBI->connect("dbi:Sybase:encryptPassword=1", $user, $password);
+
+=back
+
+
+=head2 数値データの取り扱い
+
+このドライバはINTEGER, SMALLINT, TINYINT, MONEY, SMALLMONEY, 
+FLOAT, REAL, DOUBLE, NUMERIC(p, s), DECIMAL(p, s)、をサポートします。
+
+NUMERIC/DECIMAL以外のすべてのデータ型はハードウェアに依存しますが、
+しかしINTEGERは常に32ビット整数、SMALLINT は16ビット、TINYINTは8ビットです。 
+
+NUMERIC/DECIMALの全桁数(precision)は1から38、小数点以下桁数(scale)は0から38です。
+
+NUMERIC/DECIMALの値は、たとえ小数点以下桁数が0で、全桁数がintegerの値に
+収まるほど小さかったとしても、デフォルトではPerlの文字列として返されます。
+他の数値はネイティブな形式で返されます。
+
+
+=head2 文字列データの取り扱い
+
+DBD::Sybase はCHAR/VARCHAR/BINARY/VARBINARYをサポートし、バージョン12.0x
+までは長さ255文字までに制限されます。12.5では、これらのデータ型は大きさ
+16Kまでにすることができます　- しかしより大きなサイズをサポートすることは
+Open Client 12.5以降を使う必要があります。CHAR型は固定長であることに
+注意してください（空白が埋められます）。
+
+Sybase は自動的にCHAR とVARCHAR 型データを、サーバの文字セット
+（syscharsetシステムテーブルを見て）とクライアントのlocale設定によって
+決められたクライアントの文字セットの変換を行います。BINARY型とVARBINARY 型は
+変換されません。UTF-8をサポートしています。
+
+文字セットについての詳細は、Sybase OpenClientマニュアルにあるOpenClient
+国際開発者ガイド（OpenClient International Developer's Guide）をご覧下さい。
+
+文字列はSQL演算子 + を使ってつなげることができます。
+
+=head2 日付データの取り扱い
+
+Sybase はDATETIMEとSMALLDATETIMEの値をサポートします。DATETIME は
+1753年1月1日から9999年12月31日までを300分の１秒の精度で持つことができます。
+SMALLDATETIME は1900年1月1日から2079年6月6日までの範囲を1分の精度で
+持ちます。
+
+サーバでの現在時刻はSQL関数GETDATE()で取得できます。
+
+Sybaseの日付フォーマットはクライアントのlocaleに依存します。デフォルトの
+日付フォーマットは'C' localeをベースとしています。
+
+  Feb 16 1999 12:07PM
+
+同じlocaleで、Sybaseは上記のものに加えていくつかの入力フォーマットを
+理解します：
+
+  2/16/1998 12:07PM
+  1998/02/16 12:07
+  1998-02-16 12:07
+  19980216 12:07
+
+時刻の部分が省力されると00:00に設定されます。日付部分が省略されると、
+1900年1月1日に設定されます。世紀（年の上二桁）が省略されると、
+年が50未満であれば1900、50以上であれば2000だと見なされます。
+
+日付の入出力フォーマットを変更するために、特殊な独自メソッド_date_fmt() を
+使うこと($dbh->func()を通じてアクセスされます）が出来ます。
+フォーマットはSybaseの標準変換ルーチンをベースとしてます。使用できる
+フォーマットのうち、以下のサブセットが実装されています：
+
+  LONG        - Nov 15 1998 11:30:11:496AM
+  SHORT       - Nov 15 1998 11:30AM
+  DMY4_YYYY   - 15 Nov 1998
+  MDY1_YYYY   - 11/15/1998
+  DMY1_YYYY   - 15/11/1998
+  HMS         - 11:30:11
+
+日付、時刻値を他のフォーマットから変換するためにはCONVERT()を
+使います。例えば：
+
+   UPDATE a_table 
+      SET date_field = CONVERT(datetime_field, '1999-02-21', 105)
+
+CONVERT() は、ほとんどの日付型から／へ変換することができる純正の
+変換関数です。Sybaseリファレンス・マニュアルの第2章にあるCONVERT()関数を
+ご覧下さい。
+
+日付時刻型の計算は、Transact SQL関数DATEADD()、DATEPART()、DATEDIFF()を
+通して行います。例えば：
+
+  SELECT DATEDIFF(ss, date1, date2)
+
+はdate1とdate2の間が何秒であるかを返します。
+
+Sybaseは、(localtimeを通して）GETDATE() SQL関数がサーバが稼動している
+タイムゾーンでの日付を返すことを除いては、タイムゾーンを
+まったく理解しません。
+
+以下のSQL 式は、"1970年1月1日からの秒数"を表す整数値('unix time')を
+対応するデータベースの日付時刻に変換するするために使うことが
+出来ます:
+
+  DATEADD(ss, unixtime_field, 'Jan 1 1970')
+
+しかしながら、サーバがタイムゾーンを理解しません、このためにGMT
+タイムゾーンでは正しくない、'サーバI<ローカル>なunixtime'を返す
+ということに注意してください。
+
+サーバがクライアントと同じタイムゾーンで動いているということを知って
+いれば、以下の様にして:
+
+        use Time::Local;
+        $time_to_database = timegm(localtime($unixtime));
+
+Sybaseに送る前にunixtimeの値を変換することができます：
+
+反対の事、データベースの日付時刻値を'unix time'に変換するには、
+以下のようにできます:
+
+  DATEDIFF(ss, 'Jan 1 1970', datetime_field)
+
+GMTとlocaltimeでの同じ方法が以下の場合にも当てはまります。もしサーバが
+クライアントと同じタイムゾーンで動いていることを知っていれば、
+返ってきた値を正しいGMTベースの値に、このPerlの式で変換することができます:
+
+        use Time::Local;
+        $time = timelocal(gmtime($time_from_database));
+
+
+
+=head2 LONG/BLOBデータの取り扱い
+
+SybaseはLONG/BLOBデータのためにIMAGE型TEXT型をサポートしています。
+それぞれの型は2GBまでのNUL文字を含めてバイナリデータを保持することが
+出来ます。IMAGEカラムとTEXTカラムの大きな違いは入出力において
+クライアント・ライブラリがデータをどのように扱うかにあります。
+TEXTデータは「そのまま」入力され、出力されます。IMAGEデータは長い
+16進文字列で返され、同じ方法で入力しなければなりません。
+
+TEXT/IMAGEデータのデフォルトの制限は32KBですが、LongReadLen属性を
+設定することにより変更することが出来ます。
+
+TEXTまたはIMAGEデータをSybaseに入れるためには、バインド・パラメータを
+使うことはI<できません>。
+
+
+=head2 その他のデータ型の取り扱いの問題
+
+Sybaseは返されるデータとしてはCHARとVARCHARあるいはBINARYとVARBINARYを
+区別しません。そのため結果セットのための$h->{TYPE}では、TYPEの値として
+SQL_VARCHARやSQL_VARBINARYを取得することはありません。
+
+Sybaseは数値を文字列、文字列を数値に自動的には変換しません。明示的に
+SQL関数CONVERTを呼び出す必要があります。しかし、プレースホルダは
+特別な扱いをする必要がありません。というのもDBD::Sybaseは各プレースホルダが、
+どのデータ型であるかを知っているからです。
+
+=head2 トランザクション、分離そしてロック
+
+DBD::Sybaseはトランザクションをサポートしています。
+デフォルトのトランザクション分離レベルは'Read Commited'です。
+
+Sybaseは、READ COMMITED、READ UNCOMMITED、SERIALIZABLEの分離レベルを
+サポートしています。レベルは接続毎、ステートメント毎に
+"SET TRANSACTION_ISOLATION LEVEL x"を実行することによって変更することが
+出来ます。xはREAD COMMITEDであれば0、READ UNCOMMITEDであれば1、
+SERIALIZABLEであれば3になります。
+
+デフォルトでは、READ問い合わせは、読み込む各ベージに共有ロックを取得します。
+これは他のプロセスにテーブルからの読み込みを許しますが、（更新のための）
+占有ロックを取得しようとするプロセスはブロックします。共有ロックはSELECT
+処理全体の長さではなく、サーバが実際にページを読み込むための時間だけ
+保持されます。Sybase 11.9.2以降では、オプションでテーブルごとを基本に
+テーブルに対して設定できる、行レベル("datarows"ロッキング）を備えています。
+詳細はSybaseマニュアルをご覧ください。
+
+明示的なLOCK TABLEステートメントはありません。"WITH HOLDLOCK"がついた
+SELECTステートメントが、テーブルに対する占有ロックを強制するために
+使うことが出来ます。トランザクションでは普通に呼ばれます。一般には、
+この呼び出しは必要ありません。
+
+Sybaseで複数のテーブルを更新するための正しい方法は、すべての処理を
+1つのトランザクションにまとめてしまうことです。これによりロックが
+正しい順序で取得されることが保証され、現在あなたの処理が変更している
+行を他のプロセスが変更してしまうという邪魔をなくしてくれます。
+
+
+=head2 テーブル以外の式のSELECTの書き方
+
+（データベース・テーブルやビューからのデータを含まない）定数式を
+SELETするためには、テーブルを指定しません:
+
+  SELECT getdate()
+
+
+=head2 テーブル結合の書き方
+
+外部結合(outer join)は =* (右外部結合) と *= (左外部結合) 演算子に
+よってサポートされています：
+
+  SELECT customer_name, order_date 
+  FROM customers, orders 
+  WHERE customers.cust_id =* orders.cust_id
+
+ordersテーブルにマッチする行が入っていないcustomersテーブルのすべての
+行のために、Sybaseはordersテーブルからのカラムが入っている
+SELECTリスト式にNULLを返します。
+
+ASE 12.0以降では左/右外部結合のためのANSIシンタックスを
+サポートしています。
+
+=head2 テーブルとカラム名
+
+テーブルやカラムといったSybase識別子の名前は、長さ30文字を越えることが
+出来ません。
+
+先頭の文字は（現在のサーバ文字セットで定義されている）アルファベット文字
+あるいは_(アンダースコア)で、後ろの文字はアルファベット、そして
+通貨記号、@、#、_が使えます。識別子には埋め込まれた空白や、%、!^、*、記号を
+入れることができません。さらに識別子は予約語リストに入っていてはいけません
+（完全なリストはSybaseドキュメントをご覧下さい）
+
+もしB<set quoted_identifier>がonになっていたら、テーブル名やカラム名は
+クォートでI<囲まれるかもしれません>。これにより予約語の制限を回避
+することが出来ます。このオプションが設定されていると、
+ダブル・クォートで囲まれた文字列は識別子として扱われ、シングル・クォートで
+囲まれた文字列はリテラル文字列として扱われます。
+
+デフォルトでは識別子の大文字／小文字は区別されます。これはB<サーバ>のための
+デフォルトのソート順を変更することによってはずすことが出来ます。
+
+クォートなしでは、各国特有の文字（National character）を識別子として使うことは
+出来ません。
+
+
+=head2 like演算子での大文字／小文字の区別
+
+Sybaseでの LIKE 演算子は大文字／小文字を区別します。
+
+大文字／小文字を区別しないマッチを強制するためUPPER関数を使うことが
+できます。例えばUPPER(name) LIKE 'TOM%'（しかし、これによってSybaseは
+問い合わせのスピードアップのためのnameカラムに対する索引がまったく
+使えなくなります）
+
+=head2 行ID
+
+Sybaseは、いわゆる「行ID」カラムはサポートしていません。
+
+
+=head2 自動キーまたは順序生成
+
+Sybaseは自動的なキー生成のためにIDENTITY機能をサポートしています。
+テーブルにIDENTITYカラムをつけて宣言すると、挿入のたびに新しい値が
+生成されます。値は単調に増加しますが、順番通りであることは保証しません。
+
+生成され、最後の挿入に使われた値を取り出すためには以下のようにできます:
+
+  SELECT @@IDENTITY
+
+Sybaseは順序生成をサポートしていません。しかし順序番号生成するための
+特定のストアド・プロシージャを書くことはとても簡単です。いくつかの方法に
+ついての説明はhttp://techinfo.sybase.com/css/techinfo.nsf/DocID/ID=860をご覧下さい。
+
+
+=head2 自動的な行番号付けと行カウントの制限
+
+SybaseはSELECTステートメントによって取り出された行の順序通りに
+番号付けされる擬似カラムを提供していません。
+
+しかしながら以下の様にして
+
+        SET ROWCOUNT xxx
+
+SELECTステートメントで返される行、I<あるいは> DELETE, INSERTやUPDATEによって
+影響を受ける行の数を制限することができます。
+
+
+=head2 パラメータ・バインディング
+
+パラメータ・バインディングはSybaseによって直接サポートされます。
+しかし2つの点で劣っており、1つは注意が必要です:
+
+まずSybaseは、?形式のパラメータが入っているprepare()呼び出しのため、
+内部ストアド・プロシージャを生成します。これらのストアド・プロシージャは
+tempdbデータベースにあり、接続が閉じたときにのみ破壊されます。プレースホルダを
+もったprepare()呼び出しがスクリプトで多く作られると、tempdbの空間が足りなくなって
+しまう可能性が高くなります。
+
+次に、すべての一時的なストアドプロシージャがtempdbに作成されるため、
+tempdbでシステムテーブルのロックのより潜在的なホットスポットを起こします。
+このホットスポットはSybase 11.5.1以前での問題で、11.9.2以降では解決されています。
+
+:1 というプレースホルダの形式はサポートされていませんし、bind_paramへの
+TYPE属性も現在は無視されます、そしてサポートされていない値は警告を発しません。
+しかしTEXTまたはIMAGEデータ型にバインドしようとすると失敗します。
+
+
+=head2 ストアド・プロシージャ
+
+Sybaseストアド・プロシージャはSybaseがSQLに手続的に拡張した、
+Transact-SQLで書かれます。
+
+ストアド・プロシージャは通常のSQLと同じ方法で直接呼び出され、同じ型の
+結果を返すことができます。（つまり、ストアド・プロシージャでのSELECTは
+$sth->fetchで取り出すことができます）。
+
+ストアド・プロシージャがOUTPUTパラメータを介してデータを返すのであれば、
+これらは先に宣言されなければなりません:
+
+  $sth = $dbh->prepare(qq[
+     declare \@name varchar(50)
+     exec getName 1234, \@name output
+  ]);
+
+ストアド・プロシージャはバインド・パラメータを持っては呼び出すことが
+できません−そのため以下のものは正しくありません:
+
+  $sth = $dbh->prepare("exec my_proc ?");
+  $sth->execute('foo');
+
+そこで代わりに以下のようにしてください。
+
+  $sth = $dbh->prepare("exec my_proc 'foo'");
+  $sth->execute;
+
+
+通常、Sybase ストアドプロシ−ジャは、常に１つ以上の結果セットを返すので、
+B<syb_more_results>が0になるまでループを使って確認しなければなりません:
+
+  do {
+    while($data = $sth->fetch) {
+       ...
+    }
+  } while($sth->{syb_more_results});
+
+
+=head2 テーブル・メタデータ
+
+DBD::Sybase はtable_info メソッドをサポートします。
+
+syscolumnsテーブルはテーブル毎カラム毎に1行を持っています。
+詳細についてはSybaseシステムテーブルの定義をご覧ください。
+しかし一番簡単な方法はsp_helpストアド・プロシージャを使うことです。
+
+テーブルのインデックスについての詳細な情報を取得する一番簡単な方法は、
+sp_helpindex（またはsp_helpkey)ストアド・プロシージャを使うことです。
+
+=head2 ドライバ特有の属性とメソッド
+
+DBD::Sybaseは以下のドライバ特有のデータベース・ハンドル属性を持っています：
+
+=over 8
+
+=item syb_show_sql
+
+設定されると、現在のステートメントが$dbh->errstrによって返される文字列に
+入ります。 
+
+=item syb_show_eed
+
+設定されると、展開されたエラー情報が$dbh->errstrによって返される文字列に
+入ります。展開されたエラー情報には、例えば重複した挿入が失敗したインデックス
+などが入ります。 
+
+=item syb_err_handler
+
+この属性は、通常のエラーハンドラがその仕事をする前に呼び出される、特定の
+エラーハンドラ・コールバック（つまりPerlのサブルーチン）を設定するために使われます。
+このサブルーチンが0を返せば、エラーは無視されます。これはTransact-SQLでの
+PRINTステートメントを扱ったり、Backup Server、showplan出力、dbcc出力などからの
+メッセージを扱ったりするのに便利です。
+
+サブルーチンは以下の７つのパラメータで呼び出されます：Sybaseエラー番号、
+深刻度(sevirity)、状態（state）、SQLバッチでの行番号、（利用可能であれば）
+サーバ名、（利用可能であれば）ストアド・プロシージャ名、メッセージテキストです。 
+
+例:
+
+    %showplan_msgs = map { $_ => 1}  (3612 .. 3615, 6201 .. 6225);
+    sub err_handler {
+        my($err, $sev, $state, $line, $server, $proc, $msg) = @_;
+
+        if($showplan_msgs{$err}) { # it's a showplan message
+            print SHOWPLAN "$err - $msg\n";
+            return 0;    # This is not an error
+        }
+
+        return 1;
+    }
+
+    $dbh = DBI->connect('dbi:Sybase:server=troll', 'sa', '');
+    $dbh->{syb_err_handler} = \&err_handler;
+    $dbh->do("set showplan on");
+    open(SHOWPLAN, ">>/var/tmp/showplan.log") || die "Can't open showplan log: $!";
+    $dbh->do("exec someproc");    # get the showplan trace for this proc.
+    $dbh->disconnect;
+
+=item syb_flush_finish
+
+$dbh->{syb_flush_finish}が設定されると、$現在のコマンドのために残っている
+結果は、dbh->finishがそれらを実際に取り出すことによって失われます。
+デフォルトの動きはct_cancel(CS_CANCEL_ALL)を発行することです。しかし
+これは接続がハングしたり、何らかの原因で失敗するかによってI<現れます>。
+（私自身は見たことがないのですが） 
+
+=item syb_dynamic_supported
+
+これは読込のみ属性で、接続しているデータサーバが?-形式のプレースホルダを
+サポートしていればTRUEを返します。DBD::Sybaseを使ってMS-SQLサーバに
+接続すると、プレースホルダはサポートされません。
+
+=item syb_chained_txn
+
+設定されると、AutoCommiitがオフのとき連続した(CHAINED)トランザクションを使います。
+そうでなければ、明示的なBEGIN TRANを発行する必要があります。デフォルトはオフです。
+
+この属性は通常、connect()呼び出しの間にだけ使われます：
+
+    $dbh = DBI->connect('dbi:Sybase:', $user, $pwd, {syb_chained_txn => 1});
+
+他のときにB<AutoCommit>をB<オフ>にして使うと、現在のハンドルでB<強制的にコミット>
+が行われます。
+
+=item syb_use_bin_0x
+
+設定されると、BINARY と VARBINARYの値には結果の前に'0x'が付きます。
+デフォルトはオフです。
+
+=item syb_binary_images
+
+設定されると、IMAGEデータはそのままの(raw)バイナリ形式で返されます。
+そうでなければデータは長い16進文字列に変換されます。デフォルトはオフです。
+
+=item syb_quoted_identifier (bool)
+
+設定されると、通常Sybaseの予約語にぶつかる識別子がC<"識別子">を使って
+クォートされます。この場合、文字列はシングル・クォートでクォートされなければ
+なりません。
+
+この属性のデフォルトはB<オフ>です。
+
+=item syb_rowcount (int)
+
+この属性を0以外に設定すると、I<SELECT>によって返されたり、I<UPDATE>や
+I<DELETE>によって影響を受ける行の数をI<rowcount>の値に制限します。
+0に設定することは制限をなくします。
+
+この属性のデフォルトはB<0>です。
+
+=item syb_do_proc_status (bool)
+
+この属性を設定すると$sth->execute()に実行されるSQLの中で
+実行されたストアド・プロシージャのステータスを取得させます。
+ステータスが0でなければ、$sth->execute()は、その操作が失敗
+したことを報告します。(つまりC<undef>を返します)
+
+この属性を設定してもそれが設定された後、作成されたものに対してだけで、
+既存の$sthハンドルには影響をB<与えません>。既存の$sthハンドルの動きを
+変更するするためには、$sth->{syb_do_proc_status}を使ってください。
+
+この属性のデフォルトはB<オフ>です。
+
+=item syb_oc_version (string)
+
+このバイナリが現在使用しているクライアント・ライブラリ(Client Library)のバージョンの
+識別文字列を返します。これは読込のみの属性です。
+
+例:
+
+    troll (7:59AM):348 > perl -MDBI -e '$dbh = DBI->connect("dbi:Sybase:", "sa"); print "$dbh->{syb_oc_version}\n";' 
+    Sybase Client-Library/11.1.1/P/Linux Intel/Linux 2.2.5 i586/1/OPT/Mon Jun  7 07:50:21 1999
+
+これは障害を報告するときに大変有効です。
+
+
+=back
+
+そしてドライバ特有のステートメント・ハンドル属性は以下の通りです:
+
+=over 8
+
+=item syb_more_results
+
+上記の複数のリザルトセットの取り扱いについての説明をご覧ください。
+
+=item syb_result_type
+
+現在の結果セットの結果のデータ型を数値で返します。ストアド・プロシージャを
+実行したときに、現在どの型が取り出し可能かを判断するときに便利です。
+（通常の行SELECT、出力パラメータ、ステータス結果など...） 。
+
+=back
+
+
+１つの特有のメソッドも提供されています：
+
+=over 8
+
+=item _date_fmt
+
+デフォルトの日付変換、表示フォーマットを設定します。このドキュメントでの
+他の場所の説明もご覧ください。 
+
+=back
+
+
+=head2 位置付けてからのUPDATEとDELETE
+
+Sybaseは位置付けてからのUPDATEとDELETE（positioned updates and deletes)をサポートしていません。
+
+
+=head2 DBI仕様との違い
+
+DBD::Sybaseは実行されるまで、ステートメントを完全には解析しないことに
+注意してください。このため$sth->{NUM_OF_FIELDS}のような属性は、
+$sth->executeが呼び出されるまで利用できません。これは適切な動作ですが、
+元々他のドライバのために書かれたアプリケーションを移植するときには
+注意してください。
+
+
+=head2 データベース／ドライバ特有の詳細情報のURL
+
+  http://www.sybase.com
+  http://techinfo.sybase.com
+  http://sybooks.sybase.com
+
+
+=head2 複数ハンドルの同時使用
+
+DBD::Sybase は１つまたは複数のデータベースへの同時の
+データベース接続を25までサポートします。
+
+同じデータベースハンドルにつながれた他のステートメント・ハンドルから
+データを取り出しながら、新しいステートメント・ハンドルをprepare/execute
+することは通常、Sybaseクライアントにはできません。しかしDBD::Sybaseは、
+これを新しいステートメント・ハンドルが破壊された時点で自動的にクローズされる
+新しいコネクションを開くことにより、これをエミュレートしています。
+この方法ではいくらか微妙ですけれども、重大なトランザクションの問題が
+あるということに注意しなければなりません。
+
+=head2 データベースやドライバの機能でのその他の特徴
+
+SybaseとDBD::Sybaseは1回の呼び出しで、複数のステートメントの
+prepare、executeを可能としています。結果は表形式のデータのストリームとして
+クライアントに取り出されます。ストアド・プロシージャは複数のデータ・セットの
+ストリームを返すこともできます。それぞれの異なる結果セットは通常の１つの
+結果セットとして扱われ、C<fetch>は各セットの終わりでundefを返します。
+さらに続くデータがあるかどうかは、syb_more_results属性をチェックすることが
+できます。このSybase特有の機能を使うための典型的なループは以下のようになります:
+
+  do {
+    while($d = $sth->fetch) {
+      ... データで何かをします
+    }
+  } while($sth->{syb_more_results});
+
+Sybaseは豊富で強力なスロアド・プロシージャとトリガ機能も持っており、
+それらを使うように勧めています。
+

@@ -1,0 +1,469 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+HTTP::Negotiate - choose a variant to serve
+
+=end original
+
+HTTP::Negotiate - サービスするドキュメントの変数を選択する
+
+=head1 SYNOPSIS
+
+ use HTTP::Negotiate qw(choose);
+
+ #  ID       QS     Content-Type   Encoding Char-Set        Lang   Size
+ $variants =
+  [['var1',  1.000, 'text/html',   undef,   'iso-8859-1',   'en',   3000],
+   ['var2',  0.950, 'text/plain',  'gzip',  'us-ascii',     'no',    400],
+   ['var3',  0.3,   'image/gif',   undef,   undef,          undef, 43555],
+  ];
+
+ @preferred = choose($variants, $request_headers);
+ $the_one   = choose($variants);
+
+=head1 DESCRIPTION
+
+=begin original
+
+This module provides a complete implementation of the HTTP content
+negotiation algorithm specified in F<draft-ietf-http-v11-spec-00.ps>
+chapter 12.  Content negotiation allows for the selection of a
+preferred content representation based upon attributes of the
+negotiable variants and the value of the various Accept* header fields
+in the request.
+
+=end original
+
+このモジュールは F<draft-ietf-http-v11-spec-00.ps> chapter 12 で
+指定された HTTP コンテントネゴシエーションの完全な実装を提供します。
+コンテントネゴシエーションはネゴシエートできる変数とさまざまな
+Accept* ヘッダフィールドの値の属性に基づいた、優先された内容表記の選択を
+許します。
+
+=begin original
+
+The variants are ordered by preference by calling the function
+choose().
+
+=end original
+
+変数は関数 choose() の呼び出しにより、優先順序が並べられます。
+
+=begin original
+
+The first parameter is reference to an array of the variants to
+choose among.
+Each element in this array is an array with the values [$id, $qs,
+$content_type, $content_encoding, $charset, $content_language,
+$content_length] whose meanings are described
+below. The $content_encoding and $content_language can be either a
+single scalar value or an array reference if there are several values.
+
+=end original
+
+最初のパラメータは選択される変数の配列へのリファレンスです。
+この配列の各要素は [$id, $qs, $content_type, $content_encoding, $charset,
+$content_language, $content_length] という値をもった配列です。
+その意味については以下で説明します。
+$content_encoding と $content_language は一つのスカラ値または複数の値が
+あれば配列へのリファレンスにすることができます。
+
+=begin original
+
+The second optional parameter is either a HTTP::Headers or a HTTP::Request
+object which is searched for "Accept*" headers.  If this
+parameter is missing, then the accept specification is initialized
+from the CGI environment variables HTTP_ACCEPT, HTTP_ACCEPT_CHARSET,
+HTTP_ACCEPT_ENCODING and HTTP_ACCEPT_LANGUAGE.
+
+=end original
+
+2 番目のオプションのパラメータは HTTP::Header または
+HTTP::Request オブジェクトのどちらで、"Accept*" ヘッダが探されます。
+このパラメータがなければ、accept の指定は CGI
+環境変数 HTTP_ACCEPT, HTTP_ACCEPT_CHARSET, HTTP_ACCEPT_ENCODING,
+HTTP_ACCEPT_LANGUAGE によって初期化されます。
+
+=begin original
+
+In an array context, choose() returns a list of [variant
+identifier, calculated quality, size] tuples.  The values are sorted by
+quality, highest quality first.  If the calculated quality is the same
+for two variants, then they are sorted by size (smallest first). I<E.g.>:
+
+=end original
+
+配列コンテキストでは、choose() は
+[識別子, 計算されたクォリティ, サイズ] の組のリストを返します。
+これはクオリティ (高いクオリティが先) によりソートされます。
+計算されたクォリティが 2 つの変数で同じであれば、サイズにより
+ソートされます(小さい方が先)。
+I<例>:
+
+  (['var1', 1, 2000], ['var2', 0.3, 512], ['var3', 0.3, 1024]);
+
+=begin original
+
+Note that also zero quality variants are included in the return list
+even if these should never be served to the client.
+
+=end original
+
+クライアントに決して提供されなくても、ゼロのクオリティ変数が返される
+リストに含まれることに注意してください。
+
+=begin original
+
+In a scalar context, it returns the identifier of the variant with the
+highest score or C<undef> if none have non-zero quality.
+
+=end original
+
+スカラコンテキストでは最も高いスコアの変数の識別子を返すか、何もクオリティが
+ゼロでなければ、C<undef> を返します。
+
+=begin original
+
+If the $HTTP::Negotiate::DEBUG variable is set to TRUE, then a lot of
+noise is generated on STDOUT during evaluation of choose().
+
+=end original
+
+$HTTP::Negotiate::DEBUG 変数が TRUE に設定されれば、choose() の評価の間、
+多くのノイズが STDOUT に生成されます。
+
+=head1 VARIANTS
+
+=begin original
+
+A variant is described by a list of the following values.  If the
+attribute does not make sense or is unknown for a variant, then use
+C<undef> instead.
+
+=end original
+
+変数は以下の値のリストにより説明されます。
+属性がおかしいか、その変数には当てはまらなければ変わりに C<undef> を
+使ってください。
+
+=over 3
+
+=item identifier
+
+=begin original
+
+This is a string that you use as the name for the variant.  This
+identifier for the preferred variants returned by choose().
+
+=end original
+
+これはその変数のための名前として使う文字列。
+この選択された変数への識別子は choose() により返されます。
+
+=item qs
+
+=begin original
+
+This is a number between 0.000 and 1.000 that describes the "source
+quality".  This is what F<draft-ietf-http-v11-spec-00.ps> says about this
+value:
+
+=end original
+
+これは 0.000 から 1.000 までの数値で、"source quality" を記述します。
+これは F<draft-ietf-http-v11-spec-00.ps> がこの値について記述しています:
+
+=begin original
+
+Source quality is measured by the content provider as representing the
+amount of degradation from the original source.  For example, a
+picture in JPEG form would have a lower qs when translated to the XBM
+format, and much lower qs when translated to an ASCII-art
+representation.  Note, however, that this is a function of the source
+- an original piece of ASCII-art may degrade in quality if it is
+captured in JPEG form.  The qs values should be assigned to each
+variant by the content provider; if no qs value has been assigned, the
+default is generally "qs=1".
+
+=end original
+
+source quality は、コンテントプロバイダによって図られ、オリジナルの
+ソースからの劣化の量を表します。
+例えば JPEG 形式の絵は XBM 形式に変換されるとより低い qs を持ちます。
+アスキーアート表現に変換されるとさらに低い qs になります。
+しかしながらこれはソースの関数であることに注意してください -
+アスキーアート が JPEG 形式でキャプチャされたら、そのほうが品質として
+劣るかもしれません。
+qs の値はコンテントプロバイダにより各変数が設定されなければなりません。
+qs に値が代入されなければ、デフォルトは一般的に "qs=1" です。
+
+=item content-type
+
+=begin original
+
+This is the media type of the variant.  The media type does not
+include a charset attribute, but might contain other parameters.
+Examples are:
+
+=end original
+
+その変数のメディアタイプです。
+メディアタイプは文字セット属性を持っていませんが、他のパラメータを
+持つかも知れません。
+例:
+
+  text/html
+  text/html;version=2.0
+  text/plain
+  image/gif
+  image/jpg
+
+=item content-encoding
+
+=begin original
+
+This is one or more content encodings that has been applied to the
+variant.  The content encoding is generally used as a modifier to the
+content media type.  The most common content encodings are:
+
+=end original
+
+その変数に適用される一つまたは複数のコンテントエンコーディング。
+コンテントエンコーディングは一般的にコンテントメディアタイプへの修飾子として
+使われます。
+よく使われるコンテントエンコーディングは以下のものがあります:
+
+  gzip
+  compress
+
+=item content-charset
+
+=begin original
+
+This is the character set used when the variant contains text.
+The charset value should generally be C<undef> or one of these:
+
+=end original
+
+変数にテキストが入っていると使われる文字セットです。
+文字セット値は一般的に C<undef> であるか、いかのいずれかでなければなりません:
+
+  us-ascii
+  iso-8859-1 ... iso-8859-9
+  iso-2022-jp
+  iso-2022-jp-2
+  iso-2022-kr
+  unicode-1-1
+  unicode-1-1-utf-7
+  unicode-1-1-utf-8
+
+=item content-language
+
+=begin original
+
+This describes one or more languages that are used in the variant.
+Language is described like this in F<draft-ietf-http-v11-spec-00.ps>: A
+language is in this context a natural language spoken, written, or
+otherwise conveyed by human beings for communication of information to
+other human beings.  Computer languages are explicitly excluded.
+
+=end original
+
+変数で使われる一つまたは複数の言語。
+言語は F<draft-ietf-http-v11-spec-00.ps> で記述されているようなものです:
+この文脈での言語は、ある人から他の人への情報のコミュニケーションのために
+話され、書かれ、またはそのほかで伝達される自然言語です。
+コンピュータ言語は明らかに除外されます。
+
+=begin original
+
+The language tags are defined by RFC 3066.  Examples
+are:
+
+=end original
+
+language タグは RFC-3066 で定義されています。
+例えば:
+
+  no               Norwegian
+  en               International English
+  en-US            US English
+  en-cockney
+
+=item content-length
+
+=begin original
+
+This is the number of bytes used to represent the content.
+
+=end original
+
+これはコンテントを表すために使われるバイト数です。
+
+=back
+
+=head1 ACCEPT HEADERS
+
+=begin original
+
+The following Accept* headers can be used for describing content
+preferences in a request (This description is an edited extract from
+F<draft-ietf-http-v11-spec-00.ps>):
+
+=end original
+
+以下の Accept* ヘッダはリクエストの中でコンテント優先順位を記述するために
+使われます (この説明は F<draft-ietf-http-v11-spec-00.ps> から取り出し
+編集したものです):
+
+=over 3
+
+=item Accept
+
+=begin original
+
+This header can be used to indicate a list of media ranges which are
+acceptable as a response to the request.  The "*" character is used to
+group media types into ranges, with "*/*" indicating all media types
+and "type/*" indicating all subtypes of that type.
+
+=end original
+
+このヘッダは、リクエストへのレスポンスとして受取ることが出来る
+メディア範囲のリストを示すために使われます。
+"*" 文字はメディアタイプのまとめて範囲に入れるために使われます。
+"*/*" はすべてのメディアタイプを示し、"type/*" はその type の
+サブタイプのすべてのを示します。
+
+=begin original
+
+The parameter q is used to indicate the quality factor, which
+represents the user's preference for that range of media types.  The
+parameter mbx gives the maximum acceptable size of the response
+content. The default values are: q=1 and mbx=infinity. If no Accept
+header is present, then the client accepts all media types with q=1.
+
+=end original
+
+パラメータ q はクオリティ要素を示すために使われます。
+これはユーザのそのメディアタイプの範囲のための優先順位を表します。
+パラメータ mbx はレスポンスコンテントの受信可能な最大サイズを与えます。
+デフォルトの値は q=1 で mbx は無限大です。
+Accept がなければ、クライアントはすべてのメディアタイプを q=1 で受取ります。
+
+=begin original
+
+For example:
+
+=end original
+
+例:
+
+  Accept: audio/*;q=0.2;mbx=200000, audio/basic
+
+=begin original
+
+would mean: "I prefer audio/basic (of any size), but send me any audio
+type if it is the best available after an 80% mark-down in quality and
+its size is less than 200000 bytes"
+
+=end original
+
+これは 「私は (すべての大きさの) audio/basic を好みますが、もし利用できる
+一番よいものから 80% クオリティが落ち、2000000 バイトよりも小さいければ、
+すべての audio タイプを送信しなさい」という意味です。
+
+=item Accept-Charset
+
+=begin original
+
+Used to indicate what character sets are acceptable for the response.
+The "us-ascii" character set is assumed to be acceptable for all user
+agents.  If no Accept-Charset field is given, the default is that any
+charset is acceptable.  Example:
+
+=end original
+
+レスポンスのためにどの文字セットが受取られるかを示します。
+"us-ascii" 文字セットはすべてのユーザエージェントに受け入れられると
+考えられます。
+Accept-Charset フィールドがなければ、デフォルトはすべての文字セットが
+受取られます。
+例:
+
+  Accept-Charset: iso-8859-1, unicode-1-1
+
+=item Accept-Encoding
+
+=begin original
+
+Restricts the Content-Encoding values which are acceptable in the
+response.  If no Accept-Encoding field is present, the server may
+assume that the client will accept any content encoding.  An empty
+Accept-Encoding means that no content encoding is acceptable.  Example:
+
+=end original
+
+レスポンスで受取ることが出来る Content-Encoding の値を制限します。
+Accept-Encoding フィールドがなければ、サーバはクライアントがすべての
+content encoding を受取ると想定することが出来ます。
+Accept-Encoding が空であれば、content encoding は何も受取ることが
+出来ないことを意味します。
+
+  Accept-Encoding: compress, gzip
+
+=item Accept-Language
+
+=begin original
+
+This field is similar to Accept, but restricts the set of natural
+languages that are preferred in a response.  Each language may be
+given an associated quality value which represents an estimate of the
+user's comprehension of that language.  For example:
+
+=end original
+
+このフィールドは Accept に似ています。
+しかしレスポンスで選ばれる自然言語のセットを制限します。
+各言語は、関連付けられた、ユーザがその言語を理解度の評価を表す
+クォリティの値を与えられるかもしれません。
+
+  Accept-Language: no, en-gb;q=0.8, de;q=0.55
+
+=begin original
+
+would mean: "I prefer Norwegian, but will accept British English (with
+80% comprehension) or German (with 55% comprehension).
+
+=end original
+
+これは「私はノルウェー語を好みますが、しかし英国英語(British English)を
+(80% の理解度で)やドイツ語(55% の理解度で)も受け取ります」ということを
+示します。
+
+=back
+
+=head1 COPYRIGHT
+
+Copyright 1996,2001 Gisle Aas.
+
+This library is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
+
+=head1 AUTHOR
+
+Gisle Aas <gisle@aas.no>
+
+=begin meta
+
+Translated: Hippo2000 <GCD00051@nifty.ne.jp> (5.48)
+Updated: Kentaro SHIRAKATA <argrath@ub32.org> (5.813)
+
+=end meta
+
+=cut
+

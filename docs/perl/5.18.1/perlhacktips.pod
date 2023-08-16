@@ -1,0 +1,3497 @@
+
+=encoding utf8
+
+=for comment
+Consistent formatting of this file is achieved with:
+  perl ./Porting/podtidy pod/perlhacktips.pod
+
+=head1 NAME
+
+=begin original
+
+perlhacktips - Tips for Perl core C code hacking
+
+=end original
+
+perlhacktips - Perl のコア C コードをハックするためのヒント
+
+=head1 DESCRIPTION
+
+=begin original
+
+This document will help you learn the best way to go about hacking on
+the Perl core C code. It covers common problems, debugging, profiling,
+and more.
+
+=end original
+
+この文書は、Perl コア C コードをハックするために向かうべき最良の方法を
+学ぶことを助けるものです。
+これは一般的な問題、デバッグ、プロファイリングなどに対応します。
+
+=begin original
+
+If you haven't read L<perlhack> and L<perlhacktut> yet, you might want
+to do that first.
+
+=end original
+
+If you haven't read 
+まだ L<perlhack> と L<perlhacktut> を読んでいないのなら、
+先に読んだ方が良いでしょう。
+
+=head1 COMMON PROBLEMS
+
+(良くある問題)
+
+=begin original
+
+Perl source plays by ANSI C89 rules: no C99 (or C++) extensions. In
+some cases we have to take pre-ANSI requirements into consideration.
+You don't care about some particular platform having broken Perl? I
+hear there is still a strong demand for J2EE programmers.
+
+=end original
+
+Perl ソースは ANSI C89 の規則に従って動作します:
+C99(または C++)拡張はありません。
+場合によっては、ANSI 以前の要件を考慮する必要があります。
+特定のプラットフォームが Perl を壊したことに関心はありませんか?
+J2EE プログラマーに対する需要は依然として強いと聞いています。
+
+=head2 Perl environment problems
+
+(Perl 環境の問題)
+
+=over 4
+
+=item *
+
+=begin original
+
+Not compiling with threading
+
+=end original
+
+スレッドでコンパイルできない
+
+=begin original
+
+Compiling with threading (-Duseithreads) completely rewrites the
+function prototypes of Perl. You better try your changes with that.
+Related to this is the difference between "Perl_-less" and "Perl_-ly"
+APIs, for example:
+
+=end original
+
+スレッド化(-Duseithreads) でコンパイルすると、Perl の関数プロトタイプが
+完全に書き直されます。
+それを使って変更を試してみるとよいでしょう。
+これに関連して、"Perl_-less" API と "Perl_-ly" API の違いがあります;
+例えば:
+
+  Perl_sv_setiv(aTHX_ ...);
+  sv_setiv(...);
+
+=begin original
+
+The first one explicitly passes in the context, which is needed for
+e.g. threaded builds. The second one does that implicitly; do not get
+them mixed. If you are not passing in a aTHX_, you will need to do a
+dTHX (or a dVAR) as the first thing in the function.
+
+=end original
+
+最初のものはコンテキストに明示的に渡すもので、
+スレッド化ビルドなどに必要です。
+2 番目のものは暗黙的に渡します; 混在させないでください。
+aTHX_ を渡していない場合は、関数の最初に dTHX(または dVAR) を
+行う必要があります。
+
+=begin original
+
+See L<perlguts/"How multiple interpreters and concurrency are
+supported"> for further discussion about context.
+
+=end original
+
+コンテキストの詳細については、
+L<perlguts/"How multiple interpreter and concurrency is supported"> を
+参照してください。
+
+=item *
+
+=begin original
+
+Not compiling with -DDEBUGGING
+
+=end original
+
+-DDEBUGGING と一緒にコンパイルできません
+
+=begin original
+
+The DEBUGGING define exposes more code to the compiler, therefore more
+ways for things to go wrong. You should try it.
+
+=end original
+
+DEBUGGING 定義は、より多くのコードをコンパイラに公開するため、問題が
+発生する可能性が高くなります。
+やってみるといいですよ。
+
+=item *
+
+=begin original
+
+Introducing (non-read-only) globals
+
+=end original
+
+(読み取り専用でない)グローバル変数の導入
+
+=begin original
+
+Do not introduce any modifiable globals, truly global or file static.
+They are bad form and complicate multithreading and other forms of
+concurrency. The right way is to introduce them as new interpreter
+variables, see F<intrpvar.h> (at the very end for binary
+compatibility).
+
+=end original
+
+真のグローバルやファイル静的など、変更可能なグローバル変数を
+導入しないでください。
+これらは誤ったな形式であり、マルチスレッドや他の形式の並行性を複雑にします。
+正しい方法は、これらを新しいインタプリタ変数として導入することです;
+F<intrpvar.h>を参照してください(バイナリ互換性については最後にあります)。
+
+=begin original
+
+Introducing read-only (const) globals is okay, as long as you verify
+with e.g. C<nm libperl.a|egrep -v ' [TURtr] '> (if your C<nm> has
+BSD-style output) that the data you added really is read-only. (If it
+is, it shouldn't show up in the output of that command.)
+
+=end original
+
+例えば C<nm libperl.a egrep-v'[TURtr]'> (C<nm>  がBSD スタイルの出力を
+持っている場合)で、追加したデータが本当に読み取り専用であることを
+確認すれば、読み取り専用(const)グローバルを導入しても問題ありません
+(もしそうであれば、このコマンドの出力には現れないはずです。)
+
+=begin original
+
+If you want to have static strings, make them constant:
+
+=end original
+
+静的文字列が必要な場合は、定数にします:
+
+  static const char etc[] = "...";
+
+=begin original
+
+If you want to have arrays of constant strings, note carefully the
+right combination of C<const>s:
+
+=end original
+
+定数文字列の配列が必要な場合は、C<const> の正しい組み合わせに
+注意してください:
+
+    static const char * const yippee[] =
+	{"hi", "ho", "silver"};
+
+=begin original
+
+There is a way to completely hide any modifiable globals (they are all
+moved to heap), the compilation setting
+C<-DPERL_GLOBAL_STRUCT_PRIVATE>. It is not normally used, but can be
+used for testing, read more about it in L<perlguts/"Background and
+PERL_IMPLICIT_CONTEXT">.
+
+=end original
+
+変更可能なグローバル変数を完全に隠す方法があります(すべてヒープに
+移動されます);
+コンパイル設定は C<-DPERL_GLOBAL_STRUCT_PRIVATE> です。
+通常は使われませんが、テストに使うことができます;
+詳細は L<perlguts/"Background and PERL_IMPLICIT_CONTEXT"> を読んでください。
+
+=item *
+
+=begin original
+
+Not exporting your new function
+
+=end original
+
+新しい機能をエクスポートしない
+
+=begin original
+
+Some platforms (Win32, AIX, VMS, OS/2, to name a few) require any
+function that is part of the public API (the shared Perl library) to be
+explicitly marked as exported. See the discussion about F<embed.pl> in
+L<perlguts>.
+
+=end original
+
+一部のプラットフォーム(Win32、AIX、VMS、OS/2 など)では、パブリック API
+(共有 Perl ライブラリ)の一部である関数を明示的にエクスポート済みとして
+マークする必要があります。
+L<perlguts> の F<embed.pl> に関する説明を参照してください。
+
+=item *
+
+=begin original
+
+Exporting your new function
+
+=end original
+
+新規関数のエクスポート
+
+=begin original
+
+The new shiny result of either genuine new functionality or your
+arduous refactoring is now ready and correctly exported. So what could
+possibly go wrong?
+
+=end original
+
+これで、真の新機能または困難なリファクタリングによる新しい輝きのある結果が
+準備でき、正しくエクスポートされます。
+では、何がうまくいかない可能性があるのでしょうか?
+
+=begin original
+
+Maybe simply that your function did not need to be exported in the
+first place. Perl has a long and not so glorious history of exporting
+functions that it should not have.
+
+=end original
+
+関数をエクスポートする必要がなかったという単純な理由かもしれません。
+Perl には、そうするべきでない関数をエクスポートするという、長くあまり
+輝かしくない歴史があります。
+
+=begin original
+
+If the function is used only inside one source code file, make it
+static. See the discussion about F<embed.pl> in L<perlguts>.
+
+=end original
+
+関数が一つのソースコードファイル内でのみ使われる場合は、関数を静的にします。
+L<perlguts> の F<embed.pl> に関する説明を参照してください。
+
+=begin original
+
+If the function is used across several files, but intended only for
+Perl's internal use (and this should be the common case), do not export
+it to the public API. See the discussion about F<embed.pl> in
+L<perlguts>.
+
+=end original
+
+関数が複数のファイルにまたがって使われているが、Perl 内部での使用のみを
+意図している場合(これは一般的なケースです)は、パブリック API に
+エクスポートしないでください。
+L<perlguts> の F<embed.pl> に関する説明を参照してください。
+
+=back
+
+=head2 Portability problems
+
+(移植性の問題)
+
+=begin original
+
+The following are common causes of compilation and/or execution
+failures, not common to Perl as such. The C FAQ is good bedtime
+reading. Please test your changes with as many C compilers and
+platforms as possible; we will, anyway, and it's nice to save oneself
+from public embarrassment.
+
+=end original
+
+以下は、コンパイルや実行の失敗の一般的な原因であり、Perl で
+一般的というわけではありません。
+C FAQは、寝る前に読むのに適しています。
+できるだけ多くの C コンパイラとプラットフォームで変更をテストしてください;
+とにかく、私たちはそうしますし、公の場で恥をかかないようにするのは
+良いことです。
+
+=begin original
+
+If using gcc, you can add the C<-std=c89> option which will hopefully
+catch most of these unportabilities. (However it might also catch
+incompatibilities in your system's header files.)
+
+=end original
+
+gcc を使っている場合は、C<-std=c89> オプションを追加することができます。
+このオプションはこれらの移植性の問題のほとんどをキャッチすることを
+期待しています。
+(ただし、システムのヘッダファイルの非互換性もキャッチする可能性があります。)
+
+=begin original
+
+Use the Configure C<-Dgccansipedantic> flag to enable the gcc C<-ansi
+-pedantic> flags which enforce stricter ANSI rules.
+
+=end original
+
+より厳密な ANSI 規則を矯正するために gcc の C<-ansi -pedantic> フラグを
+有効にするには、Configure の C<-Dgccansipedantic> フラグを使います。
+
+=begin original
+
+If using the C<gcc -Wall> note that not all the possible warnings (like
+C<-Wunitialized>) are given unless you also compile with C<-O>.
+
+=end original
+
+C<gcc -Wall> を使っている場合は、C<-O> も付けてコンパイルしない限り、
+(C<-Wunitialized> のような)考えられるすべての警告が
+表示されるわけではないことに注意してください。
+
+=begin original
+
+Note that if using gcc, starting from Perl 5.9.5 the Perl core source
+code files (the ones at the top level of the source code distribution,
+but not e.g. the extensions under ext/) are automatically compiled with
+as many as possible of the C<-std=c89>, C<-ansi>, C<-pedantic>, and a
+selection of C<-W> flags (see cflags.SH).
+
+=end original
+
+gcc を使っている場合、Perl 5.9.5 以降では、Perl コアソースコードファイル
+(ソースコード配布物の最上位レベルにあるもので、ext/ の下の拡張部分などは
+含まれません)は、自動的に、できるだけ多くの
+C<-std=c89>、C<-ansi>、C<-pedantic>、そしていくつかの C<-W> フラグ
+(cflags.SH を参照) とともにコンパイルされます。
+
+=begin original
+
+Also study L<perlport> carefully to avoid any bad assumptions about the
+operating system, filesystems, and so forth.
+
+=end original
+
+また、L<perlport> を注意深く研究して、オペレーティングシステムや
+ファイルシステムなどに関する誤った仮定を避けるようにしてください。
+
+=begin original
+
+You may once in a while try a "make microperl" to see whether we can
+still compile Perl with just the bare minimum of interfaces. (See
+README.micro.)
+
+=end original
+
+必要最小限のインターフェースで Perl をコンパイルできるかどうか、
+"make microperl" を試してみてください(README.microを参照。)。
+
+=begin original
+
+Do not assume an operating system indicates a certain compiler.
+
+=end original
+
+あるオペレーティングシステムが特定のコンパイラを示すことを
+仮定しないでください。
+
+=over 4
+
+=item *
+
+=begin original
+
+Casting pointers to integers or casting integers to pointers
+
+=end original
+
+ポインタを整数にキャストしたり整数をポインタにキャストしたりする
+
+    void castaway(U8* p)
+    {
+      IV i = p;
+
+=begin original
+
+or
+
+=end original
+
+または
+
+    void castaway(U8* p)
+    {
+      IV i = (IV)p;
+
+=begin original
+
+Both are bad, and broken, and unportable. Use the PTR2IV() macro that
+does it right. (Likewise, there are PTR2UV(), PTR2NV(), INT2PTR(), and
+NUM2PTR().)
+
+=end original
+
+どちらも悪く、壊れていて、移植性がありません。
+これを正しく行うためには PTR2IV() マクロを使ってください。
+(同様に、PTR2UV(), PTR2NV(), INT2PTR(), NUM2PTR() があります。)
+
+=item *
+
+=begin original
+
+Casting between data function pointers and data pointers
+
+=end original
+
+データ関数ポインタとデータポインタの間でキャストする
+
+=begin original
+
+Technically speaking casting between function pointers and data
+pointers is unportable and undefined, but practically speaking it seems
+to work, but you should use the FPTR2DPTR() and DPTR2FPTR() macros.
+Sometimes you can also play games with unions.
+
+=end original
+
+関数ポインタとデータポインタの間のキャストは、技術的には移植性がなく
+定義されていませんが、実際には動作しているように見えますが、
+FPTR2DPTR() と DPTR2FPTR() マクロを使うべきです。
+共用体とゲームをすることもできます。
+
+=item *
+
+=begin original
+
+Assuming sizeof(int) == sizeof(long)
+
+=end original
+
+sizeof(int) == sizeof(long) と仮定する
+
+=begin original
+
+There are platforms where longs are 64 bits, and platforms where ints
+are 64 bits, and while we are out to shock you, even platforms where
+shorts are 64 bits. This is all legal according to the C standard. (In
+other words, "long long" is not a portable way to specify 64 bits, and
+"long long" is not even guaranteed to be any wider than "long".)
+
+=end original
+
+long が 64 ビットであるプラットフォームと int が 64 ビットである
+プラットフォームがあり、私たちは驚かされますが、short が 64 ビットである
+プラットフォームもあります。
+これは C 標準に従ってすべて合法です(言い換えれば、"long long" は 64 ビットを
+指定する移植可能な方法ではなく、"long long"は"long"よりも広いことさえ
+保証されません)。
+
+=begin original
+
+Instead, use the definitions IV, UV, IVSIZE, I32SIZE, and so forth.
+Avoid things like I32 because they are B<not> guaranteed to be
+I<exactly> 32 bits, they are I<at least> 32 bits, nor are they
+guaranteed to be B<int> or B<long>. If you really explicitly need
+64-bit variables, use I64 and U64, but only if guarded by HAS_QUAD.
+
+=end original
+
+代わりに、IV, UV, IVSIZE, I32SIZE などの定義を使ってください。
+I32 のようなものは、I<正確に> 32 ビットであること、
+I<少なくとも> 32ビットであることが保証されて B<いません>;
+B<int> や B<long> であることも保証されていません。
+本当に明示的に 64 ビット変数が必要な場合は、HAS_QUAD で
+保護されている場合に限り、I64 と U64 を使ってください。
+
+=item *
+
+=begin original
+
+Assuming one can dereference any type of pointer for any type of data
+
+=end original
+
+任意の型のデータのために任意の型のポインタをデリファレンスできると仮定する
+
+  char *p = ...;
+  long pony = *p;    /* BAD */
+
+=begin original
+
+Many platforms, quite rightly so, will give you a core dump instead of
+a pony if the p happens not to be correctly aligned.
+
+=end original
+
+多くのプラットフォームでは、それが正しいのですが、p が正しい
+アライメントでなければ、pony ではなくコアダンプを出力します。
+
+=item *
+
+=begin original
+
+Lvalue casts
+
+=end original
+
+左辺値をキャストする
+
+  (int)*p = ...;    /* BAD */
+
+=begin original
+
+Simply not portable. Get your lvalue to be of the right type, or maybe
+use temporary variables, or dirty tricks with unions.
+
+=end original
+
+単に移植性がありません。
+左辺値を適切な型にするか、あるいは一時的な変数を使うか、または
+共用体で汚いトリックを使うかもしれません。
+
+=item *
+
+=begin original
+
+Assume B<anything> about structs (especially the ones you don't
+control, like the ones coming from the system headers)
+
+=end original
+
+構造体について (特にシステムヘッダのような制御できないものについて)
+B<何かを> 仮定する
+
+=over 8
+
+=item *
+
+=begin original
+
+That a certain field exists in a struct
+
+=end original
+
+構造体にある特定のフィールドがある
+
+=item *
+
+=begin original
+
+That no other fields exist besides the ones you know of
+
+=end original
+
+わかっているものの他にフィールドがない
+
+=item *
+
+=begin original
+
+That a field is of certain signedness, sizeof, or type
+
+=end original
+
+あるフィールドの符号有り無し、sizeof、型
+
+=item *
+
+=begin original
+
+That the fields are in a certain order
+
+=end original
+
+フィールドが特定の順序で並んでいる
+
+=over 8
+
+=item *
+
+=begin original
+
+While C guarantees the ordering specified in the struct definition,
+between different platforms the definitions might differ
+
+=end original
+
+C は struct 定義で指定された順に並んでいることを保証していますが、異なった
+プラットフォーム絵は定義が異なるかもしれません
+
+=back
+
+=item *
+
+=begin original
+
+That the sizeof(struct) or the alignments are the same everywhere
+
+=end original
+
+sizeof(struct) やアライメントがどこでも同じである
+
+=over 8
+
+=item *
+
+=begin original
+
+There might be padding bytes between the fields to align the fields -
+the bytes can be anything
+
+=end original
+
+フィールドの位置合わせにフィールドの間にパッディングのバイトが
+あるかもしれません - バイトはなんでもかまいません
+
+=item *
+
+=begin original
+
+Structs are required to be aligned to the maximum alignment required by
+the fields - which for native types is for usually equivalent to
+sizeof() of the field
+
+=end original
+
+構造体は、フィールドで要求される最大のアラインメントに合わせる必要があります
+- ネイティブ型では、これは通常、フィールドの sizeof() に相当します
+
+=back
+
+=back
+
+=item *
+
+=begin original
+
+Assuming the character set is ASCIIish
+
+=end original
+
+文字集合が ASCII 風であると仮定する
+
+=begin original
+
+Perl can compile and run under EBCDIC platforms. See L<perlebcdic>.
+This is transparent for the most part, but because the character sets
+differ, you shouldn't use numeric (decimal, octal, nor hex) constants
+to refer to characters. You can safely say 'A', but not 0x41. You can
+safely say '\n', but not \012. If a character doesn't have a trivial
+input form, you should add it to the list in
+F<regen/unicode_constants.pl>, and have Perl create #defines for you,
+based on the current platform.
+
+=end original
+
+Perl は EBCDIC プラットフォームでコンパイルおよび実行できます。
+L<perlebcdic> を参照してください。
+これはほとんどの部分で透過的ですが、文字集合が異なるため、文字を
+参照するために数値定数(10 進数、8 進数、16 進数)を使うべきではありません。
+'A' は安全に言うことはできますが、0x41 はできません。
+'\n' は安全に言うことはできますが、\012 はできません。
+文字に簡単な入力形式がない場合は、
+you should add it to the list in
+F<regen/unicode_constants.pl>, and have Perl create #defines for you,
+based on the current platform.
+(TBT)
+
+=begin original
+
+Also, the range 'A' - 'Z' in ASCII is an unbroken sequence of 26 upper
+case alphabetic characters. That is not true in EBCDIC. Nor for 'a' to
+'z'. But '0' - '9' is an unbroken range in both systems. Don't assume
+anything about other ranges.
+
+=end original
+
+また、ASCII の 'A'-'Z' の範囲は、26 個の大文字アルファベット文字の
+連続したものです。
+EBCDIC ではそうではありません。
+また、'a' か ら'z' も同様です。
+しかし、'0'-'9' は両方のシステムで連続した範囲です。
+他の範囲について何も仮定しないでください。
+
+=begin original
+
+Many of the comments in the existing code ignore the possibility of
+EBCDIC, and may be wrong therefore, even if the code works. This is
+actually a tribute to the successful transparent insertion of being
+able to handle EBCDIC without having to change pre-existing code.
+
+=end original
+
+既存のコードのコメントの多くは EBCDIC の可能性を無視しているため、コードが
+動作しても間違っている可能性があります。
+これは実際には、既存のコードを変更することなく EBCDIC を処理できる
+透過的な挿入が成功したことへの賛辞です。
+
+=begin original
+
+UTF-8 and UTF-EBCDIC are two different encodings used to represent
+Unicode code points as sequences of bytes. Macros  with the same names
+(but different definitions) in C<utf8.h> and C<utfebcdic.h> are used to
+allow the calling code to think that there is only one such encoding.
+This is almost always referred to as C<utf8>, but it means the EBCDIC
+version as well. Again, comments in the code may well be wrong even if
+the code itself is right. For example, the concept of C<invariant
+characters> differs between ASCII and EBCDIC. On ASCII platforms, only
+characters that do not have the high-order bit set (i.e. whose ordinals
+are strict ASCII, 0 - 127) are invariant, and the documentation and
+comments in the code may assume that, often referring to something
+like, say, C<hibit>. The situation differs and is not so simple on
+EBCDIC machines, but as long as the code itself uses the
+C<NATIVE_IS_INVARIANT()> macro appropriately, it works, even if the
+comments are wrong.
+
+=end original
+
+UTF-8 と UTF-EBCDIC は、Unicode 符号位置をバイト列として
+表現するために使われる二つの異なるエンコーディングです。
+C<utf8.h> と C<utfebcdic.h> で同じ名前(ただし定義が異なる)を持つマクロは、
+呼び出し側のコードにそのようなエンコーディングが一つしかないと
+認識させるために使われます。
+これはほとんど常に C<utf8> と呼ばれていますが、EBCDIC 版も意味します。
+繰り返しますが、コード内のコメントは、コード自体が正しい場合でも
+間違っている可能性があります。
+たとえば、C<invariant characters> の概念は ASCII と EBCDIC で異なります。
+ASCII プラットフォームでは、上位ビットセットを持たない文字(つまり、その序数が
+厳密な ASCII、0-127)のみが不変であり、コード内の文書とコメントは、
+しばしば C<hibit> のようなものを参照していると想定することができます。
+状況は異なり、EBCDIC マシンではそれほど単純ではありませんが、コード自体が
+C<NATIVE_IS_INVARIANT()> マクロを適切に使っている限り、コメントが
+間違っていても機能します。
+
+=item *
+
+=begin original
+
+Assuming the character set is just ASCII
+
+=end original
+
+文字集合が単に ASCII であると仮定する
+
+=begin original
+
+ASCII is a 7 bit encoding, but bytes have 8 bits in them. The 128 extra
+characters have different meanings depending on the locale.  Absent a
+locale, currently these extra characters are generally considered to be
+unassigned, and this has presented some problems. This is being changed
+starting in 5.12 so that these characters will be considered to be
+Latin-1 (ISO-8859-1).
+
+=end original
+
+ASCII は 7 ビットエンコーディングですが、バイトには 8 ビットが含まれています。
+128 個の余分な文字は、ロケールによって異なる意味を持ちます。
+ロケールが存在しない場合、現在これらの余分な文字は一般的に
+割り当てられていないと考えられているため、いくつかの問題が発生しています。
+これは 5.12 に変更され、これらの文字は Latin-1(ISO-8859-1) と
+見なされるようになります。
+
+=item *
+
+=begin original
+
+Mixing #define and #ifdef
+
+=end original
+
+#define と #ifdef を混ぜる
+
+  #define BURGLE(x) ... \
+  #ifdef BURGLE_OLD_STYLE        /* BAD */
+  ... do it the old way ... \
+  #else
+  ... do it the new way ... \
+  #endif
+
+=begin original
+
+You cannot portably "stack" cpp directives. For example in the above
+you need two separate BURGLE() #defines, one for each #ifdef branch.
+
+=end original
+
+移植性のある方法で cpp 指示子を「スタック」させることはできません。
+上述の例では、#ifdef の分岐毎に一つ、計二つの別々の BURGLE() の #define が
+必要です。
+
+=item *
+
+=begin original
+
+Adding non-comment stuff after #endif or #else
+
+=end original
+
+#endif または #else の後にコメント以外の内容を追加する
+
+  #ifdef SNOSH
+  ...
+  #else !SNOSH    /* BAD */
+  ...
+  #endif SNOSH    /* BAD */
+
+=begin original
+
+The #endif and #else cannot portably have anything non-comment after
+them. If you want to document what is going (which is a good idea
+especially if the branches are long), use (C) comments:
+
+=end original
+
+#endif と #else は、その後ろにコメント以外のものを書くと移植性がありません。
+何をしているかを書いておきたい場合(これは特に分岐が長いときにはよい
+考えです)、(C の)コメントを使います:
+
+  #ifdef SNOSH
+  ...
+  #else /* !SNOSH */
+  ...
+  #endif /* SNOSH */
+
+=begin original
+
+The gcc option C<-Wendif-labels> warns about the bad variant (by
+default on starting from Perl 5.9.4).
+
+=end original
+
+gcc オプション C<-Wendif-labels> は悪い変形について警告します
+(Perl 5.9.4 からこれはデフォルトです)。
+
+=item *
+
+=begin original
+
+Having a comma after the last element of an enum list
+
+=end original
+
+enum リストの最後の要素の後ろにカンマを付ける
+
+  enum color {
+    CERULEAN,
+    CHARTREUSE,
+    CINNABAR,     /* BAD */
+  };
+
+=begin original
+
+is not portable. Leave out the last comma.
+
+=end original
+
+は移植性はありません。
+最後のカンマは省いてください。
+
+=begin original
+
+Also note that whether enums are implicitly morphable to ints varies
+between compilers, you might need to (int).
+
+=end original
+
+また、enum が暗黙に int に変換されるかどうかはコンパイラによって異なることに
+注意してください; (int) する必要があるかもしれません。
+
+=item *
+
+=begin original
+
+Using //-comments
+
+=end original
+
+// コメントを使う
+
+  // This function bamfoodles the zorklator.   /* BAD */
+
+=begin original
+
+That is C99 or C++. Perl is C89. Using the //-comments is silently
+allowed by many C compilers but cranking up the ANSI C89 strictness
+(which we like to do) causes the compilation to fail.
+
+=end original
+
+これは C99 または C++ です。
+Perl は C89 です。
+//-コメントを使うことは多くの C コンパイラで暗黙的に許可されていますが、
+ANSI C89 の厳密さを強化してしまうと(私たちがやりたいことですが)
+コンパイルが失敗します。
+
+=item *
+
+=begin original
+
+Mixing declarations and code
+
+=end original
+
+宣言とコードを混ぜる
+
+  void zorklator()
+  {
+    int n = 3;
+    set_zorkmids(n);    /* BAD */
+    int q = 4;
+
+=begin original
+
+That is C99 or C++. Some C compilers allow that, but you shouldn't.
+
+=end original
+
+これは C99 または C++ です。
+一部の C コンパイラはこれを使えますが、するべきではありません。
+
+=begin original
+
+The gcc option C<-Wdeclaration-after-statements> scans for such
+problems (by default on starting from Perl 5.9.4).
+
+=end original
+
+gcc オプション C<-Wdeclaration-after-statements> はこのような問題を
+スキャンします (Perl 5.9.4 からデフォルトです)。
+
+=item *
+
+=begin original
+
+Introducing variables inside for()
+
+=end original
+
+for() 内部の変数を導入する
+
+  for(int i = ...; ...; ...) {    /* BAD */
+
+=begin original
+
+That is C99 or C++. While it would indeed be awfully nice to have that
+also in C89, to limit the scope of the loop variable, alas, we cannot.
+
+=end original
+
+これは C99 または C++ です。
+ループ変数を制限するために C89 でもできれば本当にとてもよいことなのですが、
+悲しいかなそれはできません。
+
+=item *
+
+=begin original
+
+Mixing signed char pointers with unsigned char pointers
+
+=end original
+
+符号付き char ポインタと符号なし char ポインタを混ぜる
+
+  int foo(char *s) { ... }
+  ...
+  unsigned char *t = ...; /* Or U8* t = ... */
+  foo(t);   /* BAD */
+
+=begin original
+
+While this is legal practice, it is certainly dubious, and downright
+fatal in at least one platform: for example VMS cc considers this a
+fatal error. One cause for people often making this mistake is that a
+"naked char" and therefore dereferencing a "naked char pointer" have an
+undefined signedness: it depends on the compiler and the flags of the
+compiler and the underlying platform whether the result is signed or
+unsigned. For this very same reason using a 'char' as an array index is
+bad.
+
+=end original
+
+これは法的慣行ではありますが、確かに疑わしく、少なくとも一つの
+プラットフォームでは致命的です: 例えばVMS cc はこれを致命的エラーと
+見なします。
+人々がこの間違いを頻繁にする原因の一つは、"naked char"、したがって
+"naked char pointer" を逆参照する場合の符号が未定義であることです:
+結果が符号付きか符号なしかは、コンパイラとコンパイラ基盤となる
+プラットフォームのフラグに依存します。
+これとまったく同じ理由で、'char' を配列インデックスとして使うのは
+不適切です。
+
+=item *
+
+=begin original
+
+Macros that have string constants and their arguments as substrings of
+the string constants
+
+=end original
+
+文字列定数とその引数を文字列定数の部分文字列として持つマクロ
+
+  #define FOO(n) printf("number = %d\n", n)    /* BAD */
+  FOO(10);
+
+=begin original
+
+Pre-ANSI semantics for that was equivalent to
+
+=end original
+
+このための ANSI 以前の構文は次のものです:
+
+  printf("10umber = %d\10");
+
+=begin original
+
+which is probably not what you were expecting. Unfortunately at least
+one reasonably common and modern C compiler does "real backward
+compatibility" here, in AIX that is what still happens even though the
+rest of the AIX compiler is very happily C89.
+
+=end original
+
+これはおそらくあなたが期待していたものではありません。
+残念ながら、少なくとも一つの合理的に一般的で最新のCコンパイラが、
+ここでは「真の後方互換性」を実現しています;
+AIX では、AIX コンパイラの残りの部分が非常に幸せに C89 であっても、これが
+依然として行われています。
+
+=item *
+
+=begin original
+
+Using printf formats for non-basic C types
+
+=end original
+
+基本 C 型以外の printf のフォーマットを使う
+
+   IV i = ...;
+   printf("i = %d\n", i);    /* BAD */
+
+=begin original
+
+While this might by accident work in some platform (where IV happens to
+be an C<int>), in general it cannot. IV might be something larger. Even
+worse the situation is with more specific types (defined by Perl's
+configuration step in F<config.h>):
+
+=end original
+
+これはいくつかの(IV がたまたま C<int> であるような)プラットフォームでは
+偶然動作するかもしれませんが、一般的にはこれはできません。
+IV はもっと大きいかもしれません。
+もっと悪いことに、この状況はより特定の (F<config.h> にある Perl の設定
+ステップで定義される)型です:
+
+   Uid_t who = ...;
+   printf("who = %d\n", who);    /* BAD */
+
+=begin original
+
+The problem here is that Uid_t might be not only not C<int>-wide but it
+might also be unsigned, in which case large uids would be printed as
+negative values.
+
+=end original
+
+ここでの問題は、Uid_t が C<int> 幅でないだけでなく、符号なしでもある
+可能性があることであり、その場合、大きな uid は負の値として出力されます。
+
+=begin original
+
+There is no simple solution to this because of printf()'s limited
+intelligence, but for many types the right format is available as with
+either 'f' or '_f' suffix, for example:
+
+=end original
+
+printf() のインテリジェンスが限られているため、これに対する簡単な解決策は
+ありませんが、多くの型では 'f' または '_f' 接尾辞のような適切な
+フォーマットが利用できます;
+例えば:
+
+
+   IVdf /* IV in decimal */
+   UVxf /* UV is hexadecimal */
+
+   printf("i = %"IVdf"\n", i); /* The IVdf is a string constant. */
+
+   Uid_t_f /* Uid_t in decimal */
+
+   printf("who = %"Uid_t_f"\n", who);
+
+=begin original
+
+Or you can try casting to a "wide enough" type:
+
+=end original
+
+または、「十分に広い」型にキャストすることもできます:
+
+   printf("i = %"IVdf"\n", (IV)something_very_small_and_signed);
+
+=begin original
+
+Also remember that the C<%p> format really does require a void pointer:
+
+=end original
+
+C<%p> フォーマットは実際は void ポインタが必要であることも
+忘れないでください:
+
+   U8* p = ...;
+   printf("p = %p\n", (void*)p);
+
+=begin original
+
+The gcc option C<-Wformat> scans for such problems.
+
+=end original
+
+gcc オプション C<-Wformat> はこのような問題をスキャンします。
+
+=item *
+
+=begin original
+
+Blindly using variadic macros
+
+=end original
+
+可変マクロの盲目的な使用
+
+=begin original
+
+gcc has had them for a while with its own syntax, and C99 brought them
+with a standardized syntax. Don't use the former, and use the latter
+only if the HAS_C99_VARIADIC_MACROS is defined.
+
+=end original
+
+gcc には独自の構文があり、C99 には標準化された構文があります。
+前者は使わず、後者は HAS_C99_VARIADIC_MACROS が定義されている場合にのみ
+使ってください。
+
+=item *
+
+=begin original
+
+Blindly passing va_list
+
+=end original
+
+盲目的に va_list を渡す
+
+=begin original
+
+Not all platforms support passing va_list to further varargs (stdarg)
+functions. The right thing to do is to copy the va_list using the
+Perl_va_copy() if the NEED_VA_COPY is defined.
+
+=end original
+
+すべてのプラットフォームが va_list を他の varargs(stdarg) 関数に渡すことを
+サポートしているわけではありません。
+NEED_VA_COPY が定義されている場合は、Perl_va_copy() を使って va_list を
+コピーするのが適切です。
+
+=item *
+
+=begin original
+
+Using gcc statement expressions
+
+=end original
+
+gcc 文表現を使う
+
+   val = ({...;...;...});    /* BAD */
+
+=begin original
+
+While a nice extension, it's not portable. The Perl code does
+admittedly use them if available to gain some extra speed (essentially
+as a funky form of inlining), but you shouldn't.
+
+=end original
+
+よい拡張ではありますが、移植性がありません。
+Perl コードでは(本質的には変わった形のインラインとして)より速度が
+得られる場合には使っているのは確かですが、あなたはするべきではありません。
+
+=item *
+
+=begin original
+
+Binding together several statements in a macro
+
+=end original
+
+マクロの中で複数の文を結び付ける
+
+=begin original
+
+Use the macros STMT_START and STMT_END.
+
+=end original
+
+マクロ STMT_START と STMT_END を使ってください。
+
+   STMT_START {
+      ...
+   } STMT_END
+
+=item *
+
+=begin original
+
+Testing for operating systems or versions when should be testing for
+features
+
+=end original
+
+機能をテストするべきところでオペレーティングシステムやバージョンをテストする
+
+  #ifdef __FOONIX__    /* BAD */
+  foo = quux();
+  #endif
+
+=begin original
+
+Unless you know with 100% certainty that quux() is only ever available
+for the "Foonix" operating system B<and> that is available B<and>
+correctly working for B<all> past, present, B<and> future versions of
+"Foonix", the above is very wrong. This is more correct (though still
+not perfect, because the below is a compile-time check):
+
+=end original
+
+quux() が "Foonix" オペレーティングシステムでのみ利用可能であり、B<かつ>
+これが "Foonix"の過去、現在、将来の B<全ての> バージョンで利用可能で、
+B<かつ> 正しく動作することを 100% 確実に知っていない限り、
+上記は非常に間違っています。
+次のものはより正確です(これはコンパイル時チェックなので、まだ
+完全ではありませんが):
+
+  #ifdef HAS_QUUX
+  foo = quux();
+  #endif
+
+=begin original
+
+How does the HAS_QUUX become defined where it needs to be?  Well, if
+Foonix happens to be Unixy enough to be able to run the Configure
+script, and Configure has been taught about detecting and testing
+quux(), the HAS_QUUX will be correctly defined. In other platforms, the
+corresponding configuration step will hopefully do the same.
+
+=end original
+
+HAS_QUUX は必要な場所でどのように定義されるのでしょうか?
+まあ、もし Foonix が Configure スクリプトを実行するのに十分ななくらい
+Unixy であり、Configure が quux() の検出とテストについて教えられているなら、
+HAS_QUUX は正しく定義されるでしょう。
+他のプラットフォームでは、対応する設定ステップが同じことをすることを
+期待しています。
+
+=begin original
+
+In a pinch, if you cannot wait for Configure to be educated, or if you
+have a good hunch of where quux() might be available, you can
+temporarily try the following:
+
+=end original
+
+困ったときに、Configure が教育されるのを待てない場合や、quux() が
+どこで使えるか予感がある場合には、一時的に以下を試すことができます:
+
+  #if (defined(__FOONIX__) || defined(__BARNIX__))
+  # define HAS_QUUX
+  #endif
+
+  ...
+
+  #ifdef HAS_QUUX
+  foo = quux();
+  #endif
+
+=begin original
+
+But in any case, try to keep the features and operating systems
+separate.
+
+=end original
+
+ただし、いずれの場合でも、機能とオペレーティングシステムを
+分離するようにしてください。
+
+=back
+
+=head2 Problematic System Interfaces
+
+(問題のあるシステムインターフェース)
+
+=over 4
+
+=item *
+
+=begin original
+
+malloc(0), realloc(0), calloc(0, 0) are non-portable. To be portable
+allocate at least one byte. (In general you should rarely need to work
+at this low level, but instead use the various malloc wrappers.)
+
+=end original
+
+malloc(0), realloc(0), calloc(0, 0) は移植性がありません。
+移植性を持たせるためには、少なくとも 1 バイトを割り当ててください。
+(一般に、この低レベルで作業する必要はほとんどありません; 代わりに
+さまざまな malloc ラッパーを使ってください。)
+
+=item *
+
+=begin original
+
+snprintf() - the return type is unportable. Use my_snprintf() instead.
+
+=end original
+
+snprintf() - 返り型は移植性がありません。
+代わりに my_snprintf() を使ってください。
+
+=back
+
+=head2 Security problems
+
+(セキュリティ問題)
+
+=begin original
+
+Last but not least, here are various tips for safer coding.
+
+=end original
+
+最後ですが重要な、より安全なコーディングのためのさまざまなヒントを
+紹介します。
+
+=over 4
+
+=item *
+
+=begin original
+
+Do not use gets()
+
+=end original
+
+gets() を使わない
+
+=begin original
+
+Or we will publicly ridicule you. Seriously.
+
+=end original
+
+さもなければ私たちは公にあなたをからかうことになるでしょう。
+本気です。
+
+=item *
+
+=begin original
+
+Do not use strcpy() or strcat() or strncpy() or strncat()
+
+=end original
+
+strcpy(), strcat(), strncpy(), strncat() を使わない
+
+=begin original
+
+Use my_strlcpy() and my_strlcat() instead: they either use the native
+implementation, or Perl's own implementation (borrowed from the public
+domain implementation of INN).
+
+=end original
+
+代わりに my_strlcpy() と my_strlcat() を使ってください:
+これらはネイティブな実装か、Perl 独自の実装(INN の
+パブリックドメイン実装から借用したもの)を使います。
+
+=item *
+
+=begin original
+
+Do not use sprintf() or vsprintf()
+
+=end original
+
+sprintf(), vsprintf() を使わない
+
+=begin original
+
+If you really want just plain byte strings, use my_snprintf() and
+my_vsnprintf() instead, which will try to use snprintf() and
+vsnprintf() if those safer APIs are available. If you want something
+fancier than a plain byte string, use SVs and Perl_sv_catpvf().
+
+=end original
+
+本当にプレーンなバイト文字列だけが必要な場合は、代わりに my_snprintf() と
+y_vsnprintf() を使ってください;
+これらは、より安全な API が利用可能であれば、snprintf() と vsnprintf() を
+使おうとします。
+プレーンなバイト文字列よりも洗練されたものが必要な場合は、
+SV と Perl_sv_catpvf() を使ってください。
+
+=back
+
+=head1 DEBUGGING
+
+(デバッグ)
+
+=begin original
+
+You can compile a special debugging version of Perl, which allows you
+to use the C<-D> option of Perl to tell more about what Perl is doing.
+But sometimes there is no alternative than to dive in with a debugger,
+either to see the stack trace of a core dump (very useful in a bug
+report), or trying to figure out what went wrong before the core dump
+happened, or how did we end up having wrong or unexpected results.
+
+=end original
+
+Perlの C<-D> オプションを使って、Perl が何をしているのかを詳しく
+知ることができるように、Perl の特別なデバッグバージョンを
+コンパイルすることができます。
+しかし、場合によっては、デバッガを使って、コアダンプのスタックトレースを
+調べたり(バグレポートで非常に役立ちます)、コアダンプが発生する前に何が
+間違っていたのかを調べたり、どのようにして間違った結果や予期しない結果に
+なったのかを調べたりする以外に方法がないこともあります。
+
+=head2 Poking at Perl
+
+(Perl をつつく)
+
+=begin original
+
+To really poke around with Perl, you'll probably want to build Perl for
+debugging, like this:
+
+=end original
+
+実際に Perl をつつくためには、おそらく以下のようにデバッグ用の Perl を
+ビルドしたいでしょう:
+
+    ./Configure -d -D optimize=-g
+    make
+
+=begin original
+
+C<-g> is a flag to the C compiler to have it produce debugging
+information which will allow us to step through a running program, and
+to see in which C function we are at (without the debugging information
+we might see only the numerical addresses of the functions, which is
+not very helpful).
+
+=end original
+
+C<-g> は、C コンパイラに対して、実行中のプログラムをステップ実行するため、
+そしてどの C 関数にいるのかを調べるためのデバッグ情報を生成させるための
+フラグです(デバッグ情報がなければ、関数の数値アドレスだけが表示されますが、
+あまり役に立ちません)。
+
+=begin original
+
+F<Configure> will also turn on the C<DEBUGGING> compilation symbol
+which enables all the internal debugging code in Perl. There are a
+whole bunch of things you can debug with this: L<perlrun> lists them
+all, and the best way to find out about them is to play about with
+them. The most useful options are probably
+
+=end original
+
+F<Configure> は C<DEBUGGING> コンパイルシンボルも有効にします;
+これは Perl の全ての内部デバッグコードを有効にします。
+これでデバッグできるものはたくさんあります:
+L<perlrun>はそれらをすべてリストしています;
+それらについて知るための最良の方法は、それらをいじってみることです。
+最も有用なオプションはおそらく次のようになります:
+
+    l  Context (loop) stack processing
+    t  Trace execution
+    o  Method and overloading resolution
+    c  String/numeric conversions
+
+=begin original
+
+Some of the functionality of the debugging code can be achieved using
+XS modules.
+
+=end original
+
+コードのデバッグの機能の一部は XS モジュールを使って実現できます。
+
+    -Dr => use re 'debug'
+    -Dx => use O 'Debug'
+
+=head2 Using a source-level debugger
+
+(ソースレベルデバッガを使う)
+
+=begin original
+
+If the debugging output of C<-D> doesn't help you, it's time to step
+through perl's execution with a source-level debugger.
+
+=end original
+
+C<-D> のデバッグ出力が役に立たない場合は、ソースレベルのデバッガを使って
+perl の実行を順に追ってみましょう。
+
+=over 3
+
+=item *
+
+=begin original
+
+We'll use C<gdb> for our examples here; the principles will apply to
+any debugger (many vendors call their debugger C<dbx>), but check the
+manual of the one you're using.
+
+=end original
+
+ここでは例として C<gdb> を使います;
+この原則はどのデバッガにも適用されます(多くのベンダーではデバッガを
+C<dbx> と呼んでいます)が、使っているデバッガのマニュアルを
+確認してください。
+
+=back
+
+=begin original
+
+To fire up the debugger, type
+
+=end original
+
+デバッガを起動するには、以下のようにタイプします:
+
+    gdb ./perl
+
+=begin original
+
+Or if you have a core dump:
+
+=end original
+
+あるいはコアダンプがあるなら:
+
+    gdb ./perl core
+
+=begin original
+
+You'll want to do that in your Perl source tree so the debugger can
+read the source code. You should see the copyright message, followed by
+the prompt.
+
+=end original
+
+Perl ソースツリーで行い、デバッガがソースコードを読み取ることが
+できるようにします。
+copyrightメッセージに続いてプロンプトが表示されます。
+
+    (gdb)
+
+=begin original
+
+C<help> will get you into the documentation, but here are the most
+useful commands:
+
+=end original
+
+C<help> で文書を参照できますが、最も便利なコマンドは以下のとおりです:
+
+=over 3
+
+=item * run [args]
+
+=begin original
+
+Run the program with the given arguments.
+
+=end original
+
+引数を指定してプログラムを実行します。
+
+=item * break function_name
+
+=item * break source.c:xxx
+
+=begin original
+
+Tells the debugger that we'll want to pause execution when we reach
+either the named function (but see L<perlguts/Internal Functions>!) or
+the given line in the named source file.
+
+=end original
+
+指定された関数 (ただし L<perlguts/Internal Functions> を参照!)または
+指定されたソースファイル内の指定された行に到達したときに、実行を
+一時停止するようデバッガに指示します。
+
+=item * step
+
+=begin original
+
+Steps through the program a line at a time.
+
+=end original
+
+一度に 1 行、プログラムをステップ実行します。
+
+=item * next
+
+=begin original
+
+Steps through the program a line at a time, without descending into
+functions.
+
+=end original
+
+一度に 1 行、関数を下っていかずにプログラムをステップ実行します。
+
+=item * continue
+
+=begin original
+
+Run until the next breakpoint.
+
+=end original
+
+次のブレークポイントまで実行します。
+
+=item * finish
+
+=begin original
+
+Run until the end of the current function, then stop again.
+
+=end original
+
+現在の関数の末尾まで実行して、もう一度停止します。
+
+=item * 'enter'
+
+=begin original
+
+Just pressing Enter will do the most recent operation again - it's a
+blessing when stepping through miles of source code.
+
+=end original
+
+単に Enter キーを押すと、直前の操作をもう一度実行します - これは
+大量のソースコードをステップ実行するときに助けになります。
+
+=item * print
+
+=begin original
+
+Execute the given C code and print its results. B<WARNING>: Perl makes
+heavy use of macros, and F<gdb> does not necessarily support macros
+(see later L</"gdb macro support">). You'll have to substitute them
+yourself, or to invoke cpp on the source code files (see L</"The .i
+Targets">) So, for instance, you can't say
+
+=end original
+
+指定された C コードを実行し、その結果を出力します。
+B<警告>: Perl はマクロを多用していますが、F<gdb> は必ずしもマクロを
+サポートしていません(後述の L</"gdb macro support"> を参照してください)。
+それらを自分で置き換えるか、ソースコードファイルで cpp を起動する
+必要があります(L</"The .i Targets"> を参照してください)。
+ですから例えばこのようにはできず:
+
+    print SvPV_nolen(sv)
+
+=begin original
+
+but you have to say
+
+=end original
+
+以下のように書く必要があります
+
+    print Perl_sv_2pv_nolen(sv)
+
+=back
+
+=begin original
+
+You may find it helpful to have a "macro dictionary", which you can
+produce by saying C<cpp -dM perl.c | sort>. Even then, F<cpp> won't
+recursively apply those macros for you.
+
+=end original
+
+C<cpp -dM perl.c | sort> として生成できる「マクロ辞書」があると
+便利かもしれません。
+それでも、F<cpp> はこれらのマクロを再帰的に適用しません。
+
+=head2 gdb macro support
+
+(gdb マクロ対応)
+
+=begin original
+
+Recent versions of F<gdb> have fairly good macro support, but in order
+to use it you'll need to compile perl with macro definitions included
+in the debugging information. Using F<gcc> version 3.1, this means
+configuring with C<-Doptimize=-g3>. Other compilers might use a
+different switch (if they support debugging macros at all).
+
+=end original
+
+F<gdb> の最近のバージョンはかなり良いマクロサポートを持っていますが、
+それを使うためにはデバッグ情報にマクロ定義が含まれている perl を
+コンパイルする必要があります。
+F<gcc> バージョン 3.1 を使うと、C<-Doptimize=-g3> で設定することになります。
+他のコンパイラは(もしデバッグマクロをサポートしていれば)別のスイッチを
+使うかもしれません。
+
+=head2 Dumping Perl Data Structures
+
+(Perl データ構造体をダンプする)
+
+=begin original
+
+One way to get around this macro hell is to use the dumping functions
+in F<dump.c>; these work a little like an internal
+L<Devel::Peek|Devel::Peek>, but they also cover OPs and other
+structures that you can't get at from Perl. Let's take an example.
+We'll use the C<$a = $b + $c> we used before, but give it a bit of
+context: C<$b = "6XXXX"; $c = 2.3;>. Where's a good place to stop and
+poke around?
+
+=end original
+
+このマクロ地獄を回避する一つの方法は、F<dump.c> のダンプ関数を
+使うことです;
+これらの関数は、内部の L<Devel::Peek|Devel::Peek> と少し似た動作ですが、
+Perl からは得られない OP やその他の構造体もカバーしています。
+例を挙げてみましょう。
+前に使った C<$a = $b + $c> を使いますが、C<$b = "6XXXX"; $c = 2.3;> という
+コンテキストを少し説明します。
+立ち止まって歩き回るのに良い場所はどこでしょう?
+
+=begin original
+
+What about C<pp_add>, the function we examined earlier to implement the
+C<+> operator:
+
+=end original
+
+先ほど C<+> 演算子を実装するために検討した関数 C<pp_add> については
+どうでしょう:
+
+    (gdb) break Perl_pp_add
+    Breakpoint 1 at 0x46249f: file pp_hot.c, line 309.
+
+=begin original
+
+Notice we use C<Perl_pp_add> and not C<pp_add> - see
+L<perlguts/Internal Functions>. With the breakpoint in place, we can
+run our program:
+
+=end original
+
+C<pp_add> ではなく C<Perl_pp_add> を使っていることに注意してください -
+L<perlguts/Internal Functions>を参照してください。
+ブレークポイントを設定すると、プログラムを実行できます:
+
+    (gdb) run -e '$b = "6XXXX"; $c = 2.3; $a = $b + $c'
+
+=begin original
+
+Lots of junk will go past as gdb reads in the relevant source files and
+libraries, and then:
+
+=end original
+
+gdb が関連するソースファイルやライブラリを読み込むので
+多くのガラクタが通り過ぎ、それから:
+
+    Breakpoint 1, Perl_pp_add () at pp_hot.c:309
+    309         dSP; dATARGET; tryAMAGICbin(add,opASSIGN);
+    (gdb) step
+    311           dPOPTOPnnrl_ul;
+    (gdb)
+
+=begin original
+
+We looked at this bit of code before, and we said that
+C<dPOPTOPnnrl_ul> arranges for two C<NV>s to be placed into C<left> and
+C<right> - let's slightly expand it:
+
+=end original
+
+前にこのコードを見ましたが、C<dPOPTOPnnrl_ul> は二つの C<NV> を
+C<left> と C<right> に配置するようにアレンジしていると言いました -
+少し拡張してみましょう:
+
+ #define dPOPTOPnnrl_ul  NV right = POPn; \
+                         SV *leftsv = TOPs; \
+                         NV left = USE_LEFT(leftsv) ? SvNV(leftsv) : 0.0
+
+=begin original
+
+C<POPn> takes the SV from the top of the stack and obtains its NV
+either directly (if C<SvNOK> is set) or by calling the C<sv_2nv>
+function. C<TOPs> takes the next SV from the top of the stack - yes,
+C<POPn> uses C<TOPs> - but doesn't remove it. We then use C<SvNV> to
+get the NV from C<leftsv> in the same way as before - yes, C<POPn> uses
+C<SvNV>.
+
+=end original
+
+C<POPn> はスタックの先頭から SV を取得し、直接(C<SvNOK> が設定されている
+場合)または C<sv_2nv> 関数を呼び出すことによって NV を取得します。
+C<TopS> はスタックの先頭から次の SV を取得します -
+はい、C<POPn> は C<TopS> を使います -
+ただし、SV は削除されません。
+次に C<SvNV> を使って、以前と同じ方法で C<leftsv> から NV を取得します -
+はい、C<POPn> は C<SvNV> を使います。
+
+=begin original
+
+Since we don't have an NV for C<$b>, we'll have to use C<sv_2nv> to
+convert it. If we step again, we'll find ourselves there:
+
+=end original
+
+C<$b> には NV がないので、C<sv_2nv> を使って変換する必要があります。
+もう一度ステップ実行すると、そこにいることがわかるでしょう:
+
+    Perl_sv_2nv (sv=0xa0675d0) at sv.c:1669
+    1669        if (!sv)
+    (gdb)
+
+=begin original
+
+We can now use C<Perl_sv_dump> to investigate the SV:
+
+=end original
+
+次に、C<Perl_sv_dump> を使って SV を調査します:
+
+    SV = PV(0xa057cc0) at 0xa0675d0
+    REFCNT = 1
+    FLAGS = (POK,pPOK)
+    PV = 0xa06a510 "6XXXX"\0
+    CUR = 5
+    LEN = 6
+    $1 = void
+
+=begin original
+
+We know we're going to get C<6> from this, so let's finish the
+subroutine:
+
+=end original
+
+ここから C<6> が得られることはわかっているので、サブルーチンを
+終了しましょう:
+
+    (gdb) finish
+    Run till exit from #0  Perl_sv_2nv (sv=0xa0675d0) at sv.c:1671
+    0x462669 in Perl_pp_add () at pp_hot.c:311
+    311           dPOPTOPnnrl_ul;
+
+=begin original
+
+We can also dump out this op: the current op is always stored in
+C<PL_op>, and we can dump it with C<Perl_op_dump>. This'll give us
+similar output to L<B::Debug|B::Debug>.
+
+=end original
+
+この op をダンプすることもできます:
+現在の op は常に C<PL_op> に保存されており、C<Perl_op_dump> で
+ダンプすることができます。
+これにより、L<B::Debug|B::Debug> と同様の出力が得られます。
+
+    {
+    13  TYPE = add  ===> 14
+        TARG = 1
+        FLAGS = (SCALAR,KIDS)
+        {
+            TYPE = null  ===> (12)
+              (was rv2sv)
+            FLAGS = (SCALAR,KIDS)
+            {
+    11          TYPE = gvsv  ===> 12
+                FLAGS = (SCALAR)
+                GV = main::b
+            }
+        }
+
+# finish this later #
+
+=head1 SOURCE CODE STATIC ANALYSIS
+
+(ソースコード静的解析)
+
+=begin original
+
+Various tools exist for analysing C source code B<statically>, as
+opposed to B<dynamically>, that is, without executing the code. It is
+possible to detect resource leaks, undefined behaviour, type
+mismatches, portability problems, code paths that would cause illegal
+memory accesses, and other similar problems by just parsing the C code
+and looking at the resulting graph, what does it tell about the
+execution and data flows. As a matter of fact, this is exactly how C
+compilers know to give warnings about dubious code.
+
+=end original
+
+C ソースコードを B<静的> に、つまり B<動的> とは対照的に、コードを実行せずに
+分析するためのさまざまなツールが存在します。
+リソースリーク、未定義動作、型の不一致、移植性の問題、不正なメモリアクセスを
+引き起こすコードパス、その他同様の問題は、単に C コードを解析して結果の
+グラフを見るだけで、実行とデータフローについて何がわかるかを
+検出することができます。
+実際のところ、 C コンパイラが疑わしいコードについて警告を発する方法は
+まさにこれです。
+
+=head2 lint, splint
+
+=begin original
+
+The good old C code quality inspector, C<lint>, is available in several
+platforms, but please be aware that there are several different
+implementations of it by different vendors, which means that the flags
+are not identical across different platforms.
+
+=end original
+
+古き良き C コード品質インスペクタである C<lint >は、いくつかの
+プラットフォームで利用できますが、異なるベンダーによるいくつかの
+異なる実装があることに注意してください;
+つまり、フラグは異なるプラットフォーム間で同一ではありません。
+
+=begin original
+
+There is a lint variant called C<splint> (Secure Programming Lint)
+available from http://www.splint.org/ that should compile on any
+Unix-like platform.
+
+=end original
+
+http://www.splint.org/ から利用可能な
+C<splint> (Secure Programming Lint) と呼ばれる lint の亜種があり、
+どんな Unix 風のプラットフォームでもコンパイルできるはずです。
+
+=begin original
+
+There are C<lint> and <splint> targets in Makefile, but you may have to
+diddle with the flags (see above).
+
+=end original
+
+Makefile には C<lint> と <splint> ターゲットがありますが、フラグ(上記参照)を
+いじってみる必要があるかもしれません。
+
+=head2 Coverity
+
+=begin original
+
+Coverity (http://www.coverity.com/) is a product similar to lint and as
+a testbed for their product they periodically check several open source
+projects, and they give out accounts to open source developers to the
+defect databases.
+
+=end original
+
+Coverity (http://www.coverity.com/) は lint に似た製品で、彼らの製品の
+テストベッドとして、彼らは定期的にいくつかのオープンソースプロジェクトを
+チェックし、オープンソース開発者に欠陥データベースのアカウントを
+提供しています。
+
+=head2 cpd (cut-and-paste detector)
+
+(cpd (コピペ検出器))
+
+=begin original
+
+The cpd tool detects cut-and-paste coding. If one instance of the
+cut-and-pasted code changes, all the other spots should probably be
+changed, too. Therefore such code should probably be turned into a
+subroutine or a macro.
+
+=end original
+
+cpd ツールはカットアンドペーストのコーディングを検出します。
+カットアンドペーストされたコードの一つのインスタンスが変更されると、
+他のすべてのスポットも変更される必要があります。
+したがって、そのようなコードはサブルーチンまたはマクロに変換される
+必要があります。
+
+=begin original
+
+cpd (http://pmd.sourceforge.net/cpd.html) is part of the pmd project
+(http://pmd.sourceforge.net/). pmd was originally written for static
+analysis of Java code, but later the cpd part of it was extended to
+parse also C and C++.
+
+=end original
+
+cpd (http://pmd.sourceforge.net/cpd.html) は pmd プロジェクトの一部です
+(http://pmd.sourceforge.net/)。
+pmd はもともと Java コードの静的解析のために書かれましたが、後に
+cpd 部分が拡張されて C と C++ も解析できるようになりました。
+
+=begin original
+
+Download the pmd-bin-X.Y.zip () from the SourceForge site, extract the
+pmd-X.Y.jar from it, and then run that on source code thusly:
+
+=end original
+
+SourceForge のサイトからpmd-bin-X.Y.zip()をダウンロードし、そこから
+pmd-X.Y.jar を抽出し、次のようにソースコードに対して実行します:
+
+  java -cp pmd-X.Y.jar net.sourceforge.pmd.cpd.CPD \
+   --minimum-tokens 100 --files /some/where/src --language c > cpd.txt
+
+=begin original
+
+You may run into memory limits, in which case you should use the -Xmx
+option:
+
+=end original
+
+メモリ制限に到達する場合があります。
+その場合は-Xmxオプションを使ってください:
+
+  java -Xmx512M ...
+
+=head2 gcc warnings
+
+(gcc の警告)
+
+=begin original
+
+Though much can be written about the inconsistency and coverage
+problems of gcc warnings (like C<-Wall> not meaning "all the warnings",
+or some common portability problems not being covered by C<-Wall>, or
+C<-ansi> and C<-pedantic> both being a poorly defined collection of
+warnings, and so forth), gcc is still a useful tool in keeping our
+coding nose clean.
+
+=end original
+
+(C<-Wall> が「全ての警告」を意味しなかったり、C<-Wall> が基本的な移植性問題に
+対応していなかったり、C<-ansi> と C<-pedantic> の両方は対応する警告が
+貧弱であったり、というような) gcc の警告に関する非一貫性と対応範囲についての
+問題点はたくさん書かれてはいますが、gcc は未だにコードをきれいに保つのに
+有用なツールです。
+
+=begin original
+
+The C<-Wall> is by default on.
+
+=end original
+
+C<-Wall> はデフォルトでオンです。
+
+=begin original
+
+The C<-ansi> (and its sidekick, C<-pedantic>) would be nice to be on
+always, but unfortunately they are not safe on all platforms, they can
+for example cause fatal conflicts with the system headers (Solaris
+being a prime example). If Configure C<-Dgccansipedantic> is used, the
+C<cflags> frontend selects C<-ansi -pedantic> for the platforms where
+they are known to be safe.
+
+=end original
+
+C<-ansi> (およびその親類である C<-pedantic>) も常にオンにしたいですが、
+残念ながら全てのプラットフォームで安全というわけではありません; 例えば
+システムヘッダと致命的な衝突を引き起こすことがあります (Solaris が
+第一の例です)。
+Configure で C<-Dgccansipedantic> を使うと、C<cflags> フロントエンドは
+安全と分かっているプラットフォームでだけ C<-ansi -pedantic> を選択します。
+
+=begin original
+
+Starting from Perl 5.9.4 the following extra flags are added:
+
+=end original
+
+Perl 5.9.4 から以下のフラグが追加されました:
+
+=over 4
+
+=item *
+
+C<-Wendif-labels>
+
+=item *
+
+C<-Wextra>
+
+=item *
+
+C<-Wdeclaration-after-statement>
+
+=back
+
+=begin original
+
+The following flags would be nice to have but they would first need
+their own Augean stablemaster:
+
+=end original
+
+以下のフラグがあると便利ですが、最初に整理が必要です:
+
+=over 4
+
+=item *
+
+C<-Wpointer-arith>
+
+=item *
+
+C<-Wshadow>
+
+=item *
+
+C<-Wstrict-prototypes>
+
+=back
+
+=begin original
+
+The C<-Wtraditional> is another example of the annoying tendency of gcc
+to bundle a lot of warnings under one switch (it would be impossible to
+deploy in practice because it would complain a lot) but it does contain
+some warnings that would be beneficial to have available on their own,
+such as the warning about string constants inside macros containing the
+macro arguments: this behaved differently pre-ANSI than it does in
+ANSI, and some C compilers are still in transition, AIX being an
+example.
+
+=end original
+
+C<-Wtraditional> は、gcc が一つのスイッチに多数の警告をバンドルするという
+厄介な傾向のもう一つの例です (多くの警告が
+出るので、実際に展開することは不可能です) しかし、C<-Wtraditional> には、
+マクロ引数を含むマクロ内の文字列定数に関する警告など、単独で
+利用できるようにしておくと有益な警告がいくつか含まれています:
+これは ANSI 以前と ANSI では動作が異なり、いくつかのCコンパイラは
+まだ移行中で、AIX がその一例です。
+
+=head2 Warnings of other C compilers
+
+(その他の C コンパイラの警告)
+
+=begin original
+
+Other C compilers (yes, there B<are> other C compilers than gcc) often
+have their "strict ANSI" or "strict ANSI with some portability
+extensions" modes on, like for example the Sun Workshop has its C<-Xa>
+mode on (though implicitly), or the DEC (these days, HP...) has its
+C<-std1> mode on.
+
+=end original
+
+他の C コンパイラ(もちろん、gcc 以外の C コンパイラも B<あります>)はしばしば
+「厳密な ANSI」 や 「厳密な ANSI といくつかの移植性の拡張」モードを
+オンにしています;
+例えば、Sun Workshop では C<-Xa> モードが(暗黙的ですが)オンになっていたり、
+DEC (最近では HP…)では C<-std1> モードがオンになっていたりします。
+
+=head1 MEMORY DEBUGGERS
+
+(メモリデバッガ)
+
+=begin original
+
+B<NOTE 1>: Running under older memory debuggers such as Purify,
+valgrind or Third Degree greatly slows down the execution: seconds
+become minutes, minutes become hours. For example as of Perl 5.8.1, the
+ext/Encode/t/Unicode.t takes extraordinarily long to complete under
+e.g. Purify, Third Degree, and valgrind. Under valgrind it takes more
+than six hours, even on a snappy computer. The said test must be doing
+something that is quite unfriendly for memory debuggers. If you don't
+feel like waiting, that you can simply kill away the perl process.
+Roughly valgrind slows down execution by factor 10, AddressSanitizer by
+factor 2.
+
+=end original
+
+B<注 1>: Purify, Valgrind, Third Degree などの古いメモリデバッガで
+実行すると、実行速度が大幅に低下します: 秒は分になり、分は時間になります。
+たとえば、Perl 5.8.1 では、ext/Encode/t/Unicode.t は、Purify, Third Degree,
+Valgrind などで実行すると非常に時間がかかります。
+Valgrind では、高速なコンピュータでも 6 時間以上かかります。
+このテストは、メモリデバッガにとって非常に扱いにくいことを
+行っているはずです。
+待つ気がなければ、perl プロセスを kill するだけで済みます。
+おおよそ、valgrind は 10 倍遅くなり、AddressSanitizer は 2 倍遅くなります。
+
+=begin original
+
+B<NOTE 2>: To minimize the number of memory leak false alarms (see
+L</PERL_DESTRUCT_LEVEL> for more information), you have to set the
+environment variable PERL_DESTRUCT_LEVEL to 2.
+
+=end original
+
+B<注 2>: メモリリークの誤通知 (詳細については L</PERL_DESTRUCT_LEVEL> を
+参照) の数を最小限にするためには、環境変数 PERL_DESTRUCT_LEVEL を 2 に
+設定する必要があります。
+
+=begin original
+
+For csh-like shells:
+
+=end original
+
+csh のようなシェルの場合:
+
+    setenv PERL_DESTRUCT_LEVEL 2
+
+=begin original
+
+For Bourne-type shells:
+
+=end original
+
+Bourne タイプのシェルの場合:
+
+    PERL_DESTRUCT_LEVEL=2
+    export PERL_DESTRUCT_LEVEL
+
+=begin original
+
+In Unixy environments you can also use the C<env> command:
+
+=end original
+
+UNIXy 環境では、C<env> コマンドを使うこともできます:
+
+    env PERL_DESTRUCT_LEVEL=2 valgrind ./perl -Ilib ...
+
+=begin original
+
+B<NOTE 3>: There are known memory leaks when there are compile-time
+errors within eval or require, seeing C<S_doeval> in the call stack is
+a good sign of these. Fixing these leaks is non-trivial, unfortunately,
+but they must be fixed eventually.
+
+=end original
+
+B<注 3>: eval または require 内にコンパイル時エラーがある場合、既知の
+メモリリークがあります;
+コールスタックに C<S_doeval> があることは、これらの良い兆候です。
+残念ながら、これらのリークを修正することは簡単ではありませんが、最終的には
+修正する必要があります。
+
+=begin original
+
+B<NOTE 4>: L<DynaLoader> will not clean up after itself completely
+unless Perl is built with the Configure option
+C<-Accflags=-DDL_UNLOAD_ALL_AT_EXIT>.
+
+=end original
+
+B<注 4>:Perl が Configure オプション
+C<-Accflags=-DDL_UNLOAD_ALL_AT_EXIT> で構築されていない限り、
+L<DynaLoader> は自分自身を完全にクリーンアップすることはありません。
+
+=head2 Rational Software's Purify
+
+(Rational Software の Purify)
+
+=begin original
+
+Purify is a commercial tool that is helpful in identifying memory
+overruns, wild pointers, memory leaks and other such badness. Perl must
+be compiled in a specific way for optimal testing with Purify.  Purify
+is available under Windows NT, Solaris, HP-UX, SGI, and Siemens Unix.
+
+=end original
+
+Purify は、メモリオーバーラン、ワイルドポインタ、メモリリークなどの不良を
+識別するのに役立つ商用ツールです。
+Purify で最適なテストを行うためには、Perl を特定の方法でコンパイルする
+必要があります。
+Purify は Windows NT, Solaris, HP-UX, SGI, Siemens Unix で利用できます。
+
+=head3 Purify on Unix
+
+(Unix での Purify)
+
+=begin original
+
+On Unix, Purify creates a new Perl binary. To get the most benefit out
+of Purify, you should create the perl to Purify using:
+
+=end original
+
+Unix では、Purify は新しい Perl バイナリを作成します。
+Purify を最大限に活用するには、以下を使って Purify 用の perl を作成する
+必要があります:
+
+    sh Configure -Accflags=-DPURIFY -Doptimize='-g' \
+     -Uusemymalloc -Dusemultiplicity
+
+=begin original
+
+where these arguments mean:
+
+=end original
+
+これらの引数の意味は次のとおりです:
+
+=over 4
+
+=item * -Accflags=-DPURIFY
+
+=begin original
+
+Disables Perl's arena memory allocation functions, as well as forcing
+use of memory allocation functions derived from the system malloc.
+
+=end original
+
+Perl のアリーナメモリ割り当て関数を無効にし、システム malloc から派生した
+メモリ割り当て関数を強制的に使います。
+
+=item * -Doptimize='-g'
+
+=begin original
+
+Adds debugging information so that you see the exact source statements
+where the problem occurs. Without this flag, all you will see is the
+source filename of where the error occurred.
+
+=end original
+
+デバッグ情報を追加して、問題が発生したソース文を正確に表示します。
+このフラグがなければ、エラーが発生したソースファイル名だけが表示されます。
+
+=item * -Uusemymalloc
+
+=begin original
+
+Disable Perl's malloc so that Purify can more closely monitor
+allocations and leaks. Using Perl's malloc will make Purify report most
+leaks in the "potential" leaks category.
+
+=end original
+
+Perl の malloc を無効にして、Purify が割り当てとリークをより厳密に
+監視できるようにします。
+Perl の malloc を使うと、Purify は「潜在的な」リークのカテゴリで最も多くの
+リークをレポートします。
+
+=item * -Dusemultiplicity
+
+=begin original
+
+Enabling the multiplicity option allows perl to clean up thoroughly
+when the interpreter shuts down, which reduces the number of bogus leak
+reports from Purify.
+
+=end original
+
+multiplicity オプションを有効にすると、perl はインタプリタが
+シャットダウンしたときに完全にクリーンアップすることができ、
+Purify からの偽のリークレポートの数を減らすことができます。
+
+=back
+
+=begin original
+
+Once you've compiled a perl suitable for Purify'ing, then you can just:
+
+=end original
+
+Purify に適した Perl をコンパイルしたら、次のようにします:
+
+    make pureperl
+
+=begin original
+
+which creates a binary named 'pureperl' that has been Purify'ed. This
+binary is used in place of the standard 'perl' binary when you want to
+debug Perl memory problems.
+
+=end original
+
+Purify された "pureperl" という名前のバイナリを作成します。
+このバイナリは、Perl メモリの問題をデバッグしたい場合に、標準の
+"perl" バイナリの代わりに使われます。
+
+=begin original
+
+As an example, to show any memory leaks produced during the standard
+Perl testset you would create and run the Purify'ed perl as:
+
+=end original
+
+たとえば、標準的な Perl テストセットで生成されたメモリリークを
+表示するには、Purify の perl を次のように作成して実行します:
+
+    make pureperl
+    cd t
+    ../pureperl -I../lib harness
+
+=begin original
+
+which would run Perl on test.pl and report any memory problems.
+
+=end original
+
+test.pl で Perl を実行し、メモリの問題を報告します。
+
+=begin original
+
+Purify outputs messages in "Viewer" windows by default. If you don't
+have a windowing environment or if you simply want the Purify output to
+unobtrusively go to a log file instead of to the interactive window,
+use these following options to output to the log file "perl.log":
+
+=end original
+
+デフォルトでは、Purify は "Viewer" ウィンドウにメッセージを出力します。
+ウィンドウ環境がない場合、または Purify 出力を対話式ウィンドウではなく
+控えめなログファイルに出力する場合は、次のオプションを使ってログファイル
+"perl.log" に出力します:
+
+    setenv PURIFYOPTIONS "-chain-length=25 -windows=no \
+     -log-file=perl.log -append-logfile=yes"
+
+=begin original
+
+If you plan to use the "Viewer" windows, then you only need this
+option:
+
+=end original
+
+"Viewer" ウィンドウを使う場合は、次のオプションのみが必要です:
+
+    setenv PURIFYOPTIONS "-chain-length=25"
+
+=begin original
+
+In Bourne-type shells:
+
+=end original
+
+Bourne タイプのシェルの場合:
+
+    PURIFYOPTIONS="..."
+    export PURIFYOPTIONS
+
+=begin original
+
+or if you have the "env" utility:
+
+=end original
+
+"env" ユーティリティを使っている場合:
+
+    env PURIFYOPTIONS="..." ../pureperl ...
+
+=head3 Purify on NT
+
+(NT での Purify)
+
+=begin original
+
+Purify on Windows NT instruments the Perl binary 'perl.exe' on the fly.
+There are several options in the makefile you should change to get the
+most use out of Purify:
+
+=end original
+
+Purify on Windows NT では、Perl バイナリ 'perl.exe' をオンザフライで
+計測します。
+Purify を最大限に活用するためには、makefile のいくつかのオプションを
+変更する必要があります。
+
+=over 4
+
+=item * DEFINES
+
+=begin original
+
+You should add -DPURIFY to the DEFINES line so the DEFINES line looks
+something like:
+
+=end original
+
+DEFINES 行に -DPURIFY を追加して、DEFINES 行が次のようになるようにします。
+
+   DEFINES = -DWIN32 -D_CONSOLE -DNO_STRICT $(CRYPT_FLAG) -DPURIFY=1
+
+=begin original
+
+to disable Perl's arena memory allocation functions, as well as to
+force use of memory allocation functions derived from the system
+malloc.
+
+=end original
+
+Perl のアリーナメモリアロケーション関数を無効にしたり、malloc システムから
+派生したメモリアロケーション関数を強制的に使わせたりします。
+
+=item * USE_MULTI = define
+
+=begin original
+
+Enabling the multiplicity option allows perl to clean up thoroughly
+when the interpreter shuts down, which reduces the number of bogus leak
+reports from Purify.
+
+=end original
+
+multiplicity オプションを有効にすると、perl はインタプリタが
+シャットダウンしたときに完全にクリーンアップすることができ、
+Purify からの偽のリークレポートの数を減らすことができます。
+
+=item * #PERL_MALLOC = define
+
+=begin original
+
+Disable Perl's malloc so that Purify can more closely monitor
+allocations and leaks. Using Perl's malloc will make Purify report most
+leaks in the "potential" leaks category.
+
+=end original
+
+Perl の malloc を無効にして、Purify が割り当てとリークをより厳密に
+監視できるようにします。
+Perl の malloc を使うと、Purify は「潜在的な」リークのカテゴリで最も多くの
+リークをレポートします。
+
+=item * CFG = Debug
+
+=begin original
+
+Adds debugging information so that you see the exact source statements
+where the problem occurs. Without this flag, all you will see is the
+source filename of where the error occurred.
+
+=end original
+
+デバッグ情報を追加して、問題が発生したソース文を正確に表示します。
+このフラグがなければ、エラーが発生したソースファイル名だけが表示されます。
+
+=back
+
+=begin original
+
+As an example, to show any memory leaks produced during the standard
+Perl testset you would create and run Purify as:
+
+=end original
+
+例として、標準 Perl テストセット中に生成されたメモリリークを表示するために、
+Purify を次のように作成して実行します:
+
+    cd win32
+    make
+    cd ../t
+    purify ../perl -I../lib harness
+
+=begin original
+
+which would instrument Perl in memory, run Perl on test.pl, then
+finally report any memory problems.
+
+=end original
+
+メモリに Perl を構築し、test.pl 上で Perl を実行し、最後にメモリの問題を
+報告します。
+
+=head2 valgrind
+
+=begin original
+
+The valgrind tool can be used to find out both memory leaks and illegal
+heap memory accesses. As of version 3.3.0, Valgrind only supports Linux
+on x86, x86-64 and PowerPC and Darwin (OS X) on x86 and x86-64). The
+special "test.valgrind" target can be used to run the tests under
+valgrind. Found errors and memory leaks are logged in files named
+F<testfile.valgrind>.
+
+=end original
+
+valgrind ツールは、メモリリークと不正なヒープメモリアクセスの両方を
+見つけるために使えます。
+バージョン 3.3.0 では、Valgrind は x86、x86-64、PowerPC 上の
+Linux、x86 と x86-64 の Darwin (OS X) のみをサポートしています。
+特別な "test.valgrind" ターゲットを使って、valgrind 下でテストを実行できます。
+検出されたエラーとメモリリークは、F<testfile.valgrind> という名前の
+ファイルに記録されます。
+
+=begin original
+
+Valgrind also provides a cachegrind tool, invoked on perl as:
+
+=end original
+
+Valgrind は cachegrind ツールも提供しており、perl で以下のように
+呼び出されます:
+
+    VG_OPTS=--tool=cachegrind make test.valgrind
+
+=begin original
+
+As system libraries (most notably glibc) are also triggering errors,
+valgrind allows to suppress such errors using suppression files. The
+default suppression file that comes with valgrind already catches a lot
+of them. Some additional suppressions are defined in F<t/perl.supp>.
+
+=end original
+
+システムライブラリ(最も顕著な glibc)もエラーを引き起こすので、valgrind は
+抑制ファイルを使ってそのようなエラーを抑制することができます。
+valgrind に付属のデフォルトの抑制ファイルはすでに多くのエラーを捕捉しています。
+いくつかの追加の抑制は F<t/perl.supp> で定義されています。
+
+=begin original
+
+To get valgrind and for more information see
+
+=end original
+
+詳細については、以下を参照してください:
+
+    http://valgrind.org/
+
+=head2 AddressSanitizer
+
+=begin original
+
+AddressSanitizer is a clang extension, included in clang since v3.1. It
+checks illegal heap pointers, global pointers, stack pointers and use
+after free errors, and is fast enough that you can easily compile your
+debugging or optimized perl with it. It does not check memory leaks
+though. AddressSanitizer is available for linux, Mac OS X and soon on
+Windows.
+
+=end original
+
+AddressSanitizer は clang 拡張で、v3.1 から clang に含まれています。
+これは不正なヒープポインタ、大域ポインタ、スタックポインタと
+解放後使用エラーをチェックし、十分に高速なので、
+これを含めたデバッグ版や最適化版の perl を簡単にコンパイルできます。
+しかし、これはメモリリークはチェックしません。
+AddressSanitizer は linux, Mac OS X で利用可能で、まもなく
+Windows も可能になります。
+
+=begin original
+
+To build perl with AddressSanitizer, your Configure invocation should
+look like:
+
+=end original
+
+AddressSanitizer 付きで perl をビルドするには、
+Configure の起動は次のようになります:
+
+    sh Configure -des -Dcc=clang \
+       -Accflags=-faddress-sanitizer -Aldflags=-faddress-sanitizer \
+       -Alddlflags=-shared\ -faddress-sanitizer
+
+=begin original
+
+where these arguments mean:
+
+=end original
+
+これらの引数の意味は次の通りです:
+
+=over 4
+
+=item * -Dcc=clang
+
+=begin original
+
+This should be replaced by the full path to your clang executable if it
+is not in your path.
+
+=end original
+
+これがあなたのパスにない場合、clang 実行ファイルのフルパスに置き換える
+必要があります。
+
+=item * -Accflags=-faddress-sanitizer
+
+=begin original
+
+Compile perl and extensions sources with AddressSanitizer.
+
+=end original
+
+perl とエクステンションのソースを AddressSanitizer でコンパイルします。
+
+=item * -Aldflags=-faddress-sanitizer
+
+=begin original
+
+Link the perl executable with AddressSanitizer.
+
+=end original
+
+perl 実行ファイルを AddressSanitizer でします。
+
+=item * -Alddlflags=-shared\ -faddress-sanitizer
+
+=begin original
+
+Link dynamic extensions with AddressSanitizer. You must manually
+specify C<-shared> because using C<-Alddlflags=-shared> will prevent
+Configure from setting a default value for C<lddlflags>, which usually
+contains C<-shared> (at least on linux).
+
+=end original
+
+動的エクステンションを AddressSanitizer でリンクします。
+手動で C<-shared> を指定しなければなりません;
+C<-Alddlflags=-shared> を使うと、(少なくとも linux では) Configure が、
+通常 C<-shared> を含んでいる C<lddlflags> のデフォルト値の設定するのを
+妨げるからです。
+
+=back
+
+=begin original
+
+See also
+L<http://code.google.com/p/address-sanitizer/wiki/AddressSanitizer>.
+
+=end original
+
+L<http://code.google.com/p/address-sanitizer/wiki/AddressSanitizer> も
+参照してください。
+
+=head1 PROFILING
+
+(プロファイリング)
+
+=begin original
+
+Depending on your platform there are various ways of profiling Perl.
+
+=end original
+
+プラットフォームによって、Perl をプロファイリングする方法が色々あります。
+
+=begin original
+
+There are two commonly used techniques of profiling executables:
+I<statistical time-sampling> and I<basic-block counting>.
+
+=end original
+
+一般的に使われる実行ファイルをプロファイリングする技術が二つあります:
+I<統計的タイムサンプリング>(statistical time-sampling) と
+I<基本ブロックカウント>(basic-block counting) です。
+
+=begin original
+
+The first method takes periodically samples of the CPU program counter,
+and since the program counter can be correlated with the code generated
+for functions, we get a statistical view of in which functions the
+program is spending its time. The caveats are that very small/fast
+functions have lower probability of showing up in the profile, and that
+periodically interrupting the program (this is usually done rather
+frequently, in the scale of milliseconds) imposes an additional
+overhead that may skew the results. The first problem can be alleviated
+by running the code for longer (in general this is a good idea for
+profiling), the second problem is usually kept in guard by the
+profiling tools themselves.
+
+=end original
+
+一つ目の方法では、CPU プログラムカウンタのサンプルを定期的に取得し、
+プログラムカウンタは関数用に生成されたコードと照合させることができるため、
+プログラムがどの関数に時間を費やしているかを統計的に把握することができます。
+注意すべき点は、非常に小さい/高速な関数はプロファイルに現れる可能性が低く、
+プログラムを定期的に中断すると(通常はミリ秒単位で頻繁に行われます)追加の
+オーバーヘッドが発生し、結果に歪みが生じる可能性があることです。
+一つ目の問題は、コードをより長く実行することで軽減できます(一般的に、
+これはプロファイリングに適した方法です);
+二つ目の問題は、通常はプロファイリングツール自体によってガードされます。
+
+=begin original
+
+The second method divides up the generated code into I<basic blocks>.
+Basic blocks are sections of code that are entered only in the
+beginning and exited only at the end. For example, a conditional jump
+starts a basic block. Basic block profiling usually works by
+I<instrumenting> the code by adding I<enter basic block #nnnn>
+book-keeping code to the generated code. During the execution of the
+code the basic block counters are then updated appropriately. The
+caveat is that the added extra code can skew the results: again, the
+profiling tools usually try to factor their own effects out of the
+results.
+
+=end original
+
+2 番目の方法では、生成されたコードを I<基本ブロック> に分割します。
+基本ブロックは、最初にのみ入力され、最後にのみ終了されるコードの
+セクションです。
+たとえば、条件付きジャンプで基本ブロックが開始されます。
+基本ブロックプロファイリングは通常、生成されたコードに
+I<enter basic block #nnnn> ブックキーピングコードを追加することにより、
+コードを I<調整> して実行されます。
+コードの実行中に、基本ブロックカウンタが適切に更新されます。
+追加された余分なコードが結果を歪める可能性があることに注意してください:
+ここでも、プロファイリングツールは通常、結果から独自の影響を
+考慮しようとします。
+
+=head2 Gprof Profiling
+
+(Gprof によるプロファイリング)
+
+=begin original
+
+gprof is a profiling tool available in many Unix platforms, it uses
+F<statistical time-sampling>.
+
+=end original
+
+gprof は多くの Unix プラットフォームで利用できるプロファイルツールで、
+I<統計的タイムサンプリング> を使います。
+
+=begin original
+
+You can build a profiled version of perl called "perl.gprof" by
+invoking the make target "perl.gprof"  (What is required is that Perl
+must be compiled using the C<-pg> flag, you may need to re-Configure).
+Running the profiled version of Perl will create an output file called
+F<gmon.out> is created which contains the profiling data collected
+during the execution.
+
+=end original
+
+make ターゲット "perl.gprof" を呼び出すことにより、"perl.gprof" という
+プロファイルバージョンの perl を作成することができます(C<-pg> フラグを使って
+Perl をコンパイルする必要があります;
+再 Configure が必要な場合もあります)。
+プロファイルバージョンの Perl を実行すると、F<gmon.out> という出力ファイルが
+作成されます;
+このファイルには、実行中に収集されたプロファイルデータが含まれています。
+
+=begin original
+
+The gprof tool can then display the collected data in various ways.
+Usually gprof understands the following options:
+
+=end original
+
+gprof ツールは、収集されたデータをさまざまな方法で表示することができます。
+通常 gprof は以下のオプションを理解します:
+
+=over 4
+
+=item * -a
+
+=begin original
+
+Suppress statically defined functions from the profile.
+
+=end original
+
+静的に定義された関数をプロファイルから抑制します。
+
+=item * -b
+
+=begin original
+
+Suppress the verbose descriptions in the profile.
+
+=end original
+
+プロファイルの詳細な説明を非表示にします。
+
+=item * -e routine
+
+=begin original
+
+Exclude the given routine and its descendants from the profile.
+
+=end original
+
+指定されたルーチンとその子孫をプロファイルから除外します。
+
+=item * -f routine
+
+=begin original
+
+Display only the given routine and its descendants in the profile.
+
+=end original
+
+プロファイル内の指定されたルーチンとその子孫のみを表示します。
+
+=item * -s
+
+=begin original
+
+Generate a summary file called F<gmon.sum> which then may be given to
+subsequent gprof runs to accumulate data over several runs.
+
+=end original
+
+F<gmon.sum> という名前のサマリーファイルを生成します。
+このファイルは、後続のgprof実行に渡され、複数の実行にわたってデータを
+蓄積します。
+
+=item * -z
+
+=begin original
+
+Display routines that have zero usage.
+
+=end original
+
+使用率が 0 のルーチンを表示します。
+
+=back
+
+=begin original
+
+For more detailed explanation of the available commands and output
+formats, see your own local documentation of gprof.
+
+=end original
+
+使用可能なコマンドと出力フォーマットの詳細については、gprof の
+ローカル文書を参照してください。
+
+=begin original
+
+quick hint:
+
+=end original
+
+ヒント:
+
+    $ sh Configure -des -Dusedevel -Doptimize='-pg' && make perl.gprof
+    $ ./perl.gprof someprog # creates gmon.out in current directory
+    $ gprof ./perl.gprof > out
+    $ view out
+
+=head2 GCC gcov Profiling
+
+(GCC gcov によるプロファイリング)
+
+=begin original
+
+Starting from GCC 3.0 I<basic block profiling> is officially available
+for the GNU CC.
+
+=end original
+
+GCC 3.0 以降では、I<基本ブロックプロファイリング> が GNU CC 用に公式に
+利用可能です。
+
+=begin original
+
+You can build a profiled version of perl called F<perl.gcov> by
+invoking the make target "perl.gcov" (what is required that Perl must
+be compiled using gcc with the flags C<-fprofile-arcs -ftest-coverage>,
+you may need to re-Configure).
+
+=end original
+
+make ターゲット "perl.gcov" を呼び出すことによって、F<perl.gcov> という
+プロファイルバージョンの perl を構築することができます(Perl は gcc で
+フラグ C<-fprofile-arcs -ftest-coverage> を指定してコンパイルする
+必要があります;
+再 Configure が必要になる場合もあります)。
+
+=begin original
+
+Running the profiled version of Perl will cause profile output to be
+generated. For each source file an accompanying ".da" file will be
+created.
+
+=end original
+
+プロファイルバージョンの Perl を実行すると、プロファイル出力が生成されます。
+各ソースファイルに付随する ".da" ファイルが作成されます。
+
+=begin original
+
+To display the results you use the "gcov" utility (which should be
+installed if you have gcc 3.0 or newer installed). F<gcov> is run on
+source code files, like this
+
+=end original
+
+結果を表示するには、"gcov" ユーティリティ(gcc 3.0 以降が
+インストールされている場合にインストールされるはずです)を使います。
+F<gcov> は以下のようにソースコードファイルで実行されます:
+
+    gcov sv.c
+
+=begin original
+
+which will cause F<sv.c.gcov> to be created. The F<.gcov> files contain
+the source code annotated with relative frequencies of execution
+indicated by "#" markers.
+
+=end original
+
+F<sv.c.gcov> が作成されます。
+F<.gcov> ファイルには、"#" マーカーで示される相対的な実行頻度で注釈が
+付けられたソースコードが含まれています。
+
+=begin original
+
+Useful options of F<gcov> include C<-b> which will summarise the basic
+block, branch, and function call coverage, and C<-c> which instead of
+relative frequencies will use the actual counts. For more information
+on the use of F<gcov> and basic block profiling with gcc, see the
+latest GNU CC manual, as of GCC 3.0 see
+
+=end original
+
+F<gcov> の有用なオプションには、基本的なブロック、ブランチ、関数呼び出しの
+カバレッジを要約する C<-b> や、相対的な頻度ではなく実際のカウントを使う
+C<-c> などがあります。
+gcc での F<gcov> と基本的なブロックプロファイリングの使用に関する詳細は、
+最新の GNU CC マニュアルを参照してください;
+GCC 3.0 では最新の GNU CC マニュアルを参照してください:
+
+    http://gcc.gnu.org/onlinedocs/gcc-3.0/gcc.html
+
+=begin original
+
+and its section titled "8. gcov: a Test Coverage Program"
+
+=end original
+
+およびその "8. gcov: a Test Coverage Program" というタイトルの
+セクションです:
+
+    http://gcc.gnu.org/onlinedocs/gcc-3.0/gcc_8.html#SEC132
+
+=begin original
+
+quick hint:
+
+=end original
+
+ヒント:
+
+    $ sh Configure -des -Dusedevel -Doptimize='-g' \
+        -Accflags='-fprofile-arcs -ftest-coverage' \
+        -Aldflags='-fprofile-arcs -ftest-coverage' && make perl.gcov
+    $ rm -f regexec.c.gcov regexec.gcda
+    $ ./perl.gcov
+    $ gcov regexec.c
+    $ view regexec.c.gcov
+
+=head1 MISCELLANEOUS TRICKS
+
+(様々な小技)
+
+=head2 PERL_DESTRUCT_LEVEL
+
+=begin original
+
+If you want to run any of the tests yourself manually using e.g.
+valgrind, or the pureperl or perl.third executables, please note that
+by default perl B<does not> explicitly cleanup all the memory it has
+allocated (such as global memory arenas) but instead lets the exit() of
+the whole program "take care" of such allocations, also known as
+"global destruction of objects".
+
+=end original
+
+例えば valgrind や pureperl や perl.third の実行可能ファイルを使って
+手動でテストを実行したい場合、
+デフォルトでは perl は
+(グローバルメモリ領域のような)割り当てられた全てのメモリを明示的に
+クリーンアップ B<しません> が、代わりにプログラム全体の exit() がそのような
+割り当てを"処理"します;
+これは"グローバルなオブジェクト破壊"としても知られています。
+
+=begin original
+
+There is a way to tell perl to do complete cleanup: set the environment
+variable PERL_DESTRUCT_LEVEL to a non-zero value. The t/TEST wrapper
+does set this to 2, and this is what you need to do too, if you don't
+want to see the "global leaks": For example, for "third-degreed" Perl:
+
+=end original
+
+perl に完全なクリーンアップを行うように指示する方法があります:
+環境変数 PERL_DESTRUCT_LEVEL を 0 以外の値に設定します。
+t/TEST ラッパーはこれを 2 に設定しますが、"global leaks" を
+見たくない場合にはこれも行う必要があります。
+例えば "third-degree" Perl の場合:
+
+	env PERL_DESTRUCT_LEVEL=2 ./perl.third -Ilib t/foo/bar.t
+
+=begin original
+
+(Note: the mod_perl apache module uses also this environment variable
+for its own purposes and extended its semantics. Refer to the mod_perl
+documentation for more information. Also, spawned threads do the
+equivalent of setting this variable to the value 1.)
+
+=end original
+
+(注: mod_perl apache モジュールも独自の目的でこの環境変数を使い、その
+セマンティクスを拡張しています。
+詳細については、mod_perl の文書を参照してください。
+また、生成されたスレッドは、この変数を値 1 に設定するのと同じことを
+行います。)
+
+=begin original
+
+If, at the end of a run you get the message I<N scalars leaked>, you
+can recompile with C<-DDEBUG_LEAKING_SCALARS>, which will cause the
+addresses of all those leaked SVs to be dumped along with details as to
+where each SV was originally allocated. This information is also
+displayed by Devel::Peek. Note that the extra details recorded with
+each SV increases memory usage, so it shouldn't be used in production
+environments. It also converts C<new_SV()> from a macro into a real
+function, so you can use your favourite debugger to discover where
+those pesky SVs were allocated.
+
+=end original
+
+実行の最後にメッセージ I<N scalars leaked> が表示された場合は、
+C<-DDEBUG_LEAKING_SCALARS> で再コンパイルすることができます;
+これにより、リークされたすべての SV のアドレスが、各 SV が最初に
+割り当てられた場所の詳細とともにダンプされます。
+この情報は、Devel::Peek でも表示されます。
+各 SV に追加の詳細が記録されると、メモリ使用量が増加するため、本番環境では
+使わないでください。
+また、マクロから C<new_SV()> を実関数に変換するため、お気に入りのデバッガを
+使って、これらの SV が割り当てられた場所を検出できます。
+
+=begin original
+
+If you see that you're leaking memory at runtime, but neither valgrind
+nor C<-DDEBUG_LEAKING_SCALARS> will find anything, you're probably
+leaking SVs that are still reachable and will be properly cleaned up
+during destruction of the interpreter. In such cases, using the C<-Dm>
+switch can point you to the source of the leak. If the executable was
+built with C<-DDEBUG_LEAKING_SCALARS>, C<-Dm> will output SV
+allocations in addition to memory allocations. Each SV allocation has a
+distinct serial number that will be written on creation and destruction
+of the SV. So if you're executing the leaking code in a loop, you need
+to look for SVs that are created, but never destroyed between each
+cycle. If such an SV is found, set a conditional breakpoint within
+C<new_SV()> and make it break only when C<PL_sv_serial> is equal to the
+serial number of the leaking SV. Then you will catch the interpreter in
+exactly the state where the leaking SV is allocated, which is
+sufficient in many cases to find the source of the leak.
+
+=end original
+
+実行時にメモリリークが発生しているが、valgrind も
+C<-DDEBUG_LEAKING_SCALARS> も
+何も検出しない場合は、おそらく到達可能な SV がリークしており、インタプリタの
+破壊時に適切にクリーンアップされている可能性があります。
+このような場合、C<-Dm> スイッチを使うと、リーク元を示すことができます。
+実行可能ファイルが C<-DDEBUG_LEAKING_SCALARS> でビルドされている場合、
+C<-Dm> はメモリ割り当てに加えて SV 割り当てを出力します。
+各 SV 割り当てには、SV の作成時と破壊時に書き込まれるシリアル番号があります。
+そのため、リークしているコードをループで実行している場合は、各サイクル間に
+作成されたが破壊されなかった SV を探す必要があります。
+このような SV が見つかった場合は、C<new_SV()> 内に条件付きブレークポイントを
+設定し、C<PL_sv_serial> がリークしている SV のシリアル番号に等しい場合にのみ
+ブレークするようにします。
+これにより、多くの場合リーク元を見つけるのに十分な、リークしている SV が
+割り当てられた正確な状態でインタプリタをキャッチできます。
+
+=begin original
+
+As C<-Dm> is using the PerlIO layer for output, it will by itself
+allocate quite a bunch of SVs, which are hidden to avoid recursion. You
+can bypass the PerlIO layer if you use the SV logging provided by
+C<-DPERL_MEM_LOG> instead.
+
+=end original
+
+C<-Dm> は出力に PerlIO レイヤーを使っているため、再帰を避けるために
+非表示になっている大量の SV を単独で割り当てます;
+代わりに C<-DPERL_MEM_LOG> が提供する SV ロギングを使う場合は、
+PerlIO レイヤーをバイパスできます。
+
+=head2 PERL_MEM_LOG
+
+=begin original
+
+If compiled with C<-DPERL_MEM_LOG>, both memory and SV allocations go
+through logging functions, which is handy for breakpoint setting.
+
+=end original
+
+C<-DPERL_MEM_LOG> でコンパイルした場合、メモリと SV 割り当ての両方は
+ロギング関数を通過します;
+これはブレークポイントの設定に便利です。
+
+=begin original
+
+Unless C<-DPERL_MEM_LOG_NOIMPL> is also compiled, the logging functions
+read $ENV{PERL_MEM_LOG} to determine whether to log the event, and if
+so how:
+
+=end original
+
+C<-DPERL_MEM_LOG_NOIMPL> は付けずにコンパイルした場合、
+ロギング関数は、イベントをロギングするか、およびどうやってするかを
+決定するために $ENV{PERL_MEM_LOG} を読み込みます:
+
+    $ENV{PERL_MEM_LOG} =~ /m/		Log all memory ops
+    $ENV{PERL_MEM_LOG} =~ /s/		Log all SV ops
+    $ENV{PERL_MEM_LOG} =~ /t/		include timestamp in Log
+    $ENV{PERL_MEM_LOG} =~ /^(\d+)/	write to FD given (default is 2)
+
+=begin original
+
+Memory logging is somewhat similar to C<-Dm> but is independent of
+C<-DDEBUGGING>, and at a higher level; all uses of Newx(), Renew(), and
+Safefree() are logged with the caller's source code file and line
+number (and C function name, if supported by the C compiler). In
+contrast, C<-Dm> is directly at the point of C<malloc()>. SV logging is
+similar.
+
+=end original
+
+メモリのロギングは C<-Dm> といくらか似ていますが、C<-DDEBUGGING> とは
+独立しており、より高いレベルにあります;
+Newx(), Renew(), Safefree() の使用は呼び出し基のソースコードファイルと
+行番号 (C コンパイラが対応しているなら C 関数名も) がロギングされます。
+一方、C<-Dm> は C<malloc()> の時点で直接です。
+SV のロギングも同様です。
+
+=begin original
+
+Since the logging doesn't use PerlIO, all SV allocations are logged and
+no extra SV allocations are introduced by enabling the logging. If
+compiled with C<-DDEBUG_LEAKING_SCALARS>, the serial number for each SV
+allocation is also logged.
+
+=end original
+
+ログには PerlIO が使われないため、すべての SV の割り当てがログに
+記録され、ログを有効にすることによって余分な SV の割り当ては発生しません。
+C<-DDEBUG_LEAKING_SCALARS> でコンパイルすると、各 SV の割り当ての
+シリアル番号もログに記録されます。
+
+=head2 DDD over gdb
+
+(DDD での gdb)
+
+=begin original
+
+Those debugging perl with the DDD frontend over gdb may find the
+following useful:
+
+=end original
+
+gdb 上で DDD フロントエンドを使って perl をデバッグする場合は、
+次のような方法が便利です:
+
+=begin original
+
+You can extend the data conversion shortcuts menu, so for example you
+can display an SV's IV value with one click, without doing any typing.
+To do that simply edit ~/.ddd/init file and add after:
+
+=end original
+
+データ変換ショートカットメニューを拡張できます;
+たとえば、SV の IV 値を 1 回クリックするだけで表示できます;
+キーを押す必要はありません。
+これを行うには、~/.ddd/init ファイルを編集し、次の部分の後に追加します:
+
+  ! Display shortcuts.
+  Ddd*gdbDisplayShortcuts: \
+  /t ()   // Convert to Bin\n\
+  /d ()   // Convert to Dec\n\
+  /x ()   // Convert to Hex\n\
+  /o ()   // Convert to Oct(\n\
+
+=begin original
+
+the following two lines:
+
+=end original
+
+次の 2 行です:
+
+  ((XPV*) (())->sv_any )->xpv_pv  // 2pvx\n\
+  ((XPVIV*) (())->sv_any )->xiv_iv // 2ivx
+
+=begin original
+
+so now you can do ivx and pvx lookups or you can plug there the sv_peek
+"conversion":
+
+=end original
+
+ivx と pvx のルックアップを行うか、sv_peek "conversion" を接続します。
+
+  Perl_sv_peek(my_perl, (SV*)()) // sv_peek
+
+=begin original
+
+(The my_perl is for threaded builds.) Just remember that every line,
+but the last one, should end with \n\
+
+=end original
+
+(my_perl はスレッド化ビルド用です)。
+最後の行以外のすべての行は \n\ で終わることを覚えておいてください。
+
+=begin original
+
+Alternatively edit the init file interactively via: 3rd mouse button ->
+New Display -> Edit Menu
+
+=end original
+
+または、3 番目のマウスボタン-> New Display - Edit Menu を
+使って、対話的に init ファイルを編集します。
+
+=begin original
+
+Note: you can define up to 20 conversion shortcuts in the gdb section.
+
+=end original
+
+注: gdb セクションでは、最大 20 の変換ショートカットを定義できます。
+
+=head2 Poison
+
+=begin original
+
+If you see in a debugger a memory area mysteriously full of 0xABABABAB
+or 0xEFEFEFEF, you may be seeing the effect of the Poison() macros, see
+L<perlclib>.
+
+=end original
+
+デバッガ内のメモリ領域が 0xABABABAB または 0xEFEFEFEF で神秘的に
+いっぱいになっている場合は、Poison() マクロの効果が表示されている
+可能性があります。
+L<perlclib> を参照してください。
+
+=head2 Read-only optrees
+
+(読み込み専用 op 木)
+
+=begin original
+
+Under ithreads the optree is read only. If you want to enforce this, to
+check for write accesses from buggy code, compile with
+C<-DPERL_DEBUG_READONLY_OPS> to enable code that allocates op memory
+via C<mmap>, and sets it read-only when it is attached to a subroutine. Any
+write access to an op results in a C<SIGBUS> and abort.
+
+=end original
+
+ithreads では、op 木は読み取り専用です。
+バグのあるコードからの書き込みアクセスを
+チェックするためにこれを強制したい場合は、
+C<-DPERL_DEBUG_READONLY_OPS>で
+コンパイルして C<mmap> 経由で op メモリを割り当てるコードを有効にし、
+それがサブルーチンに付けられたときに読み取り専用に設定します。
+op への書き込みアクセスは C<SIGBUS> で中断されます。
+
+=begin original
+
+This code is intended for development only, and may not be portable
+even to all Unix variants. Also, it is an 80% solution, in that it
+isn't able to make all ops read only. Specifically it does not apply to op
+slabs belonging to C<BEGIN> blocks.
+
+=end original
+
+このコードは開発のみを目的としており、すべての Unix バリエーションに
+移植できるわけではありません。
+また、すべての op を読み取り専用にすることができないという点で、80% の
+ソリューションです。
+具体的には does not apply to op
+slabs belonging to C<BEGIN> blocks.
+(TBT)
+
+=begin original
+
+However, as an 80% solution it is still effective, as it has caught bugs in
+the past.
+
+=end original
+
+しかし、80% のソリューションとしてはまだ有効です;
+過去にバグを捕まえているからです。
+
+=head2 The .i Targets
+
+(.i ターゲット)
+
+=begin original
+
+You can expand the macros in a F<foo.c> file by saying
+
+=end original
+
+以下のようにすることで、F<foo.c> ファイルのマクロを展開できます
+
+    make foo.i
+
+=begin original
+
+which will expand the macros using cpp.  Don't be scared by the
+results.
+
+=end original
+
+これは cpp を使ってマクロを展開します。
+結果によって怯えないでください。
+
+=head1 AUTHOR
+
+=begin original
+
+This document was originally written by Nathan Torkington, and is
+maintained by the perl5-porters mailing list.
+
+=end original
+
+この文書はもともと Nathan Torkington によって書かれ、
+perl5-porters メーリングリストで管理されています。
+
+=begin meta
+
+Translate: SHIRAKATA Kentaro <argrath@ub32.org>
+Status: completed
+
+=end meta
+

@@ -1,0 +1,1017 @@
+
+=encoding euc-jp
+
+=head1 名前
+
+DBD::Oracle - DBIモジュールのためのOracleデータベース・ドライバ
+
+=head1 概要
+
+  use DBI;
+
+  $dbh = DBI->connect("dbi:Oracle:$dbname", $user, $passwd);
+
+  $dbh = DBI->connect("dbi:Oracle:host=$host;sid=$sid", $user, $passwd);
+
+  # 完全な詳細については、DBIモジュールのドキュメントをご覧下さい。
+
+  # Oracleの型の値が必要かもしれないときのより高度な形式：
+  use DBD::Oracle qw(:ora_types);
+
+
+=head1 説明
+
+DBD::OracleはDBIモジュールと一緒に機能し、Oracleデータベース（version7と8の両方）への
+アクセスを提供するPerlモジュールです。 
+
+=head1 Oracleへの接続
+
+これはよく問題を起こすトピックです。Oracleの多くて、時には複雑なデータベースの
+指定と接続方法が主な原因となっています。 (James TaylorとLane Sharmanが、
+このセクションでの文章の多くを寄稿してくれました）
+
+=head2 環境変数もtnsname.oraファイルもなしの接続
+
+C<host=$host;sid=$sid>という形式の形式を使うならば、例えば以下のようにすると：
+
+  $dbh = DBI->connect("dbi:Oracle:host=myhost.com;sid=ORCL", $user, $passwd);
+
+Oracleがtnsname.oraファイルを調べる必要がないように、
+DBD::Oracleは完全な接続記述子の文字列を構築します。
+
+C<port>番号が指定されなければ、記述子は1526 と 1521 を順番に試してみようと
+します（例えば newそれからold)。サーバで"$ORACLE_HOME/bin/lsnrctl stat"と
+タイプすることにより、どのポート番号が使われているかをチェックする
+ことができます。
+
+
+=head2 Oracle環境変数
+
+Oracleは典型的には、デフォルトの接続先を指定するためORACLE_SIDとTWO_TASKと
+いう２つの環境変数を使います。
+
+TWO_TASKがリモート接続も可能にしていることに加えて同じ機能を提供
+しているので、本当はORACLE_SIDを設定する必要はありません。
+
+  % setenv TWO_TASK T:hostname:ORACLE_SID            # cshシェル用
+  $ TWO_TASK=T:hostname:ORACLE_SID export TWO_TASK   # shシェル用
+
+  % sqlplus username/password
+
+ローカルとリモートの*両方に*データベースを持っていて、ORACLE_SIDとTWO_TASKを
+設定しており、さらにコマンドラインで完全に修飾された接続文字列を
+指定しなかった場合、TWO_TASKがORACLE_SIDよりも優先されることに
+注意してください（つまりリモートシステムに接続されます）。
+
+  TWO_TASK=P:sid
+
+これはSQL*Net v1を使ってローカル接続のためにパイプ・ドライバを使用します。
+
+  TWO_TASK=T:machine:sid
+
+これはリモートSQL*Net v1接続のためにTCP/IP(またはDならDECNETなど）を使います。
+
+  TWO_TASK=dbname
+
+これはローカルまたはリモート接続のためにSQL*Net v2 F<tnsnames.ora>
+構成ファイルに格納された情報を使用します。
+
+ORACLE_HOME環境変数は正しく設定しなければなりません。
+一般的に、使われる値はDBD::Oracleを構築するために使われたOracleの
+バージョンにマッチしなければなりません。ダイナミック・リンクを
+利用するならば、Oracleクライアント・ライブラリに(LD_LIBRARY_PATH, 
+ldconfig, あるいは Unix上の同様のものを通して)ロードされる
+OracleのバージョンにORACLE_HOMEがマッチしていなければなりません。
+
+Oracleの実行形式を何も使わないのであれば、ORACLE_HOMEを設定しないままに
+しておくこともできます。しかしこれは推奨できませんし、エラーメッセージが
+表示されないかもしれません。
+
+ORACLE_SIDの使用を控えるのはユーザーに何が起こるかをわかりやすくします。
+（エンドユーザにはピンときませんし、ORACLEの接頭辞もついていないので、
+TWO_TASKの名前を変更できないのが、とても残念です。）
+
+=head2 DBD::Oracleを使った接続の例
+
+SQL*Net 1.xとSQL*Net 2.xを使ったOracleデータベースへの様々な接続方法を
+以下に示します。"Machine"はデータベースが動いているコンピュータ、
+"SID"はデータベースのSID、"DB"はデータベースのためのSQL*Net2.x接続記述子です。
+
+B<注意:> この形式のうち、いくつかはOracle8では動かないかもしれません。
+
+  BEGIN {
+     $ENV{ORACLE_HOME} = '/home/oracle/product/7.x.x';
+     $ENV{TWO_TASK}    = 'DB';
+  }
+  $dbh = DBI->connect('dbi:Oracle:','scott', 'tiger');
+  #  - または -
+  $dbh = DBI->connect('dbi:Oracle:','scott/tiger');
+
+これらはSQL*Net2.xで動きます。　同様に
+
+  $ENV{TWO_TASK}    = 'T:Machine:SID';
+
+これはSQL*Net 1.x 接続用です。ローカル接続のためにパイプ・ドライバを使う
+ことが出来ます：
+
+  $ENV{TWO_TASK}    = 'P:SID';
+
+以下にいくつかのバリエーションを示します（TWO_TASKは設定していません）
+
+  $dbh = DBI->connect('dbi:Oracle:T:Machine:SID','username','password')
+
+  $dbh = DBI->connect('dbi:Oracle:','username@T:Machine:SID','password')
+
+  $dbh = DBI->connect('dbi:Oracle:','username@DB','password')
+
+  $dbh = DBI->connect('dbi:Oracle:DB','username','password')
+
+  $dbh = DBI->connect('dbi:Oracle:DB','username/password','')
+
+  $dbh = DBI->connect('dbi:Oracle:host=foobar;sid=ORCL;port=1521', 'scott/tiger', '')
+
+  $dbh = DBI->connect('dbi:Oracle:', q{scott/tiger@(DESCRIPTION=
+  (ADDRESS=(PROTOCOL=TCP)(HOST= foobar)(PORT=1521))
+  (CONNECT_DATA=(SID=ORCL)))}, "")
+
+もしログインに時間が長くかかる（>10秒を言います）問題があれば、Oracleバグに
+引っかかっているのかもしれません。試しに回避法として...@DBの形式を使って
+みてください。例えば：
+
+
+  $dbh = DBI->connect('','username/password@DB','');
+
+一方、これによって接続の切り替えがうまくいかないという他のOracleバグに
+引っかかるかもしれません!（これらの問題には本当に少しの人々しか
+経験していません）
+
+
+=head2 Oracleのリスナの最適化
+
+[Lane Sharman <lane@bienlogic.com>より] 私は長い時間、listener.oraの最適化に
+時間を割いてきました。そしてこれから利益を受ける人たちのため、ここに入れています。
+同じオンボロのNetra1上の私の同じtnslistenerを経由した接続はtnspingによれば
+平均10-20ミリ秒かかります。もしだれかもっとよくなる方法を知っていたら
+教えてください！
+
+ LISTENER =
+  (ADDRESS_LIST =
+    (ADDRESS =
+      (PROTOCOL = TCP)
+      (Host = aa.bbb.cc.d)
+      (Port = 1521)
+      (QUEUESIZE=10)
+    )
+  )
+
+ STARTUP_WAIT_TIME_LISTENER = 0
+ CONNECT_TIMEOUT_LISTENER = 10
+ TRACE_LEVEL_LISTENER = OFF
+ SID_LIST_LISTENER =
+  (SID_LIST =
+    (SID_DESC =
+      (SID_NAME = xxxx)
+      (ORACLE_HOME = /xxx/local/oracle7-3)
+        (PRESPAWN_MAX = 40)
+        (PRESPAWN_LIST=
+        (PRESPAWN_DESC=(PROTOCOL=tcp) (POOL_SIZE=40) (TIMEOUT=120))
+      )
+    )
+  )
+
+1) アプリケーションもホストにあり、さらに外側へのSQLNet接続が必要無い場合、
+リスナーを止めて下さい。本当に必要ありません。アプリケーション／CGI／動くものは
+何でもパイプと共有メモリを使うようにしてください。（同じマシンにソケット経由する
+ということ）これは接続バグの１つであると私は確信しています。$ENV{ORAPIPES}環境変数に
+注意して下さい。これをおこなう基本となるコードはこのセクションの終わりにあります。
+
+2) どのようにマルチ・スレッドサーバーを実装するかに注意して下さい。
+私はいまのところinitxxxx.oraファイルの中では使っていません。しかしさらに
+いくつかの試験を行うつもりです。
+
+3) ユーザー・ロールバック・セグメントを作成し、使っているかを確認して下さい；
+システム・ロールバック・セグメントは使わないようにして下さい。しかし、
+システムのためにも小さなロールバック空間を作る必要もあります。
+
+5) チューニングの設定では大きな値を使い、RAMを大きくとって下さい。v$parametersで
+設定できるすべてのパラメータをチェックしてください。というのもinitxxx.oraファイルで
+設定できるようにドキュメントに書かれているのはほんの少ししかないからです。
+
+6) svrmgrlを使ってコマンドラインからOracleを制御してください。V$情報を取得する
+たくさんの小さなSQLスクリプトを書いて下さい。
+
+  use DBI;
+  # Oracleによって使われれる環境変数
+  $ENV{ORACLE_SID}   = "xxx";
+  $ENV{ORACLE_HOME}  = "/opt/oracle7";
+  $ENV{EPC_DISABLED} = "TRUE";
+  $ENV{ORAPIPES} = "V2";
+  my $dbname = "xxx";
+  my $dbuser = "xxx";
+  my $dbpass = "xxx";
+  my $dbh = DBI->connect("dbi:Oracle:$dbname", $dbuser, $dbpass)
+             || die "Unale to connect to $dbname: $DBI::errstr\n";
+
+=head2 Oracleユーティリティ
+
+接続の問題がまだあれば、Oracle adaptersユーティリティーが助けになるかもしれません。
+以下の２つのコマンドを実行してください：
+
+  $ORACLE_HOME/bin/adapters
+  $ORACLE_HOME/bin/adapters $ORACLE_HOME/bin/sqlplus
+
+そして出力をチェックしてください。"Protocol Adapters"セクションは同じ
+はずです。そこには少なくとも"IPC Protocol Adapter"と"TCP/IP Protocol Adapter"が
+あるはずです。
+
+もし何か関連がありそうなエラーがあれば、Oracleテクニカル・サポートに連絡
+して下さい（dbi-userメーリング・リストではなく）。
+この情報についてはMark dedlowに感謝します。
+
+
+=head2 接続属性
+
+=over 4
+
+=item ora_session_mode
+
+ora_session_mode属性はSYSDBA認証とSYSOPER認証で接続するために
+使うことが出来ます。
+定数ORA_SYSDBAとORA_SYSOPERは、以下のようにしてインポートすることができます：
+
+  use DBD::Oracle qw(:ora_session_modes);
+
+例:
+
+  $dbh = DBI->connect($dsn, $usr, $pwd, { ora_session_mode => ORA_SYSDBA });
+
+=item ora_oratab_orahome
+
+ora_oratab_orahome属性のためにtrue値を渡すと、
+I<もし>接続するように指定されているデータベースが、oratabファイルにある
+SIDとして存在し、DBD::Oracleが(Oracle8ではなく)Oracle7 OCI APIを使うよう
+作られたのであれば、DBD::OracleにC</etc/oratab>で指定されている
+Oracleホーム・ディレクトリに$ENV{ORACLE_HOME}を変更させます。
+
+=item ora_module_name
+
+データベースに接続した後、この属性の値はC<DBMS_APPLICATION_INFO> PL/SQL
+パッケージの中の関数SET_MODULE()に渡されます。これはモニタリングや
+パフォーマンス・チューニングのため、DBAがアプリケーションを特定させる
+ために使われます。例えば：
+
+  DBI->connect($dsn, $user, $passwd, { ora_module_name => $0 });
+
+=item ora_dbh_share
+
+少なくともPerl 5.8.0 でithreads付きでコンパイルされている必要があります。
+スレッド間でデータベース接続を共有することを可能にします。最初のconnectが
+接続を行い、その後の同じora_dbh_share属性を持ったconnectの呼び出しは
+同じデータベース･接続を利用します。その値は既に共有されているスカラーへの
+リファレンスでなければなりませんこれは空文字列に初期化されます。
+
+  our $orashr : shared = '' ;
+
+  $dbh = DBI -> connect ($dsn, $user, $passwd, {ora_dbh_share => \$orashr}) ;
+
+=back
+
+=head2 データベース・ハンドル属性
+
+=over 4
+
+=item C<ora_ph_type>
+
+データベース・セッションのためのデフォルトのプレースホルダのデータ型。
+L<DBI/bind_param>とL<DBI/bind_param_inout> への属性C<TYPE> あるいは
+L</ora_type>は、個々のプレースホルダのデータ型を上書きします。
+この属性を利用する、もっともよくある理由はプレースホルダにより渡される
+値での末尾に付く空白を許すことです。
+
+この属性のために許される値のための定数は以下のようにインポートすることができます
+
+  use DBD::Oracle qw(:ora_types);
+
+この属性へは以下の値だけが許されます。
+
+=over 4
+
+=item ORA_VARCHAR2
+
+後ろについている空白を削除し、埋め込まれた\0バイトを許します。
+これは通常、デフォルトのプレースホルダのデータ型です。
+
+=item ORA_STRING
+
+後ろについている空白を削除せず、先頭の\0で文字列が終わりにします。
+
+=item ORA_CHAR
+
+後ろについている空白を削除せず、埋め込まれた\0を許します。
+'空白埋込み比較法(blank-padded comparison semantics)'を強制します。
+
+=back
+
+=back
+
+=head2 Prepare属性
+
+これらの属性はデータベース・ハンドル・メソッドL<DBI/prepare>の
+C<\%attr>パラメータで使うことが出来ます。
+
+=over 4
+
+=item ora_parse_lang
+
+接続されたデータベースにSQLステートメントの解析方法を伝えます。
+1（デフォルト)であれば、データベースのためのネイティブなSQLバージョンが
+使われます。他の理解される値としては0(古いV6、OCI8ではV7のように扱われます)、
+2(古いV7)、7(V7)、そして8(V8)です。
+その他の値は1と同じ効果を持ちます。
+
+=item ora_auto_lob
+
+1(デフォルト)であれば、fetchするとCLOBやBLOBカラムの内容を取り出します。
+0であれば、fetchするとCLOBやBLOBカラムのLOBロケータを取り出します。
+(OCI8とそれ以降でのみ)
+
+LOBロケータの使い方の例についてはOracle::OCIの05dbi.tでのLOBテストを
+ご覧ください。更なる詳細はL</LOBの取り扱い>をご覧ください。
+
+=item ora_check_sql
+
+1(デフォルト)では、SELECTステートメントがprepare()で記述されることを
+強制します。0ならば、SELECTステートメントがexecute()まで記述を
+延期することを可能にします。(OCI8とそれ以降のみ)
+
+更なる情報はL</executeまでのprepareの延期>をご覧ください。
+
+=back
+
+=head2 プレースホルダ・バインディング属性
+
+これらの属性はステートメント・ハンドル・メソッドL<DBI/bind_param> や 
+L<DBI/bind_param_inout>のC<\%attr>パラメータで使うことが出来ます。
+
+=over 4
+
+=item ora_type
+
+プレースホルダのデータ型をOracleデータ型を使って指定します。
+C<ora_type>とDBIのC<TYPE>属性が同じプレースホルダに使われると、
+致命的なエラーが発生します。
+これらのデータ型のいくつかは、DBD::Oracleの現在のバージョンでは
+サポートされていません。そしてもし使われると致命的なエラーを起こします。
+Oracleデータ型のための定数は以下の様にしてインストールすることができます
+
+  use DBD::Oracle qw(:ora_types);
+
+DBD::OracleがOCI 7以降を使って構築されたときには以下の値が便利でしょう：
+
+  ORA_VARCHAR2, ORA_STRING, ORA_LONG, ORA_RAW, ORA_LONGRAW,
+  ORA_CHAR, ORA_MLSLABEL, ORA_RSET
+
+さらにDBD::OracleがOCI 8以降により構築された場合の追加される値：
+
+  ORA_CLOB, ORA_BLOB, ORA_NTY
+
+ORA_RSETの正しい利用方法についてはL</カーソルのバインディング>をご覧ください。
+
+ORA_CLOBとORA_BLOBの正しい利用方法についてはL</LOBの取り扱い>をご覧ください。
+
+より多くの情報についてはL<DBI/プレースホルダと値のバインド>をご覧ください。
+
+=back
+
+=head1 メタデータ
+
+=head2 C<get_info()>
+
+DBD::OracleはC<get_info()>をサポートしています。でも(現在は)2、3の情報タイプだけです。
+
+=head2 C<table_info()>
+
+DBD::OracleはC<table_info()>のための属性をサポートしています。
+
+Oracleでは、I<user> と I<schema>の考え方が(現在は)同じです。
+データベース・オブジェクトはユーザにより所有され、
+データ・ディクショナリ・ビューでの所有者の名前がスキーマ名に対応します。
+Oracleはカタログをサポートしていません。そのため選択基準としては
+TABLE_CATは無視されます。
+
+検索パターンがTABLE_SCHEMとTABLE_NAMEのためにサポートされています。
+
+TABLE_TYPEにはテーブル型のカンマで区切られたリストを入れることができます。
+以下のテーブル型がサポートされています：
+
+  TABLE
+  VIEW
+  SYNONYM
+  SEQUENCE
+
+リザルト・セットはTABLE_TYPE, TABLE_SCHEM, TABLE_NAMEの順になります。
+
+カタログ、スキーマ、テーブル型の特別な一覧がサポートされています。
+しかしTABLE_CATは常にNULLです。
+
+識別子はI<そのまま>、つまりユーザが与えたとおり、
+Oracleが返したとおり渡されます。
+C<table_info()>は大文字/小文字を区別した検索を行います。そのため
+選択基準は大文字か小文字かを尊重しなければなりません。
+通常は、識別子は大文字、小文字を区別しません。Oracleは大文字で
+格納し、返します。時には、データベース・オブジェクトは
+クォートで囲まれた識別子(予約語、大文字・小文字の混在、特別な文字...のために)で
+作成されることがあります。そのような識別子は（全てが大文字でなければ）
+大文字・小文字を区別します。Oracleはそれを与えられたように格納し、返します。
+C<table_info()>はクォートの何も特別な扱いやクォートの追加や削除を
+持っていません。
+
+=head2 C<primary_key_info()>
+
+Oracleはカタログをサポートしていません。そのためTABLE_CATは
+選択基準としては無視されます。
+取り出された行のTABLE_CATフィールドは常にNULL(undef)です。
+さらに詳細な情報についてはL</table_info()>を、ご覧ください。
+
+プライマリ・キー制約が識別子なしに作られると、
+PK_NAMEには、SYS_Cnの形式を持つシステムで生成された名前が入ります。
+
+リザルト・セットはTABLE_SCHEM, TABLE_NAME, KEY_SEQの順になります。
+
+識別子はI<そのまま>、つまりユーザが与えたとおり、
+Oracleが返したとおり渡されます。
+より詳細な情報についてはL</table_info()>をご覧ください。
+
+=head2 C<foreign_key_info()>
+
+このメソッドは(現在)SQL/CLIの拡張された動きをサポートしています。つまり
+リザルト・セットにはプライマリB<そして>代替キーについて言及している外部キーが
+入っています。フィールドUNIQUE_OR_PRIMARYは、これらのキーを区別します。
+
+Oracleはカタログをサポートしていません。そのためC<$pk_catalog>とC<$fk_catalog>は、
+(新しい形式のインターフェースでの)選択基準としては無視されます。
+取り出された行のUK_TABLE_CAT と FK_TABLE_CAT フィールドは常に
+NULL(undef)です。
+更なる詳細な情報についてはL</table_info()>を、ご覧ください。
+
+プライマリあるいは外部キー制約が識別子なしに作成されると、UK_NAME や FK_NAME 
+UK_NAME や FK_NAME にはSYS_Cnという形式でシステムが生成した名前が入ります。
+
+Oracleが(現在)、そのほかのアクションをサポートしていないので、
+UPDATE_RULEは常に3('NO ACTION')です。
+
+DELETE_RULEフィ−ルドには間違った値が入るかもしれません。これはOracle
+データ・ディクショナリ・ビューでのバグ(#1271663)として知られています。
+現在(8.1.7時点)、'RESTRICT'と'SET DEFAULT'はサポートされていません。
+'CASCADE'は正しく対応付けられています。そして('SET NULL'を含めて)そのほかの
+アクションは'NO ACTION'で表されます。
+
+古いOracleリリースのALL_CONSTRAINTSビューには、このカラムが存在しないので、
+DEFERABILITYフィ−ルドは常にNULLです。
+
+リザルト・セットはUK_TABLE_SCHEM, UK_TABLE_NAME, FK_TABLE_SCHEM,
+FK_TABLE_NAME, ORDINAL_POSITIONの順になります。
+
+識別子はI<そのまま>、つまりユーザが与えたとおり、
+Oracleが返したとおり渡されます。
+更なる詳細な情報についてはL</table_info()>をご覧ください。
+
+=head2 C<column_info()>
+
+Oracleはカタログをサポートしていません。そのため選択基準と
+して、TABLE_CATは無視されます。
+取り出された行のTABLE_CATフィールドは常にNULL(undef)です。
+さらに詳細な情報についてはL</table_info()>をご覧ください。
+
+CHAR_OCTET_LENGTHフィールドは(現在は)、常にNULL(undef)です。
+
+BUFFER_LENGTHフィールドの値を信頼しないでください！
+特にFLOATの長さは違うかもしれません。
+
+標準ではない型のデータ型コードは変更されることがあります。
+
+注意!DATA_DEFAULT (COLUMN_DEF)カラムのLONG型です。
+
+リザルト・セットはTABLE_SCHEM, TABLE_NAME, ORDINAL_POSITIONの順になります。
+
+識別子はI<そのまま>、つまりユーザが与えたとおり、
+Oracleが返したとおり渡されます。
+更に詳細な情報についてはL</table_info()>をご覧ください。
+
+
+=head1 国際的な NLS / 8ビット テキスト問題
+
+もし８ビットテキストが"?"文字で返されたり、挿入できなければ、
+以下の環境変数が正しく設定されているかを確認して下さい：
+    NLS_LANG, ORA_NLS, ORA_NLS32, ORA_NLS33
+この情報についてはRobin Langdon <robin@igis.se>に感謝します：
+
+例:
+   $ENV{NLS_LANG}  = "american_america.we8iso8859p1";
+   $ENV{ORA_NLS}   = "$ENV{ORACLE_HOME}/ocommon/nls/admin/data";
+
+同様にYngvi Thor Sigurjonsson <yngvi@hagkaup.is>より：
+もし8ビット文字を使っていて、バックアップに"export"を使っているならば、
+exportを実行するときにNLS_LANGを設定することを確認して下さい。
+そうでなければ愛しの文字ちゃんが全て?で置き換えられた使えない
+バックアップを得ることになります。幸いなことに私たちは、
+exportがに災害に直面してダメージを受ける前に気がついたことがあります。
+
+データベースが8ビット文字セットで作成されなければならないことを忘れないで下さい。
+
+7.2.3から7.3.2に移るときに、NLSファイル$ORACLE_HOME/ocommon/nls/admin/data
+の拡張子が変更された(.dから.ndb）ことにも注意して下さい。
+
+
+=head1 PL/SQLの例
+
+このPL/SQLの例はEric Bartley <bartley@cc.purdue.edu>により提供されました。。
+
+  # このパッケージが既に存在しているものとします。
+  my $plsql = q{
+
+    CREATE OR REPLACE PACKAGE plsql_example
+    IS
+      PROCEDURE proc_np;
+
+      PROCEDURE proc_in (
+          err_code IN NUMBER
+      );
+
+      PROCEDURE proc_in_inout (
+          test_num IN NUMBER,
+          is_odd IN OUT NUMBER
+      );
+
+      FUNCTION func_np
+        RETURN VARCHAR2;
+
+    END plsql_example;
+
+    CREATE OR REPLACE PACKAGE BODY plsql_example
+    IS
+      PROCEDURE proc_np
+      IS
+        whoami VARCHAR2(20) := NULL;
+      BEGIN
+        SELECT USER INTO whoami FROM DUAL;
+      END;
+
+      PROCEDURE proc_in (
+        err_code IN NUMBER
+      )
+      IS
+      BEGIN
+        RAISE_APPLICATION_ERROR(err_code, 'This is a test.');
+      END;
+
+      PROCEDURE proc_in_inout (
+        test_num IN NUMBER,
+        is_odd IN OUT NUMBER
+      )
+      IS
+      BEGIN
+        is_odd := MOD(test_num, 2);
+      END;
+
+      FUNCTION func_np
+        RETURN VARCHAR2
+      IS
+        ret_val VARCHAR2(20);
+      BEGIN
+        SELECT USER INTO ret_val FROM DUAL;
+        RETURN ret_val;
+      END;
+
+    END plsql_example;
+  };
+
+  use DBI;
+
+  my($db, $csr, $ret_val);
+
+  $db = DBI->connect('dbi:Oracle:database','user','password')
+        or die "Unable to connect: $DBI::errstr";
+
+  # RaiseErrorを設定するので、すべてのDBI呼び出しをチェックする必要はありません。
+  # もしRaiseErrorに慣れていなければDBIドキュメントをご覧下さい。
+  $db->{RaiseError} = 1;
+
+  # 例 1
+  #
+  # パラメータ無しのPLSQLプロシージャを呼び出します。ここではPLSQLプロシージャを
+  # 実行するのに必要なことの基本を示します。SQL*PlusでやるようにBEGIN END;ブロックで
+  # プロシージャ呼び出しを囲んで下さい。
+  #
+  # p.s. SQL*Plusのexecコマンドを使ったことがあるならば、あれはあなたの代わりに
+  #      コマンドをBEGIN END;ブロックで囲むのです。
+  $csr = $db->prepare(q{
+    BEGIN
+      PLSQL_EXAMPLE.PROC_NP;
+    END;
+  });
+  $csr->execute;
+
+
+  # 例 2
+  #
+  # 1つのINパラメータを持ったプロシージャを呼びます。ここでは、INSERT、UPDATE、
+  # DELETE、SELECTステートメントのためにするように、準備された(prepare)
+  # ステートメントにパラメータを結びつけるために、bind_paramを使います。
+  #
+  # 位置によるプレースホルダ(例： :1, :2など）やODBC形式のプレースホルダ(例： ?)を
+  # 使うこともできましたが、私はOracleの名前付きプレースホルダのほうが好きです。
+  # （しかしDBIドライバのほとんどがこれをサポートしていないので、移植できません）
+
+  my $err_code = -20001;
+
+  $csr = $db->prepare(q{
+        BEGIN
+            PLSQL_EXAMPLE.PROC_IN(:err_code);
+        END;
+  });
+
+  $csr->bind_param(":err_code", $err_code);
+
+  # PROC_INはRAISE_APPLICATION_ERRORを起こし、executeは「失敗」します。
+  # RaiseErrorを設定しているので、DBIはcroak(die)し、evalで捕らえることが出来ます。
+  eval {
+    $csr->execute;
+  };
+  print 'After proc_in: $@=',"'$@', errstr=$DBI::errstr, ret_val=$ret_val\n";
+
+
+  # 例 3
+  #
+  # 最後の例を作るのにあたって、1つのIN OUTパラメータを追加しました。prepareの
+  # 呼び出しでは、まだプレースホルダを使っています。違いはプレースホルダに
+  # 値をバインドするために、今度はbind_param_inoutを呼ぶということです。
+  #
+  # bind_param_inoutの3番目のパラメータはその変数の最大長だということに注意して
+  # ください。通常は必要な分より少し大きめにします。
+  # しかしperl変数は実際に返される値が短くても、割り当てられた量のメモリを持つ
+  # ということに注意して下さい。
+
+  my $test_num = 5;
+  my $is_odd;
+
+  $csr = $db->prepare(q{
+        BEGIN
+            PLSQL_EXAMPLE.PROC_IN_INOUT(:test_num, :is_odd);
+        END;
+  });
+
+  # $test_numの値がここでコピーされます
+  $csr->bind_param(":test_num", $test_num);
+
+  $csr->bind_param_inout(":is_odd", \$is_odd, 1);
+
+  # executeは$is_odd変数の値を自動的に更新します。
+  $csr->execute;
+
+  print "$test_num is ", ($is_odd) ? "odd - ok" : "even - error!", "\n";
+
+
+  # 例 4
+  #
+  # PLSQL関数の戻り値はどうでしょうか？SQL*Plusからの関数呼び出しと同じように
+  # 扱って下さい。戻り値のためのプレースホルダを追加し、bind_para_inoutを
+  # 呼び出してバインドしています。そこでexecuteの後、その値にアクセスする
+  # ことができます。
+
+  my $whoami = "";
+
+  $csr = $db->prepare(q{
+        BEGIN
+            :whoami := PLSQL_EXAMPLE.FUNC_NP;
+        END;
+  });
+
+  $csr->bind_param_inout(":whoami", \$whoami, 20);
+  $csr->execute;
+  print "Your database user name is $whoami\n";
+
+  $db->disconnect;
+
+DBD::Oracleソースディレクトリにあるt/plsql.tファイルに、もっとたくさんの
+例が入っています。
+
+=head1 独自のデータベース・ハンドル関数
+
+これらの関数は、DBIドキュメントで説明されているfunc()
+メソッドを通して呼び出されます。
+
+=head2 plsql_errstr
+
+この関数は最後のPL/SQL関数、プロシージャ、パッケージあるいは
+パッケージ本体のコンパイルからのエラーについて記述する
+文字列をSQL*Plusコマンド'show errors'の出力に似た形式で
+返します。
+
+この関数はデータベース・エラーによりエラー文字列が取り出せないと、
+undefを返します。
+失敗の原因については$dbh->errstrをご覧ください。
+
+コンパイル・エラーがなければ、空文字列が返されます。
+
+例:
+
+    # CREATE PROCEDUREが失敗するとエラーを表示します
+    $dbh->{RaiseError} = 0;
+    if ( $dbh->do( q{
+        CREATE OR REPLACE PROCEDURE perl_dbd_oracle_test as
+        BEGIN
+            PROCEDURE filltab( stuff OUT TAB ); asdf
+        END; } ) ) {} # Statement succeeded
+    }
+    elsif ( 6550 != $dbh->err ) { die $dbh->errstr; } # 完全な失敗
+    else {
+        my $msg = $dbh->func( 'plsql_errstr' );
+        die $dbh->errstr if ! defined $msg;
+        die $msg if $msg;
+    }
+
+=head2 dbms_output_enable / dbms_output_put / dbms_output_get
+
+これらの関数はDBMS_OUTPUTバッファを使ってテキストを格納し取り出すために
+PL/SQL DBMS_OUTPUTパッケージを使います。dbms_output_putやPL/SQLブロック
+により、このバッファに格納されるテキストは同じデータベース・セッションに
+接続されているdbms_output_getやPL/SQLブロックから取り出すことが
+できます。
+
+それを保存するdbms_output_putやPL/SQLブロックが、実行を完了するまで
+格納されたテキストは利用できません。これは、これらの関数を長時間実行している
+PL/SQLプロシージャを監視するためにはB<使うことができない>ことを意味しています。
+
+例 1:
+
+  # DBMS_OUTPUTを可能とし、バッファ・ファイルを設定
+  $dbh->{RaiseError} = 1;
+  $dbh->func( 1000000, 'dbms_output_enable' );
+
+  # テキストをバッファに入れます . . .
+  $dbh->func( @text, 'dbms_output_put' );
+
+  # . . . そしれそれを後から取り出します
+  @text = $dbh->func( 'dbms_output_get' );
+
+例 2:
+
+  $dbh->{RaiseError} = 1;
+  $sth = $dbh->prepare(q{
+    DECLARE tmp VARCHAR2(50);
+    BEGIN
+      SELECT SYSDATE INTO tmp FROM DUAL;
+      dbms_output.put_line('The date is '||tmp);
+    END;
+  });
+  $sth->execute;
+
+  # 文字列を取り出す
+  $date_string = $dbh->func( 'dbms_output_get' );
+
+
+=over 4
+
+=item dbms_output_enable ( [ buffer_size ] )
+
+この関数はパッケージDBMS_OUTPUTプロシージャ GET, GET_LINE, PUT, そして PUT_LINEを
+呼び出せるようにするためDBMS_OUTPUT.ENABLEを呼び出します。これらの
+プロシージャを呼び出すことは、最初にDBMS_OUTPUT.ENABLEが呼び出されるまで
+無視されます。
+
+buffer_sizeは、バッファに保存することができるテキストの最大量であり、
+2000から1,000,000の間でなければなりません。buffer_sizeが与えられないと、
+デフォルトは20,000バイトです。
+
+=item dbms_output_put ( [ @lines ] )
+
+この関数はバッファに行を追加するためにDBMS_OUTPUT.PUT_LINEを呼び出します。
+
+もし全ての行がうまく保存されたならば、この関数は1を返します。コンテキストに
+よって、失敗したときには空リストかundefが返されます。
+
+もしなんらかの行がbuffer_sizeを超えると、バッファ・オーバーフロー・エラー
+(=buffer overflow error)が発生し、関数呼び出しは失敗します。テキストの
+一部がバッファに入っているかもしれません。
+
+=item dbms_output_get
+
+この関数はバッファからテキストの行を取り出すためにDBMS_OUTPUT.GET_LINEを
+呼び出します。
+
+配列コンテキストでは、全ての完全な行がバッファから削除され、リストで
+返されます。完全な行がなければ空リストが返されます。
+
+スカラー・コンテキストでは先頭の完全な行がバッファから削除され、
+返されます。完全な行がなければ、undefが返されます。
+
+DBMS_OUTPUT.GET_LINEやDBMS_OUTPUT.GETを呼び出した後、
+バッファに入っているテキストは次のDBMS_OUTPUT.PUT_LINE,DBMS_OUTPUT.PUTや
+DBMS_OUTPUT.NEW_LINEの呼び出しにより、全て捨てられます。
+
+=back
+
+
+=head1 Oracle8でのDBD::Oracleの利用 - 機能と問題
+
+DBD::Oracle version 0.55以上は、Oracle7またはOracle8 OCI(Oracle Call Interface) 
+API関数のどちらを使っても構築できるようになっています。新しいOracle8 APIが
+デフォルトで使われ、LOB型のサポートを含めて多くの利点があります。以下に
+Oracle OCIドキュメントから引用します：
+
+  Oracle8 OCI はアプリケーションのパフォーマンスとスケーラビリティを改善する
+  多くの拡張を行っています。アプリケーションのパフォーマンスは、クライアントから
+  サーバへの必要な往復の数を減らすことにより改善されています。また
+  スケーラビリティの改善はサーバ側で保持される状態情報の量を減らすことにより
+  促進されます。
+
+=head2 executeまでのprepareの延期
+
+OCI8では、($sth->{NAME}のように)アプリケーションが結果についての情報を
+要求しなければDBD::Oracleモジュールは、ステートメントの実行の前まで、
+明示的な'記述'処理を避けることができます。これはサーバーとの通信を減少させ、
+パフォーマンスを増大させます。しかし、これは(OCI7でのC<prepare()>の代わりに)
+C<execute()>が呼ばれるまでSQLエラーが見つからないことも意味します。
+
+この動きを可能にさせるためには、prepare()でのL</ora_check_sql>を0にしてください。
+
+=head2 LOBの取り扱い
+
+LOBをフェッチするとき、LONGと同じように扱い、そして$sth->{LongReadLen}と
+$sth->{LongTruncOk}に支配されます。OCI 7では、DBD::Oracleは返された列を
+組み立てる前に全ての量(LongReadLen)を先に占有していたことに注意して下さい。
+OCI 8では、フェッチされた一番大きなLOBに必要な分までバッファを大きくする
+ようになっています。
+
+LOBを挿入または更新するとき、透過的にしている裏で、いくつかのI<大きな>
+魔法が行われなければなりません。それらが書き込みできるようになる前に、
+基本的にドライバは新しく挿入された'LOB Locator'を再びフェッチしなければ
+いけません。しかしながら、これは機能し、私はそれをできる限り速くしています
+（挿入または更新の後の最初にサーバとの間をたった１回、余分に往復します）。
+さしあたって、１行だけのLOBの更新もサポートしています。
+またPL/SQLブロックへ複数LOBを渡すことは機能していません。
+
+大きなLOBの挿入または更新をするには、前もってDBD::OracleがそれがLOB型で
+あることを知っていなければなりません。そこで以下のように言わなければなりません：
+
+  $sth->bind_param($field_num, $lob_value, { ora_type => ORA_CLOB });
+
+定数ORA_CLOBとORA_BLOBは以下のようにしてインポートされます：
+
+  use DBD::Oracle qw(:ora_types);
+
+または単純に対応する整数値を使います(112 と 113)。
+
+Oracle7とOracle8の両方でスクリプトを動かせるようにするためには、
+Oracle7 DBD::Oracleはエラーなしに、LOB ora_typeをLOGとして扱います。
+そこで全てのコード、今もっているコードは以下のようになるかも
+しれません
+
+  $sth->bind_param($idx, $value, { ora_type => 8 });
+
+この8(LONG型)をORA_CLOBやORA_BLOB(112や113)に変更することが
+できます。
+
+さらにもう一点：LOBの挿入、更新について、DBD::Oracleはパラメータが、
+どのテーブルのフィールドに関係しているかを伝えることが可能で
+なければなりません。それだけで解決できる場合であれば、それだけで
+機能します。しかしテーブルに同じ型のLOBフィールドが複数あるならば、
+各LOBパラメータがどのフィールドに関連するのかを知らせなければなりません：
+
+  $sth->bind_param($idx, $value, { ora_type=>ORA_CLOB, ora_field=>'foo' });
+
+今のところ、DBD::Oracleを使って小さな塊でLOBを直接書き込む方法はありません。
+しかし、PL/SQLでDBMS_LOB.WRITEAPPENDを使って可能です（しかし効率的ではありません）。
+
+LOBをINSERTするためには、UPDATE権限が必要です。
+
+prepare()でL</ora_auto_lob>が0であれば、LOBロケータを取り出し、
+Oracle::OCIを使ってあなた自身で全てのことを行うことが出来ます。
+
+=head2 カーソルのバインディング
+
+今や、カーソルをPL･SQLブロックから返すことが出来ます。ストアド・プロシージャや
+以下に示すようにOUTパラメータとダイレクトなC<OPEN>ステートメントからの両方から：
+
+  use DBI;
+  use DBD::Oracle qw(:ora_types);
+  $dbh = DBI->connect(...);
+  $sth1 = $dbh->prepare(q{
+      BEGIN OPEN :cursor FOR
+          SELECT table_name, tablespace_name
+          FROM user_tables WHERE tablespace_name = :space;
+      END;
+  });
+  $sth1->bind_param(":space", "USERS");
+  my $sth2;
+  $sth1->bind_param_inout(":cursor", \$sth2, 0, { ora_type => ORA_RSET } );
+  $sth1->execute;
+  # いまや$sth2はカーソルのための正しいDBIステートメント・ハンドルです
+  while ( @row = $sth2->fetchrow_array ) { ... }
+
+特別に必要なことは、C<ora_type>をC<ORA_RSET>として指定する属性ハッシュ・
+パラメータが付いた、C<bind_param_inout()>を使うことです。
+そうしなければ、以下のようなC<execute()>からエラーを受け取ることになります：
+"ORA-06550: line X, column Y: PLS-00306: wrong number or types of
+arguments in call to ...".("ORA-06550: ライン X, カラム Y: PLS-00306: 
+...呼び出しで引数の数/型が無効です")
+
+カーソルを返す関数を使ったもう一つの形式を以下に示します：
+
+  $sth1 = $dbh->prepare(q{
+    CREATE OR REPLACE FUNCTION sp_ListEmp RETURN types.cursorType
+    AS l_cursor types.cursorType;
+    BEGIN
+      OPEN l_cursor FOR select ename, empno from emp order by ename;
+      RETURN l_cursor;
+    END;
+  });
+  $sth2 = $dbh->prepare(q{BEGIN :cursor := sp_ListEmp; END;});
+
+カーソルをクローズするためには(現在は)、以下のことを行う必要があります：
+
+  $sth3 = $dbh->prepare("BEGIN CLOSE :cursor END");
+  $sth3->bind_param_inout(":cursor", \$sth2, 0, { ora_type => ORA_RSET } );
+  $sth3->execute;
+
+完全に動く例については、DBD::Oracleソース・ディストリビューションでの
+Oracle.exディレクトリでのC<curref.pl>スクリプトをご覧ください。
+
+=head1 時間帯
+
+TWO_TASKが設定されないと、Oracleはローカルな環境からTZ変数を使います。
+ 
+もしTWO_TASKが設定されると、Oracleはサーバー上で走っている
+リスナー・プロセスのTZ変数を使います。
+
+それぞれ独自のTZを持っている、複数のリスナを持つことができ、TNS_ADMINを
+それらのリスナがいるポートを示しているtnsnames.oraファイルが入っている
+ディレクトリに設定することにより、ユーザに適切なリスナを割り当てることが
+出来ます。
+
+[この情報をくれたBrad Howerterによると: 
+次の月の6日にもかかわらず、perlスクリプトを先月の終わりとして走らせることを
+シミュレートするために、これをやりました。私はdbaに、リスナーを
+TZ=X+144(144時間=6日間)で起動させました]
+
+
+=head1 Oracle関連のリンク
+
+=head2 Linux上のOracle
+
+  http://www.datamgmt.com/maillist.html
+  http://www.eGroups.com/list/oracle-on-linux
+  http://www.wmd.de/wmd/staff/pauck/misc/oracle_on_linux.html
+  ftp://oracle-ftp.oracle.com/server/patch_sets/LINUX
+  http://www.ixora.com.au/
+
+=head2 フリーなOracleツールとリンク
+
+  ora_explainはDBD::Oracleと一緒に提供され、インストールされます。
+
+  http://www.orafaq.com/
+
+  http://vonnieda.org/oracletool/
+
+=head2 商用のOracleツールとリンク
+
+一般的な情報としての種別毎のツールとリファレンスです。
+なんら推奨するものではありません。
+
+  http://www.platinum.com/products/oracle.htm
+  http://www.SoftTreeTech.com
+  http://www.databasegroup.com
+
+RevealNet と Steven FeuersteinからのPL/Vision、そして
+Savant Corporationからの"Q"もあります。
+
+
+=head1 参考資料
+
+L<DBI>
+
+Oracle.ex/での例も含めてDBD::Oracleソース・ディストリビューションに入っている
+全てのファイルについてはhttp://search.cpan.org/author/TIMB/DBD-Oracle/MANIFESTを
+ご覧ください。
+
+=head1 作者
+
+DBD::Oracle by Tim Bunce. DBI by Tim Bunce.
+
+=head1 著作権(=COPYRIGHT)
+
+The DBD::Oracle module is Copyright (c) 1995,1996,1997,1998,1999 Tim Bunce. England.
+The DBD::Oracle module is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself with the exception that it
+cannot be placed on a CD-ROM or similar media for commercial distribution
+without the prior approval of the author unless the CD-ROM is primarily a
+copy of the majority of the CPAN archive.
+
+=head1 謝辞
+
+長年に渡って非常に多くの人に助けていただきました。多すぎて名前を
+あげられませんが、すべての人に感謝しております。
+
+L<DBI/ACKNOWLEDGEMENTS>もご覧下さい。
+

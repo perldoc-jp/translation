@@ -1,0 +1,245 @@
+
+=encoding euc-jp
+
+=head1 名前
+
+Log::Common - httpdのアクセスログ形式とエラーログ形式でログを出力します
+
+=head1 概要
+
+  use Log::Common;
+
+  $l = new Log::Common(access => "/var/log/search-hits",
+                       error  => "/usr/local/log/error_log",
+                       no_stderr => 1,
+                       class => "debug");
+
+  $l->error(message => "Uh-oh... :-(", fatal => 1);
+  $l->access(user => "martin", message => "$query_string",
+               code => 200);
+
+=head1 説明
+
+このクラスは、ApacheやNCSA WWWサーバーによって維持されている
+I<httpd>共通ログファイル形式のアクセス・ログファイルと
+エラー・ログファイルに出力するために使うことができる2つのメソッドを
+定義しています。そのログ・ファイルは書き込まれる間、複数のプロセスが
+同じファイルに同時に書き込もうとすることを避けるため、ロックされます。
+便宜上、両方のメソッドは、指定されるとプログラムをふっとばすために
+"exit"を呼び出すパラメータをサポートしています。
+
+環境変数GATEWAY_INTERFACEが設定されていなければ、エラーメッセージは
+STDERRにも送られます　- 望ましくなければ、この動きを上書きすることも
+できますが。そのため、このクラスを使っているPerlプログラムは
+極普通に彼らのエンドユーザとシステム・ログファイルの両方に同時に
+メッセージを出力することができます。
+
+エラー・ログファイル・エントリは共通のHTTPサーバの利用通り、前に
+UTCタイムスタンプが付けられて出力されます。
+
+=head1 メソッド
+
+=over 4
+
+=item access( [ OPTIONS ] );
+
+=item error( [ OPTIONS ] );
+
+=back
+
+=head1 パラメータ
+
+Log::Commonオブジェクトを生成するとき:
+
+=over 4
+
+=item I<access> => B<アクセス･ログ･ファイル名>
+
+B<access>メソッドを通してログ出力するときに使われるファイル名。
+
+=item I<error> => B<エラー･ログ･ファイル名>
+
+B<error>メソッドを通してログ出力するときに使われるファイル名。
+
+=item I<class> => B<クラス名>
+
+エラー・ログメッセージでのデフォルトのクラス。デバッグ情報、
+セキュリティ関連情報、WWWサーバからのメッセージ、メールシステムからの
+メッセージなどと区別するために使うことができます。このデフォルト値は
+個々のB<error>ログ出力メソッドの呼び出しで上書きすることできます。
+
+=item I<no_stderr> => B<0> or B<1>
+
+もし1に設定されると、STDERRへのメッセージｓの出力を抑止します。
+デフォルトは0です。これはB<error>メソッドを呼び出すときに上書きする
+ことができます。
+
+=back
+
+両方のメッセージに共通:
+
+=over 4
+
+=item I<fatal> => B<終了コード>
+
+これは何か致命的なエラーが発生したことを示し、ログ・ファイルの
+エントリが出力された後、プログラムはB<croak>させられます。
+与えられた値はプログラムの終了コードとして使われます。
+（訳者注:croakは標準モジュール Carpで定義されている関数。
+dieと動きが似ていますが出力される情報が異なります)
+
+=item I<message> => B<メッセージ文字列>
+
+ログファイルに出力される実際のメッセージ。
+
+=back
+
+B<access>メソッド専用:
+
+=over 4
+
+=item I<count> => B<数値>
+
+通常は転送されたバイト数 - 与えられなければI<0>。
+
+=item I<code> => B<応答コード>
+
+通常は転送されたバイト数 - 与えられなければI<0>。
+(訳者注：上記のcountの説明と同じになってしまっている。
+おそらくは、「通常は応答コード - 与えられなければI<0>。」）
+
+=item I<host> => B<ホスト名>
+
+呼び出し/クライアント・ホストのドメイン名あるいはIPアドレス。もし
+与えられなければ、プロセス環境変数でのREMOTE_HOSTとREMOTE_ADDR
+(CGIによって設定されているように)が順番にチェックされます。
+これらのどちらもなければ、ログ・ファイルでのこのフィールドは
+I<0.0.0.0>に設定されます。
+
+=item I<ident> => B<ident検索の値>
+
+通常は呼び出しホストとポートについてのIDENT(AUTH)検索の結果の値。
+与えられなければ、プロセス環境でのREMOTE_IDENTの値が使われるか、
+"-"です。
+
+=item I<user> => B<認証されたユーザ名>
+
+通常は、例えば基本HTTP認証を使って認証されたユーザ名。与えられなければ、
+代わりにプロセス環境でのREMOTE_USERの値が使われるか、"-"です。
+
+=back
+
+B<error>メソッド専用:
+
+=over 4
+
+=item I<class> => B<クラス名>
+
+この呼び出しためにデフォルト設定を上書きします - 上記をご覧ください。
+
+=item I<info> => B<情報文字列>
+
+追加の情報 - これはログファイルのこの行の最後に丸括弧で囲まれて
+書かれます。
+
+=item I<no_stderr> => B<0> or B<1>
+
+この呼び出しためにデフォルト設定を上書きします - 上記をご覧ください。
+
+=back
+
+=head1 ファイル・フォーマット
+
+これらは共通のフィールド利用法であることに注意してください - 同じフィールドに
+対して同じものをいれなけれならないということはありません。しかしこれらの
+ログファイルを既存のHTTPサーバー・ログファイル解析ツールを使って処理する
+つもりであれば、そうしたほうが簡単でしょう。
+
+エラー・ログファイルは以下のような構造になります :-
+
+=over 4
+
+=item I<日付>
+
+これはB<gmtime>関数を使ってGMT(UTC)で整えられて出力され、角括弧で
+囲まれています。これは常にあなたに代って生成されます。
+
+=item I<メッセージのクラス>
+
+この後ろにはコロン文字':'がつきます。I<class>パラメータから取得
+されます。これは全体としてオブジェクトに設定されたデフォルト値を
+上書きします。
+
+=item I<付属の情報>
+
+I<info>から取得されます。これは丸括弧によって囲まれます。
+
+=back
+
+アクセス･ログファイルは以下のような構造になります :-
+
+=over 4
+
+=item I<クライアント・ホスト名/IPアドレス>
+
+I<host>パラメータから取得されます。
+
+=item I<リモート・ユーザ名>
+
+I<ident>パラメータから取得されます。これは通常、
+AUTH/IDENTプロトコル - RFC 1413, RFC 931を通して見つけられます。
+
+=item I<リモート・ユーザ名>
+
+I<user>パラメータから取得されます。これは通常、HTTP認証からのものです。
+
+=item I<タイムスタンプ>
+
+B<localtime>を使い、GMT (UTC)オフセットがついて生成されます。これは
+角括弧によって囲まれ、常にあなたに代わって自動的に生成されます。
+
+=item I<メッセージそのもの>
+
+I<message>パラメータから取得されます。
+
+=item I<応答ステータス・コード>
+
+I<code>パラメータから取得されます。通常は数値です。
+
+=item I<転送されたバイト・カウント>
+
+I<count>パラメータから取得されます。通常は数値です。
+
+=back
+
+=head1 バグ
+
+ありますか ? :-)
+
+=head1 TODO
+
+ログファイル・フォーマット(変数Xをログファイル・エントリでのフィールドY
+としてダンプ)を拡張すると便利かもしれません。
+
+=head1 著作権(=COPYRIGHT)
+
+Copyright (c) 1998 Martin Hamilton <martinh@gnu.org> and Jon Knight
+<jon@net.lut.ac.uk>.  All rights reserved.  This program is free
+software; you can redistribute it and/or modify it under the same
+terms as Perl itself.
+
+It was developed by the Department of Computer Studies at Loughborough
+University of Technology, as part of the ROADS project.  This work was
+funded by the Joint Information Systems Committee (JISC) of the Higher
+Education Funding Councils under the UK Electronic Libraries Programme
+(eLib), the European Commission DESIRE project, and the TERENA
+development programme.
+
+=head1 作者(=AUTHORS)
+
+  Jon Knight <jon@net.lut.ac.uk>
+  Martin Hamilton <martinh@gnu.org>
+
+=head1 翻訳者
+
+川合孝典(GCD00051@nifty.ne.jp)

@@ -1,0 +1,966 @@
+=encoding utf-8
+
+=head1 名前
+
+Test::Base - データドリブンのテストフレームワーク
+
+=head1 概要
+
+A new test module:
+
+新しいテストモジュール:
+
+    # lib/MyProject/Test.pm
+    package MyProject::Test;
+    use Test::Base -Base;
+    
+    use MyProject;
+    
+    package MyProject::Test::Filter;
+    use Test::Base::Filter -base;
+
+    sub my_filter {
+        return MyProject->do_something(shift);
+    }
+
+A sample test:    
+
+テストの例:
+    
+    # t/sample.t
+    use MyProject::Test;
+    
+    plan tests => 1 * blocks;
+    
+    run_is input => 'expected';
+
+    sub local_filter {
+        s/my/your/;
+    }
+    
+    __END__
+    
+    === Test one (the name of the test)
+    --- input my_filter local_filter
+    my
+    input
+    lines
+    --- expected
+    expected
+    output
+    
+    === Test two
+    This is an optional description
+    of this particular test.
+    --- input my_filter
+    other
+    input
+    lines
+    --- expected
+    other expected
+    output
+
+=head1 説明
+
+Testing is usually the ugly part of Perl module authoring. Perl gives
+you a standard way to run tests with Test::Harness, and basic testing
+primitives with Test::More. After that you are pretty much on your own
+to develop a testing framework and philosophy. Test::More encourages
+you to make your own framework by subclassing Test::Builder, but that is
+not trivial.
+
+Perlモジュールを書く上で、醜いのはたいていテストのところです。Perlには
+標準のやりかたとして、Test::Harnesがあります。基本的で原始的なテストは
+Test::Moreで行えます。その後で、テストフレームワークと哲学を開発するために
+あなたはほとんど一人でいます(訳註:謎)。Test::MoreはTest::Builderを
+サブクラスにして、自分自身のフレームワークを作ることを推奨しています。
+ですが、それは簡単なことではありません。
+
+Test::Base gives you a way to write your own test framework base
+class that I<is> trivial. In fact it is as simple as two lines:
+
+Test::Base を使うと、自分用の取るにたらないテストフレームワークの
+ベースクラスを書くことができます。実際、以下の2行でできるくらい簡単です:
+
+    package MyTestFramework;
+    use Test::Base -Base;
+
+A module called C<MyTestFramework.pm> containing those two lines, will
+give all the power of Test::More and all the power of Test::Base to
+every test file that uses it. As you build up the capabilities of
+C<MyTestFramework>, your tests will have all of that power as well.
+
+この2行からなるC<MyTestFramework>と呼ばれるモジュールは、
+これを使う全てのテストファイルに、Test::Moreの全ての力と、
+Test::Baseの全ての力を与えます。C<MyTestFramework>の能力を高めるにつれ、
+あなたのテストも同様にその力の全てを持つでしょう。
+
+C<MyTestFramework> becomes a place for you to put all of your reusable
+testing bits. As you write tests, you will see patterns and duplication,
+and you can "upstream" them into C<MyTestFramework>. Of course, you
+don't have to subclass Test::Base at all. You can use it directly in
+many applications, including everywhere you would use Test::More.
+
+C<MyTestFramework>は再利用可能なテストの全てを置く場所になります。
+テストを書くにつれ、パターンや重複を見かけて、それらをC<MyTestFramework>に
+"上流"に出来るでしょう。もちろん、Test::Baseをサブクラスにしなければ
+いけないわけでは全然ありません。多くのアプリケーションで、Test::Baseを
+直接使うことが出来ますし、Test::Moreを使っているどこにでもTest::Baseを
+使うことが出来ます。
+
+Test::Base concentrates on offering reusable data driven patterns, so
+that you can write tests with a minimum of code. At the heart of all
+testing you have inputs, processes and expected outputs. Test::Base
+provides some clean ways for you to express your input and expected
+output data, so you can spend your time focusing on that rather than
+your code scaffolding.
+
+Test::Baseは再利用可能なデータドリブンなパターンを提供するのに
+集中しています。そのため、最小限のコードでテストを書けます。
+全てのテストの中心に、入力、処理、期待される出力があります。
+Test::Baseには、入力と期待される値を表すのに簡単な方法があります。
+そのため、コードの足場作りではなくて、中心のことに集中できます。
+
+=head1 エクスポートされる関数
+
+Test::Base extends Test::More and exports all of its functions. So you
+can basically write your tests the same as Test::More. Test::Base
+also exports many functions of its own:
+
+Test::BaseはTest::Moreを継承しており、Test::Moreの全ての関数を
+エクスポートしています。そのため、基本的に、Test::Moreと同じように
+テストを書くことが出来ます。Test::Baseもまた、それ自身の多くの関数を
+エクスポートしています。
+
+=head2 is(actual, expected, [test-name])
+
+This is the equivalent of Test::More's C<is> function with one
+interesting twist. If your actual and expected results differ and the
+output is multi-line, this function will show you a unified diff format
+of output. Consider the benefit when looking for the one character that
+is different in hundreds of lines of output!
+
+Test::MoreのC<is>関数と同等ですが、一ひねり加えています。
+実際と期待する結果が違っており、出力が複数行にわたる場合、
+この関数は、出力を unified diffフォーマット(訳註: diff -u)で表示します。
+一文字違うだけなのに、数百行の出力が出ても嬉しくないでしょ！
+
+Diff output requires the optional C<Text::Diff> CPAN module. If you
+don't have this module, the C<is()> function will simply give you normal
+Test::More output. To disable diffing altogether, set the
+C<TEST_SHOW_NO_DIFFS> environment variable (or C<$ENV{TEST_SHOW_NO_DIFFS}>)
+to a true value. You can also call the C<no_diff> function as a shortcut.
+
+Diff出力はオプションで、CPANモジュールのC<Text::Diff>が必要です。
+このモジュールがなければ、C<is()>関数は単純に、通常のTest::Moreの
+出力を表示します。diffを完全に無効にしたいなら、C<TEST_SHOW_NO_DIFFS>環境変数
+(または、$ENV{TEST_SHOW_NO_DIFFS})に真の値を入れてください。
+ショートカットとして、C<no_diff>関数も使えます。
+
+=head2 blocks( [data-section-name] )
+
+The most important function is C<blocks>. In list context it returns a
+list of C<Test::Base::Block> objects that are generated from the test
+specification in the C<DATA> section of your test file. In scalar
+context it returns the number of objects. This is useful to calculate
+your Test::More plan.
+
+一番重要な関数は、C<blocks>です。リストコンテキストでは、
+テストファイルのC<DATA>セクション以下にあるテスト仕様から生成された、
+C<Test::Base::Block>オブジェクトのリストを返します。
+スカラコンテキストでは、オブジェクトの数を返します。
+Test::Moreのプランを数えるのに便利です。
+
+Each Test::Base::Block object has methods that correspond to the names
+of that object's data sections. There is also a C<name> and a
+C<description> method for accessing those parts of the block if they
+were specified.
+
+それぞれのTest::Base::Blockオブジェクトには、オブジェクトのデータセクション
+の名前に対応するメソッドがあります。それらが指定されていれば、
+ブロックのそれらの部分にアクセスするために、C<name>とC<description>
+メソッドもあります。
+
+The C<blocks> function can take an optional single argument, that
+indicates to only return the blocks that contain a particular named data
+section. Otherwise C<blocks> returns all blocks.
+
+C<blocks>関数はオプションで一つの引数を取り、
+特定の名前のデータセクションを含むブロックだけを返すように出来ます。
+一方、C<blocks>は全てのブロックを返します。
+
+    my @all_of_my_blocks = blocks;
+
+    my @just_the_foo_blocks = blocks('foo');
+
+=head2 next_block()
+
+You can use the next_block function to iterate over all the blocks.
+
+全てのブロックをイテレートするnext_block関数もあります。
+
+    while (my $block = next_block) {
+        ...
+    }
+
+It returns undef after all blocks have been iterated over. It can then
+be called again to reiterate.
+
+全てのブロックがイテレートされた後では、undefを返します。
+もう一度呼べば、再度イテレートされます。
+
+=head2 first_block()
+
+Returns the first block or undef if there are none. It resets the iterator to
+the C<next_block> function.
+
+最初のブロックを返します。ブロックがなければ、undefを返します。
+これで、C<next_block>関数のイテレーターをリセットできます。
+
+=head2 run(&subroutine)
+
+There are many ways to write your tests. You can reference each block
+individually or you can loop over all the blocks and perform a common
+operation. The C<run> function does the looping for you, so all you need
+to do is pass it a code block to execute for each block.
+
+テストを書くにはたくさんの方法があります。全てのブロックを別々に
+参照することも出来るし、全てのブロックをループすることも出来るし、
+共通の操作をすることも出来ます。このC<run>関数はループするので、
+それぞれのブロックに実行するコードブロックを渡すだけで構いません。
+
+The C<run> function takes a subroutine as an argument, and calls the sub
+one time for each block in the specification. It passes the current
+block object to the subroutine.
+
+C<run>関数は、引数として関数をとります。仕様にあるそれぞれのブロックごとに
+関数を一回呼びます。現在のブロックオブジェクトにサブルーチンを渡しています。
+
+    run {
+        my $block = shift;
+        is(process($block->foo), $block->bar, $block->name);
+    };
+
+=head2 run_is([data_name1, data_name2])
+
+Many times you simply want to see if two data sections are equivalent in
+every block, probably after having been run through one or more filters.
+With the C<run_is> function, you can just pass the names of any two data
+sections that exist in every block, and it will loop over every block
+comparing the two sections.
+
+何回も、単純に全てのブロックで、おそらく一つかそれ以上のフィルターを
+通した後で、2つのデータセクションが同等であるかどうかを見たいと思います。
+C<run_is>関数で、全てのブロックにある、いずれか2つのデータセクションの
+名前を渡すだけで、全てのブロックをループして、二つのセクションを比較します。
+
+    run_is 'foo', 'bar';
+
+If no data sections are given C<run_is> will try to detect them
+automatically.
+
+データセクションを与えなれば、C<run_is>は自動的に見付けようとします。
+
+NOTE: Test::Base will silently ignore any blocks that don't contain
+both sections.
+
+注意: Test::Baseは、両方のセクションを含んでいないブロックは暗黙に
+無視します。
+
+=head2 run_is_deeply([data_name1, data_name2])
+
+Like C<run_is> but uses C<is_deeply> for complex data structure comparison.
+
+C<run_is>と似ていますが、複雑なデータの比較のためにC<is_deeply>を使います。
+
+=head2 run_like([data_name, regexp | data_name]);
+
+The C<run_like> function is similar to C<run_is> except the second
+argument is a regular expression. The regexp can either be a C<qr{}>
+object or a data section that has been filtered into a regular
+expression.
+
+C<run_like>関数は、C<run_is>に似ていますが、二番目の引数が
+正規表現であるところが違います。正規表現は、C<qr{}>オブジェクトか、
+正規表現にフィルターされるデータセクションのどちらも取れます。
+
+    run_like 'foo', qr{<html.*};
+    run_like 'foo', 'match';
+
+=head2 run_unlike([data_name, regexp | data_name]);
+
+The C<run_unlike> function is similar to C<run_like>, except the opposite.
+
+C<run_unlike>関数はC<run_like>と似ていますが、その反対です。
+
+    run_unlike 'foo', qr{<html.*};
+    run_unlike 'foo', 'no_match';
+
+=head2 run_compare(data_name1, data_name2)
+
+The C<run_compare> function is like the C<run_is>, C<run_is_deeply> and
+the C<run_like> functions all rolled into one. It loops over each
+relevant block and determines what type of comparison to do.
+
+C<run_compare>関数はC<run_is>、C<run_is_deeply>、C<run_like>と似ていますが、
+これら全てを一つにした関数です。それぞれ関連するブロックをループし、
+どの種類の比較をするかを決定します。
+
+NOTE: If you do not specify either a plan, or run any tests, the
+C<run_compare> function will automatically be run.
+
+注意: もしプランを指定しなければ、全てのテストを実行します。
+C<run_compare>関数は自動的に実行されます。
+
+=head2 delimiters($block_delimiter, $data_delimiter)
+
+Override the default delimiters of C<===> and C<--->.
+
+デフォルトのデリミタC<===>とC<--->をオーバーライドします。
+
+=head2 spec_file($file_name)
+
+By default, Test::Base reads its input from the DATA section. This
+function tells it to get the spec from a file instead.
+
+デフォルトでは、Test::Baseは、DATAセクションから入力を読みます。
+この関数は、その代わりに、ファイルから仕様を読むようにします。
+
+=head2 spec_string($test_data)
+
+By default, Test::Base reads its input from the DATA section. This
+function tells it to get the spec from a string that has been
+prepared somehow.
+
+デフォルトでは、Test::Baseは、DATAセクションから入力を読みます。
+この関数は、何かして準備している文字列から仕様を得るようにします。
+
+=head2 filters( @filters_list or $filters_hashref )
+
+Specify a list of additional filters to be applied to all blocks. See
+L<FILTERS> below.
+
+全てのブロックに適用するフィルターをリストに追加します。
+後述のL<FILTERS>を見てください。
+
+You can also specify a hash ref that maps data section names to an array
+ref of filters for that data type.
+
+ハッシュリファレンスで、データーセクションの名前にフィルターの配列
+リファレンスをマッピングすることもできます。
+
+    filters {
+        xxx => [qw(chomp lines)],
+        yyy => ['yaml'],
+        zzz => 'eval',
+    };
+
+If a filters list has only one element, the array ref is optional.
+
+フィルターリストが一要素しかなければ、配列リファレンスでなくても
+かまいません。
+
+=head2 filters_delay( [1 | 0] );
+
+By default Test::Base::Block objects are have all their filters run
+ahead of time. There are testing situations in which it is advantageous
+to delay the filtering. Calling this function with no arguments or a
+true value, causes the filtering to be delayed.
+
+デフォルトでは、Test::Base::Blockオブジェクトは、そのフィルターを
+前もって実行しています。シチュエーションによっては、フィルタリングを
+遅らせたほうが都合が良いこともあります。この関数を引数なしで呼ぶか、
+真の値を引数に呼ぶと、フィルタリングは遅れて実行されます。
+
+    use Test::Base;
+    filters_delay;
+    plan tests => 1 * blocks;
+    for my $block (blocks) {
+        ...
+        $block->run_filters;
+        ok($block->is_filtered);
+        ...
+    }
+
+In the code above, the filters are called manually, using the
+C<run_filters> method of Test::Base::Block. In functions like
+C<run_is>, where the tests are run automatically, filtering is delayed
+until right before the test.
+
+上記のようなコードで、フィルターは手動で呼ばれます。
+Test::Base::BlockのC<run_filters>メソッドを使います。
+C<run_is>のような関数で、テストが自動的に実行される場所で、
+そのテストの前まで、フィルタリングが遅らされます。
+
+=head2 filter_arguments()
+
+Return the arguments after the equals sign on a filter.
+
+フィルタの等号の後ろの引数を返します。
+
+    sub my_filter {
+        my $args = filter_arguments;
+        # is($args, 'whazzup');
+        ...
+    }
+
+    __DATA__
+    === A test
+    --- data my_filter=whazzup
+
+=head2 tie_output()
+
+You can capture STDOUT and STDERR for operations with this function:
+
+この関数で、STDOUTとSTDERRをキャプチャできます:
+
+    my $out = '';
+    tie_output(*STDOUT, $buffer);
+    print "Hey!\n";
+    print "Che!\n";
+    untie *STDOUT;
+    is($out, "Hey!\nChe!\n");
+
+=head2 no_diff()
+
+Turn off diff support for is() in a test file.
+
+テストファイルの中のis()のdiffサポートをオフにします。
+
+=head2 default_object()
+
+Returns the default Test::Base object. This is useful if you feel
+the need to do an OO operation in otherwise functional test code. See
+L<OO> below.
+
+デフォルトのTest::Baseオブジェクトを返します。
+関数的なテストコードではなく、OO的なオペレーションをしたいなら、便利です。
+後述のL<OO>を見てください。
+
+=head2 WWW() XXX() YYY() ZZZ()
+
+These debugging functions are exported from the Spiffy.pm module. See
+L<Spiffy> for more info.
+
+Spiffy.pm モジュールからエクスポートされたデバッギング関数です。
+詳細はL<Spiffy>を見てください。
+
+=head2 croak() carp() cluck() confess()
+
+You can use the functions from the Carp module without needing to import
+them. Test::Base does it for you by default.
+
+インポートすることなく、Carpモジュールの関数を使えます。Test::Base
+はデフォルトで、インポートします。
+
+=head1 テストの仕様
+
+Test::Base allows you to specify your test data in an external file,
+the DATA section of your program or from a scalar variable containing
+all the text input.
+
+Test::Baseでは、全てのテキスト入力を含んだテストデータの指定を、
+外部ファイルか、プログラムのDATAセクション内か、またはスカラーからか、
+指定できます。
+
+A I<test specification> is a series of text lines. Each test (or block)
+is separated by a line containing the block delimiter and an optional
+test C<name>. Each block is further subdivided into named sections with
+a line containing the data delimiter and the data section name. A
+C<description> of the test can go on lines after the block delimiter but
+before the first data section.
+
+I<テストの仕様>は一連のテキスト行です。互いのテスト(かブロック)は
+ブロックの区切りとオプションのテストのC<name>を含む行によって
+分けられています。それぞれのブロックはデータデリミタとデータ
+セクション名を含んだ名前つきのセクションにさらに分けられます。
+テストのC<description>はブロックデリミタの後に続けられますが、
+最初のデータセクションの前に書きます。
+
+Here is the basic layout of a specification:
+
+仕様の基本的なレイアウトです:
+
+    === <block name 1>
+    <optional block description lines>
+    --- <data section name 1> <filter-1> <filter-2> <filter-n>
+    <test data lines>
+    --- <data section name 2> <filter-1> <filter-2> <filter-n>
+    <test data lines>
+    --- <data section name n> <filter-1> <filter-2> <filter-n>
+    <test data lines>
+
+    === <block name 2>
+    <optional block description lines>
+    --- <data section name 1> <filter-1> <filter-2> <filter-n>
+    <test data lines>
+    --- <data section name 2> <filter-1> <filter-2> <filter-n>
+    <test data lines>
+    --- <data section name n> <filter-1> <filter-2> <filter-n>
+    <test data lines>
+
+Here is a code example:
+
+コードの例です:
+
+    use Test::Base;
+    
+    delimiters qw(### :::);
+
+    # test code here
+
+    __END__
+    
+    ### Test One
+    We want to see if foo and bar
+    are really the same... 
+    ::: foo
+    a foo line
+    another foo line
+
+    ::: bar
+    a bar line
+    another bar line
+
+    ### Test Two
+    
+    ::: foo
+    some foo line
+    some other foo line
+    
+    ::: bar
+    some bar line
+    some other bar line
+
+    ::: baz
+    some baz line
+    some other baz line
+
+This example specifies two blocks. They both have foo and bar data
+sections. The second block has a baz component. The block delimiter is
+C<###> and the data delimiter is C<:::>.
+
+この例では二つのブロックを指定しています。ブロックには、
+fooとbarのデータセクションがあります。二番目のブロックには、
+bazコンポーネントがあります。ブロックのデリミタは、C<###>で、
+データのデリミタはC<:::>です。
+
+The default block delimiter is C<===> and the default data delimiter
+is C<--->.
+
+デフォルトのブロックデリミタはC<===>で、デフォルトのデータデリミタは、
+C<--->です。
+
+There are some special data section names used for control purposes:
+
+データセクションの名前には、特別な名前があり、テストをコントロールするために使います:
+
+    --- SKIP
+    --- ONLY
+    --- LAST
+
+A block with a SKIP section causes that test to be ignored. This is
+useful to disable a test temporarily.
+
+SKIPついたのブロックセクションはテストを無視します。一時的にテストを
+無功にするのに便利です。
+
+A block with an ONLY section causes only that block to be used. This is
+useful when you are concentrating on getting a single test to pass. If
+there is more than one block with ONLY, the first one will be chosen.
+
+ONLYをブロックに付けると、そのブロックだけが使われます。
+一つのテストをパスするのに集中したい時に便利です。
+一つ以上のONLYブロックがある場合、最初のものが選ばれます。
+
+A block with a LAST section makes that block the last one in the
+specification. All following blocks will be ignored.
+
+LASTのついたブロックセクションは、そのブロックを仕様の最後のものにします。
+後に続くブロックは無視されます。
+
+=head1 FILTERS
+
+The real power in writing tests with Test::Base comes from its
+filtering capabilities. Test::Base comes with an ever growing set
+of useful generic filters than you can sequence and apply to various
+test blocks. That means you can specify the block serialization in
+the most readable format you can find, and let the filters translate
+it into what you really need for a test. It is easy to write your own
+filters as well.
+
+Test::Baseでテストを書くときに、本当に力になるのは、そのフィルタリング
+能力です。Test::Baseにはさまざまなテストブロックに順序付けて適用できる
+(訳註: thanとあるがthatじゃないかな?)、これまでに増え続けている便利な
+一般的なフィルタのセットが付属します。このことは、あなたが見つけられる、
+もっとも可読性の高いフォーマットでブロックシリアリゼィションを指定でき、
+フィルタでそれを本当にテストに必要なものに変換させることができるということです。
+おまけに、自分自身のフィルタを書くのも簡単です。
+
+Test::Base allows you to specify a list of filters to each data
+section of each block. The default filters are C<norm> and C<trim>.
+These filters will be applied (in order) to the data after it has been
+parsed from the specification and before it is set into its
+Test::Base::Block object.
+
+Test::Baseでは、それぞれのブロックのそれぞれのデータセクションへの
+フィルタのリストを特定できます。デフォルトのフィルタは、C<norm>とC<trim>です。
+Test::Base::Blockオブジェクトにセットされる前に、仕様からパースされた後、
+これらのフィルタは(順番に)データに適用されます。
+
+You can add to the default filter list with the C<filters> function. You
+can specify additional filters to a specific block by listing them after
+the section name on a data section delimiter line.
+
+C<filters>関数でデフォルトのフィルターのリストに加えることが出来ます。
+データセクションのデリミタ行に、そのセクション名の後に、フィルタを
+リストすることで、特定のブロックに特定の追加的なフィルタを適用できます。
+
+Example:
+
+例:
+
+    use Test::Base;
+
+    filters qw(foo bar);
+    filters { perl => 'strict' };
+
+    sub upper { uc(shift) }
+
+    __END__
+
+    === Test one
+    --- foo trim chomp upper
+    ...
+
+    --- bar -norm
+    ...
+
+    --- perl eval dumper
+    my @foo = map {
+        - $_;
+    } 1..10;
+    \ @foo;
+
+Putting a C<-> before a filter on a delimiter line, disables that
+filter.
+
+デリミタ行にある、フィルタの前にC<->を置くと、フィルタを無効に出来ます。
+
+=head2 スカラ vs リスト
+
+Each filter can take either a scalar or a list as input, and will return
+either a scalar or a list. Since filters are chained together, it is
+important to learn which filters expect which kind of input and return
+which kind of output.
+
+それぞれのフィルタは、入力として、スカラかリストを取り、スカラかリスト
+を返します。フィルタは一緒につながれるため、どのフィルタがどの種類の
+インプットを期待し、どの種類の出力を返すのかを知っておくことが重要です。
+
+For example, consider the following filter list:
+
+例えば、下記のフィルタリストを考えてみて下さい:
+
+    norm trim lines chomp array dumper eval
+
+The data always starts out as a single scalar string. C<norm> takes a
+scalar and returns a scalar. C<trim> takes a list and returns a list,
+but a scalar is a valid list. C<lines> takes a scalar and returns a
+list. C<chomp> takes a list and returns a list. C<array> takes a list
+and returns a scalar (an anonymous array reference containing the list
+elements). C<dumper> takes a list and returns a scalar. C<eval> takes a
+scalar and creates a list.
+
+データは常に、単一のスカラ文字列として始まります。C<norm>は
+スカラを取り、スカラを返します。C<trim>はリストを取り、リストを返しますが、
+スカラは正しいリストです。C<lines>はスカラを取り、リストを返します。
+C<chomp>はリストを取り、リストを返します。C<array>はリストを取り、
+スカラ(リスト要素を含んだ無名配列リファレンス)を返します。C<dumpr>はリストを
+取り、スカラを返します。C<eval>はスカラを取りリストを作ります。
+
+A list of exactly one element works fine as input to a filter requiring
+a scalar, but any other list will cause an exception. A scalar in list
+context is considered a list of one element.
+
+正確に一つの要素のリストは、スカラを必要とするフィルタへの入力として
+うまく動きます。ですが、他のどんなリスト(訳註:一つ以上の要素を持つ)も、
+例外を起こします。リストコンテキストで一つのスカラは一つの要素のリスト
+として考えられます。
+
+Data accessor methods for blocks will return a list of values when used
+in list context, and the first element of the list in scalar context.
+This is usually "the right thing", but be aware.
+
+ブロックのデータアクセサメソッドは、リストコンテキストでは値のリストを返します。
+スカラコンテキストではリストの最初の要素を返します。
+これは、普通"正しいこと"ですが、気を付けてください。
+
+=head2 The Stock Filters
+
+Test::Base comes with large set of stock filters. They are in the
+C<Test::Base::Filter> module. See L<Test::Base::Filter> for a listing and
+description of these filters.
+
+Test::Base には、ストックフィルタ多数のフィルタセットがあります。
+C<Test::Base::Filter>モジュールにあります。フィルタのリストと説明は
+L<Test::Base::Filter>を見て下さい。
+
+=head2 Rolling Your Own Filters
+
+Creating filter extensions is very simple. You can either write a
+I<function> in the C<main> namespace, or a I<method> in the
+C<Test::Base::Filter> namespace or a subclass of it. In either case the
+text and any extra arguments are passed in and you return whatever you
+want the new value to be.
+
+フィルタの拡張はとても簡単です。C<main>名前空間にI<function>を書くか、
+C<Test::Base::Filter>名前空間か、そのサブクラスにI<method>を書くことも
+できます。それぞれのケースで、テキストと付加的な引数が渡され、
+新しい値として欲しいものを何でも返せます。
+
+Here is a self explanatory example:
+
+説明的な例:
+
+    use Test::Base;
+
+    filters 'foo', 'bar=xyz';
+
+    sub foo {
+        transform(shift);
+    }
+        
+    sub Test::Base::Filter::bar {
+        my $self = shift;       # The Test::Base::Filter object
+        my $data = shift;
+        my $args = $self->arguments;
+        my $current_block_object = $self->block;
+        # transform $data in a barish manner
+        return $data;
+    }
+
+If you use the method interface for a filter, you can access the block
+internals by calling the C<block> method on the filter object.
+Normally you'll probably just use the functional interface, although all
+the builtin filters are methods.
+
+フィルタにメソッドインターフェースを使えば、フィルタオブジェクトで、
+C<block>メソッドでを呼ぶことで、ブロックの内部にアクセスできます。
+通常、おそらく関数インターフェースを使うでしょう。ですが、全ての
+組み込みのフィルタはメソッドです。
+
+=head1 OO
+
+Test::Base has a nice functional interface for simple usage. Under the
+hood everything is object oriented. A default Test::Base object is
+created and all the functions are really just method calls on it.
+
+Test::Baseは簡単に使える良い関数インターフェースがあります。
+フードの下で、全てのものはオブジェクト指向です。デフォルトで
+Test::Baseオブジェクトは作られ、実際に全ての関数はメソッドで呼び出せます。
+
+This means if you need to get fancy, you can use all the object
+oriented stuff too. Just create new Test::Base objects and use the
+functions as methods.
+
+これは、fancyにならなければならないなら、全てのオブジェクト指向のものも
+使うことが出来るということです。Test::Baseオブジェクトを新しく作って、
+メソッドとして関数を使うだけです。
+
+    use Test::Base;
+    my $blocks1 = Test::Base->new;
+    my $blocks2 = Test::Base->new;
+
+    $blocks1->delimiters(qw(!!! @@@))->spec_file('test1.txt');
+    $blocks2->delimiters(qw(### $$$))->spec_string($test_data);
+
+    plan tests => $blocks1->blocks + $blocks2->blocks;
+
+    # ... etc
+
+=head1 C<Test::Base::Block>クラス
+
+In Test::Base, blocks are exposed as Test::Base::Block objects. This
+section lists the methods that can be called on a Test::Base::Block
+object. Of course, each data section name is also available as a method.
+
+Test::Baseには、Test::Base::Blockオブジェクトとして、blocksがexposeされています。
+このセクションでは、Test::Base::Blockオブジェクトで呼べるメソッドを一覧します。
+もちろん、それぞれのデータセクション名もまた、メソッドとして使えます。
+
+=head2 name()
+
+This is the optional short description of a block, that is specified on the
+block separator line.
+
+blockのオプショナルな短い説明です。ブロックのセパレータの行に記入されます。
+
+=head2 description()
+
+This is an optional long description of the block. It is the text taken from
+between the block separator and the first data section.
+
+blockのオプショナルな長い説明です。ブロックセパレータと最初のデータセパレータの
+間に書かれているテキストです。
+
+=head2 seq_num()
+
+Returns a sequence number for this block. Sequence numbers begin with 1. 
+
+ブロックのシーケンス番号を返します。シーケンス番号は1から始まります。
+
+=head2 blocks_object()
+
+Returns the Test::Base object that owns this block.
+
+このブロックを持っているTest::Baseオブジェクトを返します。
+
+=head2 run_filters()
+
+Run the filters on the data sections of the blocks. You don't need to
+use this method unless you also used the C<filters_delay> function.
+
+ブロックのデータセクションのフィルターを実行します。
+C<filter_delay>関数を使わなければ、このメソッドを使う必要はありません。
+
+=head2 is_filtered()
+
+Returns true if filters have already been run for this block.
+
+このブロックで既にフィルターが実行されていれば、真を返します。
+
+=head2 original_values()
+
+Returns a hash of the original, unfiltered values of each data section.
+
+それぞれのデータセクションのフィルターされていない、
+オリジナルのハッシュを返します。
+
+=head1 サブクラス化
+
+One of the nicest things about Test::Base is that it is easy to
+subclass. This is very important, because in your personal project, you
+will likely want to extend Test::Base with your own filters and other
+reusable pieces of your test framework.
+
+Test::Baseの一番良い機能の一つは、サブクラスを作るのが簡単なことです。
+このことはとても重要です。自分の個人的なプロジェクトで、自分のテスト
+フレームワークの、自分自身のフィルターや他の再利用可能なもので、
+おそらくTest::Baseを拡張したいでしょうから。
+
+Here is an example of a subclass:
+
+サプクラスの例です:
+
+    package MyTestStuff;
+    use Test::Base -Base;
+
+    our @EXPORT = qw(some_func);
+
+    sub some_func {
+        (my ($self), @_) = find_my_self(@_);
+        ...
+    }
+
+    package MyTestStuff::Block;
+    use base 'Test::Base::Block';
+
+    sub desc {
+        $self->description(@_);
+    }
+
+    package MyTestStuff::Filter;
+    use base 'Test::Base::Filter';
+
+    sub upper {
+        $self->assert_scalar(@_);
+        uc(shift);
+    }
+
+Note that you don't have to re-Export all the functions from
+Test::Base. That happens automatically, due to the powers of Spiffy.
+
+Test::Baseから全ての関数を再度エクスポートする必要はありません。
+Spiffyの力で、自動的に行われます。
+
+The first line in C<some_func> allows it to be called as either a
+function or a method in the test code.
+
+C<some_func>の最初の行で、テストコードで、関数かメソッドのどちらでも
+呼べるようにしています。
+
+=head1 配布サポート
+
+You might be thinking that you do not want to use Test::Base in you
+modules, because it adds an installation dependency. Fear not.
+Module::Build takes care of that.
+
+インストールに依存性を加えたくないので、自分のモジュールで
+Test::Baseを使いたくないと思うかもしれません。
+恐れないでください。Module::Buildが面倒をみてくれます。
+
+Just write a Makefile.PL that looks something like this:
+
+Makefile.PLに、次のように書いてください:
+
+    use inc::Module::Install;
+
+    name            'Foo';
+    all_from        'lib/Foo.pm';
+
+    use_test_base;
+
+    WriteAll;
+
+The line with C<use_test_base> will automatically bundle all the code
+the user needs to run Test::Base based tests.
+
+C<use_test_base>の行が自動的に、Test::Baseに基づいているテストを実行するのに
+ユーザーが必要な全てのコードをバンドルします。
+
+=head1 他のクールな機能
+
+Test::Base automatically adds:
+
+Test::Baseは自動的に追加します:
+
+    use strict;
+    use warnings;
+
+to all of your test scripts and Test::Base subclasses. A Spiffy
+feature indeed.
+
+全てのテストスクリプトとTest::Baseサブクラスに。実際には、Spiffy
+の機能です。
+
+=head1 HISTORY
+
+This module started its life with the horrible and ridicule inducing
+name C<Test::Chunks>. It was renamed to C<Test::Base> with the hope
+that it would be seen for the very useful module that it has become. If
+you are switching from C<Test::Chunks> to C<Test::Base>, simply
+substitute the concept and usage of C<chunks> to C<blocks>.
+
+
+C<Test::Chunks>という名前に含まれる、ひどいものと愚弄とでその命
+を始めました。とても便利なモジュールになると分かることを望んで、
+C<Test::Base>という名前に変更されました。
+C<Test::Chunks>からC<Test::Base>に変更するなら、単純に、
+C<chunks>のコンセプトと使い方の代わりに、C<blocks>にしてください。
+
+=head1 AUTHOR
+
+Ingy döt Net <ingy@cpan.org>
+
+=head1 COPYRIGHT
+
+Copyright (c) 2006. Ingy döt Net. All rights reserved.
+Copyright (c) 2005. Brian Ingerson. All rights reserved.
+
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
+
+See http://www.perl.com/perl/misc/Artistic.html
+
+=cut

@@ -1,0 +1,1253 @@
+
+=encoding euc-jp
+
+=pod
+
+=head1 名前
+
+DBD::mysql - Perl5 データベース・インターフェース(DBI)のためのMySQLドライバ
+
+=head1 概要
+
+    use DBI;
+
+    $dsn = "DBI:mysql:database=$database;host=$hostname;port=$port";
+
+    $dbh = DBI->connect($dsn, $user, $password);
+
+
+    $drh = DBI->install_driver("mysql");
+    @databases = DBI->data_sources("mysql");
+       または
+    @databases = DBI->data_sources("mysql",
+                                   {"host" => $host, "port" => $port});
+
+    $sth = $dbh->prepare("SELECT * FROM foo WHERE bla");
+       または
+    $sth = $dbh->prepare("LISTFIELDS $table");
+       または
+    $sth = $dbh->prepare("LISTINDEX $table $index");
+    $sth->execute;
+    $numRows = $sth->rows;
+    $numFields = $sth->{'NUM_OF_FIELDS'};
+    $sth->finish;
+
+    $rc = $drh->func('createdb', $database, $host, $user, $password, 'admin');
+    $rc = $drh->func('dropdb', $database, $host, $user, $password, 'admin');
+    $rc = $drh->func('shutdown', $host, $user, $password, 'admin');
+    $rc = $drh->func('reload', $host, $user, $password, 'admin');
+
+    $rc = $dbh->func('createdb', $database, 'admin');
+    $rc = $dbh->func('dropdb', $database, 'admin');
+    $rc = $dbh->func('shutdown', 'admin');
+    $rc = $dbh->func('reload', 'admin');
+
+
+=head1 例
+
+  #!/usr/bin/perl
+
+  use strict;
+  use DBI();
+
+  # データベースへの接続
+  my $dbh = DBI->connect("DBI:mysql:database=test;host=localhost",
+                         "joe", "joe's password",
+                         {'RaiseError' => 1});
+
+  # テーブル'foo'をドロップ。'foo'が存在していないと、これは失敗するでしょう。
+  # そのため周りをevalで囲んでいます。
+  eval { $dbh->do("DROP TABLE foo") };
+  print "Dropping foo failed: $@\n" if $@;
+
+  # 新しいテーブル'foo'を作成します。これは失敗するはずがありません。
+  # そのためエラーをキャッチしていません。
+  $dbh->do("CREATE TABLE foo (id INTEGER, name VARCHAR(20))");
+
+  # 'foo'にデータをINSERTします。nameをクォートするために
+  # $dbh->quote()を使っています。
+  $dbh->do("INSERT INTO foo VALUES (1, " . $dbh->quote("Tim") . ")");
+
+  # 同じこと。ただしプレースホルダを使っています。
+  $dbh->do("INSERT INTO foo VALUES (?, ?)", undef, 2, "Jochen");
+
+  # 今度はテーブルからのデータを取り出します
+  my $sth = $dbh->prepare("SELECT * FROM foo");
+  $sth->execute();
+  while (my $ref = $sth->fetchrow_hashref()) {
+    print "Found a row: id = $ref->{'id'}, name = $ref->{'name'}\n";
+  }
+  $sth->finish();
+
+  # データベースからの切断
+  $dbh->disconnect();
+
+
+=head1 説明
+
+B<DBD::mysql>はMySQLデータベースのためのPerl5データベース・インターフェース・
+ドライバです。言い換えると：DBD::mysqlはPerlプログラミング言語と
+MySQLリレーショナル・データベース管理システムに入っている
+MySQLプログラミングAPIとのインターフェースです。このプログラミングAPIで
+提供されているほとんどの機能がサポートされています。あまり使われない
+いくつかの機能がなくなっています。これは主にだれも
+それを要求したことがなかったからです :-)
+
+これが最も必要とされることですから、最初にDBD::mysqlの使い方について
+説明します。インストールについては、以下のセクション L<インストール>、
+L<WIN32でのインストール>、L<既知のバグ>をご覧下さい。
+簡単な例に付いては、上記のL<例>をご覧下さい。
+
+Perlからは、以下のステートメントでインタフェースを有効にします：
+
+    use DBI;
+
+この後、複数のMySQLデータベース・サーバに接続し、簡単な
+オブジェクト指向インターフェースを介してそれらのデータベースへ
+複数の問い合わせを送信することが出来ます。データベース・ハンドルと
+ステートメント・ハンドルという２つのタイプのオブジェクトが利用可能です。
+Perl は以下のようなconnectメソッドでデータベース・ハンドルを返します：
+
+  $dbh = DBI->connect("DBI:mysql:database=$db;host=$host",
+                      $user, $password, {RaiseError => 1});
+
+一度データベースにつながると、以下のようにしてSQLステートメントを
+実行することが出来ます：
+
+  my $query = sprintf("INSERT INTO foo VALUES (%d, %s)",
+                      $number, $dbh->quote("name"));
+  $dbh->do($query);
+
+quoteとdoメソッドについての詳細はL<DBI(3)>をご覧下さい。
+他の方法として以下のものがあります：
+
+  $dbh->do("INSERT INTO foo VALUES (?, ?)", undef,
+           $number, $name);
+
+この場合、quoteメソッドは自動的に行われます。L<DBI(3)>でbind_paramメソッドも
+ご覧下さい。詳細に付いては以下のL<データベース・ハンドル>をご覧下さい。
+
+結果を取り出したければ、以下のようにしてステートメント・ハンドルと
+呼ばれるものを作成する必要があります：
+
+  $sth = $dbh->prepare("SELECT * FROM $table");
+  $sth->execute();
+
+このステートメント・ハンドルはいくつかの目的のために使うことができます。
+何よりもまずデータの行を取り出せます：
+
+  my $row = $sth->fetchow_hashref();
+
+テーブルにIDとNAMEというカラムがあれば、$row はキーとしてIDとNAMEを
+持つハッシュへのリファレンスとなります。詳細に付いては、
+以下のL<ステートメント・ハンドル>をご覧下さい。
+
+それでは、よりフォーマルなアプローチをしてきましょう：
+
+
+=head2 クラス・メソッド
+
+=over
+
+=item B<connect>
+
+    use DBI;
+
+    $dsn = "DBI:mysql:$database";
+    $dsn = "DBI:mysql:database=$database;host=$hostname";
+    $dsn = "DBI:mysql:database=$database;host=$hostname;port=$port";
+
+    $dbh = DBI->connect($dsn, $user, $password);
+
+C<database>は常に指定しなければいけません。
+
+=over
+
+=item host
+
+=item port
+
+ホスト名。指定がないか、''が指定されれば、ローカル・マシン上でUNIXソケットの
+ためのデフォルトのポートで動いているMySQLデーモンがデフォルトとなります。
+
+MySQLデーモンが標準でないポート番号で動いていれば、ポート番号を
+connectのC<hostname>引数でI<ホスト名>とI<ポート番号>をコロン(C<:>)でつなげるか、
+あるいはC<port>引数を使って明示的に示すことが出来ます。
+
+=item mysql_client_found_rows
+
+MySQLサーバーに接続しているときにフラグCLIENT_FOUND_ROWSを
+有効(TRUE値)あるいは無効(FALSE値)にします。これは不思議な影響があります：
+mysql_client_found_rowsなしに、以下のような問い合わせをおこなうと
+
+  UPDATE $table SET id = 1 WHERE id = 1
+
+MySQLエンジンは常に0を返します。なぜならどの行も変更されないからです。
+しかしmysql_client_found_rowsがあると、人によっては期待しているかもしれない
+idが1である行の数を返します。（少なくとも他のエンジンとの互換性のために）
+
+=item mysql_compression
+
+MySQL 3.22.3のものと同様、新しい機能がサポートされています：
+もしDSNにオプション"mysql_compression=1"が入っていれば、
+クライアントとサーバとの通信は圧縮されます。 
+
+=item mysql_connect_timeout
+
+DSNにオプション"mysql_connect_timeout=##"が入っていると、そのサーバーへの
+接続リクエストは指定された秒数後、成功していなければタイムアウトします。
+
+=item mysql_read_default_file
+
+=item mysql_read_default_group
+
+これらのオプションは/etc/my.confや~./my.confのような構成ファイルを
+読み込むために使うことが出来ます。デフォルトでは、MySQLの
+Cクライアント・ライブラリはクライアント・プログラム（mysql、mysqladmin、....）
+とは違って、何も構成ファイルを使いません。このため、以下のように
+構成ファイルを読み込むように明示的に要求する必要があります：
+
+    $dsn = "DBI:mysql:test;mysql_read_default_file=/home/joe/my.cnf";
+    $dbh = DBI->connect($dsn, $user, $password)
+
+オプションmysql_read_default_group は構成ファイルでのデフォルト・グループを
+指定するために使うことが出来ます：通常これはI<client>グループです。
+以下の例をご覧下さい：
+
+    [client]
+    host=localhost
+
+    [perl]
+    host=perlhost
+
+(エントリの順番に注意してください! [client]と[perl]セクションを反対にすると
+例は動きません！）
+
+この構成ファイルを読み込んだならば、典型的にはI<localhost>に接続されます。
+しかし以下のようにすると：
+
+    $dsn = "DBI:mysql:test;mysql_read_default_group=perl;"
+        . "mysql_read_default_file=/home/joe/my.cnf";
+    $dbh = DBI->connect($dsn, $user, $password);
+
+I<perlhost>に接続されます。デフォルト・グループを指定し、ファイルを指定しないと、
+デフォルトの構成ファイルがすべて読み込まれるということに注意してください。
+詳細に付いてはC関数mysql_options()のドキュメントをご覧下さい。
+
+=item mysql_socket
+
+MySQL 3.21.15のものと同様。サーバーに接続するために使われるUNIXソケットを
+選択することが出来ます。以下のようにします：
+
+    mysql_socket=/dev/mysql
+
+クライアントに組みこまれているソケットのための場所以外を使うのでなければ、
+通常このオプションは必要ありません。 
+
+=item mysql_ssl
+
+true値で、MySQLデータベースに接続するときCLIENT_SSLフラグが有効に
+なります：
+
+  mysql_ssl=1
+
+これはサーバーとの通信が暗号化されるということを意味します。
+
+mysql_sslを有効にすると、以下のフラグも使いたいと思うかもしれません：
+
+=item mysql_ssl_client_key
+
+=item mysql_ssl_client_cert
+
+=item mysql_ssl_ca_file
+
+=item mysql_ssl_ca_path
+
+=item mysql_ssl_cipher
+
+これらはmysql_sslが有効なとき、mysql_ssl_set呼び出しの対応する
+パラメータを指定するために使われます。
+
+
+=item mysql_local_infile
+
+MySQL 3.23.49と同様に、LOAD DATAのためのLOCAL機能はデフォルトでは
+MySQLクライアント・ライブラリでは無効になっているかもしれません。
+もしDSNにオプション"mysql_local_infile=1"が入っていると、
+LOAD DATA LOCALが有効になります。（しかし、
+サーバーがLOCALを却下するよう構成されているサーバーであっても
+このオプションは効力を持ちます。）
+
+
+=back
+
+=back
+
+
+=head2 プライベートなメタデータ・メソッド
+
+=over
+
+=item B<ListDBs>
+
+    my $drh = DBI->install_driver("mysql");
+    @dbs = $drh->func("$hostname:$port", '_ListDBs');
+    @dbs = $drh->func($hostname, $port, '_ListDBs');
+    @dbs = $dbh->func('_ListDBs');
+
+C<$hostname>、ポートC<$port>で走っているmysqlデーモンによって
+管理されている全てのデータベースのリストを返します。このメソッドは
+C<localhost>で走っているデータベースにはほとんど必要ありません：
+可能であれば、この場合には移植性の高い以下のメソッドを使うべきです
+
+    @dbs = DBI->data_sources("mysql");
+
+ホスト名またはポート番号をC<data_source>に与える方法がないということは、
+このメソッドの設計上の問題です。このためだけにC<ListDBs>をサポート
+しているのです。:-(
+
+=back
+
+
+=head2 サーバ管理
+
+=over
+
+=item admin
+
+    $rc = $drh->func("createdb", $dbname, [host, user, password,], 'admin');
+    $rc = $drh->func("dropdb", $dbname, [host, user, password,], 'admin');
+    $rc = $drh->func("shutdown", [host, user, password,], 'admin');
+    $rc = $drh->func("reload", [host, user, password,], 'admin');
+
+      または
+
+    $rc = $dbh->func("createdb", $dbname, 'admin');
+    $rc = $dbh->func("dropdb", $dbname, 'admin');
+    $rc = $dbh->func("shutdown", 'admin');
+    $rc = $dbh->func("reload", 'admin');
+
+サーバ管理のためには、サーバへの接続が必要です。この接続を取得するには
+２つのオプションがあります。１つはドライバ・ハンドル(drh)を使い、
+適切な引数（host デフォルトはlocalhost、user　デフォルトは''、
+password デフォルトは''）を指定します。ドライバ・ハンドルは以下のようにして
+取得することができます
+
+    $drh = DBI->install_driver('mysql');
+
+もう１つは既にあるデータベース・ハンドル(dbh)の接続を再利用します。
+
+管理目的のために使える関数はたった１つで、m(y)sqladminプログラムと同等です。
+実行されるコマンドは第1引数に依存します：
+
+=over
+
+=item createdb
+
+データベース$dbnameを作成します。"m(y)sqladmin create $dbname"と同じです。 
+
+=item dropdb
+
+$dbnameというデータベースを削除します。"m(y)sqladmin drop $dbname"と同じです。
+
+データベースの削除ではなにもI<プロンプトを出さない>ことに注意してください。
+DBIからundoを可能にすることもできません。 
+
+    一度dropDB()メソッドを発行すると、データベースは逝ってしまいます！
+
+これらのメソッドは自分のリスクのもとにお使いください。 
+
+=item shutdown
+
+データベース・エンジンを何も言わずにシャット・ダウンします。（プロンプトなしに！）
+"m((y)sqladmin shutdown"と同じです。 
+
+=item reload
+
+サーバ構成ファイル、そして／あるいはテーブルをリロードします。
+アクセス権限を変更したり、新しいユーザを作ったときには特に重要です。 
+
+=back
+
+=back
+
+
+=head1 データベース・ハンドル
+
+DBD::mysqlドライバは以下のドライバ・ハンドルの属性をサポートして
+います（読込のみ）。
+
+  $errno = $dbh->{'mysql_errno'};
+  $error = $dbh->{'mysql_error};
+  $info = $dbh->{'mysql_hostinfo'};
+  $info = $dbh->{'mysql_info'};
+  $insertid = $dbh->{'mysql_insertid'};
+  $info = $dbh->{'mysql_protoinfo'};
+  $info = $dbh->{'mysql_serverinfo'};
+  $info = $dbh->{'mysql_stat'};
+  $threadId = $dbh->{'mysql_thread_id'};
+
+これらはそれぞれ、mysql_errno(), mysql_error(), mysql_get_host_info(),
+mysql_info(), mysql_insert_id(), mysql_get_proto_info(),
+mysql_get_server_info(), mysql_stat() and mysql_thread_id()に対応します。
+
+
+=head1 ステートメント・ハンドル
+
+DBD::mysqlのステートメント・ハンドルは多くの属性をサポートしています。
+これらには以下の例のようにアクセスします、
+
+  my $numFields = $sth->{'NUM_OF_FIELDS'};
+
+ほとんどの属性はI<execute>が成功した後でないと適性ではないことに
+注意してください。そのような場合には、C<undef>が返されます。
+もっとも重要な例外はC<mysql_use_result>属性です：これはドライバに
+mysql_store_resultではなく、mysql_use_resultを強制的に
+使うようにします。mysql_use_resultはより速く、メモリ消費もより少ないのですが、
+他のプロセスを妨害しがちです（これはmysql_store_resultがデフォルトである理由です）
+
+C<mysql_use_result>属性を設定することは、以下のように使います：
+
+  my $sth = $dbh->prepare("QUERY", { "mysql_use_result" => 1});
+
+または
+
+  my $sth = $dbh->prepare("QUERY");
+  $sth->{"mysql_use_result"} = 1;
+
+カラムに依存する属性、例えばI<NAME>、カラム名は配列へのリファレンス
+として返されます。この配列インデックスはI<fetchrow>または同類のメソッド
+によって返される配列でのインデックスに対応します。例えば以下のコードは
+テーブル名のヘッダを全ての行と一緒に出力します：
+
+  my $sth = $dbh->prepare("SELECT * FROM $table");
+  if (!$sth) {
+      die "Error:" . $dbh->errstr . "\n";
+  }
+  if (!$sth->execute) {
+      die "Error:" . $sth->errstr . "\n";
+  }
+  my $names = $sth->{'NAME'};
+  my $numFields = $sth->{'NUM_OF_FIELDS'};
+  for (my $i = 0;  $i < $numFields;  $i++) {
+      printf("%s%s", $i ? "," : "", $$names[$i]);
+  }
+  print "\n";
+  while (my $ref = $sth->fetchrow_arrayref) {
+      for (my $i = 0;  $i < $numFields;  $i++) {
+          printf("%s%s", $i ? "," : "", $$ref[$i]);
+      }
+      print "\n";
+  }
+
+移植可能なアプリケーションでは、頭だけを大文字にしたり、大文字小文字を
+混った名前の属性を使うように制限すべきです。名前が小文字の属性はDBD::mysqlで
+提供されています。属性には以下のものが含まれます：
+
+=over
+
+=item ChopBlanks
+
+この属性はI<fetchrow>がカラムの値の前と後ろについている空白を切り捨てるかを
+決定します。空白の切捨てはI<max_length>属性に影響を与えません。 
+
+=item mysql_insertid
+
+MySQLは自動的にユニークなキーの値を選ぶ機能があります。もしこれが起こると、
+新しいIDがこの属性に格納されます。この属性にアクセスするもう１つの
+方法は$dbh->{'mysql_insertid'}'を使うことです。この場合には$dbhを
+使うということを注意してください！）
+
+=item mysql_is_blob
+
+ブール値の配列へのリファレンス：TRUEは、対応するカラムがblobであることを示します。
+この属性はMySQLにのみ適正です。 
+
+=item mysql_is_key
+
+ブール値の配列へのリファレンス：TRUEは対応するカラムがキーであることを示します。
+この属性はMySQLにのみ適正です。 
+
+=item mysql_is_num
+
+ブール値の配列へのリファレンス：TRUEは対応するカラムに数値が
+入っていることを示します。 
+
+=item mysql_is_pri_key
+
+ブール値の配列へのリファレンス：TRUEは対応するカラムがプライマリ・キーで
+あることを示します。
+
+=item mysql_is_auto_increment
+
+ブール値の配列へのリファレンス：TRUEは対応するカラムがAUTO_INCREMENT
+カラムであることを示します。これはMySQLにのみ適正です。
+
+=item mysql_length
+
+=item mysql_max_length
+
+カラム・サイズの最大長の配列へのリファレンス。I<max_length>は
+結果テーブルでの物理的に現れた最大長、I<length>は論理的に可能な最大です。
+I<max_length>はMySQLにのみ適正です。 
+
+=item NAME
+
+カラム名の配列へのリファレンス。
+
+=item NULLABLE
+
+ブール値の配列へのリファレンス；TRUEは、このカラムにNULLが入っても
+いいことを示します。
+
+=item NUM_OF_FIELDS
+
+I<SELECT>またはI<LISTFIELDS>ステートメントによって返されるフィールドの数
+。ステートメントが結果を返したかを判定するために使うことも出来ます；0の値は
+INSERT、 DELETE またはUPDATEのようなSELECT以外のステートメントを示します。 
+
+=item mysql_table
+
+テーブル名の配列へのリファレンス、I<JOIN>の結果で便利です。
+
+=item TYPE
+
+カラムのデータ型の配列へのリファレンス。エンジンのネイティブなカラム型を、
+可能な限りDBI::SQL_INTEGER()またはDBI::SQL_VARCHAR()といった移植可能な型に
+マップします。すべてのネイティブな型が意味的に同値なものを持っているわけ
+ではありません。例えばDBD::mysql::FIELD_TYPE_INTERVALはDBI::SQL_VARCHAR()に
+マップされます。
+ネイティブなカラム型が必要であれば、I<mysql_type>を使ってください。
+下記をご覧下さい。 
+
+=item mysql_type
+
+MySQLのカラム型、例えば DBD::mysql::FIELD_TYPE_SHORT() や
+DBD::mysql::FIELD_TYPE_STRING()などの配列へのリファレンス。
+移植可能な型DBI::SQL_SMALLINT()やDBI::SQL_VARCHAR()を使いたいのであれば、
+I<TYPE>属性を使ってください。 
+
+=item mysql_type_name
+
+mysqlと同じ。ただし数値ではなく型名が返されます。
+可能であればANSI SQL名が優先されます。 
+
+=back
+
+
+=head1 トランザクションのサポート
+
+DBD::mysql 2.0416からは、トランザクションがサポートされます。
+トランザクションのサポートは以下のように機能します：
+
+=over
+
+=item *
+
+DBIの仕様に従って、デフォルトではAutoCommitは有効です。
+
+=item *
+
+もし以下のコマンドを実行すると
+
+    $dbh-E<gt>{'AutoCommit'} = 0;
+
+あるいは
+
+    $dbh-E<gt>{'AutoCommit'} = 1;
+
+そのときドライバはMySQLサーバー変数autocommitを0あるいは1に設定します。
+0から1に切り替えると、DBIの仕様に従ってCOMMITが発行されます。
+
+=item *
+
+メソッド
+
+    $dbh-E<gt>rollback();
+    $dbh-E<gt>commit();
+
+は、それぞれコマンドCOMMITとROLLBACKを発行します。
+AutoCommitモードがオフであり、そしてデータベース・ハンドルのDESTROYメソッドが
+呼び出されたときもROLLBACKが発行されます。これもまた以下のDBIの仕様に従っています。
+
+
+=back
+
+上記のことから、以下のことに注意しなければなりません：
+
+=over
+
+=item *
+
+DBIのドランザクション・サポートを無視するのでなければ、
+サーバー変数autocommitを手動で変更してはいけません、
+
+=item *
+
+AutoCommitモードをオンからオフに、あるいは反対の切り替えは失敗する
+かもしれません。AutoCommitモードを変更するときには、常にエラーを
+チェックしなければなりません。そうするための提案される方法は、
+DBIフラグRaiseErrorを使うことです。RaiseErrorが好きでなければ、
+以下のようなコードを使う必要があります：
+
+  $dbh->{'AutoCommit'} = 0;
+  if ($dbh->{'AutoCommit'}) {
+    # エラーの発生！
+  }
+
+=item *
+
+AutoCommitモードを変更するときにエラーを検知したならば、もはや
+そのデータベース・ハンドルを使うべきではありません。言い換えれば、
+トランザクション・モードが予想できないので、切断し、再接続しなければ
+なりません。代わりにサーバー変数autocommitの値をチェックすることによって
+トランザクション・モードを確認することができます。しかしこれは
+移植可能ではありません。
+
+=item *
+
+いわゆるMySQL "morning bug"を扱うためにDBD::mysqlは"reconnect"という
+特徴をもっています：もっともありがちなことではタイムアウトによって、
+サーバーが切断されていると、デフォルトではドライバは再接続し、
+同じSQLステートメントを再び実行しようとします。しかしこの動きは
+AutoCommitがオフになっていると機能しません：そうでなければ、
+再接続した後、トランザクションの状態が完全に予想不能だからです。
+
+=back
+
+
+=head1 SQL拡張
+
+C APIレベルで使うことが出来るMySQLのあるメタデータ関数は、ここでは
+実装されていません。代りに、それらは"SQL拡張(=SQL extesions)"として
+実装されています。それらが返すのは実際にはステートメント・ハンドルと
+全く同じものだからです。以下のものがあります：
+
+=over
+
+=item LISTFIELDS $table
+
+$tableのカラムを説明するステートメント・ハンドルを返します。
+詳細はmysql_list_fields (C API)のドキュメントをご覧下さい。 
+
+=back
+
+
+
+=head1 互換性の警告
+
+ステートメント属性I<TYPE>は、その意味はDBD::mysql 2.0119とは
+変更されています。以前、それはネイティブなエンジンのカラム型の
+配列でしたが、今は移植可能なSQLカラム型の配列です。古い属性はまだ
+I<mysql_type>で使うことが出来ます
+
+DBD::mysqlはいくつかの理由から目標を変更しました：
+
+=over
+
+=item -
+
+もちろんDBIカイドラインと開発に合わせる必要がある 
+
+=item -
+
+最新のMySQL開発を追い続ける必要がある 
+
+=item -
+
+驚くべきことに、できるだけODBCに近づける必要がある。
+これは現在のDBIの方針であるためです。 
+
+=item -
+
+最後に、少なからず、ツールとしてそれ自身の寿命がある 
+
+=back
+
+これは多くのことが、過去も現在も変更するべきだということを意味します。
+あまり意味のない互換性を維持することには興味がありません、それは本当に
+有効になることなく、ドライバのコードを増大させます、私はこれまでも、
+そしてこれからもいくつかの機能や属性を削っていくつもりです。
+
+円滑なアップグレードを保証するために、以下の方針を採っています：
+
+=over
+
+=item 廃棄準備の機能(=Obsolete features)
+
+最初の段階は、廃れてしまったということを宣言することです。つまり、コードに
+変更はありませんが、その機能は廃棄準備の機能のリストに現れます。下記の
+L<廃棄準備の機能(=Obsolete Features)>をご覧下さい。
+
+=item 廃棄前の機能(=Deprecated features)
+
+機能が廃棄準備になってからしばらくたったとすると、典型的には次の大きな
+安定リリースでは、コードの中に警告が入れられます。これの警告は以下のように
+設定することで押さえることが出来ます：
+
+    $DBD::mysql = 1;
+
+ドキュメントでは、その機能が廃棄準備の機能から廃棄前の機能に移動します。
+下記のL<廃棄前の機能(=Deprecated Features)>をご覧下さい。
+
+=item 削除された機能
+
+最後に、その機能は次の安定リリースで、そのまま削除されます。その機能は
+過去の機能のリストに入ります。L<過去の機能(=Historic Features)>をご覧下さい。 
+
+=back
+
+例えば: ステートメント・ハンドル属性
+
+    $sth->{'LENGTH'}
+
+はDBD::mysql 2.00xyで廃棄準備だと宣言されたとします。これは
+DBD::mysql 2.02xyで廃棄前となり、2.04xyで削除されます。
+
+
+=head2 廃棄準備の機能(= Obsolete Features)
+
+=over
+
+=item データベース・ハンドル属性
+
+以下のデータベース・ハンドル属性はDBD::mysql 2.09で廃棄準備であると
+宣言されました。これらは2.11で廃棄前となり、2.13で削除されます。
+
+=over
+
+=item C<$dbh-E<gt>{'errno'}>
+
+C<$dbh-E<gt>{'mysql_error'}>によって置き換えられています。
+
+=item C<$dbh-E<gt>{'errmsg'}>
+
+C<$dbh-E<gt>{'mysql_error'}>によって置き換えられています。
+
+=item C<$dbh-E<gt>{'hostinfo'}>
+
+C<$dbh-E<gt>{'mysql_hostinfo'}>によって置き換えられています。
+
+=item C<$dbh-E<gt>{'info'}>
+
+C<$dbh-E<gt>{'mysql_info'}>によって置き換えられています。
+
+=item C<$dbh-E<gt>{'protoinfo'}>
+
+C<$dbh-E<gt>{'mysql_protoinfo'}>によって置き換えられています。
+
+=item C<$dbh-E<gt>{'serverinfo'}>
+
+C<$dbh-E<gt>{'mysql_serverinfo'}>によって置き換えられています。
+
+=item C<$dbh-E<gt>{'stats'}>
+
+C<$dbh-E<gt>{'mysql_stat'}>によって置き換えられています。
+
+=item C<$dbh-E<gt>{'thread_id'}>
+
+C<$dbh-E<gt>{'mysql_thread_id'}>によって置き換えられています。
+
+=back
+
+=back
+
+
+=head2 廃棄前の機能(=Deprecated Features)
+
+=over
+
+=item _ListTables
+
+標準のDBIメソッドC<$dbh-E<gt>tables()>で置き換えられています。
+C<$dbh-E<gt>table_info()>もご覧ください。移植可能なアプリケーションは
+以下のようにしたほうがいいでしょう：
+
+    @tables = map { $_ =~ s/.*\.//; $_ } $dbh-E<gt>tables()
+
+というのも、エンジンによってはuserが所有者であると"user.テーブル名"で
+返されるかもしれないからです。このメソッドはDBD::mysqlバージョン 2.11xy
+で削除されます。
+
+=back
+
+
+=head2 過去の機能(=Historic Features)
+
+=over
+
+=item _CreateDB
+
+=item _DropDB
+
+このメソッドは
+
+    $dbh-E<gt>func($db, '_CreateDB');
+    $dbh-E<gt>func($db, '_DropDB');
+
+データベースの作成、削除に使われてきました。これらは以下のものに代わり、
+1.21_07で削除されました：
+
+    $drh-E<gt>func("createdb", $dbname, $host, "admin")
+    $drh-E<gt>func("dropdb", $dbname, $host, "admin")
+
+=item _ListFields
+
+このメソッドは
+
+    $sth = $dbh-E<gt>func($table, '_ListFields');
+
+は、テーブルのカラム名、型、その他の属性を一覧するため使われてきました。
+以下のものに代わり、このメソッドは1.21_07で削除されました：
+
+    $sth = $dbh-E<gt>prepare("LISTFIELDS $table");
+
+=item _ListSelectedFields
+
+このメソッドは
+
+    $sth->func('_ListSelectedFields');
+
+'IS_NUM'、'IS_KEY'のような属性のハッシュへのリファレンスを返すために使われました。
+現在、これらの属性は以下などのようにしてアクセスすることが出来ます
+
+    $sth-E<gt>{'mysql_is_num'};
+    $sth-E<gt>{'mysql_is_key'};
+
+など。このためこのメソッドは1.21_07で削除されました。
+
+=item _NumRows
+
+このメソッドは、
+
+    $sth-E<gt>func('_NumRows');
+
+以下のものと同じように使われました：
+
+    $sth-E<gt>rows();
+
+そして1.21_07で削除されました。
+
+=item _InsertID
+
+このメソッドは
+
+    $dbh-E<gt>func('_InsertID');
+
+以下のものと同等に使うことが出来ます
+
+    $dbh-E<gt>{'mysql_insertid'};
+
+=item ステートメント・ハンドル属性
+
+=over
+
+=item affected_rows
+
+$sth-E<gt>{'mysql_affected_rows'}あるいは$sth-E<gt>execute()の
+結果で置き換えられています。
+
+=item format_default_size
+
+$sth-E<gt>{'PRECISION'}で置き換えられています。
+
+=item format_max_size
+
+$sth-E<gt>{'mysql_max_length'}で置き換えられています。
+
+=item format_type_name
+
+$sth-E<gt>{'TYPE'} (移植可能) あるいは
+$sth-E<gt>{'mysql_type_name'} (MySQL特有)で
+置き換えられています。
+
+=item format_right_justify
+
+$sth-E<gt>->{'TYPE'} (移植可能) あるいは
+$sth-E<gt>{'mysql_is_num'} (MySQL特有)で
+置き換えられています。
+
+=item insertid
+
+$sth-E<gt>{'mysql_insertid'}で置き換えられています。
+
+=item IS_BLOB
+
+$sth-E<gt>{'TYPE'} (移植可能)あるいは
+$sth-E<gt>{'mysql_is_blob'} (MySQL特有)で置き換えられています。
+
+=item is_blob
+
+$sth-E<gt>{'TYPE'} (移植可能) or
+$sth-E<gt>{'mysql_is_blob'} (MySQL特有)で置き換えられています。
+
+=item IS_PRI_KEY
+
+$sth-E<gt>{'mysql_is_pri_key'}で置き換えられています。
+
+=item is_pri_key
+
+$sth-E<gt>{'mysql_is_pri_key'}で置き換えられています。
+
+=item IS_NOT_NULL
+
+$sth-E<gt>{'NULLABLE'}で置き換えられています。（ブール値を
+反対にすることを忘れないでください）
+
+=item is_not_null
+
+$sth-E<gt>{'NULLABLE'}で置き換えられています。（ブール値を
+反対にすることを忘れないでください）
+
+=item IS_NUM
+
+Replaced with $sth-E<gt>{'TYPE'} (portable) or
+$sth-E<gt>{'mysql_is_num'} (MySQL specific).
+
+=item is_num
+
+Replaced with $sth-E<gt>{'TYPE'} (portable) or
+$sth-E<gt>{'mysql_is_num'} (MySQL specific).
+
+=item IS_KEY
+
+Replaced with $sth-E<gt>{'mysql_is_key'}.
+
+=item is_key
+
+Replaced with $sth-E<gt>{'mysql_is_key'}.
+
+=item MAXLENGTH
+
+Replaced with $sth-E<gt>{'mysql_max_length'}.
+
+=item maxlength
+
+Replaced with $sth-E<gt>{'mysql_max_length'}.
+
+=item LENGTH
+
+Replaced with $sth-E<gt>{'PRECISION'} (portable) or
+$sth-E<gt>{'mysql_length'} (MySQL specific)
+
+=item length
+
+Replaced with $sth-E<gt>{'PRECISION'} (portable) or
+$sth-E<gt>{'mysql_length'} (MySQL specific)
+
+=item NUMFIELDS
+
+Replaced with $sth-E<gt>{'NUM_OF_FIELDS'}.
+
+=item numfields
+
+Replaced with $sth-E<gt>{'NUM_OF_FIELDS'}.
+
+=item NUMROWS
+
+Replaced with the result of $sth-E<gt>execute() or
+$sth-E<gt>{'mysql_affected_rows'}.
+
+=item TABLE
+
+Replaced with $sth-E<gt>{'mysql_table'}.
+
+=item table
+
+Replaced with $sth-E<gt>{'mysql_table'}.
+
+=back
+
+=back
+
+
+=head1 MULTITHREADING
+
+DBD::mysqlのマルチスレッドの能力は完全に基礎となっているCライブラリに
+依存します。モジュールはハンドル・データとだけ一緒に機能します。
+グローバル変数は何もアクセスされませんし、また（私の知りうる限りでは）
+安全でない関数は呼ばれていません。こうしてCライブラリがスレッドセーフで、
+スレッド間でハンドルを共有しなければ、DBD::mysql は完全にスレッド・セーフです。
+
+明白な疑問：「Ｃライブラリはスレッド・セーフですか？」です。
+MySQLは"ほとんど"で、理論的には、もしCライブラリが、構成のために
+-with-thread-safe-clientを渡すことによってスレッド・セーフになるように
+コンパイルされていれば（デフォルトではそうなっていません）、
+"Yes"ということができるでしょう。マニュアルの
+I<スレッド・セーフなクライアントの作り方（How to make a threadsafe client)>と
+いうセクションをご覧下さい。
+
+=head1 インストール
+
+Windowsユーザはこのセクションを飛ばして、以下のL<WIN32インストール>に
+いってください。他の方は読みつづけてください。
+
+まず最初に、DBD::mysqlをインストールするためにMySQLサーバーをインストール
+する必要はなりません。しかしながらソースからDBD::mysqlをコンパイルする
+のであれば、少なくともクライアント・ライブラリと、おそらくはヘッダ・ファイルが
+必要になります。MySQLの場合、構成オプション --without-serverを使うことにより
+クライアントだけのバージョンを作成することができます。
+コンパイル済みのバイナリを使う場合には、ディストリビューションにあわせて、
+MySQL-clientとMySQL-develなどのようなにRPMを選択するだけで使うことが出来る
+でしょう。
+
+最初にDBIモジュールをインストールする必要があります。簡単なDBIシェルdbimonを
+使うために、もう１つのPerlモジュールData::ShowTableをインストールすることを
+お勧めします。
+
+CPANモジュールを介して自動的なインストールを試してみることをお勧めします。
+以下のようにやってみてください： 
+
+  perl -MCPAN -e shell
+
+CPANモジュールを使うのが始めてであれば、たくさんの質問をたずねるでしょう。
+最後にCPANプロンプトが出たら、以下のように入力してください：
+
+  install Bundle::DBD::mysql
+
+これが失敗したら（これについては場合によって、例えばファイア・ウォールの中に
+いたり、ネットワーク・アクセスを持っていないなどいくつのも理由があります）、
+手動インストールをする必要があります。まず最初に以下のようなCPANミラーから
+アーカイブを取ってくる必要があります：
+
+  ftp://ftp.funet.fi/pub/languages/perl/CPAN/modules/by-module
+
+以下のアーカイブが必要です（バージョン番号は変更されているかもしれません、
+私はこれを書いている時点での現行のものを選んでいます）：
+
+  DBI/DBI-1.15.tar.gz
+  Data/Data-ShowTable-3.3.tar.gz
+  DBD/DBD-mysql-2.1001.tar.gz
+
+そして以下のコマンドを入力します：
+
+  gzip -cd DBI-1.15.tar.gz | tar xf -
+  cd DBI-1.15
+  perl Makefile.PL
+  make
+  make test
+  make install
+
+  cd ..
+  gzip -cd Data-ShowTable-3.3.tar.gz | tar xf -
+  cd Data-ShowTable-3.3
+  perl Makefile.PL
+  make
+  make install  # 一連のテストが壊れているのでmake testはしないでください
+
+  cd ..
+  gzip -cd DBD-mysql-2.1001.tar.gz | tar xf -
+  cd DBD-mysql-2.1001
+  perl Makefile.PL
+  make
+  make test
+  make install
+
+"perl Makefile.PL"の間に、いくつかの質問されます。
+また別の質問は質問はヘッダファイルとライブラリが入っているディレクトリです。
+例えばファイルF<mysql.h>がF</usr/include/mysql/mysql.h>にあるならば、
+ヘッダ・ディレクトリにF</user>を入力してください。
+F</usr/lib/mysql/libmysqlclient.a> あるいは F</usr/lib/libmysqlclient.so>でも
+同様です。
+
+
+=head1 WIN32 INSTALLATION
+
+ActivePerlを使っているのであれば、DBD-mysqlをインストールするために
+ppmを使うことが出来ます。Perl 5.6ではBuild 623以上にアップグレードして
+ください。すると以下のコマンドが実行できるようになります
+
+  ppm install DBI
+  ppm install DBD::mysql
+
+HTTPプロキシーが必要であれば、環境変数http_proxyを設定する
+必要があるかもしれません。例えば以下のように：
+
+  set http_proxy=http://myproxy.com:8080/
+
+これを書いている辞典ではActivePerl 5.8.0リボジトリにはDBD::mysqlは
+ありません。しかしRandy Kobesが親切にも独自の配布をしてくれています。
+それは以下のようにするとうまくいくでしょう：
+
+  ppm install http://theoryx5.uwinnipeg.ca/ppms/DBD-mysql.ppd
+
+そうでなければ、まちがいなくCコンパイラが必要になります。そしてそれは
+Perlそのものをコンパイルするために使われたのもと同じでなければいけません。
+もしCコンパイラをお持ちでなければ、Perlソース・ディトリビューションからの
+ファイルREADME win32がegcsやgccのようなフリーで手に入る配布可能なCコンパイラを
+教えてくれます。PerlソースはCPANミラーのどこでも、srcディレクトリで利用可能です。
+例えば以下の場所があります。
+
+    ftp://ftp.funet.fi/pub/languages/perl/CPAN/src/latest.tar.gz
+
+Win32環境でDBD::mysqlをインストールするためには、www.tcx.seでダウンロードできる
+win32 clientsパッケージを使うことをお勧めします。私の場合、以下のステップが
+必要になりました：
+
+=over
+
+=item -
+
+現在のPerlバージョン(これを書いている時点では5.6)はCライブラリの
+検知に問題を持っています。私は以下のパッチを推奨します：
+
+  *** c:\Perl\lib\ExtUtils\Liblist.pm.orig Sat Apr 15 20:03:40 2000
+  --- c:\Perl\lib\ExtUtils\Liblist.pm      Sat Apr 15 20:03:45 2000
+  ***************
+  *** 230,235 ****
+  --- 230,239 ----
+      # add "$Config{installarchlib}/CORE" to default search path
+      push @libpath, "$Config{installarchlib}/CORE";
+
+  +     if ($VC  and  exists($ENV{LIB})  and  defined($ENV{LIB})) {
+  +       push(@libpath, split(/;/, $ENV{LIB}));
+  +     }
+  +
+      foreach (Text::ParseWords::quotewords('\s+', 0, $potential_libs)){
+
+        $thislib = $_;
+                                                                       
+=item -
+
+F<C:\>にソースを解凍します。これによってサブディレクトリincludeとlibを持った
+ディレクトリ F<C:\mysql>が作られます
+
+重要：このサブディレクトリが他のTCXファイルによって共有されないようｎ
+注意してください！特にMySqlサーバを同じディレクトリに*格納しない*で下さい。
+サーバが既にF<C:\mysql>にインストールされていれば、F<C:\temp>のような場所を
+選び、win32clientsをそこに解凍してください。DBD::mysqlをインストールしてしまえば、
+このディレクトリは完全に削除することが出来ることに注意してください。
+
+=item -
+
+DBD::mysqlのソースを他のディレクトリ、例えばF<C:\src\siteperl>に解凍します。 
+
+=item -
+
+DOS窓を開けて、ディレクトリをF<C:\src\siteperl>に変更します。
+
+=item -
+
+モジュールの構築を繰り返すときにだけ、次のステップが必要になります：
+以下のコマンドを実行することによって、きれいな構築ツリーを持つことを確実にします
+
+  nmake realclean
+
+VC++を持っていなければ、nmakeをあなたの好きなmakeに置き換えてください。
+このステップでエラー・メッセージが出ても、それらを安全に無視することが出来ます。
+
+=item -
+
+以下のコマンドを実行してください；
+
+  perl Makefile.PL
+
+これはいくつか設定のためたずねます。本当に大事なものは以下のものです：
+
+  Which DBMS do you want to use?
+
+ここでは1（MySQLのみ)を入力してください。すると
+
+  Where is your mysql installed? Please tell me the directory that
+  contains the subdir include.
+
+ここでは、例えばF<C:\mysql>またはF<C:\tmp\mysql>のようなwin32clients
+ディレクトリを入力する必要があります。
+
+=item -
+
+通常の方法を続けます：
+
+  nmake
+  nmake install
+
+=back
+
+ActiveState PerlバージョンのためのPPMパッケージを作成したければ、
+上記のステップを以下のように変更します：以下のように実行します。
+
+  perl Makefile.PL NAME=DBD-mysql BINARY_LOCATION=DBD-mysql.tar.gz
+  nmake ppd
+  nmake
+
+一度それが終了したら、tarとgzip（例えばCygWin32ディストリビューションのもの）を
+使ってアーカイブを作成します：
+
+  mkdir x86
+  tar cf x86/DBD-mysql.tar blib
+  gzip x86/DBD-mysql.tar
+
+x86/DBD-mysql.tar.gz と DBD-mysql.ppd というファイルをあるWWWサーバにおいて、
+以下のようにPPMプログラムでタイプすることにより、インストールします。
+
+  install http://your.server.name/your/directory/DBD-mysql.ppd
+
+
+=head1 作者(=AUTHORS)
+
+The current version of B<DBD::mysql> is almost completely written
+by Jochen Wiedmann (I<joe@ispsoft.de>). The first version's author
+was Alligator Descartes(I<descarte@symbolstone.org>), who has been
+aided and abetted by Gary Shea, Andreas Kvnig and Tim Bunce
+amongst others.
+
+The B<Mysql> module was originally written by Andreas Kvnig
+<koenig@kulturbox.de>. The current version, mainly an emulation
+layer, is from Jochen Wiedmann.
+
+
+=head1 著作権(=COPYRIGHT)
+
+This module is Copyright (c) 1997-2001 Jochen Wiedmann, with code
+portions Copyright (c)1994-1997 their original authors. This module is
+released under the same license as Perl itself. See the Perl README
+for details.
+
+
+=head1 メーリング・リスト・サポート
+
+このモジュールは以下のメーリング・リストで管理され、サポートされています。
+
+    msql-mysql-modules@lists.mysql.com
+
+このリストに参加するには以下のアドレスにメールします：
+
+    msql-mysql-modules-subscribe@lists.mysql.com
+
+あるいは
+
+    msql-mysql-modules-digest-subscribe@lists.mysql.com
+
+メーリング・リストのアーカイブは以下のアドレスから利用できます：
+
+    http://www.progressive-comp.com/Lists/?l=msql-mysql-modules
+
+
+さらにDBIとそのモジュール一般についての質問はdbi-userメーリングリストを
+試してもよいかもしれません。以下のサイトから参加できます：
+
+    http://www.fugue.com/dbi
+
+メーリング・リストのアーカイブは以下のサイトにあります：
+
+     http://www.rosat.mpe-garching.mpg.de/mailing-lists/PerlDB-Interest/
+     http://outside.organic.com/mail-archives/dbi-users/
+     http://www.coe.missouri.edu/~faq/lists/dbi.html
+
+
+=head1 DBIについてのさらなる情報
+
+DBIプロジェクトについてのさらなる情報は以下のURLのWWWで見つかるでしょう：
+
+    http://www.symbolstone.org/technology/perl/DBI
+
+ここにはドキュメント、メーリングリストへのリンク、メーリングリストのアーカイブ、
+そして利用可能なモジュールの最新バージョンへのリンクがあります。
+
+DBIインターフェースそのものの情報は以下のようにタイプするととることが出来ます：
+
+    perldoc DBI
+
+さあ、やってみましょう！
+
+=cut

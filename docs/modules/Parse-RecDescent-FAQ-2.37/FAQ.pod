@@ -1,0 +1,2991 @@
+
+=encoding euc-jp
+
+=head1 名前
+
+Parse::RecDescent::FAQ - Parse::RecDescent 公式FAQ
+
+=head1 全体的な質問
+
+=head2 Parse::RecDescentはLL(1)? LL(N)? LR(1)? LR(N)? 
+
+=over 4
+
+=item Yves Ortonの回答
+
+I have a data structure which is
+
+私はデータ構造を持っている
+
+a hash of entries
+where
+an entry is a list/array of sets
+
+要素が配列/リストのハッシュになっているデータ構造
+
+I have also a grammar that can parse the syntax of the text files that
+contain the data I want to fill this structure with. Until here
+everything is ok.
+
+この構造を満たしくれるデータを含むテキストファイルの構文を、
+解析できる文法も、私は持っている。ここまでは万事OK。
+
+Problem: I cannot figure out how to actually FILL the parsed data into
+the structure. I can only decide if a string is grammatically correct
+or not.
+
+問題は：解析されたデータをどうやって構造に満たせばいいのかがわからない
+ということ。私にできることは、ただ、ある文字列が文法的に正しいか
+どうか決めること。
+
+=back
+
+Also see the "Left-recursion" section under "PARSER BEHAVIOR"
+
+"PARSER BEHAVIOR"の"Left-recursion"も参照のこと。
+
+=head1 デバッグ
+
+=head1 パーサの振る舞い
+
+=head2 最上位の規則にマッチさせる
+
+I have a question regarding subrules within grammars used with
+Parse::RecDescent - The following code best illustrates the best test
+case that I can identify which highlights my problem. 
+
+Parse::RecDescentの文法で、サブ規則に関する質問があります。
+次のコードは、私の抱えている問題を浮き彫りにさせてくれる最良の事例です。
+
+
+
+Note that with this test code, each of the lines within the __DATA__
+section are tested against the grammar and the expected result, either
+pass or fail, is indicated by the 1 or 0 at the start of the line respectively.
+
+このテストコードでは、__DATA__以下の各行が文法に関してチェックされ、
+各行の最初の0か1でもって、予想結果が通ったのか失敗したのかが示されます。
+
+However, despite these expected results, the grammar does not reject
+the lines arg1, and arg1,arg2,, which ideally should be rejected due
+to the incomplete match of the subrule (comma element) - In these
+cases, a trace shows that the subrule terminal comma is matched and
+consumed, despite the entire subrule, consisting of comma and element,
+not being matched. I am sure this is a relatively straight-forward
+oversight within the grammar on my part, but I am at a loss as to how
+to correct this.  
+
+ところが、期待に反して文法はarg1、arg1,arg2,の行を拒絶しません。
+理想では、サブ規則(comma element)に完全にはマッチしないので、拒絶される
+はずなのですが。これらの場合にトレースすると、カンマと要素で構成
+されているサブ規則は全体としてはマッチしていないにもかかわらず、
+サブ規則の終端要素のカンマはマッチして消費されています。これが
+私の側の比較的明瞭な手落ちであるということは間違いないのですが、
+どうやって直せばいいかわからず途方にくれています。
+
+
+ #!/usr/bin/perl
+ 
+ use Parse::RecDescent;
+ use Test::More 'no_plan';
+ 
+ my $grammar = q
+ {
+ argument:       element ((comma element)(s))(?)
+ 
+ element:        /[\w.-_]+/
+ 
+ comma:          ','
+ };
+ 
+ my $sql = Parse::RecDescent->new( $grammar );
+ while ( chomp( my $test = <DATA> ) )
+ {
+     my ( $result, $statement ) = split /,/, $test, 2;
+     ok( defined $sql->argument( $statement ) == $result, $test );
+ }
+ 
+ __DATA__
+ 0,
+ 1,arg1
+ 0,arg1,
+ 1,arg1,arg2
+ 0,arg1,arg2,
+ 1,arg1,arg2,arg3
+ 
+
+
+=head3 Randal L. Schwartzの回答
+
+It's matching a portion of the string, which is legal unless you also
+anchor the end of the pattern. I typically use C</\z/> at the end of my
+top-level pattern.  
+
+これは文字列の一部にマッチしている。あなたがパターンの最後に
+アンカーを置かない限り、これは正しい。私は最上位のパターンの
+最後には概してC</\z/>を使っている。
+
+Also, your comma-separated string can be parsed simply with 
+
+また、あなたのカンマ区切りの文字列は、次のように単純に解析できる。
+
+ argument: element(s /,/)
+
+as shown in the P::RD examples on the manpage. 
+
+これはP::RDのマニュアルにある例が示している通り。
+
+=head2 バックトラック(PRDはこれができない) 
+
+Take the following regex:
+
+次の正規表現は：
+
+  /(aa|a)a/
+
+It will match this text:
+
+このテキストにマッチする。
+
+  aaa
+
+Now take the following PRD grammar:
+
+では、次のPRD文法は：
+
+ use strict;
+ use warnings;
+ use Parse::RecDescent;
+ 
+ my $grammar = 'startrule: ( "aa" | "a" ) "a"';
+ my $parser  = Parse::RecDescent->new($grammar);
+ my $text    = 'aa';
+ 
+ print defined($parser->startrule($text)) ? "Good!\n" : "Bad!\n";
+
+It *will* print "Bad", meaning that PRD did not match it.
+
+"Bad"をプリントする*だろう*。つまり、PRDはマッチしなかったのだ。
+
+The reason is that the first branch of the alternation matched,
+then the next subrule failed.
+
+その理由は、選択肢の最初の塊がマッチして、それから次の規則が失敗
+したからだ。
+
+You may ask: is there any way to persuade a top-down parser like P::RD
+to accept the above text as valid? I know that, in this simple
+example, I could easily rewrite the grammar (either by saying 
+
+君は尋ねるかもしれない：P::RDのような擬似下向きパーサが上記の
+テキストを正しく受け入れる方法はないのか？と。それはある。簡単な
+例で、文法を軽く書き直してみよう（次のどちらかになる）。
+
+ ("a" |"aa" ) "a" 
+
+or 
+
+あるいは
+
+ "aa" a" | "a" "a"
+
+but what I mean is: Is there any
+additional feature I have missed which would allow the grammar as is
+to parse the text successfully? 
+
+だけども、私が言いたかったのは：文法そのものとして、テキストを
+うまく解析するような追加の機能があるかどうか？ということだ。
+
+To put the question another way, can I get P::RD to behave more like a
+regex engine? After all, even an NFA engine would backtrack to try all
+possible alternatives before failing :-) (Perhaps parsers just do not
+backtrack past individual subrules under any circumstances.) 
+
+この問題を言い換えると、P::RDはもっと正規表現エンジンのように振舞う
+ようにできるのか？ということになる。結局のところ、
+NFA（非決定性オートマトン）エンジンでさえも失敗する前に可能な選択肢を
+全て試すためにバックトラックすることになる（笑）
+（たぶんどんな環境でもパーサは通り過ぎた個々のサブ規則をバックトラック
+することはない）
+
+=head3 そして答えは…
+
+RecDescent parsers do not work that way. They don't backtrack on
+failure; they just fail. Of course, there's nothing to prevent a
+recursive descent parser from incorporating backtracking too, but
+RecDescent doesn't. 
+
+RecDescentパーサはそのような仕事をしない。それらは失敗した際に
+後戻りしない；ただ失敗するだけだ。もちろん、再帰下降パーサが
+バックトラック機能も取り込むことを妨げるものは何も無い。だが
+RecDescentはそうしない。
+
+So, if you need backtracking in part of your grammar, you need to use
+plain old regexes there.
+
+だから、あなたの文法でバックトラックが必要になったら、その部分は
+昔ながらの簡素な正規表現を使うことになる。
+
+
+
+=head2 スキップ
+
+The variable
+
+次の変数
+
+  $Parse::RecDescent::skip 
+
+is what you need. It takes strings and C<qr>-quoted regular expressions.
+See the Parse::RecDescent docs for details.
+
+が必要とするものだ。これは文字列とC<qr>-クォート正規表現をとる。
+詳細はParse::RecDescentのドキュメントを見て欲しい。
+
+Also, see the C<Terminal Separators> parts of the docs.
+
+また、このドキュメントのC<Terminal Separators>の所も見てもらいたい。
+
+=head2 左再帰
+
+=over 4
+
+=item * 左再帰の除去についてRandal Schwartz statesは述べた:
+
+I had a fun time eliminating a mutual left-recursion problem for
+my "Data-Undumper" program, which used P::RD as an essential component.
+See my discussion of such at
+
+私は自分の"Data-Undumper"プログラム - これは本質的な部分でP::RDを
+使っているが - における共通の左再帰の問題を取り除くために、
+愉快な経験をした。私の議論については以下を見ていただきたい。
+
+ http://www.stonehenge.com/merlyn/LinuxMag/col29.html
+
+=item * Also, regarding elimination see this Perlmonks node:
+
+ http://www.perlmonks.org/index.pl?lastnode_id=6364&node_id=153155
+
+=item * 左再帰の検出について、Conwayは述べている:
+
+RecDescent does a complete graph traversal looking for n-ary
+left-recursion loops and fails to compile the grammar if it finds any
+left-recursive loop involving any number of rules. It has done this since its
+earliest versions.
+
+RecDescentは完全グラフ遷移によるn個の左再帰のループの探査を行なう。
+そして左再帰が規則に伴っていることを発見すると、文法のコンパイルに
+失敗する。初期バージョン以来、そのようにやてきた。
+
+=back
+
+
+
+
+=head2 規則内で省略可能なサブ規則でのcommit
+
+Ques: When a subrule in a rule that has a "zero or
+more" repetition specifier (ie. ? or s?) has a
+<commit> directive in its production followed by the
+conditional <error?> <reject> production, if that
+subrule's production becomes committed, does that
+error cause the rule containing the subrule to fail
+also?  It should right, if we have committed?  It does
+not seem to work.
+
+質問：ある規則内で、"0回以上"の反復修飾子（つまり?かs?）がついた
+サブ規則が、条件付き<error?> <reject> の前のプロダクションで
+<commit>を持っているとき、このサブ規則のプロダクションが
+commitされたら、エラーによってそのサブ規則を含んだ規則も
+失敗になりますか？これは正しいはずですよね？そのようには動作
+しないように思えます。
+
+Here is what I mean:
+
+私がいいたいのは：
+
+ myrule: 'stuff' mysubrule(?)
+
+ mysubrule: ID <commit> '[' ']'
+       | <error?> <reject>
+
+If the 1st production of mysubrule has committed, then
+myrule should fail.  It doesn't seem to.  If this is
+not a bug, how do I get this behavior?
+
+mysubruleの最初のプロダクションがcommitされれば、
+myruleは失敗するはずです。でもそうならないようです。これが
+バグでないとしたら、この振る舞いをどう理解すればよいでしょうか？
+
+=over 4
+
+=item * Damianの回答
+
+The optional nature of the reference to mysubrule(?)
+means that, when the subrule fails (whether committed or not)
+the failure doesn't matter, since myrule can match if it
+finds zero mysubrules, which it just did.
+
+mysubrule(?)のオプションとしての性質が意味しているのは、
+サブ規則が失敗したとき（commitされたかどうかに関わりなく）、
+その失敗は問題にならないということだ。なぜなら0個の
+mysubruleが発見されれば、myruleはマッチすることができるから。
+そしてそれは確かにそうなっている。
+
+
+The usual way to get the rule-of-the-subrule to fail upon subrule failure is
+by "anchoring" the end of the match. That might be:
+
+サブ規則の失敗によって、そのサブ規則で構成された規則を失敗させる
+定石は、照合の最後に"アンカーを置く"ことだ。それは：
+
+  myrule: 'stuff' mysubrule(?) ...!ID
+
+  mysubrule: ID <commit> '[' ']'
+           | <error?> <reject>
+
+or 
+
+あるいは
+
+  myrule: 'stuff' mysubrule(?) /\s*\Z/
+
+  mysubrule: ID <commit> '[' ']'
+           | <error?> <reject>
+
+
+or whatever addition confirms that there really wasn't anything else
+after 'stuff'.
+
+あるいは'stuff'の後ろに存在しないことが確実なものを何でもいいから
+追加する。
+
+=item * Now that you think you know the answer...
+
+That answer is partially wrong, as was pointed out by Marcel Grunaer.
+In this phrase:
+
+Marcel Grunaerによって指摘されたように、この答えは部分的に間違っている。
+次のフレーズにおいて：
+
+  myrule: 'stuff' mysubrule(?) ...!ID
+
+it is necessary to return a { 1 }, as the rule
+fails otherwise, presumably because of the negative lookahead:
+
+{ 1 } を返す必要がある。そうでなければこの規則は失敗する。
+たぶん否定の先読みだから：
+
+  myrule: 'stuff' mysubrule(?) ...!ID { 1 }
+
+Marcel went on to point out an optimization:
+
+Marcelはさらに進んで最適化を指摘した：
+
+another option would be the use of a rulevar:
+
+もう一つの選択肢はrulevarの利用だ：
+
+  myrule : <rulevar: local $failed>
+  myrule : 'stuff' mysubrule(?) <reject:$failed>
+
+  mysubrule: ID <commit> '[' ']'
+    | <error?> { $failed++ }
+
+this way you don't have to specify a potentially complex negative
+lookahead, and the method works over several levels of subrules
+as well.
+
+このやり方は、複雑になりそうな否定先読みを指定しなくてすむ。
+そして、この方法はサブ規則の幾つかのレベルを超えても動作する。
+
+=back
+
+
+=head2 文法に対応した行番号を警告させる
+
+How do I match the line numbers with the actual contents of my
+script?
+
+どうやって行番号とスクリプトの実際の内容とをマッチさせればいいですか？
+
+At present, you can't (but that's on the ToDo list).
+Setting C<$::RD_TRACE> can be useful though:
+
+現時点では、できない（しかしToDoリストに入っている）。
+しかしながら、C<$::RD_TRACE>をセットすれば役に立つだろう：
+
+Once you've run with C<$RD_TRACE>, do this:
+
+このように、ひとたびC<$::RD_TRACE>を使って実行すれば：
+
+        perl -w RD_TRACE
+
+Then go and examine the actual line numbers given for the error
+in the file C<RD_TRACE>.
+
+そのあと、ファイルC<RD_TRACE>で、エラーで与えられた実際の行番号
+を試すことになる。
+
+That will show you the actual generated code that's the problem.
+
+これで問題となっている実際に生成されたコードが示される。
+
+That code will, in turn, give you a hint where the problem is in the
+grammar (e.g. find out which subroutine it's in, which will tell you the
+name of the offending rule).
+
+今度は、このコードによって、文法のどこに問題があるかのヒントが
+与えられるだろう。
+
+=head1 無視できるトークン
+
+=head2 Cのコメントを除去
+
+Since there is no separate lexer in recdescent. And it is top down. Is
+there anyway to deal w/ removing C comments that could be anywhere.
+
+再帰下降パーサでは独立した字句解析がありません。そして下向きです。
+任意の場所にあるCコのメントを取り除くための方法はありますか。
+
+=over 4
+
+=item * Conwayの回答
+
+Sure. Treat them as whitespace!
+
+もちろん。空白として扱えばいいのさ！
+
+Do something like this:
+
+こんなふうに：
+
+	program: <skip: qr{\s* (/[*] .*? [*]/ \s*)*}x> statement(s)
+
+	statement: # 等々...
+
+=back
+
+=head1 改行の処理
+
+=head2 Windowsの初期化ファイルの解析
+
+I'm trying ot use Parse::RecDescent to parse a configuration file which
+looks like this:
+
+Parse::RecDescentを使って、こんな感じの構成ファイルをパースしようと
+しています：
+
+ [SECTION]
+ parameter 1=value 1
+ parameter2=value 2
+
+ [NEXTSECTION]
+ other parameter=other value
+
+=over 4
+
+=item * Damianの回答
+
+       q{
+                config:
+                          section(s)
+
+                section:
+                          <skip: ''>  section_label parameter(s)
+                        | <error>
+
+                section_label:
+                          /\[[A-Z]+\]\s*/
+
+                parameter:
+                          key "=" value
+
+                key:
+                          /[A-Za-z0-9 ]+/
+
+                value:
+                          /.*\n/
+        }
+
+=item * 別解
+
+Also take a look at the example in section 11.2 in "Data Munging with Perl"
+by Dave Cross.
+
+Dave Crossの『Perlデータマンジング』セクション11.2の例も
+一読されたし。
+
+
+=back
+
+
+=head2 行末の処理
+
+
+
+I'm trying to parse a text line by line using Parse::RecDescent. Each
+line is terminated by a "\n".
+
+Parse::RecDescentを使って一行毎にパースしようとしています。それぞれの
+行は"\n"で終わります。
+
+Although the task setting up a grammar for this case is straightforward
+the following program doesn't
+produce any results.
+
+このケースのための文法を準備するのは単純明快なことです。にもかかわらず
+次のプログラムは何ら結果を生み出しません。
+
+     use Parse::RecDescent;
+
+     $grammar =
+     q{
+         line:       word(s) newline { print "Found a line\n"; }
+         word:       /\w+/
+         newline : /\n/
+     };
+
+     $parse = new Parse::RecDescent ($grammar);
+
+
+     $data =
+     qq(This is line one\nAnd this is line two\n);
+
+     $parse->line($data);
+
+
+RecDescent doesn't recognize the newlines. Does anybody know what I'm
+getting wrong?
+
+RecDescentは改行を認識しません。私が何を間違えているのか、
+誰かわかりますか？
+
+=over 4
+
+=item * Damianの回答
+
+
+
+By default, P::RD skips all whitespace (*including* newlines) before
+tokens. 
+
+デフォルトでは、P::RDはトークンの前にある全ての空白（改行も*含む*）を
+スキップする。
+
+Try this instead:
+
+かわりにこうやってみて：
+
+         line:    <skip: qr/[ \t]*/> word(s) newline 
+				{ print "Found a line\n"; }
+         word:    /\w+/
+         newline: /\n/
+
+=back
+
+=head1 カラム指向の処理
+
+=head2 空白、テキスト、N列目、ピリオド、数字（先読みに対するいくらかのリファレンス）
+
+
+Ok, now the line I'm trying to deal with is:
+
+さて、今私が扱うとしている行は：
+
+"some amount of
+whitespace,
+then some text, then starting at column 48 a number, followed by a
+period,
+followed by another number".  I want to capture the text (the
+"title"),
+and the two numbers (major and minor versions)
+
+"いくらかの空白、その後にテキスト、それから48列目に数字、後ろにピリオド、
+その後ろに別の数字が続く"。私はテキスト（タイトル）とその二つの数字
+（メジャー及びマイナーバージョン）を取り出したい。
+
+=over 4
+
+=item * Damian Conwayの回答
+
+You really do want to use a regex here (to get the
+lookahead/backtracking that RecDescent doesn't do).
+
+ここでは正規表現をつかうことを本気で望むことになる
+（RecDescentがやらない先読み/バックトラックを得るために）。
+
+   line: m/^(\s*        		# 最初に続く空白
+   	      (.*?)        		# タイトル
+              (?:\s+(?=\d+\.\d+\s*$)) 	# 数字の前のスペース
+	    )
+            (\d+)        		# メジャーバージョンの数字
+            \.
+            (\d+)        		# マイナーバージョンの数字
+	 /x
+	 <reject: length $1 != 47>
+	 { @{$return}{title major minor)} = ($2,$3,$4) }
+
+=back
+
+
+
+=head2 もう一つの例
+
+I'm parsing some lines where the "column formatting" is fixed, i.e. a
+particular line might be formally described as "a single word followed by
+some amount of whitespace followed by another word whose first character
+begins at column 22". 
+
+"カラム形式"が固定している行をパースしています。つまり、その行というのは、
+"一単語、いくつかの空白、それから22列目から始める別の一単語"です。
+
+=over 4
+
+=item *  間違っている単純な回答
+
+
+Hmm, I guess I could make this simpler and do this:
+
+うーむ、もっと簡単にできそうだ。こういうふうに：
+
+line: word <reject: $thiscolumn != 22> word
+word: /\S+/
+
+right?
+
+いいの？
+
+Wrong. And the reason why is that The 
+
+ダメ。なぜかというと、
+
+  <reject:...> 
+
+won't skip any whitespace after the first word.
+
+これは最初の単語の後のどんな空白もスキップしないから。
+
+You instead would want:
+
+かわりにこうする：
+
+	line: word '' <reject: $thiscolumn != 22> word
+
+=item * 肯定形 で言い直してみる
+
+I'd state that in the positive instead:
+
+肯定の表現にしてみましょう：
+
+    line: word '' { $thiscolumn == 22 } word 
+
+This seems nice and more to the point, but unfortunately a failing conditional 
+yields a false value but not necessarily an undef value. So in this case, you
+might get back a C<0> from evaluating this conditional, but unfortunately,
+that does not lead to failure.
+
+これはうまいやり方で、より適切なように見えます。だけども残念ながら
+条件が失敗すると、必ずしもundefではない形で偽の値が発生します。
+それでこのケースでは、この条件を評価するとC<0>を得ることになります。
+しかし残念なことに、それは失敗へと導いてはくれません。
+
+On the other hand, <reject> is exactly the same as the action
+ { undef } 
+and is guaranteed to make a production fail immediately.
+
+他方において、<reject>は正確に アクション { undef } と同じです。
+そしてこれなら、間違いなくプロダクションは直ちに失敗になります。
+
+So if you would like to state the test in the positive, then do this:
+
+そうです、このテストを肯定表現で表すにはこのようにやります：
+
+   line: word '' { $thiscolumn == 22 || undef } word 
+
+=back
+
+=head1 MODULAR / GENERATIVE / CREATIVE / HAIRY PARSING
+
+=head2 マクロ処理
+
+In a RecDescent grammar, I'd like to add support in my language for
+"macros".  These macros would be very much like #define macros in C
+and would support arguments that are instantiated into the
+expansion. In C, this looks something like:  
+
+RecDescentの文法内で、私の言語にマクロをサポートしたいと思います。
+これらのマクロは C の  #define macros によく似ていて、拡張性を高める
+ために引数をサポートします。
+
+ #define   add(a,b)        (a+b)
+
+In my language, I'd like something like: 
+
+私の言語で、次のようにしました：
+
+ myMacro(x,y):        any_expression
+
+where "any_expression" is any old (deep) expression defined elsewhere
+in the grammar, and C<(x,y)> would be replaced/instantiated in that
+expression.  
+This may seem straighforward, but, well, it ain't to me. (I am, after
+all, mush4brains.)  In my P::RD grammar, the "macro" rule without
+arguments would look like: 
+
+"any_expression"は文法内のどこかで定義された古い（深い）式で、
+C<(x,y)>はその式の中で置き換えられます。これは単純なことにみえます。
+でも、ああ、私にはそうではないのです（所詮私はmush4brains[質問者のハンドル]）。
+P::RD文法において、引数のない「マクロ」規則は次のようになります：
+
+ macro:         identifier ':' expr
+
+where, again, expr is defined fully in the grammar. Adding arguments
+to this... I need to instantiate my C<(x,y)> into the "expr" string
+before the subrules interpret it.  
+Now... I thought of using standard Perl substitution in a pre-scan,
+but this seems less-than-ideal, since it requires some knowledge of
+the grammar in the Perl REs. I thought of using two separate grammars,
+the first of which is a simplified version of the full second grammar,
+but this also seems a bit redundant.  
+
+exprは文法内で完全に定義されています。これに引数を加えようと…
+サブ規則が解釈する前に、"expr"という文字列にC<(x,y)>をいれる必要が
+あります。それで…標準的なPerlの置換を使えばよいと考えました。
+しかし、これはうまくいかないようです。Perlの正規表現文法について
+ある程度知識を必要としているからです。私は二つに分けた文法を使う
+ことを考えました。最初の文法は、二番目の文法全部を簡略化したものです。
+でもこれもまた幾分冗長なように思えます。
+
+=over 4 
+
+=item *  …その答
+
+ http://perlmonks.org/index.pl?node_id=176399
+
+=back
+
+
+=head2 パーサをそれぞれ独自のパッケージとして複製したい
+
+It seems that the namespace for pre-compiled parsers
+(ie. compiled into a perl module) have hard-coded
+namespaces (IE. namespace00001).  I was trying to
+clone one of these parsers by calling its 'new'
+method, but each parser is sharing the same namespace
+and thus any global variables I have in that namespace
+within a startcode block of my grammar before the
+first rule get overwritten by the other corresponding
+parser.
+
+プリコンパイルされたパーサ(つまり、Perlモジュールとしてコンパイル
+されたパーサ）は、ハードコーディングされた名前空間（例えば
+namespace00001）を持っているようです。私は'new'メソッドを呼び
+出してこれらのパーサを複製しようとしました。しかし、それぞれの
+パーサが同じ名前空間を共有してしまいます。そのため、最初の規則の
+前にある開始コードブロック内部にこの名前空間がありますが、
+そこのグローバル変数が他のパーサによって上書きされてしまいます。
+
+
+
+=over 4
+
+=item * Yves Ortonの回答
+
+Heres the required patch 
+
+以下に必要となるパッチを示します。
+
+ # Parse::RecDescentの1692行目をみると…
+
+ my $nextnamespace = "namespace000001";
+
+ #このメソッドを追加
+ sub set_namespace {
+   local $_=$_[1];
+   croak "$_ is not a legal namespace." if /[^\w]/;
+   $_.="00" unless /\d+$/; # Ensure our namespace has a number at the end
+   $nextnamespace=$_;
+ }
+
+ # あとは呼び出すだけ
+ Parse::RecDescent->set_namespace("MyNameSpace");
+
+
+=back
+
+
+
+=head2 文を生成する文を解析する
+
+In this column, Randal shows how to read text to generate more text.
+He parses sentences to make Parse::RecDescent parse trees which he then
+re-walks with random weightings to create new sentences.
+
+このコラムで、Randalがテキストを生成するテキストをどのように
+読むのかについて示している。彼はParse::RecDescentの解析木を
+つくるために文を解析する。それから、ランダムな重み付けを使って
+新しい文をつくるために再度歩く。
+
+ http://www.stonehenge.com/merlyn/LinuxMag/col04.html
+
+
+=head2 文法の中からパーサを呼び出す
+
+I have a script that uses Parse::RecDescent, in which I want to define 2
+parsers. The grammar for the second parser has to call the first parser.
+
+Parse::RecDescentを使ったスクリプトがあります。この中で二つのパーサを定義
+したいと思います。二番目のパーサの文法は一番目のパーサを呼び出します。
+
+Can I do this?
+
+これは可能ですか？
+
+=over 4
+
+=item * できます。以下は例。
+
+ 
+ #!/usr/local/bin/perl -w
+ use strict;
+ use Parse::RecDescent;
+ 
+ $::RD_ERRORS = 1;
+ $::RD_WARN = 1;
+ $::RD_HINT = 1;
+ 
+ our $text_to_parse = "";
+ 
+ my $grammar1 = q{
+ [...]
+ }
+ 
+ our $inner_parser = new Parse::RecDescent($grammar1);
+ 
+ my $grammar2 = q{
+ [...]
+ 
+ rule: TEXT
+ 	{
+ 	  $text_to_parse = $item{TEXT};
+           if (defined $text_to_parse) { print "executing inner parse...\n"; }
+           my $p_text = $inner_parser->startrule($text_to_parse);
+ 	}
+ 
+ [...]
+ 
+ }
+ 
+
+
+=back
+
+=head2 解析を表すデータ構造の漸増的な生成
+
+I have a data structure which is
+
+データ構造があります。
+
+a hash of entries
+where
+an entry is a list/array of sets
+
+このデータ構造は要素が配列/リストのハッシュになっています。
+
+I have also a grammar that can parse the syntax of the text files that
+contain the data I want to fill this structure with. Until here
+everything is ok.
+
+この構造を満たしくれるデータを含むテキストファイルの構文を
+解析できる文法もあります。ここまでは全てOKです。
+
+Problem: I cannot figure out how to actually FILL the parsed data into
+the structure. I can only decide if a string is grammatically correct
+or not.
+
+問題は：解析されたデータをどうやって実際に構造に満たせばいいのかが
+わからないということです。私にできることは、ただ、ある文字列が
+文法的に正しいかどうか決めることだけです。
+
+=over 4
+
+=item * Marcel Grunaerの回答
+
+Try this grammar, which you have to feed the input as one big
+string. It uses a global variable, $::res into which the results
+are assembled. At the end the variable is also returned for
+convenience.
+
+次の文法を試してもらいたい。これに巨大な文字列を入力する。
+これはグローバル変数$::resを使っていて、結果はそこに
+集められる。最後に、使いやすいようこの変数も返される。
+
+It basically parses a phrase and a list of meanings. Instead of
+reconstructing what it just parsed at each step, it checks the
+remaining text at various stages (using an idea taken from
+Parse::RecDescent::Consumer) to see what the 'phrase' or 'meaning'
+subrules just matched. The 'meanings' subrule then (implicitly)
+returns a reference to an array of 'meaning' strings. That arrayref
+is stored at the proper slot in the result hash.
+
+これは基本的にフレーズと、意味のリストを解析する。一ステップ毎に
+解析されたものを再構築する代わりに、様々な段階で残っているテキスト
+（Parse::RecDescent::Consumerからアイディアを拝借した）をチェック
+している。これにより、'phrase'か'meaning'サブ規則でマッチしたものが
+何であるか知ることができる。'meanings'サブ規則は（暗黙的に）'meanings'
+文字列の配列リファレンスを返す。この配列リファレンスは、結果のハッシュ
+の適切なスロットに保持される。
+
+(Hope that explanation makes sense. I'm sure Damian can come up
+with a grammar that's way more elegant and efficient...)
+
+この説明が役に立つことを願いたい。Damianならもっと優雅で効率の良い
+文法を提案できるはずだが…
+
+ 
+ 
+ { sub consumer {
+          my $text = shift;
+          my $closure = sub { substr $text, 0, length($text) - 
+ length($_[0]) }
+ } }
+ 
+ start : entry(s) { $::res }
+ 
+ entry :
+            comment
+          | def
+          | <error>
+ 
+ def : <rulevar: local $p_cons>
+ def : <rulevar: local $p_text>
+ 
+ # The // skips initial whitespace so it won't end up in $p_text
+ 
+ def :
+      // { $p_cons = consumer($text) } phrase { $p_text = 
+ $p_cons->($text) }
+      '=' meanings ';'
+      { $::res->{$p_text} = $item{meanings} }
+ 
+ comment : /#.*(?=\n)/m
+ 
+ phrase  : ident(s)
+ 
+ ident   : /[\w&\.'-]+/
+ 
+ meanings : meaning(s /:/)
+ 
+ meaning : <rulevar: local $m_cons>
+ meaning : // { $m_cons = consumer($text) } element(s /,?/) 
+ { $m_cons->($text) }
+ 
+ element : alternation(s /\|/)
+ 
+ alternation : expr(s /[+>]/)
+ 
+ expr : /!?/ term
+ 
+ term : ident '(' meaning ')' | ident
+
+=back
+
+=head2 XOR as opposed IOR alternation matching
+
+I'm using alternations in some productions but in contrast to
+the definition of the |-operator, I'm looking for a behaviour
+which is XOR (^) not OR (|). So far I used the <reject>
+directive to simulate such a behaviour.
+
+プロダクションでオルタネーションを使っています。でも | 演算子
+の定義とは対照的に、XOR (^) の振る舞いが欲しいのです。そこで
+そのような振る舞いをシミュレートするため、<reject>
+ディレクティブを使っています。
+
+Is there any easy solution to this?
+
+もっと楽チンなやり方ってありますか？
+
+=over 4
+
+=item * Randal Schwartzの回答
+
+Use a set.
+
+こんな感じで。
+
+ use Parse::RecDescent;
+ use Data::Dumper; $|++;
+ my $parser = Parse::RecDescent->new(q{
+ 
+ line: word(s) /\z/ {
+ my @words = @{$item[1]};
+ my %count;
+ (grep ++$count{$_} > 1, @words) ? undef : \@words;
+ }
+ 
+ word: "one" | "two" | "three"
+ 
+ }) or die;
+ 
+ for ("one two", "one one", "two three one", "three one two one") {
+   print "$_ =>\n";
+   print Dumper($parser->line($_));
+ }
+ 
+ # これは次のものを生成する：
+ 
+ one two =>
+   $VAR1 = [
+ 	   'one',
+ 	   'two'
+ 	  ];
+ one one =>
+   $VAR1 = undef;
+ two three one =>
+   $VAR1 = [
+ 	   'two',
+ 	   'three',
+ 	   'one'
+ 	  ];
+ three one two one =>
+   $VAR1 = undef;
+
+
+
+=item * Damian Conwayによる装飾
+
+
+
+Furthermore, if uniqueness was something you needed to enforce more
+widely
+in your grammar, you could factor it out into a parametric rule:
+
+さらに、一意性があなたの文法内でより広範に適用される必要があるもの
+であるなら、パラメータを使った規則に分解することができる：
+
+        use Parse::RecDescent;
+        use Data::Dumper; $|++;
+        my $parser = Parse::RecDescent->new(q{
+
+        line: unique['word'] /\z/ { $return = $item[1] }
+
+        unique: <matchrule: $arg[0]>(s)
+            {
+              my %seen;
+              foreach (@{$item[1]}) { undef $item[1] and last if
+$seen{$_}++ }
+              $return = $item[1];
+            }
+
+        word: "one" | "two" | "three"
+
+        }) or die;
+
+        for ("one two", "one one", "two three one", "three one two
+one") {
+          print "$_ =>\n";
+          print Dumper($parser->line($_));
+        }
+
+
+
+=back
+
+
+=head1 文法を綺麗にする
+
+In honor of the original (and greatest) Perl book on cleaning up your
+Perl code, this section is written in the style of 
+Joseph Hall's "Effective Perl Programming"
+
+Perlコードを綺麗にすることに関してオリジナルである（そして偉大な）
+Perl本のに敬意を表して、このセクションはJoseph Hallの
+"Effective Perl Programming"のスタイルで書かれている。
+
+["Effective Perl Programming"：]
+
+
+=head2 区切りパターンと一緒に反復修飾子を使ってCSV風のデータにマッチさせる
+
+The intuitive way to match CSV data is this:
+
+CSVデータにマッチさせる直感的な方法は：
+
+ CSVLine:
+      NonFinalToken(s?) QuotedText
+ NonFinalToken: 
+      QuotedText Comma
+      { $return = $item[1] }
+
+or, in other (merlyn's) words, "many comma terminated items followed by
+one standalone item".
+
+あるいは別の言い方（merlynのそれ）をすれば、"多くのカンマで終わるアイテム
+に続いて独立したアイテムがくる"ということになる。
+
+Instead, take the approach shown by merlyn:
+
+かわりに、merlynが示したアプローチを取り上げる：
+
+ CSVLine: QuotedText(s Comma) { use Data::Dumper; Dumper($item[1]) }
+
+Then just define C<QuotedText>, C<Comma>, and you're done!
+
+あとはC<QuotedText>、C<Comma>を定義して完成だ！
+
+=head1 文法の最適化
+
+=head2 可能であるならバックトラックを取り除く
+
+Let's take a look at two computationally equivalent grammars:
+
+コンピュータ上は等価な二つの文法をみてみよう：
+
+ expression      :       unary_expr PLUS_OP expression
+                 |       unary_expr
+
+versus
+
+対
+
+ expression      :       unary_expr plus_expression
+ plus_expression :       PLUS_OP expression
+                 |       # nothing
+
+The second one is more efficient because it does not have to do backtracking.
+
+二つ目の方がより効率的だ。なぜなら後戻り（バックトラック）がないから。
+
+The first one is more readable and more maintainable though. It is more 
+readable because it doesnt have an empty rule. It is more maintainable because
+as you add more expression types (minus_expression,
+mult_expression...) you don't have to add an empty rule to each of
+them. The top level description scales without change.
+
+だが、一つ目の方が可読性が高く、メンテナンスもしやすい。可読性が高いのは
+空規則がないからである。メンテナンス性が良いのは、式のタイプを追加しても
+（minus_expression、mult_expression…）それぞれに空規則を追加する必要が
+ないからだ。トップレベルで変更しなくてすむ。
+
+But, if speed is what you want then the second one is the way to go. 
+
+しかし、スピードがあなたの求めているものであるなら、二つ目でいくことになる。
+
+=head2 実行速度を速めるために文法をプリコンパイルする
+
+Take a look at Parse::RecDescent's precompilation option under the section
+titled "Precompiling parsers".
+
+"Precompiling parsers"というセクションにあるParse::RecDescentの
+プリコンパイルオプションに目を通して欲しい。
+
+=head2 本当に大きなファイルではParse::RecDescentが遅くなる。どうすれば速くできるか？
+
+=over 4
+
+=item * 文法が"深く"ならないようにする。入れ子のサブ規則をいくつかのレベルで用いる。
+
+=item * 可能ならサブ規則 の代わりに正規表現の終端記号を使う。例えば次の代わりに:
+
+		string: '"' char(s?) '"'
+
+		char:   /[^"\\]/
+		    |   '\\"'
+		    |   '\\\\'
+
+こう書く:
+
+		string: /"([^"\\]|\\["\\])*"/
+
+=item * 可能なら正規表現の 代わりに文字列の終端記号を使う
+
+=item * 再帰の 代わりに反復か<leftop>/<rightop>を使う
+
+For example, instead of:
+
+例えば次の代わりに:
+
+		list:  '(' elems ')'
+		elems: elem ',' elems
+		     | elem
+
+write:
+
+こう書く:
+
+		list: '(' <leftop: elem ',' elem> ')'
+
+あるいは:
+
+		list: '('  elem(s /,/)  ')'
+
+=item * 共通 の前置子を選択肢型プロダクションと分解する
+
+For example, instead of:
+
+例えば次の代わりに:
+
+		
+		id: name rank serial_num
+		  | name rank hair_colour
+		  | name rank shoe_size
+
+write:
+
+こう書く:
+
+		  
+		id: name rank (serial_num | haircolour | shoe_size)
+
+=item * Pre-parse the input somehow to break it into smaller sections.
+Parse each section separately.
+
+=item * Precompile they grammar. This won't speed up the parsing, but it
+will speed up the parser construction for big grammars (which
+Really Big Files often require).
+
+=item * Consider whether you would be better porting your grammar to
+Parse::Yapp instead.
+
+=back
+
+=head1 マッチしたものを捕らえる
+
+=head2 やあ、$returnにセットされたものじゃなくてARRAY(0x355300)ってのが出てきたよ。
+
+Here's a prime example of when this mistake is made:
+
+この間違いが生じる主要な例：
+
+ QuotedText: 
+       DoubleQuote TextChar(s?) DoubleQuote
+       { my $chars = scalar(@item) - 1;  
+         $return = join ('', @item[2..$chars]) }
+
+This rule is incorrectly written. The author thinks that C<@item> will
+have one C<TextChar> from position 2 until all C<TextChar>s are matched.
+However, the true structure of C<@item> is:
+
+この規則は間違って書かれている。作者はC<TextChar>が全てマッチするまで
+2番目のポジションからC<@item>はC<TextChar>を持っていると考えている。しかし、
+C<@item>の真の構造は：
+
+=over 4
+
+=item ポジション1: 規則 DoubleQuoteにマッチした文字列
+
+=item ポジション2: TextChar(s?)の解析木を表す配列リファレンス
+
+=item ポジション3: 規則 DoubleQuoteにマッチした文字列
+
+=back
+
+Note that position two is an array reference. So the rule must be
+rewritten in this way.
+
+2番目のポジションは配列リファレンスであることに注意。だから次の
+ように規則を書かなければならない。
+
+ QuotedText: 
+       DoubleQuote TextChar(s?) DoubleQuote
+       { $return = join ( '', @{$item[2]} ) }
+     
+
+=head2 サブ規則のマッチからテキストを得る
+
+I can't seem to get the text from my subrule matches...
+
+サブ規則のマッチからテキストを得ることができないようにみえます…
+
+=over 4
+
+=item * Damian Conwayの回答
+
+Your problem is in this rule:
+
+この規則における問題は：
+
+    tuple : (number dot)(2)
+
+is the same as:
+
+次のものと同じだ：
+
+    tuple        : anon_subrule(2)
+
+    anon_subrule : number dot
+
+Like all subrules, this anonymous subrule returns only its last item
+(namely, the dot). If you want just the number back, write this:
+
+全てのサブ規則同様、この無名サブルールも最後のアイテムだけを（つまり
+dotだけを）返す。あなたがnumberの方を得たいなら、こう書く：
+
+    tuple : (number dot {$item[1]})(2)
+
+If you want both number and dot back (in a nested array), write this:
+
+numberもdotも欲しいなら（ネスとした配列で）、このように書く：
+
+    tuple : (number dot {\@item})(2)
+
+=back
+
+
+
+=head2 トークンの間の空白を捕まえる
+
+I need to capture the whitespace between tokens using Parse::RecDescent.
+I've tried modifying the $skip expression to // or /\b/ (so I can tokenize
+whitespace), but that doesn't seem to have the desired effect.
+
+Parse::RecDescentを使って、トークン間の空白を補足する必要があります。
+$skipの式を/ / や /\b/ に変更してみました（これで空白をトークン化できます）。
+しかし望むべき結果にはならないようです。
+
+Just having a variable where all skipped whitespace is stored would be
+sufficient.
+
+全てのスキップした空白が保持される変数さえあれば十分です。
+
+Does anybody know how to trick Parse::RecDescent into doing this?
+
+どうすればParse::RecDescentをだまくらかしてこれをさせることができますか？
+
+=over 4
+
+=item * Damian Conwayの回答
+
+To turn off whitespace skipping so I can handle it manually, I always use:
+
+空白のスキップをやめて手動で操作することができる。私はいつもこれを使う：
+
+	<skip:''>
+
+See:
+
+以下を参照：
+
+	demo_decomment.pl
+	demo_embedding.pl
+	demo_textgen.pl
+
+for examples.
+
+以上、例として。
+
+=back
+
+=head2 文法が何もデータを返しません！
+
+What's wrong?!
+
+どうなってるの！？
+
+=over 4
+
+=item * Brent Daxの回答
+
+This is a clue; either something is wrong with your actions or the
+grammar isn't parsing the data correctly. Try adding 
+
+手がかりは；アクションで何かが間違っている。あるいは、文法が正しく
+解析を行なっていない。このどちらかだ。以下を付け加えてみてくれ。
+
+  | <error> 
+
+
+clauses
+to the end of each top-level rule. This will tell you if there's a
+parsing error, and possibly what the error is. If this doesn't show
+anything, look hard at the actions. You may want to explicitly set the
+$return variable in the actions.   
+
+各トップレベルの規則の最後で、パースのエラーがあるかどうか教えてくれる。
+そして可能なら、何がエラーなのかも。もしこれで何も表示されないなら、
+アクションをよくみるべし。アクション内で明示的に$return変数をセットする
+必要があるかもしれない。
+
+=back
+
+=head1 べからず集
+
+=head2 rule: statementとrule: statement(1)を同じに思わないこと
+
+Even though in pure Perl, the repetition modifier returns the same
+data structure without or without an argument of one:
+
+純粋なPerlでさえも、1があってもなくても反復修飾子は同じデータ構造を返す：
+
+ use Data::Dumper;
+
+ my @a = (x);
+ my @b = (x) x 1;
+
+ my $x = 'x';
+ my $y = 'x' x 1;
+
+In this first case below, C<rule_one> returns a scalar upon matching, 
+while C<rule_two> returns an arrayref with 1 element upon matching:
+
+下のケースでは、C<rule_one>はマッチしたスカラー値を返す。一方、
+C<rule_tow>はマッチした一つの要素を持った配列リファレンスを返す。
+
+ rule_one: statement
+ rule_two: statement(1)
+
+However counter-intuitive this may at first sound, Damian provides us with 
+some insight:
+
+この直感に反した事例に対し、Daminanがある洞察を提示している：
+
+
+I don't think C<x> is the right analogy for RecDescent repetition operators.
+The behaviour of C<*> and C<+> in regexes is a closer model.
+
+私は、C<x>がRecDescentの反復演算子に対するアナロジーとして適切だとは
+思わない。正規表現におけるC<*>とC<+>の振る舞いが、より近いモデルである。
+
+I guess it depends on your poitn of view. I would have said that the
+absolute consistency with which *every* repetition (regardless of its
+number) returns an array ref is better than the alternative:
+
+私はそれがあなたの観点に依存していると推測します。*全ての*繰り返し
+（その数に関係なく）が配列リファレンスを返すという絶対的な一貫性は、
+次のような選択肢よりも良い、と私は言ってしまうでしょう：
+
+        christmas:
+                gold_rings(5)                   # 配列リファレンスを返す
+                calling_birds(4)                # 配列リファレンスを返す
+                French_hens(3)                  # 配列リファレンスを返す
+                turtle_doves(2)                 # 配列リファレンスを返す
+                partridge_in_a_pear_tree(1)     # スカラー値を返す
+
+Especially if you have to change the count at some later point, which 
+would mess up any code relying on the type of value returned.
+
+特に、後でカウントを変更しなければならないとするならば、返される値の
+タイプによってコードがグチャグチャになることでしょう。
+
+
+=head2 エラーをスキップさせるために<resync>の後ろに<reject>をもってこないこと 
+
+C<resync> is used to allow a rule which would normally fail to "pass" so that 
+parsing can continue. If you add the reject, then it unconditionally fails.
+
+C<resync>は、通常は失敗する規則を"パス"させることによって、解析を続行
+するために用いる。もしrejectを加えたら、無条件に失敗してしまう。
+
+=head2 %itemが特定の規則にマッチした全テキストの配列リファレンスを含んでいると仮定しないこと
+
+For example: 
+
+例えば：
+
+        range: '(' number '..' number )'
+                        { $return = $item{number} }
+
+will return only the value corresponding to the last match of the C<number>
+subrule.
+
+これはサブ規則C<number>に最後にマッチしたものに対応した値を返すだけだ。
+
+To get each value for the number subrule, you have a couple of choices,
+both documented in the Parse::RecDescent manpage under
+C<@item and %item>.
+
+サブ規則 number の各値を得るには、Parse::RecDescentのマニュアルにある
+C<@item and %item>に書かれた二通りのやり方がある。
+
+=head2 <rulevar: local $x>を使うべし、<rulevar: $x>使うべからず
+
+If you say:
+
+もしこう書くと：
+
+	somerule: <rulevar: $x>
+
+you get a lexical $x within the rule (only). If you say:
+
+その規則内（だけ）で、レキシカル変数 $x を得る。もしこう書いたら：
+
+	somerule: <rulevar: local $x>
+
+you get a localized $x within the rule (and any subrules it calls).
+
+その規則内（及び、それを呼び出すサブ規則内）で局所化された変数 $x を得る。
+
+=head2 解析途中で出力するために$::RD_AUTOACTIONを使わないこと
+
+You can't print out your result while you are parsing it, because you
+can't "unprint" a backtrack.
+
+解析中に結果を出力することはできない。なぜなら、バックトラックを
+"プリントしなかったこと"にすることはできないからだ。
+
+Instead, have the final top-level rule do all the diagnostic printing, or
+alternatively use P::RD's tracing functionality to observe parsing in 
+action.
+
+代わりに、最終的なトップレベルの規則に診断的な出力をやらせるか、もう一つは
+P::RDのトレース機能を使ってアクション内でパースを観察する。
+
+=head1 エラー処理 (ERROR HANDLING)
+
+=head2 サブ規則に対し<commit>した後、失敗を伝播させる
+Propagating a failure up after a <commit> on a subrule
+
+See L<Commit in subrule which is optional in rule>
+
+L<Commit in subrule which is optional in rule>
+を参照のこと。
+
+
+=head2 非シェル環境（例：CGI）
+
+I need to parse a file with a parser that I cooked up from
+Parse::Recdescent. 
+My problem, it must work in a cgi environment and the script must be
+able to handle errors. I tried eval, piping, forking, Tie::STDERR, but
+the errors msgs from Parse::Recdescent seem unstoppable.
+
+Parse::Recdescentでこさえたパーサを利用してファイルを解析する必要が
+あります。問題は、それがCGI環境で動作しなければならないことと、その
+スクリプトはエラー処理が可能でなければならないことです。eval、pipe、
+fork、Tie::STDERRを試してみましたが、Parse::Recdescentのエラー
+メッセージを止められそうにありません。
+
+
+I can catch them only by redirecting the script's STDERR from the
+shell. But howdo I catch them from within ??
+
+シェルからSTDERRにリダイレクションした場合にのみ、エラーメッセージを
+捉えることができました。しかし、CGI環境ではどうすればよいのでしょう？
+
+
+=over 4 
+
+=item * このようにする:
+
+        use Parse::RecDescent;
+        open (Parse::RecDescent::ERROR, ">errfile")
+                or die "Can't redirect errors to file 'errfile'";
+
+        # あなたのプログラムをここに
+
+=back
+
+=head2 エラーデータへのアクセス
+
+What I want to do is export a <error: foo bar> condition to the
+calling
+program.  Currently _error writes the error message to (what
+essentially
+is STDOUT) which means a parsing error prints a nice message, but it
+is
+up to the reader to DO anything about it.
+
+私がやりたいことは、<error: foo bar>の条件を呼び出しプログラムに
+エクスポートすることです。現在のところ_errorがエラーメッセージを
+書き出します（実質的にはSTDOUTに）。解析時のエラーはよい
+メッセージを出力するのですが、それは読み手がそれについて何かする
+までです。
+
+I have a Tk viewer that will parse the file.  When the parse fails, I
+would like to capture the line number and error message returned and
+position the viewer (a text widget) to that line, highlighted.  And no
+STDOUT message.
+
+ファイルを解析するTKビューアがあります。解析に失敗したとき、
+行番号と返されるエラーメッセージを捕まえようと思います。そして
+ビューア（テキストwidget）をその行に置いて、ハイライトをつけたい
+です。STDOUTにはメッセージを出しません。
+
+Something kind of like the eval function where the return value is the
+result but $@ is set as a "side effect".
+
+eval関数のようにその戻り値は結果なのですが、$@が"副次効果"として
+セットされます。
+
+Am I missing something about the built in capability?  Is the solution
+as simple as overloading the Parse::RecDescent::_error subroutine with
+my own copy which might look like this:
+
+私は何か見逃しているのでしょうか？以下の私のコードのコピーのように、
+Parse::RecDescent::_errorをオーバーロードすることで簡単に解決する
+のでしょうか：
+
+%Parse::RecDescent::ERROR=();
+...
+sub Parse::RecDescent::_error($;$)
+{
+	$ERRORS++;
+	return 0 if ! _verbosity("ERRORS");
+	%Parse::RecDescent::ERROR=('line'=>$_[1],'msg'=>$_[0]);
+	return 1;
+}
+
+It seems like it should work and I tried it and it did.  BUT this is
+an
+extremely complex bit of code and I'm concerned about unforseen
+consequences.
+
+これで動くはずだと思います。そして私は試してみて、そうなりました。
+しかし、これは実に複雑なコードですし、予期せぬ結果に関心があります。
+
+Of course, I could make ERROR a my variable and provide a method to
+access it so it is not a "global", and this would be OO code of a
+higher
+purity (or something), but that is not really the point.
+
+もちろん、my変数にエラーを与えることと、それにアクセスするメソッドを
+提供することができます。そしてそれはグローバル変数ではありません。
+これは高度に純粋な（あるいは何がしかの）オブジェクティブ志向なコードに
+なったでしょう。ですが、それは本当の問題の核心ではありません。
+
+=over 4
+
+=item * Damian Conwayの回答
+
+You can get access to the error data by referring to the attribute
+C<$thisparser->{errors}> within a rule. 
+
+規則内で属性C<$thisparser->{errors}>を参照すればエラーデータに
+アクセスすることができる。
+
+C<$thisparser->{errors}> is a reference to an array of arrays. Each of
+the inner arrays has two elements: the error message, and the line
+number. 
+
+C<$thisparser->{errors}>は配列の配列へのリファレンスだ。内側の
+配列のそれぞれは二つの要素を持つ：エラーメッセージと行番号である。
+
+So, for example, if your top-level rule is:
+
+そこで例えば、トップレベルの規則が：
+
+ start: subrule1 subrule2
+
+then you could intercept any errors and print them to a log file, like
+so: 
+
+であるとき、エラーを解釈し、ログファイルに出力するには、次のようにする：
+
+ start: subrule1 subrule2
+      | { foreach (@{$thisparser->{errors}}) {
+              print LOGFILE "Line $_->[1]:$_->[0]\n";
+          }
+          $thisparser->{errors} = undef;
+        }
+
+Note that the line:
+
+次の行：
+
+ $thisparser->{errors} = undef;
+
+is doing double duty. By resetting C<$thisparser->{errors}>, it's
+preventing those annoying error messages from being automagically
+printed. And by having the value C<undef> as the last value of the
+action, it's causing the action to fail, which means the second
+production fails, which means the top rule fails, which means errors
+still cause the parse to fail and return C<undef>.
+
+は二重の意味で必要である。C<$thisparser->{errors}>をリセットすることで
+鬱陶しいエラーメッセージが自動的に出力されないようにする。それと、
+アクションの最後の値としてC<undef>にすることによって、そのアクションを
+失敗させる。つまり二番目のプロダクションを失敗させ、トップの規則を失敗
+させ、パースを失敗させてC<undef>を返させるということだ。
+
+=back
+
+=head2 シンプルなエラー処理
+
+I'm trying to write a parser for orders for Atlantis (PBEM game).
+Syntax is pretty simple: one line per command, each command
+starts with name, followed by list of parameters. Basically it's
+something like this (grammar for parsing one line):
+
+Atlantis(PBEMゲーム)の命令用パーサを書こうとしています。構文は
+非常に簡単です：一コマンドにつき一行、それぞれのコマンドは
+名前で始まり、パラメータのリストが続きます。基本的にこのような
+感じです（一行を解析する文法）：
+
+
+ Statement:Comment | Command Comment(?)
+ Comment:/;.*/ 
+ Command:'#atlantis' <commit> FactionID String
+    Command:'attack' <commit> Number(s)
+ ....
+
+However I have problems to make it work as I want:
+
+しかし、望んだとおりに動作させようとして問題が生じました：
+
+1) In case of failed parsing (syntax error, not allowey keyword, ...) 
+I want to store error messages in variable (not to be just printed), so I can 
+process them later.
+
+１）解析に失敗した場合（構文エラーや、認められていないキーワード…）、
+（単に出力するだけでなく）変数にエラーを保持しておき、後からそれらを
+処理できるようにしたいのです。
+
+I don't think Parse::RecDescent has a hook for that (Damian, something
+for the todo list?), but you can always install a $SIG {__WARN__}
+handler and process the generated warnings.
+
+Parse::RecDescentはそのためのhookを持っていないようです（Damian、
+TODOリストにありましたっけ？）。ですがいつでも$SIG {__WARN__}ハンドラを
+インストールして、発生した警告を処理することができます。
+
+2) In case if user types "attack bastards" I want to give him
+error message that "list of numbers expected" instead
+of just saying the "cannot parse this line". The only
+thing that I came up with now was defining every command
+like this:
+
+２）"attack bastards"とタイプする場合、"cannot parse this line" の
+代わりに "list of numbers expected" というエラーメッセージを出したい
+です。今のところ私ができたのは、このように全てのコマンドを定義する
+ことでした：
+
+ Command:Attack
+ Attack:'attack' AttackParams
+ AttackParams:Number(s) | <error>
+ ...
+Any better solutions?
+
+もっとよい解決方法はありますか？
+
+=over 4
+
+=item * こうするだけでよい (You can just do:)
+
+    Command:   '#atlantis' <commit> FactionID String
+       |   'attack' <commit> Number(s)
+       |   <error>
+
+and when you try to parse "attack bastards", you will get:
+
+"attack bastards" をパースするときには次のメッセージを得るだろう：
+
+    ERROR (line 1): Invalid Command: Was expecting Number but found
+        "bastards" instead
+
+You might want to use <error?>, which will only print the error when
+it saw '#atlantis' or 'attack' (because then you are committed).
+
+<error?>を使いたいと思うかもしれないが、これは '#atlantis' か 'attack'
+を見つけたときにしかエラーを出力しない（commitされるから）。
+
+=back
+
+=head2 処理のために全てのエラーメッセージを収集する
+
+Is there a way to to collect the parser-generated errors and use them later 
+on in my script?
+
+パーサが生成したエラーを収集し、後でスクリプトの中でそれらを使う方法は
+ありますか？
+
+=over 4
+
+=item * Damianの回答
+
+There's no "official" way (yet). A future release will allow you
+to create pluggable OO error handlers. At the moment the best 
+you can do is:
+
+「公式には」（まだ）ない。将来のリリースでは、接続可能でオブジェクト
+指向のエラーハンドラの生成が可能になるだろう。それまでは次のように
+するのがベストだ：
+
+	startrule: try_this
+		 | try_that
+		 | try_the_other
+		 | { ::do_something_with( $thisparser->{errors} ) }
+
+$thisparser->{errors} will contain a reference to an array-of-arrays,
+where each inner array contains the error message and the line number
+it occurred at.
+
+$thisparser->{errors}は配列の配列へのリファレンスを含んでいる。
+内側の各配列は、エラーメッセージとエラーが発生した行番号を含んでいる。
+
+=back
+
+=head1 その他の質問
+
+
+=head2 行をまたいだ文字にマッチさせる
+ (Matching line continuation characters)
+
+I need to parse a grammar that includes line continuation
+characters.  For example:
+
+行をまたいだ文字を含む文法を解析したいです。例えば：
+
+ // COMMAND ARG1-VALUE,ARG2-VALUE, +
+    ARG3-VALUE,ARG4-VALUE, +
+    EVEN-MORE-ARGS
+ // ANOTHERCOMMAND
+ * and a comment
+ * or two
+
+How do I formulate a rule (or rules) to treat the first command
+as if all 5 arguments were specified on a single line?  I need to
+skip over the /\s*+\n\s*/ sequence.  It seems like skip or resync
+should do this for me, but if so, I haven't discovered the
+correct technique, yet.
+
+最初のコマンドを5つの引数全てが一つの行で指定されたかのように扱う
+規則（複数でも）を、どのようにして定式化すればよいのでしょうか？
+/\s*+\n\s*/をスキップする必要があります。skipやresyncを使うべき
+にみえます。そうだとすると、私はまだ正しい技法を発見できていません。
+
+=over 4
+
+=item * Damian Conwayの回答
+
+ use Parse::RecDescent;
+ 
+ my @lines = << 'EOINST';
+ // COMMAND ARG1-VALUE,ARG2-VALUE, +
+    ARG3-VALUE,ARG4-VALUE, +
+    EVEN-MORE-ARGS
+ // ANOTHERCOMMAND
+ * and a comment
+ * or two
+ EOINST
+ 
+ my $parse = Parse::RecDescent->new(join '', <DATA>) or die "Bad Grammar!";
+ 
+ use Data::Dumper 'Dumper';
+ print Dumper [
+ $parse->Instructions("@lines") or die "NOT parsable!!\n"
+ ];
+ 
+ __DATA__
+ 
+ Instructions: command(s)
+ 
+ command: multiline_command
+        | singleline_command
+        | comment
+ 
+ singleline_command: 
+ 	'//'  /.*/
+ 		{ {command => $item[-1]} }
+ 
+ multiline_command:  
+ 	'//' /(.*?[+][ \t]*\n)+.*/
+ 		{ $item[-1] =~ s/[+][ \t]*\n//g; {command => $item[-1]} }
+ 
+ comment:
+ 	'*'  /.*/
+ 		{ {comment => $item[-1]} }
+ 
+
+
+=back
+
+
+=head2 任意の深さの括弧表現にマッチさせるには？
+
+Example: a, (b ,c, (e,f , [h, i], j) )
+
+=over 4
+
+=item * FAQの作者の回答
+
+Maybe Text::Balanced is enough for your needs. See it on search.CPAN.org
+under author id DCONWAY.
+
+Text::Balancedがあなたの要求を満たすでしょう。search.CPAN.orgで
+author id DCONWAY のところをみてください。
+
+=item * perlmonks.orgのlhowardの回答
+
+Parse::RecDescent implements a full-featured recursive-descent
+parser. A real parser (as opposed to parsing a string with a regular
+expression alone) is much more powerful and can be more apropriate for
+parsing highly structured/nested data like you have. It 
+has been a while since I've written a grammer so it may look a bit
+rough. 
+
+Parse::RecDescentは完全に機能する再帰下降パーサを実装する。
+（正規表現だけで文字列をパースするのとは逆に）本当のパーサはもっと
+非常にパワフルで、あなたが持っているような高度に構造化/ネスト化された
+データを解析するのにより適し得る。わずかな時間で文法を書いてしまった
+ので、ちょっと荒っぽいかもしれない。
+
+ use Parse::RecDescent;
+ my $teststr="blah1,blah2(blah3,blah4(blah5,blah6(blah7))),blah8";
+ my $grammar = q {
+         content:        /[^\)\(\,]+/
+         function:       content '(' list ')'
+         value:          content
+         item:           function | value
+         list:           item ',' list | item
+         startrule:      list
+ };
+ my $parser = new Parse::RecDescent ($grammar) or die "Bad grammar!\n";
+ 
+ defined $parser->startrule($teststr) or print "Bad text!\n";
+
+
+To which merlyn (Randal Schwartz) of perlmonks.org says:
+
+perlmonks.org の merlyn (Randal Schwartz) が言うことには：
+
+Simplifying the grammar, we get: 
+
+その文法はシンプルにできる：
+
+ use Parse::RecDescent;  
+ my $teststr="blah1,blah2(blah3,blah4(blah5,blah6(blah7))),blah8";  
+ my $grammar = q {
+  list: <leftop: item ',' item> 
+  item: word '(' list ')' <commit>
+      | word 
+  word: /\w+/  
+ };  
+ my $parser = new Parse::RecDescent ($grammar) or die "Bad grammar!\n";
+ 
+ defined $parser->list($teststr) or print "Bad text!\n";
+
+ 
+
+=back
+
+=head2 最初にマッチしたものが適用される動作を切る
+
+I have a set of alternatives on which I want to avoid the
+default first-match-wins behavior of Parse::RecDescent. How do I do
+it? 
+
+選択肢の集まりがあり、これに対して最初にマッチしたものが「マッチ」
+されたことになるデフォルトのParse::RecDescentの振る舞いを回避したい
+です。どうすればいいですか？
+
+=over 4
+
+=item * FAQの作者の回答
+
+Use a scored grammar. For example, this scoring directive
+
+点数付き文法を使いましょう。例えば、このscoreディレクティブは
+
+ opcode: /$match_text1/  <score: { length join '' @item}>
+ opcode: /$match_text2/  <score: { length join '' @item}>
+ opcode: /$match_text3/  <score: { length join '' @item}>
+
+would return the opcode with the longest length, as opposed to which
+one matched first.
+
+最も長い長さのopcodeを返すでしょう。これは最初にマッチしたものとは
+対照的です。
+
+Just look for the section "Scored productions" in the .pod
+documentation. 
+
+Parse::RecDescent podドキュメントの"Scored productions"を
+ご覧下さい。
+
+=back
+
+=head2 内側のトークン区切りに関する問題
+
+ my $parse = Parse::RecDescent->new(<<'EndGrammar');
+
+ rebol   : block  { dump_item('block', \@item)  }
+         | scalar { dump_item('scalar', \@item) }
+
+ block       : '[' block_stuff(s?) ']'
+ block_stuff : scalar
+ scalar      : <skip:''> '%' file
+ file        : /w+/
+
+ EndGrammar
+
+My grammar matches a filename, ie: 
+
+私の文法はファイル名にマッチします。つまり：
+
+ %reb.html
+
+just fine. However, it does not match a filename within a block, ie: 
+
+これはうまくいきます。ところが、ブロックの中にあるファイル名には
+マッチしません。つまり：
+
+ [ %reb.html ]
+
+and I know exactly why after tracing the grammar. 
+
+そして私は、文法をトレースした結果、正確な理由を知っています。
+
+It is trying the 
+
+それは
+
+ <skip:''> '%' file
+
+production with the input text 
+
+入力テキストを伴うプロダクションを試しています。
+
+ " %reb.html"
+
+note the space in the input text. 
+
+入力テキスト内のスペースに注目してください。
+
+The reason this distresses me is that I have not changed the universal token 
+separator from 
+
+この私を悩ませる原因は、全般的なトークン区切りを下記から変更していない
+ところにあります。
+
+ /\s*/
+
+Yet it did not gobble up the white space between the '[' terminal and the <skip:''>'%' file production
+
+しかし、'[' 終端記号と <skip:''>'%' file プロダクションの間の
+空白に貪欲にマッチしませんでした。
+
+
+=over 4
+
+=item * Randal Schwartzの回答
+
+That's the expected behavior. The outer prefix is in effect until
+changed, but you changed it early in the rule, so the previous
+"whitespace skip" is effectively gone by the time you hunt for '%'.  
+
+これは期待される振る舞いだ。外側の前置子は変更されるまで効果を発揮する。
+しかし、あなたはそれを規則内で早めに変更した。そのため'%'に出くわすまでに
+以前の"空白スキップ"の効果が消えてしまったのだ。
+
+
+To get what you want, you want: 
+
+望みどおりにするには：
+
+ '%' <skip:''> file
+
+in your rule. 
+back
+
+=back
+
+=head2 空白行にマッチさせる
+
+How do I match an arbitrary number of blank lines in Parse::RecDescent?
+
+Parse::RecDescentで任意の数の空白行にマッチさせるにはどうしますか？
+
+=over 4
+
+=item * Damian Conwayの回答
+
+Unless you use the /m suffix, the trailing $ means "end of string", 
+not "end of line". You want:
+
+/m 修飾子を利用しない限り、最後尾の$は"文字列の終わり"を意味し、
+"行末"を意味しない。望んでいるのは：
+
+   blank_line:  /^\s+?$/m
+
+or 
+
+あるいは
+
+   blank_line:  /^\s+?\n/
+
+=back
+
+=head2 さらに空白行について
+
+I have a rule which MUST be failing, but it isn't. Why?
+
+失敗するはずの規則が失敗しません。なんで？
+
+   blank_line:    { $text =~ /silly-regex/ }
+   
+          parses with no error.
+
+          エラーを出さずに解析する
+
+=over 4
+
+=item * Damian Conwayの回答
+
+The pattern match still fails, but returns the empty string ("").
+Since that's not undef, the rule matches (even though it doesn't
+do what you want).
+
+そのパターンマッチはやはり失敗している。だが、返すのは空文字列("")だ。
+undefではないので、規則はマッチする（あなたの望んだものではないとしても）。
+
+=back
+
+
+
+
+=head2 解析対象のテキストの残り部分を得るにはどうするのか？
+
+See the documentation for the C<$text> variable.
+
+C<$text>変数に関するドキュメントを参照せよ。
+
+=head2 あなたは文法内でPerlのシンボルをエスケープしていませんが、
+なぜ私はしなければならないのでしょうか？
+
+ my $grammar = <<EOGRAMMAR;
+ 
+ export_line:	stock_symbol	COMMA   # 1
+ 		stock_name	COMMA2  # 2
+ 		stock_code	COMMA3  # 3
+ 		trade_side	COMMA4  # 4
+ 		trade_volume	COMMA5  # 5
+ 		floating_point	COMMA6  # 6
+ 		tc                      # 7
+ { print "got \@item\n"; }
+     | <error>
+ EOGRAMMAR
+ 
+ Why does '@' have to be escaped? And whatever reason
+ that may be, why doesnt it apply to '\n'?
+ 
+ なぜ'@'をエスケープしなければならないのでしょうか？そして
+ その理由がなんであれ、なぜ'\n'には適用しなくてよいのでしょうか？
+
+=over 4
+
+=item * Damian Conwayの回答
+
+Because you're using an interpolating here document. You almost certainly 
+want this instead: 
+
+なぜなら展開されるヒアドキュメントを使っているからだ。間違いなく
+代わりにこうするとよい：
+
+ my $grammar = <<'EOGRAMMAR';		# クォートが重要！
+    
+ 
+  export_line:	stock_symbol	COMMA   # 1
+    		stock_name	COMMA2  # 2
+    		stock_code	COMMA3  # 3
+    		trade_side	COMMA4  # 4
+    		trade_volume	COMMA5  # 5
+    		floating_point	COMMA6  # 6
+    		tc                      # 7
+  { print "got @item\n"; }
+     | <error>
+ EOGRAMMAR
+ 
+
+
+=back
+
+=head2 P:RDと一緒に使うと他のモジュールが動作しないようにみえます
+
+Such-and-such a module works fine when I don't use Parse::RecDescent
+
+このよなモジュールは、Parse::RecDescentを使わないと正しく動きます。
+
+=over 4
+
+=item * Damian Conwayの回答
+
+ Did you alter the value of undef with your parser code? 
+
+ パーサのコードでundefの値を変更していないだろうか？
+
+The problem has nothing to do with  Parse::RecDescent.
+ 
+
+この問題はParse::RecDescentとは関係ない。
+
+Rather, it was caused by your having set $/ to undef, which seems to
+have caused Mail::POP3 to over-read from its socket (that might be
+considered a bug in the Mail::POP3 module).
+
+そうではなく、$/にundefをセットしたために起きたのだ。これだとMail::POP3
+がソケットから余計に読み込んでしまう事態を引き起こすようだ（Mail::POP3
+モジュールのバグと考えられる）。
+
+As a rule-of-thumb, *never* alter $/ without local-izing it. In other words, 
+change things like this: 
+
+経験的に言って、$/は局所化することなしに変更しては ならない 。つまり、
+このようなものは：
+
+         $/ = undef;
+
+to this:
+
+こう変更する：
+
+          {
+          local $/;
+          }
+
+=back
+
+=head1 正規表現
+
+=head2 最長マッチの代わりに最短マッチを行う
+
+What is the Perl idiom for getting the leftmost shortest match?
+For instance, so:
+
+Perlのイディオムにおける最左端最小マッチを得る方法は何ですか？
+例えば、そう：
+
+ $a = "banana";
+ $a =~ /b.*n/;  # でも違う
+ print $&;
+
+would yield "ban" instead of "banan"?
+
+"banan"ではなく"ban"にするには？
+
+=over 4
+
+=item *
+
+    $a =~ /b.*?n/;
+
+=back
+
+
+
+=head1 Parse::RecDescentの使用に関するプログラミング・トピック
+
+=head2 ダブルクォート対シングルクォート
+
+
+I'm playing around with the <skip:> directive and I've noticed
+something interesting that I can't explain to myself. 
+
+<skip:>ディレクティブを弄っていて興味深いことに気付きました。
+そのことについてうまく説明できません。
+
+Here is my script:
+
+私のスクリプト：
+
+------ Start Script ------
+use strict;
+use warnings;
+
+$::RD_TRACE = 1;
+
+use Parse::RecDescent;
+
+my $grammar = q{
+
+   input:  number(s) { $return = $item{ number } } | <error>
+
+   number: <skip: '\.*'> /\d+/ 
+
+};
+
+my $parser = new Parse::RecDescent($grammar);
+
+my $test_string = qq{1.2.3.5.8};
+
+print join( "\n", @{ $parser -> input( $test_string ) } );
+------ End Script ------
+
+This script works great. However, if I change the value of the skip
+directive so that it uses double quotes instead of single quotes:
+
+このスクリプトはとてもうまく動きます。ところが、skipディレクティブの
+値をシングルクォートの代わりにダブルクォートを使うように変更すると：
+
+<skip: "\.*">
+
+the grammar fails to parse the input. However, if I put square
+brackets around the escaped dot:
+
+文法は解析に失敗します。ところが、ブラケットをエスケープされたドットの
+周りに置くと：
+
+<skip: "[\.]*">
+
+the grammar starts working again:
+
+再びうまく動くようになります。
+
+How does this work this way?
+
+どうしてこのように動作するのですか？
+
+=over 4
+
+=item * Damianの回答
+
+
+
+This small test program may help you figure out what's going wrong:
+
+この小さなテストプログラムを使えば、何がおかしいのか理解するのに役立つだろう：
+
+	print "\.*", "\n";
+	print '\.*', "\n";
+
+Backslash works differently inside single and double quotes.
+Try:
+
+バックスラッシュは、シングルクォート内とダブルクォート内とで
+異なる動きをする。下を試してもらいたい：
+
+      <skip: "\\.*">
+
+The reason the third variant:
+
+三番目の変種：
+
+
+      <skip: "[\.]*">
+
+works is because it becomes the pattern:
+
+が動いた理由は、それがパターンになるからだ：
+
+	/[.]/
+
+which is a literal dot.
+
+これは文字通りのドットである。
+
+=back
+
+=head2 解析フェーズの間でパースされたテキストを追跡する
+
+
+I wanted to know, after matching a rule, what text the rule matched.
+So I used two variables to remember what the remaining text and
+offset were before and after the rule and just determined the
+difference.
+
+規則を照合した後、その規則にマッチしたテキストが何だったのかを知りたいです。
+そこで、規則の前と後で残っているテキストとオフセットを記憶させるために
+二つの変数を使い、それから両者の違いを決定しました。
+
+   report : <rulevar: local $rule_text>
+   report : <rulevar: local $rule_offset>
+
+   report :
+             {
+                 $rule_text   = $text;
+                 $rule_offset = $thisoffset;
+             }
+
+         ... サブルーチン ...
+
+             {
+                 my $str = substr($rule_text, 0, $thisoffset - 
+$rule_offset);
+
+                 # 空白の類を全て取り除く
+
+                 $str =~ s/^\s*//s;
+                 $str =~ s/\s*$//s;
+                 $str =~ s/\s+/ /gs;
+
+                 # $strにはこの規則にマッチしたテキストが含まれている
+             }
+
+This is the kind of thing I thought would have been possible a lot
+easier. Did I miss something?
+
+これは私が出来る限り簡単になるように考えたものです。私は何か
+見落としているでしょうか？
+
+
+If not, is there a way to make this available in every parser,
+e.g. by providing a new directive or something like that?
+
+そうでないなら、これを全てのパーサで利用できるようにする方法
+-- 例えば新しいディレクティブが何かを提供することによって --
+はないのでしょうか？
+
+
+=over 4
+
+=item * その答えはCPANにある
+
+Parse::RecDescent::Consumer, on CPAN, prints out the text consumed
+between stages of a parse... even if that part may fail later. The
+implementation is straightforward, it creates closures containing
+C<$text> and evaluates them later to get the text consumed.
+
+CPANのParse::RecDescent::Consumerは解析の各段階において消費された
+テキストを出力する…例えその部分が後の段階で失敗してさえも。
+実装は素直なもので、C<$text>を含んだクロージャを生成し、後ほどそれを
+評価することによって消費されたテキストを得る。
+
+=back
+
+=head2 無条件にスカラーをリスト化する
+
+Quite often when using Parse::RecDescent, I want to treat the return value of 
+a production the same regardless of whether P::RD returns a string or a 
+list of string.
+
+Parse::RecDescentを使っていると非常にしばしば、P::RDが文字列か文字列の
+リストを返しているのか気にせずに、プロダクションの戻り値を同じものとして
+扱いたいと思うことがあります。
+
+=over 4
+=item * CPANからScalar::Listifyを利用する
+
+=back
+
+=head2 浅いコピー対深いコピーに関するチュートリアル
+
+Written by "Philip 'Yes, that's my address' Newton" <nospam.newton@gmx.li>
+
+"Philip 'Yes, that's my address' Newton" <nospam.newton@gmx.li>によって書かれた。
+
+Start off with an array of (references to) arrays: 
+
+配列の配列（へのリファレンス）から始めよう：
+
+    @array = ( [1,2,3], ['a', 'u', 'B', 'Q', 'M'], ['%'] );
+
+
+Now a shallow copy looks like this: 
+
+浅いコピーはこんな感じだ：
+
+    @shallow = ( $array[0], $array[1], $array[2] );
+
+
+This copies the references over from @array to @shallow. Now @shallow
+is ( [1,2,3], ['a', 'u', 'B', 'Q', 'M'], ['%'] ) -- the same as
+@array. But there's only one 2 and one 'Q', since there are two
+references pointing to the same place.  
+
+これは@arrayから@shallowへリファレンスをコピーする。これで@shallowは
+( [1,2,3], ['a', 'u', 'B', 'Q', 'M'], ['%'] ) -- @arrayと同じものだ。
+しかし、'2'や'Q'は一つしか存在していない。というのも、二つの
+リファレンスが同じ場所を指し示しているからだ。
+
+Here's what it looks like in the debugger: 
+
+デバッガでどうなっているかをみてみると：
+
+  DB<5> x \@array
+ 0  ARRAY(0x10e5560)
+   0  ARRAY(0x10e5464)
+      0  1
+      1  2
+      2  3
+   1  ARRAY(0x10e5638)
+      0  'a'
+      1  'u'
+      2  'B'
+      3  'Q'
+      4  'M'
+   2  ARRAY(0x10e568c)
+      0  '%'
+  DB<6> x \@shallow
+ 0  ARRAY(0xcaef60)
+   0  ARRAY(0x10e5464)
+      0  1
+      1  2
+      2  3
+   1  ARRAY(0x10e5638)
+      0  'a'
+      1  'u'
+      2  'B'
+      3  'Q'
+      4  'M'
+   2  ARRAY(0x10e568c)
+      0  '%'
+
+
+You can see that @array lives somewhere around 0x10e5560, whereas
+@shallow lives around 0xcaef60, but the three references point to
+arrays in the same place. If I now change $array[1][2] to 'C', watch
+what happens:  
+
+@arrayが0x10e5560周辺のどこかに存在していることがわかるだろう。一方、
+@shallowは0xcaef60のあたりに存在している。だが、三つのリファレンスは
+同じ場所の配列を指している。$arrya[1][2]を'C'に変えて、何が起こるか
+観察してみよう：
+
+
+  DB<7> $array[1][2] = 'C'
+
+
+  DB<8> x \@array
+ 0  ARRAY(0x10e5560)
+   0  ARRAY(0x10e5464)
+      0  1
+      1  2
+      2  3
+   1  ARRAY(0x10e5638)
+      0  'a'
+      1  'u'
+      2  'C'
+      3  'Q'
+      4  'M'
+   2  ARRAY(0x10e568c)
+      0  '%'
+  DB<9> x \@shallow
+ 0  ARRAY(0xcaef60)
+   0  ARRAY(0x10e5464)
+      0  1
+      1  2
+      2  3
+   1  ARRAY(0x10e5638)
+      0  'a'
+      1  'u'
+      2  'C'
+      3  'Q'
+      4  'M'
+   2  ARRAY(0x10e568c)
+      0  '%'
+
+$shallow[1][2] is now also 'C'! This is because it just followed the
+pointer to the array at 0x10e5638 and found the modified data there.  
+
+$shallow[1][2]もまた'C'になっている！これは0x10e5638にある配列への
+ポインタに従って、そこで変更されたデータを発見したためだ。
+
+Now see what happens when I do a copy that's one level deeper -- not
+just copying the references but the data behind the references:  
+
+今度は一レベル深いコピー -- 単にリファレンスをコピーするのではなく、
+リファレンスの背後にあるデータをコピーする -- を行ったとき何が起こるか
+見てみよう。
+
+ @deep = ( [ @{$array[0]} ], [ @{$array[1]} ], [ @{$array[2]} ] );
+
+This uses the knowledge that @array[0..2] are all references to
+arrays, and it only goes one level deeper. A more general algorithm
+(such as Storable's dclone, mentioned in `perldoc -q copy`) would do a
+walk and copy differently depending on the type of reference it
+encounters at each stage.  
+
+これは@array[0..2]が全て配列へのリファレンスであるという知識を利用
+している。そしてこれはただ1レベルだけ深い。より一般的なアルゴリズム
+（Storableのdcloneのようなもの。`perldoc -q copy`で言及されている）は、
+各レベルで出会うリファレンスのタイプに応じて様々に辿り、コピーする。
+
+
+Now watch: 
+
+今度は：
+
+  DB<12> x \@array
+ 0  ARRAY(0x10e5560)
+   0  ARRAY(0x10e5464)
+      0  1
+      1  2
+      2  3
+   1  ARRAY(0x10e5638)
+      0  'a'
+      1  'u'
+      2  'C'
+      3  'Q'
+      4  'M'
+   2  ARRAY(0x10e568c)
+      0  '%'
+  DB<13> x \@deep
+ 0  ARRAY(0x10ef89c)
+   0  ARRAY(0x10eb298)
+      0  1
+      1  2
+      2  3
+   1  ARRAY(0x10eb2c4)
+      0  'a'
+      1  'u'
+      2  'C'
+      3  'Q'
+      4  'M'
+   2  ARRAY(0x10ef07c)
+      0  '%'
+
+
+The references point to different places. 
+
+リファレンスは異なる場所を指している。
+
+Now if you change @array, @deep doesn't change: 
+
+今度は@arrayを変更しても@deepは変化しない：
+
+  DB<14> push @{$array[2]}, '$'
+
+
+  DB<15> x \@array
+ 0  ARRAY(0x10e5560)
+   0  ARRAY(0x10e5464)
+      0  1
+      1  2
+      2  3
+   1  ARRAY(0x10e5638)
+      0  'a'
+      1  'u'
+      2  'C'
+      3  'Q'
+      4  'M'
+   2  ARRAY(0x10e568c)
+      0  '%'
+      1  '$'
+  DB<16> x \@shallow
+ 0  ARRAY(0xcaef60)
+   0  ARRAY(0x10e5464)
+      0  1
+      1  2
+      2  3
+   1  ARRAY(0x10e5638)
+      0  'a'
+      1  'u'
+      2  'C'
+      3  'Q'
+      4  'M'
+   2  ARRAY(0x10e568c)
+      0  '%'
+      1  '$'
+  DB<17> x \@deep
+ 0  ARRAY(0x10ef89c)
+   0  ARRAY(0x10eb298)
+      0  1
+      1  2
+      2  3
+   1  ARRAY(0x10eb2c4)
+      0  'a'
+      1  'u'
+      2  'C'
+      3  'Q'
+      4  'M'
+   2  ARRAY(0x10ef07c)
+      0  '%'
+
+
+@deep didn't change, since it's got its own value of the anonymous
+array containing '%', but @shallow did.  
+
+@deepは変化しなかった。なぜならそれは'%'を含んだ独自の無名配列を
+得ていたからだ。だが@shallowは変化した。
+
+Hope this helps a bit. 
+
+これが少しは役に立つことを願っている。
+
+Cheers, Philip -- Philip Newton <nospam.newton@gmx.li> 
+If you're not part of the solution, you're part of the precipitate
+
+ご機嫌よう、Philip -- Philip Newton <nospam.newton@gmx.li> 
+もし解決しないなら、君はそそっかしい人だ。
+
+
+=head2 一見するとそうなのに、実際には深いコピーでない:  my (@list) = @{[@{$_[0]}]};
+
+I was meandering through demo_calc.pl in the Parse::RecDescent demo
+directory and came across this 
+
+Parse::RecDescentのdemoディレクトリでdemo_calc.plに目を通していたら
+これに出くわしました。
+
+ sub evalop
+ {
+        my (@list) = @{[@{$_[0]}]};
+        my $val = shift(@list)->();
+ ...       
+ }
+
+I took the line that confused me step-by-step and don't get the
+purpose of this. Working from inner to outer: 
+
+この行は私を段々と混乱させていきました。これの意味が私には
+わかりません。内側から外側へ向かって見ていきます：
+
+
+   @{$_[0]}     # 簡単 --- 配列リファレンスをデリファレンスしている
+ [  @{$_[0]} ]    # 大丈夫 --- それを配列リファレンスに戻している…なぜ？
+ @{ [ @{$_[0]} ] } # うーん -- あー…ええと、@signが意味するのは
+                             # 配列があるが、どうやって最初にデリファレンス
+                             # した配列と区別するのか？
+
+=over 4
+
+=item * Matthew Wickerlineの回答
+
+The line from demo_calc.pl is in
+fact not doing any deep copying.
+
+demo_calc.plのその行は、実際何ら深いコピーをやっていない。
+
+
+    #!/usr/bin/perl -w
+    my @original = (
+        [0],  [1,2,3],  [4,5,6],  [7,8,9]
+    );
+    my @copy = &some_kind_of_copy( \@original );
+    sub some_kind_of _copy {
+        # これがそのdemo_calc.plの行だ
+        my (@list) = @{[@{$_[0]}]};
+        return @list;
+    }
+
+ $original[0][0]         = 'zero';
+ @{ $original[1] }[0..2] = qw(one   two   three);
+ @{ $original[2] }[0..2] = qw(four  five  six);
+ @{ $original[3] }[0..2] = qw(seven eight nine);
+    # デバッガを使ってそのアドレスを見てみるか
+    # Data::Dumperを使って@copyをみる。あるいは、
+    # 単にアイテムの一つを比較する…
+ if (  $copy[1][2] eq 'three'  ) {
+    print "Shallow Copy\n";
+ } elsif (  $copy[1][2] == 3  ) {
+    print "Deep Copy\n";
+ } else {
+        print "This should never happen!!!\n"
+	}
+
+
+If you wanted that line to do deep copying of a list of anon arrays,
+then the line should read
+
+その行で無名配列のリストに対して深いコピーをさせたいなら、
+こうするとよい。
+
+    my @list = map  { [@$_] }  @{$_[0]};
+               # $_[0]を（配列リファレンスの）リストに戻す。
+               # そのリストの各（配列リファレンス）要素を
+               # デリファレンスすることによって、リストを
+               # 含んだ無名配列にする。
+
+
+Try plugging that line into above script instead of the line from the
+demo_calc.pl and you'll see different output. The line from demo_calc.pl
+is in fact doing extra useless work. My guess is that the extra
+    @{[    ]}
+around there is one of two things:
+
+demo_calc.plのあの行の代わりに、上のスクリプトの行を入れてみよう。
+そうすれば違った結果を見ることになるだろう。実際、demo_calc.plの
+あの行は余分で無意味な働きをしている。私の推測では、この余計な
+     @{[    ]}
+がある理由は、次の二つのうちのどちらかだ。
+
+
+    1) a momentary lapse of attention
+       resulting in a copy/paste error, or duplicate typing
+ or
+    2) an artifact of earlier code wherein something extra was
+       going on in there and has since been deleted.
+
+
+    1) コピー＆ペーストした際に一瞬不注意になったか、二重タイプした
+あるいは
+    2) 初期のコードにはその部分に何か付加的なものがあったが、
+       削除されてしまった結果出来たもの
+
+Even Damian can make a mistake, but it's not a mistake that affects
+output... it just makes for a tiny bit of wasted work (or maybe Perl is
+smart enough to optimze away the wasted work, I dunno).
+
+Damianでさえ間違うことがある。だがその結果は間違っていない…
+ただほんの少し余計な仕事をするだけだ（あるいはPerlはその余計な
+仕事を最適化してくれるぐらいに賢いかもしれない、私にはわからないが）。
+
+=item * Damian Conwayからの回答
+
+I have no recollection of why I did this (see children, that's
+why you should *always* comment your code!).
+
+私がなぜそうしたのか全く記憶にない（見よ、子らよ。これこそが
+常に汝のコードにコメントを入れねばならぬ理由なり！）。
+
+I *suspect* it's vestigal -- from a time when contents of the
+argument array reference were somehow modified in situ, but
+it was important that the original argument's contents not
+be changed.
+
+それは痕跡  -- 元の場所で引数の配列リファレンスの内容を
+何か変更した時から -- なのではないかと思われる。しかし、
+元々の引数の内容が変更されていないことが重要だった。
+
+The ungainly C<@{[@{$_[0]}]}> syntax is a way of (shallow)
+copying the array referenced in $_[0] without declaring a new
+variable. So another possible explanation is that evalop may
+originally have been a one-liner, in which case I might have
+used this "inlined copy" to keep the subroutine's body to a
+single expression.
+
+この見苦しいC<@{[@{$_[0]}]}>という構文は、新しい変数を宣言すること
+なしに$_[0]の配列リファレンスを（浅く）コピーする方法だ。だから
+もう一つ可能性のある説明は、この評価演算が元来は一行式であって、
+私はこの"インラインされたコピー"をサブルーチンの本体を一つの
+式にまとめるために使ったのではないかということだ。
+
+However...
+
+だが…
+
+   Even Damian can make a mistake
+
+   Damianでさえ間違うことがある。
+
+is by far the likeliest explanation.
+
+これが至極もっともな説明だ。
+
+=back
+
+
+
+=head1 リソース
+
+=over 4
+
+=item * MySql to Oracle schema conversion utility
+
+Written in Parse::RecDescent by Tim Bunce:
+
+Tim BunceがParse::RecDescentで書いた：
+
+ http://groups.google.com/groups?q=recdescent&start=40&hl=en&scoring=d&rnum=41&selm=9km7b1%246vc%241%40FreeBSD.csie.NCTU.edu.tw
+
+=item * Data::MultiValuedHash on search.cpan.org
+
+Transparent manipulation of single or multiply-valued Perl hash values.
+
+単一または複数の値づけられたPerlハッシュの値を透過的に操作する。
+
+=item * Parse::Recdescent tutorial at www.perl.com
+
+http://www.perl.com/pub/a/2001/06/13/recdecent.html
+
+=item * "Safe undumping"
+
+In this Linux Magazine article by Randal Schwartz uses
+Parse::RecDescent to parse Data::Dumper output. Not fast, but quite
+complete. 
+
+Randal Schwartzが書いたLinux Magazineのこの記事で、Parse::RecDescent
+を使ってData::Dumperの出力を解析している。早くはないが全く完璧である。
+
+=back
+
+=over
+
+=item "Parsing Interesting Things", SysAdminMag.COM, December 2001, Randal Schwartz
+
+=back
+
+=over
+
+=item * py
+
+py, which I assume is short for C<parse yacc>, is a program by
+Mark-Jason Dominus which parses GNU Bison output to produce Perl parsers.
+
+py（たぶんC<parse yacc>の略だと思うが）は、Mark-Jason Dominusがつくった
+プログラムで、GNU Bisonの出力を解析してPerlのパーサを生成する。
+
+It is obtainable from http://perl.plover.com/py/
+
+http://perl.plover.com/py/ から手に入る。
+
+=item * Parse::YAPP
+
+A bottom-up parser which will be familiar to those who
+have used Lex and Yacc. Parse::RecDescent is a top-down parser.
+
+LexとYaccを使っている人にはおなじみの上向きパーサ。
+Parse::RecDescentは下向きのパーサだ。
+
+=item * Text::Balanced  and Regexp::Common::balanced
+
+Use this instead of writing hairy regular expressions to match certain
+common "balanced" forms of text, such as tags and parenthesized text.
+
+ごちゃごちゃした正規表現を書いて"釣り合いの取れた"テキスト形式
+（タグや括弧で挟まれたテキストのようなもの）にマッチさせる代わりに、
+これを使おう。
+
+See http://perlmonks.org/index.pl?node_id=208285
+for an example of where it would be better suited for the task than
+Parse::RecDescent.
+
+http://perlmonks.org/index.pl?node_id=208285 を参照。
+Parse::RecDescentがやるよりも適した仕事の例が載っている。
+
+=item * "Mastering Regular Expressions" by Jeffrey Freidl
+
+You still need to know when to use /.*/ or /.+/ or /[^x]*/
+
+ /.*/ や /.+/ や /[^x]*/ をいつ使うべきかまだ知る必要がある。
+
+[邦訳：『詳説 正規表現』,歌代和正 監訳,春遍雀來・鈴木武生 共訳,
+オライリー・ジャパン]
+
+=item * "Data Munging with Perl" by Dave Cross
+
+Chapter 11 is focused on parsing with special emphasis on practical use of
+Parse::RecDescent.
+
+第11章はParse::RecDescentを実際に使って解析することに焦点が
+当てられている。
+
+[邦訳：『Perlデータマンジング データ加工のテクニック集』,宮川達彦 訳,
+株式会社ピアソン・エデュケーション]
+
+=item * "Object-Oriented Perl" by Damian Conway
+
+This book will aid you in complexity management for large grammars.
+
+この本は巨大な文法の複雑な管理を助けてくれるだろう。
+
+[邦訳：『オブジェクト指向Perlマスターコース』,
+株式会社山根ドキュメンテーション 訳,株式会社ピアソン・エデュケーション]
+
+=item * http://www.PerlMonks.org
+
+A useful site to get fast help on Perl.
+
+Perlに関する素早いヘルプを手に入れるのに便利なサイト。
+
+=back
+
+=head1 作者
+
+The author of Parse::RecDescent::FAQ is Terrence Brannon <tbone@cpan.org>. 
+
+The author of Parse::RecDescent is Damian Conway. 
+
+The (unwitting) contributors to this FAQ
+
+=over 4 
+
+=item * Me
+
+=item * Damian Conway
+
+=item * Marcel Grunaer
+
+=item * Brent Dax
+
+=item * Randal L. Schwartz (merlyn), Perl hacker
+
+=item * lhoward of Perlmonks
+
+=item * Matthew Wickline
+
+=item * Gwynn Judd
+
+=back 
+

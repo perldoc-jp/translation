@@ -1,0 +1,803 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+re - Perl pragma to alter regular expression behaviour
+
+=end original
+
+re - 正規表現の振る舞いを変えるための Perl プラグマ
+
+=head1 SYNOPSIS
+
+=begin original
+
+    use re 'taint';
+    ($x) = ($^X =~ /^(.*)$/s);     # $x is tainted here
+
+=end original
+
+    use re 'taint';
+    ($x) = ($^X =~ /^(.*)$/s);     # $x はここで汚染されている
+
+=begin original
+
+    $pat = '(?{ $foo = 1 })';
+    use re 'eval';
+    /foo${pat}bar/;		   # won't fail (when not under -T switch)
+
+=end original
+
+    $pat = '(?{ $foo = 1 })';
+    use re 'eval';
+    /foo${pat}bar/;		   # 失敗しない (-T スイッチがないとき)
+
+=begin original
+
+    {
+	no re 'taint';		   # the default
+	($x) = ($^X =~ /^(.*)$/s); # $x is not tainted here
+
+=end original
+
+    {
+	no re 'taint';		   # デフォルト
+	($x) = ($^X =~ /^(.*)$/s); # $x はここで汚染されていない
+
+=begin original
+
+	no re 'eval';		   # the default
+	/foo${pat}bar/;		   # disallowed (with or without -T switch)
+    }
+
+=end original
+
+	no re 'eval';		   # デフォルト
+	/foo${pat}bar/;		   # 許されない (-T スイッチの有無に関係なく)
+    }
+
+=begin original
+
+    use re 'debug';		   # output debugging info during
+    /^(.*)$/s;			   #     compile and run time
+
+=end original
+
+    use re 'debug';		   # コンパイル時と実行時に
+    /^(.*)$/s;			   #     デバッグ情報を出力する
+
+=begin original
+
+    use re 'debugcolor';	   # same as 'debug', but with colored output
+    ...
+
+=end original
+
+    use re 'debugcolor';	   # 'debug' と同じだが、出力に色がつく
+    ...
+
+=begin original
+
+    use re qw(Debug All);          # Finer tuned debugging options.
+    use re qw(Debug More);
+    no re qw(Debug ALL);           # Turn of all re debugging in this scope
+
+=end original
+
+    use re qw(Debug All);          # より細かいデバッグオプション
+    use re qw(Debug More);
+    no re qw(Debug ALL);           # このスコープ内で全ての re デバッグを有効化
+
+    use re qw(is_regexp regexp_pattern); # import utility functions
+    my ($pat,$mods)=regexp_pattern(qr/foo/i);
+    if (is_regexp($obj)) { 
+        print "Got regexp: ",
+            scalar regexp_pattern($obj); # just as perl would stringify it
+    }                                    # but no hassle with blessed re's.
+
+=begin original
+
+(We use $^X in these examples because it's tainted by default.)
+
+=end original
+
+(これらの例では、デフォルトで汚染されているので $^X を使っています。)
+
+=head1 DESCRIPTION
+
+=head2 'taint' mode
+
+('taint' モード)
+
+=begin original
+
+When C<use re 'taint'> is in effect, and a tainted string is the target
+of a regex, the regex memories (or values returned by the m// operator
+in list context) are tainted.  This feature is useful when regex operations
+on tainted data aren't meant to extract safe substrings, but to perform
+other transformations.
+
+=end original
+
+C<use re 'taint'> が有効で、汚染された文字列が正規表現の
+ターゲットであるとき、正規表現のメモリ(もしくはリストコンテキストで
+m// 演算子が返す値)は汚染されます。
+この機能は汚染されたデータに対する正規表現演算が安全な部分文字列を
+取り出すものでないときに便利ですが、その他の変換は働きます。
+
+=head2 'eval' mode
+
+('eval' モード)
+
+=begin original
+
+When C<use re 'eval'> is in effect, a regex is allowed to contain
+C<(?{ ... })> zero-width assertions even if regular expression contains
+variable interpolation.  That is normally disallowed, since it is a
+potential security risk.  Note that this pragma is ignored when the regular
+expression is obtained from tainted data, i.e.  evaluation is always
+disallowed with tainted regular expressions.  See L<perlre/(?{ code })>.
+
+=end original
+
+C<use re 'eval'> が有効なとき、変数展開を含む正規表現でも
+ゼロ幅表明 C<(?{ ... })> を持つことができます。
+これは通常はセキュリティ上のリスクとなる可能性があるので許されていません。
+このプラグマは正規表現が汚染されたデータからきたものである場合には
+無視されることに注意してください。
+つまり、汚染された正規表現を評価することは常に許されません。
+L<perlre/(?{ code })> を参照してください。
+
+=begin original
+
+For the purpose of this pragma, interpolation of precompiled regular
+expressions (i.e., the result of C<qr//>) is I<not> considered variable
+interpolation.  Thus:
+
+=end original
+
+このプラグマの目的のため、プリコンパイルされた正規表現
+(つまり、C<qr//> の結果)の展開(interpolation)は変数展開とは
+I<みなされません>。
+したがって:
+
+    /foo${pat}bar/
+
+=begin original
+
+I<is> allowed if $pat is a precompiled regular expression, even
+if $pat contains C<(?{ ... })> assertions.
+
+=end original
+
+は、$pat がプリコンパイルされた正規表現であれば、たとえ $pat が
+C<(?{ ... })> 表明を含んでいたとしても I<許されます>。
+
+=head2 'debug' mode
+
+('debug' モード)
+
+=begin original
+
+When C<use re 'debug'> is in effect, perl emits debugging messages when
+compiling and using regular expressions.  The output is the same as that
+obtained by running a C<-DDEBUGGING>-enabled perl interpreter with the
+B<-Dr> switch. It may be quite voluminous depending on the complexity
+of the match.  Using C<debugcolor> instead of C<debug> enables a
+form of output that can be used to get a colorful display on terminals
+that understand termcap color sequences.  Set C<$ENV{PERL_RE_TC}> to a
+comma-separated list of C<termcap> properties to use for highlighting
+strings on/off, pre-point part on/off.
+See L<perldebug/"Debugging regular expressions"> for additional info.
+
+=end original
+
+C<use re 'debug'> が有効なとき、perl は正規表現をコンパイルするときと
+使うときにデバッグ用メッセージを出力します。
+その出力は C<-DDEBUGGING> が有効になっている perl インタプリタに
+B<-Dr> スイッチを与えたときと同じです。
+これはマッチの複雑さに応じて非常に多弁になる可能性があります。
+C<debug> の代わりに C<debugcolor> を使うと、termcap カラーシーケンスを
+使ったカラフルな出力を端末に行います。
+C<termcap> プロパティのカンマ区切りのリストを C<$ENV{PERL_RE_TC}> に
+セットすることで、文字列のオン/オフや pre-point 部分のオン/オフを
+ハイライトできます。
+更なる情報については
+L<perldebug/"Debugging regular expressions"> を参照してください。
+
+=begin original
+
+As of 5.9.5 the directive C<use re 'debug'> and its equivalents are
+lexically scoped, as the other directives are.  However they have both 
+compile-time and run-time effects.
+
+=end original
+
+5.9.5 現在、
+C<use re 'debug'> 指示子およびそれと等価な設定は、他の指示子と同様
+レキシカルスコープです。
+しかしこれらはコンパイル時と実行時の両方に影響を及ぼします。
+
+=begin original
+
+See L<perlmodlib/Pragmatic Modules>.
+
+=end original
+
+L<perlmodlib/Pragmatic Modules> を参照してください。
+
+=head2 'Debug' mode
+
+('Debug' モード)
+
+=begin original
+
+Similarly C<use re 'Debug'> produces debugging output, the difference
+being that it allows the fine tuning of what debugging output will be
+emitted. Options are divided into three groups, those related to
+compilation, those related to execution and those related to special
+purposes. The options are as follows:
+
+=end original
+
+C<use re 'Debug'> と同様にデバッグ出力を生成しますが、
+どのデバッグ情報が出力されるかを細かく制御できることが違います。
+操作は、コンパイル関係、実行関係、特殊用途関係の 3 つのグループに
+分割されます。
+オプションは以下の通りです:
+
+=over 4
+
+=item Compile related options
+
+(コンパイル関係オプション)
+
+=over 4
+
+=item COMPILE
+
+=begin original
+
+Turns on all compile related debug options.
+
+=end original
+
+コンパイル関係のオプションを全て有効にします。
+
+=item PARSE
+
+=begin original
+
+Turns on debug output related to the process of parsing the pattern.
+
+=end original
+
+パターンのパース処理に関係するデバッグ出力を有効にします。
+
+=item OPTIMISE
+
+=begin original
+
+Enables output related to the optimisation phase of compilation.
+
+=end original
+
+コンパイルの最適化フェーズに関係するデバッグ出力を有効にします。
+
+=item TRIEC
+
+=begin original
+
+Detailed info about trie compilation.
+
+=end original
+
+トライ木のコンパイルに関する詳細情報。
+
+=item DUMP
+
+=begin original
+
+Dump the final program out after it is compiled and optimised.
+
+=end original
+
+コンパイルと最適化の後の最終的なプログラムの出力をダンプします。
+
+=back
+
+=item Execute related options
+
+(実行関係オプション)
+
+=over 4
+
+=item EXECUTE
+
+=begin original
+
+Turns on all execute related debug options.
+
+=end original
+
+実行関係のデバッグオプションを全て有効にします。
+
+=item MATCH
+
+=begin original
+
+Turns on debugging of the main matching loop.
+
+=end original
+
+メインマッチングループのデバッグを有効にします。
+
+=item TRIEE
+
+=begin original
+
+Extra debugging of how tries execute.
+
+=end original
+
+トライ木をどのように実行するかに関する追加のデバッグ。
+
+=item INTUIT
+
+=begin original
+
+Enable debugging of start point optimisations.
+
+=end original
+
+開始点最適化のデバッグを有効にします。
+
+=back
+
+=item Extra debugging options
+
+(追加デバッグオプション)
+
+=over 4
+
+=item EXTRA
+
+=begin original
+
+Turns on all "extra" debugging options.
+
+=end original
+
+「追加の」デバッグオプションを全て有効にします。
+
+=item BUFFERS
+
+=begin original
+
+Enable debugging the capture buffer storage during match. Warning,
+this can potentially produce extremely large output.
+
+=end original
+
+マッチング中の捕捉バッファのデバッグを有効にします。
+これは極めて大きい出力を生成する可能性があることを警告しておきます。
+
+=item TRIEM
+
+=begin original
+
+Enable enhanced TRIE debugging. Enhances both TRIEE
+and TRIEC.
+
+=end original
+
+拡張された TRIE デバッグを有効にします。
+TRIEE と TRIEC の両方を拡張します。
+
+=item STATE
+
+=begin original
+
+Enable debugging of states in the engine.
+
+=end original
+
+エンジンの状態のデバッグを有効にします。
+
+=item STACK
+
+=begin original
+
+Enable debugging of the recursion stack in the engine. Enabling
+or disabling this option automatically does the same for debugging
+states as well. This output from this can be quite large.
+
+=end original
+
+エンジンの再帰スタックのデバッグを有効にします。
+このオプションを有効または無効にすると、デバッグ状態も同様に
+同じ状態になります。
+この出力はかなり大きくなることがあります。
+
+=item OPTIMISEM
+
+=begin original
+
+Enable enhanced optimisation debugging and start point optimisations.
+Probably not useful except when debugging the regex engine itself.
+
+=end original
+
+拡張最適化デバッグと開始位置最適化を有効にします。
+正規表現自身をデバッグするのでなければ、おそらく有用ではありません。
+
+=item OFFSETS
+
+=begin original
+
+Dump offset information. This can be used to see how regops correlate
+to the pattern. Output format is
+
+=end original
+
+オフセット情報をダンプします。
+これは、どのように regops がパターンと関連するかを見るために使えます。
+出力フォーマットは
+
+   NODENUM:POSITION[LENGTH]
+
+=begin original
+
+Where 1 is the position of the first char in the string. Note that position
+can be 0, or larger than the actual length of the pattern, likewise length
+can be zero.
+
+=end original
+
+文字列の最初の文字の位置は 1 です。
+位置が 0 であったり、パターンの実際の長さより大きかったり、
+長さが 0 であったりするかもしれないことに注意してください。
+
+=item OFFSETSDBG
+
+=begin original
+
+Enable debugging of offsets information. This emits copious
+amounts of trace information and doesn't mesh well with other
+debug options.
+
+=end original
+
+オフセット情報のデバッグを有効にします。
+これは大量のトレース情報を出力し、他のデバッグオプションとはうまく
+かみ合いません。
+
+=begin original
+
+Almost definitely only useful to people hacking
+on the offsets part of the debug engine.
+
+=end original
+
+ほぼ確実に、デバッグエンジンのオフセット部分をハックする人々によってのみ
+有用です。
+
+=back
+
+=item Other useful flags
+
+(その他の便利なフラグ)
+
+=begin original
+
+These are useful shortcuts to save on the typing.
+
+=end original
+
+タイプ数を節約するための便利な短縮記法があります。
+
+=over 4
+
+=item ALL
+
+=begin original
+
+Enable all options at once except OFFSETS, OFFSETSDBG and BUFFERS
+
+=end original
+
+OFFSETS, OFFSETSDBG, BUFFERS 以外の全てのオプションを有効にします。
+
+=item All
+
+=begin original
+
+Enable DUMP and all execute options. Equivalent to:
+
+=end original
+
+DUMP と、全ての実行関係のオプションを有効にします。
+以下と等価です:
+
+  use re 'debug';
+
+=item MORE
+
+=item More
+
+=begin original
+
+Enable TRIEM and all execute compile and execute options.
+
+=end original
+
+TRIEM と、全てのコンパイル関係および実行関係のオプションを有効にします。
+
+=back
+
+=back
+
+=begin original
+
+As of 5.9.5 the directive C<use re 'debug'> and its equivalents are
+lexically scoped, as the other directives are.  However they have both
+compile-time and run-time effects.
+
+=end original
+
+5.9.5 以降、C<use re 'debug'> 指示子およびその等価物は、その他の指示子と同様
+レキシカルスコープを持ちます。
+しかし、これらはコンパイル時と実行時の両方で効果があります。
+
+=head2 Exportable Functions
+
+(エクスポート可能な関数)
+
+=begin original
+
+As of perl 5.9.5 're' debug contains a number of utility functions that
+may be optionally exported into the caller's namespace. They are listed
+below.
+
+=end original
+
+perl 5.9.5 以降、're' debug には、呼び出し元の名前空間にエクスポートできる、
+いくつかの便利関数を含んでいます。
+以下に一覧を示します。
+
+=over 4
+
+=item is_regexp($ref)
+
+=begin original
+
+Returns true if the argument is a compiled regular expression as returned
+by C<qr//>, false if it is not.
+
+=end original
+
+引数が、C<qr//> から返された、コンパイル済み正規表現の場合は真を、
+さもなければ偽を返します。
+
+=begin original
+
+This function will not be confused by overloading or blessing. In
+internals terms, this extracts the regexp pointer out of the
+PERL_MAGIC_qr structure so it it cannot be fooled.
+
+=end original
+
+この関数はオーバーロードや bless によって混乱しません。
+内部用語で言うと、PERL_MAGIC_qr 構造体から正規表現ポインタを
+取り出しているので、だまされることはありません。
+
+=item regexp_pattern($ref)
+
+=begin original
+
+If the argument is a compiled regular expression as returned by C<qr//>,
+then this function returns the pattern.
+
+=end original
+
+引数が、C<qr//> から返された、コンパイル済み正規表現の場合、
+この関数はパターンを返します。
+
+=begin original
+
+In list context it returns a two element list, the first element
+containing the pattern and the second containing the modifiers used when
+the pattern was compiled.
+
+=end original
+
+リストコンテキストでは 2 要素のリストを返し、1 番目の要素はパターン、
+2 番目はパターンがコンパイルされたときに使われた修飾子です。
+
+  my ($pat, $mods) = regexp_pattern($ref);
+
+=begin original
+
+In scalar context it returns the same as perl would when strigifying a raw
+C<qr//> with the same pattern inside.  If the argument is not a compiled
+reference then this routine returns false but defined in scalar context,
+and the empty list in list context. Thus the following
+
+=end original
+
+スカラコンテキストでは、生の C<qr//> の中に書くことで perl が
+文字列化したときに同じ内容になるものを返します。
+引数がコンパイルされたリファレンスではない場合、スカラコンテキストでは
+「偽だが定義済み」を返し、リストコンテキストでは空リストを返します。
+従って、以下の文
+
+    if (regexp_pattern($ref) eq '(?i-xsm:foo)')
+
+=begin original
+
+will be warning free regardless of what $ref actually is.
+
+=end original
+
+は、実際の $ref が何であっても警告は出ません。
+
+=begin original
+
+Like C<is_regexp> this function will not be confused by overloading
+or blessing of the object.
+
+=end original
+
+C<is_regexp> と同様、この関数はオブジェクトのオーバーロードや bless によって
+混乱しません。
+
+=item regmust($ref)
+
+=begin original
+
+If the argument is a compiled regular expression as returned by C<qr//>,
+then this function returns what the optimiser consiers to be the longest
+anchored fixed string and longest floating fixed string in the pattern.
+
+=end original
+
+引数が C<qr//> で返されたコンパイル済み正規表現の場合、この関数は、
+パターンの中でオプティマイザが最長の不動不変文字列および最長の
+浮遊不変文字列と考えたものを返します。
+
+=begin original
+
+A I<fixed string> is defined as being a substring that must appear for the
+pattern to match. An I<anchored fixed string> is a fixed string that must
+appear at a particular offset from the beginning of the match. A I<floating
+fixed string> is defined as a fixed string that can appear at any point in
+a range of positions relative to the start of the match. For example,
+
+=end original
+
+I<不変文字列> (fixed string) とは、マッチングするパターンとして
+現れなければならない部分文字列として定義されます。
+I<不動不変文字列> (anchored fixed string) とは、マッチングの開始からの
+特定の位置に現れなければならない不変文字列です。
+I<浮遊不変文字列> (floating fixed string) とは、マッチングの開始からの
+相対位置の範囲でどの位置に現れてもよい不変文字列として定義されます。
+例えば、
+
+    my $qr = qr/here .* there/x;
+    my ($anchored, $floating) = regmust($qr);
+    print "anchored:'$anchored'\nfloating:'$floating'\n";
+
+=begin original
+
+results in
+
+=end original
+
+これの結果は
+
+    anchored:'here'
+    floating:'there'
+
+=begin original
+
+Because the C<here> is before the C<.*> in the pattern, its position
+can be determined exactly. That's not true, however, for the C<there>;
+it could appear at any point after where the anchored string appeared.
+Perl uses both for its optimisations, prefering the longer, or, if they are
+equal, the floating.
+
+=end original
+
+パターンの中で C<here> は C<.*> の前にあるので、この位置は正確に
+決定されます。
+しかし、このことは C<there> には当てはまりません;
+これは不動不変文字列の後ならどの地点にでも現れる可能性があります。
+Perl は最適化のためにこれらの両方を、長い方(同じ場合は浮遊)を優先して
+使います。
+
+=begin original
+
+B<NOTE:> This may not necessarily be the definitive longest anchored and
+floating string. This will be what the optimiser of the Perl that you
+are using thinks is the longest. If you believe that the result is wrong
+please report it via the L<perlbug> utility.
+
+=end original
+
+B<注意:> これは最終的な最長の不動及び浮遊文字列とは限りません。
+これは Perl のオプティマイザが最長と考えたものです。
+もし結果が間違っていると信じるなら、L<perlbug> ユーティリティ経由で
+報告を送ってください。
+
+=item regname($name,$all)
+
+=begin original
+
+Returns the contents of a named buffer of the last successful match. If
+$all is true, then returns an array ref containing one entry per buffer,
+otherwise returns the first defined buffer.
+
+=end original
+
+最後に成功したマッチングの名前付きバッファの内容を返します。
+$all が真なら、バッファごとに一つの要素となる配列リファレンスを返します;
+さもなければ最初に定義されたバッファを返します。
+
+=item regnames($all)
+
+=begin original
+
+Returns a list of all of the named buffers defined in the last successful
+match. If $all is true, then it returns all names defined, if not it returns
+only names which were involved in the match.
+
+=end original
+
+最後に成功したマッチングで定義された全ての名前付きバッファのリストを
+返します。
+$all が真なら、定義された全ての名前を返します;
+さもなければマッチングに関わった名前のみを返します。
+
+=item regnames_count()
+
+=begin original
+
+Returns the number of distinct names defined in the pattern used
+for the last successful match.
+
+=end original
+
+最後に成功したマッチングで使われたパターンで定義された、異なる名前の数を
+返します。
+
+=begin original
+
+B<Note:> this result is always the actual number of distinct
+named buffers defined, it may not actually match that which is
+returned by C<regnames()> and related routines when those routines
+have not been called with the $all parameter set.
+
+=end original
+
+B<注意:> この結果は常に、定義された異なる名前付きバッファの実際の数となり、
+C<regnames()> や関連するルーチンが $all 引数をセットせずに呼び出された
+場合に返したものと一致しないことがあります。
+
+=back
+
+=head1 SEE ALSO
+
+L<perlmodlib/Pragmatic Modules>.
+
+=begin meta
+
+Translate: KIMURA Koichi (0.04)
+Update: Kentaro Shirakata <argrath@ub32.org> (0.08)
+
+=end meta
+
+=cut
+

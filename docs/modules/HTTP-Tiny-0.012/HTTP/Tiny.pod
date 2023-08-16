@@ -1,0 +1,694 @@
+
+=pod
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+HTTP::Tiny - A small, simple, correct HTTP/1.1 client
+
+=end original
+
+HTTP::Tiny - 小さく、シンプルで、正しい HTTP/1.1 クライアント
+
+=head1 VERSION
+
+=begin original
+
+version 0.012
+
+=end original
+
+バージョン 0.012
+
+=head1 SYNOPSIS
+
+    use HTTP::Tiny;
+
+    my $response = HTTP::Tiny->new->get('http://example.com/');
+
+    die "Failed!\n" unless $response->{success};
+
+    print "$response->{status} $response->{reason}\n";
+
+    while (my ($k, $v) = each %{$response->{headers}}) {
+        for (ref $v eq 'ARRAY' ? @$v : $v) {
+            print "$k: $_\n";
+        }
+    }
+
+    print $response->{content} if length $response->{content};
+
+=head1 DESCRIPTION
+
+=begin original
+
+This is a very simple HTTP/1.1 client, designed primarily for doing simple GET
+requests without the overhead of a large framework like L<LWP::UserAgent>.
+
+=end original
+
+これはとてもシンプルな HTTP/1.1 クライアントで、基本的には
+L<LWP::UserAgent> のような大きなフレームワークのオーバーヘッドなしに
+単純な GET リクエストを実行するために設計されています。
+
+=begin original
+
+It is more correct and more complete than L<HTTP::Lite>.  It supports
+proxies (currently only non-authenticating ones) and redirection.  It
+also correctly resumes after EINTR.
+
+=end original
+
+これは L<HTTP::Lite> よりも正しく、完全です。
+これはプロキシ (現在のところ認証なしのもののみ) および
+リダイレクトに対応しています。
+また、EINTR の後正しく再開します。
+
+=head1 METHODS
+
+=head2 new
+
+    $http = HTTP::Tiny->new( %attributes );
+
+=begin original
+
+This constructor returns a new HTTP::Tiny object.  Valid attributes include:
+
+=end original
+
+このコンストラクタは新しい HTTP::Tiny オブジェクトを返します。
+有効な属性は以下のものです:
+
+=over 4
+
+=item *
+
+agent
+
+=begin original
+
+A user-agent string (defaults to 'HTTP::Tiny/$VERSION')
+
+=end original
+
+ユーザーエージェント文字列 (デフォルトは 'HTTP::Tiny/$VERSION')
+
+=item *
+
+default_headers
+
+=begin original
+
+A hashref of default headers to apply to requests
+
+=end original
+
+リクエストに適用されるデフォルトのヘッダのハッシュリファレンス
+
+=item *
+
+max_redirect
+
+=begin original
+
+Maximum number of redirects allowed (defaults to 5)
+
+=end original
+
+リダイレクトの最大数 (デフォルトは 5)
+
+=item *
+
+max_size
+
+=begin original
+
+Maximum response size (only when not using a data callback).  If defined,
+responses larger than this will die with an error message
+
+=end original
+
+最大レスポンスサイズ (データコールバックを使っていない場合のみ)。
+定義されると、これより大きなレスポンスはエラーメッセージを出して die します。
+
+=item *
+
+proxy
+
+=begin original
+
+URL of a proxy server to use.
+
+=end original
+
+使うプロキシサーバの URL。
+
+=item *
+
+timeout
+
+=begin original
+
+Request timeout in seconds (default is 60)
+
+=end original
+
+リクエストのタイムアウト秒 (デフォルトは 60)
+
+=back
+
+=head2 get
+
+    $response = $http->get($url);
+    $response = $http->get($url, \%options);
+
+=begin original
+
+Executes a C<GET> request for the given URL.  The URL must have unsafe
+characters escaped and international domain names encoded.  Internally, it just
+calls C<request()> with 'GET' as the method.  See C<request()> for valid
+options and a description of the response.
+
+=end original
+
+指定された URL に対して C<GET> リクエストを実行します。
+URL は安全な文字をエスケープされていなければならず、国際ドメイン名は
+エンコードされていなければなりません。
+内部としては、単にメソッドを 'GET' として C<request()> を呼び出します。
+有効なオプションとレスポンスに関する説明については
+C<request()> を参照してください。
+
+=head2 mirror
+
+    $response = $http->mirror($url, $file, \%options)
+    if ( $response->{success} ) {
+        print "$file is up to date\n";
+    }
+
+=begin original
+
+Executes a C<GET> request for the URL and saves the response body to the file
+name provided.  The URL must have unsafe characters escaped and international
+domain names encoded.  If the file already exists, the request will includes an
+C<If-Modified-Since> header with the modification timestamp of the file.  You
+may specificy a different C<If-Modified-Since> header yourself in the C<<
+$options->{headers} >> hash.
+
+=end original
+
+URL に対して C<GET> リクエストを実行し、レスポンス本体を指定された
+ファイル名に保存します。
+URL は安全でない文字はエスケープされていなければならず、
+国際ドメイン名はエンコードされていなければなりません。
+ファイルが既に存在している場合、リクエストにはそのファイルの変更時刻が
+C<If-Modified-Since> ヘッダに指定されます。
+C<< $options->{headers} >> ハッシュに異なる C<If-Modified-Since> ヘッダを
+指定することもできます。
+
+=begin original
+
+The C<success> field of the response will be true if the status code is 2XX
+or 304 (unmodified).
+
+=end original
+
+レスポンスの C<success> フィールドは、ステータスコードが 2XX または
+304 (unmodified) の場合に真になります。
+
+=begin original
+
+If the file was modified and the server response includes a properly
+formatted C<Last-Modified> header, the file modification time will
+be updated accordingly.
+
+=end original
+
+ファイルが変更されていて、サーバレスポンスに適切にフォーマットされている
+C<Last-Modified> ヘッダが含まれている場合、
+ファイル変更時刻はそれに応じて更新されます。
+
+=head2 request
+
+    $response = $http->request($method, $url);
+    $response = $http->request($method, $url, \%options);
+
+=begin original
+
+Executes an HTTP request of the given method type ('GET', 'HEAD', 'POST',
+'PUT', etc.) on the given URL.  The URL must have unsafe characters escaped and
+international domain names encoded.  A hashref of options may be appended to
+modify the request.
+
+=end original
+
+指定された URL に与えられたメソッド型 ('GET', 'HEAD', 'POST',
+'PUT' など) で HTTP リクエストを実行します。
+URL は安全でない文字はエスケープされていなければならず、
+国際ドメイン名はエンコードされていなければなりません。
+オプションのハッシュリファレンスはリクエストを修正するために追加されます。
+
+=begin original
+
+Valid options are:
+
+=end original
+
+有効なオプションは:
+
+=over 4
+
+=item *
+
+headers
+
+=begin original
+
+A hashref containing headers to include with the request.  If the value for
+a header is an array reference, the header will be output multiple times with
+each value in the array.  These headers over-write any default headers.
+
+=end original
+
+リクエストに含まれるヘッダを含むハッシュリファレンス。
+ヘッダの値が配列リファレンスの場合、ヘッダは配列のそれぞれの値で
+複数回出力されます。
+これらのヘッダはどのようなデフォルトヘッダも上書きします。
+
+=item *
+
+content
+
+=begin original
+
+A scalar to include as the body of the request OR a code reference
+that will be called iteratively to produce the body of the response
+
+=end original
+
+リクエストの本体を含むスカラ、またはレスポンスの本体を生成するために
+繰り返し呼び出されるコードリファレンス
+
+=item *
+
+trailer_callback
+
+=begin original
+
+A code reference that will be called if it exists to provide a hashref
+of trailing headers (only used with chunked transfer-encoding)
+
+=end original
+
+(chunked transfer-encoding でのみ使われる) 末尾のヘッダの
+ハッシュリファレンスを提供するために呼び出されるコードリファレンス 
+
+=item *
+
+data_callback
+
+=begin original
+
+A code reference that will be called for each chunks of the response
+body received.
+
+=end original
+
+レスポンス本体のチャンクを受信する度に呼び出されるコードリファレンス。
+
+=back
+
+=begin original
+
+If the C<content> option is a code reference, it will be called iteratively
+to provide the content body of the request.  It should return the empty
+string or undef when the iterator is exhausted.
+
+=end original
+
+C<content> オプションがコードリファレンスの場合、
+リクエストの本体を提供するために呼び出されます。
+反復子を終わる場合、空文字列か undef を返す必要があります。
+
+=begin original
+
+If the C<data_callback> option is provided, it will be called iteratively until
+the entire response body is received.  The first argument will be a string
+containing a chunk of the response body, the second argument will be the
+in-progress response hash reference, as described below.  (This allows
+customizing the action of the callback based on the C<status> or C<headers>
+received prior to the content body.)
+
+=end original
+
+C<data_callback> オプションが指定されると、
+レスポンス本体全体が受信されるまで繰り返し呼び出されます。
+最初の引数はレスポンス本体のチャンクを含む文字列で、2 番目の引数は
+後述する作業中のレスポンスのハッシュリファレンスです。
+(これにより、本体の前に受信した C<status> や C<headers> を基にして
+コールバックの動作を変えることができます。)
+
+=begin original
+
+The C<request> method returns a hashref containing the response.  The hashref
+will have the following keys:
+
+=end original
+
+C<request> メソッドはレスポンスを含むハッシュリファレンスを返します。
+ハッシュリファレンスには以下のキーを持ちます:
+
+=over 4
+
+=item *
+
+success
+
+=begin original
+
+Boolean indicating whether the operation returned a 2XX status code
+
+=end original
+
+操作が 2XX ステータスコードを返したかどうかを示す真偽値
+
+=item *
+
+status
+
+=begin original
+
+The HTTP status code of the response
+
+=end original
+
+レスポンスの HTTP ステータス
+
+=item *
+
+reason
+
+=begin original
+
+The response phrase returned by the server
+
+=end original
+
+サーバからのレスポンス文字列
+
+=item *
+
+content
+
+=begin original
+
+The body of the response.  If the response does not have any content
+or if a data callback is provided to consume the response body,
+this will be the empty string
+
+=end original
+
+レスポンスの本体。
+レスポンスに内容がなかったり、レスポンスの本体を処理するための
+データコールバックが提供された場合、これは空文字列の場合があります。
+
+=item *
+
+headers
+
+=begin original
+
+A hashref of header fields.  All header field names will be normalized
+to be lower case. If a header is repeated, the value will be an arrayref;
+it will otherwise be a scalar string containing the value
+
+=end original
+
+ヘッダフィールドのハッシュリファレンス。
+全てのフィールド名は小文字に正規化されます。
+ヘッダが繰り返されている場合、値は配列リファレンスになります;
+それ以外では値を含むスカラ文字列です。
+
+=back
+
+=begin original
+
+On an exception during the execution of the request, the C<status> field will
+contain 599, and the C<content> field will contain the text of the exception.
+
+=end original
+
+リクエストの実行中の例外が起きたの場合、C<status> フィールドには 599 が入り、
+C<content> フィールドに例外のテキストが入ります。
+
+=for Pod::Coverage agent
+default_headers
+max_redirect
+max_size
+proxy
+timeout
+
+=head1 LIMITATIONS
+
+=begin original
+
+HTTP::Tiny is I<conditionally compliant> with the
+L<HTTP/1.1 specification|http://www.w3.org/Protocols/rfc2616/rfc2616.html>.
+It attempts to meet all "MUST" requirements of the specification, but does not
+implement all "SHOULD" requirements.
+
+=end original
+
+HTTP::Tiny は
+L<HTTP/1.1 仕様|http://www.w3.org/Protocols/rfc2616/rfc2616.html> に
+I<部分的に準拠> しています。
+仕様の全ての "MUST" 要求に準拠しようとしていますが、
+全ての "SHOULD" 要求は実装していません。
+
+=begin original
+
+Some particular limitations of note include:
+
+=end original
+
+注意するべきいくつかの制限は以下のものです:
+
+=over
+
+=item *
+
+=begin original
+
+HTTP::Tiny focuses on correct transport.  Users are responsible for ensuring
+that user-defined headers and content are compliant with the HTTP/1.1
+specification.
+
+=end original
+
+HTTP::Tiny は正しい転送に注目しています。
+ユーザはユーザ定義のヘッダと内容が HTTP/1.1 仕様に準拠することに
+責任があります。
+
+=item *
+
+=begin original
+
+Users must ensure that URLs are properly escaped for unsafe characters and that
+international domain names are properly encoded to ASCII. See L<URI::Escape>,
+L<URI::_punycode> and L<Net::IDN::Encode>.
+
+=end original
+
+ユーザは、URL に対して安全でない文字がエスケープされ、国際ドメイン名が
+適切に ASCII にエンコードされるようにしなければなりません。
+L<URI::Escape>, L<URI::_punycode>, L<Net::IDN::Encode> を参照してください。
+
+=item *
+
+=begin original
+
+Redirection is very strict against the specification.  Redirection is only
+automatic for response codes 301, 302 and 307 if the request method is 'GET' or
+'HEAD'.  Response code 303 is always converted into a 'GET' redirection, as
+mandated by the specification.  There is no automatic support for status 305
+("Use proxy") redirections.
+
+=end original
+
+リダイレクトは仕様に対して非常に厳密です。
+リダイレクトは、リクエストメソッドが 'GET' または 'HEAD' の場合、
+レスポンスコード 301, 302, 307 の場合にのみ自動的に行われます。
+レスポンスコード 303 は、仕様で指定されている通り、
+常に 'GET' リダイレクトに変換されます。
+ステータス 305 ("Use proxy") リダイレクトの自動対応はしていません。
+
+=item *
+
+=begin original
+
+Persistant connections are not supported.  The C<Connection> header will
+always be set to C<close>.
+
+=end original
+
+永続接続は対応していません。
+C<Connection> ヘッダは常に C<close> に設定されています。
+
+=item *
+
+=begin original
+
+Direct C<https> connections are supported only if L<IO::Socket::SSL> is
+installed.  There is no support for C<https> connections via proxy.
+Any SSL certificate that matches the host is accepted -- SSL certificates
+are not verified against certificate authorities.
+
+=end original
+
+直接 C<https> 接続は、L<IO::Socket::SSL> が
+インストールされている場合にのみ対応します。
+プロキシ経由の C<https> 接続は対応していません。
+ホストにマッチングする全ての SSL 証明書は受け入れられます --
+SSL 証明書の認証局への検証は行われません。
+
+=item *
+
+=begin original
+
+Cookies are not directly supported.  Users that set a C<Cookie> header
+should also set C<max_redirect> to zero to ensure cookies are not
+inappropriately re-transmitted.
+
+=end original
+
+クッキーは直接対応していません。
+C<Cookie> ヘッダを設定するユーザは、
+クッキーが不適切に再送信されないように C<max_redirect> をゼロに
+設定するべきです。
+
+=item *
+
+=begin original
+
+Proxy environment variables are not supported.
+
+=end original
+
+プロキシ環境変数は対応していません。
+
+=item *
+
+=begin original
+
+There is no provision for delaying a request body using an C<Expect> header.
+Unexpected C<1XX> responses are silently ignored as per the specification.
+
+=end original
+
+C<Expect> ヘッダを使ったリクエストボディの遅延には対応していません。
+想定外のC<1XX> レスポンスは、仕様通り暗黙に無視されます。
+
+=item *
+
+=begin original
+
+Only 'chunked' C<Transfer-Encoding> is supported.
+
+=end original
+
+'chunked' C<Transfer-Encoding> のみに対応しています。
+
+=item *
+
+=begin original
+
+There is no support for a Request-URI of '*' for the 'OPTIONS' request.
+
+=end original
+
+'OPTIONS' リクエストで Request-URI に '*' を指定するのには対応していません。
+
+=back
+
+=head1 SEE ALSO
+
+=over 4
+
+=item *
+
+L<LWP::UserAgent>
+
+=back
+
+=for :stopwords cpan testmatrix url annocpan anno bugtracker rt cpants kwalitee diff irc mailto metadata placeholders
+
+=head1 SUPPORT
+
+(サポート)
+
+=head2 Bugs / Feature Requests
+
+(バグ / 機能リクエスト)
+
+=begin original
+
+Please report any bugs or feature requests by email to C<bug-http-tiny at rt.cpan.org>, or through
+the web interface at L<http://rt.cpan.org/Public/Dist/Display.html?Name=HTTP-Tiny>. You will be automatically notified of any
+progress on the request by the system.
+
+=end original
+
+バグや機能リクエストについては、
+C<bug-http-tiny at rt.cpan.org> へのメールか、
+L<http://rt.cpan.org/Public/Dist/Display.html?Name=HTTP-Tiny> の
+web インターフェースを使って報告してください。
+リクエストになんらかの進展があればシステムによって自動的に通知されます。
+
+=head2 Source Code
+
+=begin original
+
+This is open source software.  The code repository is available for
+public review and contribution under the terms of the license.
+
+=end original
+
+これはオープンソースソフトウェアです。
+コードリポジトリはライセンスの元で公式レビューおよび貢献のために利用可能です。
+
+L<http://github.com/dagolden/p5-http-tiny/tree>
+
+  git clone git://github.com/dagolden/p5-http-tiny.git
+
+=head1 AUTHORS
+
+=over 4
+
+=item *
+
+Christian Hansen <chansen@cpan.org>
+
+=item *
+
+David Golden <dagolden@cpan.org>
+
+=back
+
+=head1 COPYRIGHT AND LICENSE
+
+This software is copyright (c) 2011 by Christian Hansen.
+
+This is free software; you can redistribute it and/or modify it under
+the same terms as the Perl 5 programming language system itself.
+
+=begin meta
+
+Translate: SHIRAKATA Kentaro <argrath@ub32.org>
+Status: completed
+
+=end meta
+
+=cut
+

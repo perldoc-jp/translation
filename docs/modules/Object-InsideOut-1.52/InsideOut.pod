@@ -1,0 +1,2529 @@
+
+=encoding euc-jp
+
+=head1 名前
+
+Object::InsideOut - インサイドアウトオブジェクト包括的支援モジュール
+
+=head1 バージョン
+
+この文書はObject::InsideOutバージョン1.52について記述しています。
+
+=head1 概要
+
+ package My::Class; {
+     use Object::InsideOut;
+
+     # get+set兼用アクセサを持つ数値フィールド
+     my @data :Field('Accessor' => 'data', 'Type' => 'NUMERIC');
+
+     # 'DATA' (または'data'等) を->new()の必須引数とする
+     my %init_args :InitArgs = (
+         'DATA' => {
+             'Regex'     => qr/^data$/i,
+             'Mandatory' => 1,
+             'Type'      => 'NUMERIC',
+         },
+     );
+
+     # クラス固有の引数を->new()の一部として処理する
+     sub init :Init
+     {
+         my ($self, $args) = @_;
+
+         $self->set(\@data, $args->{'DATA'});
+     }
+ }
+
+ package My::Class::Sub; {
+     use Object::InsideOut qw(My::Class);
+
+     # 標準的なアクセサ'get_X'と'set_X'を持つリスト型フィールド
+     my @info :Field('Standard' => 'info', 'Type' => 'LIST');
+
+     # 'INFO'を->new()のリスト型オプション引数とする
+     # 値は自動的に@info配列に追加される
+     # [ 'empty' ] をデフォルトとする
+     my %init_args :InitArgs = (
+         'INFO' => {
+             'Type'    => 'LIST',
+             'Field'   => \@info,
+             'Default' => 'empty',
+         },
+     );
+ }
+
+ package Foo; {
+     use Object::InsideOut;
+
+     # オブジェクトを格納する兼用アクセサと
+     #  オブジェクト生成時の自動パラメータ処理
+     my @foo :Field('All' => 'foo', 'Type' => 'My::Class');
+ }
+
+ package main;
+
+ my $obj = My::Class::Sub->new('Data' => 69);
+ my $info = $obj->get_info();               # [ 'empty' ]
+ my $data = $obj->data();                   # 69
+ $obj->data(42);
+ $data = $obj->data();                      # 42
+
+ $obj = My::Class::Sub->new('INFO' => 'help', 'DATA' => 86);
+ $data = $obj->data();                      # 86
+ $info = $obj->get_info();                  # [ 'help' ]
+ $obj->set_info(qw(foo bar baz));
+ $info = $obj->get_info();                  # [ 'foo', 'bar', 'baz' ]
+
+ my $obj2 = Foo->new('foo' => $obj);
+ $obj2->foo()->data();                      # 86
+
+=head1 説明
+
+このモジュールは、インサイドアウトオブジェクト (inside-out object) モデルを
+使ったクラスを実装するための包括的な支援を提供します。
+
+このモジュールはインサイドアウトオブジェクトを、無名スカラーリファレンスとして
+実装します。スカラーはオブジェクトID (通常は連続した番号) を持ち、
+そのリファレンスはクラスにblessされます。
+Perl 5.8.3以降では、IDがI<偶発的に>変更される事を防ぐため、
+スカラーリファレンスはB<読み取り専用>に設定されます。
+オブジェクトデータ (つまりフィールド群) は、クラスパッケージ内の
+配列またはハッシュに格納されます。
+配列の場合はオブジェクトIDがインデックスとなり、
+ハッシュの場合はオブジェクトIDがキーとなります。
+
+インサイドアウトオブジェクトモデルの、I<blessされたハッシュ>に基づく
+オブジェクトモデルに対する長所を詳細に絶賛することは他に譲ります。
+L</"参考文献">に示すリンクを見てください。
+インサイドアウトオブジェクトを簡単に説明すると、I<blessされたハッシュ>に基づく
+オブジェクトに対して以下の長所があります:
+
+=over
+
+=item * カプセル化
+
+オブジェクトデータはクラスのコードに囲まれており、クラスで定義された
+インターフェースを介してのみアクセスできます。
+
+=item * フィールド名の衝突回避
+
+I<blessされたハッシュ>に基づくクラスを継承した場合、別々のクラスが
+同じフィールド名 (つまりハッシュのキー) を使うと衝突を引き起こしてしまいます。
+インサイドアウトオブジェクトは個々のクラスパッケージにオブジェクトデータを
+格納し、オブジェクト自身はデータを持たないため、この問題に影響されません。
+
+=item * コンパイル時フィールド名チェック
+
+I<blessされたハッシュ> に基づくクラスを使う上での良くある間違いは、
+フィールド名を書き間違えることです:
+
+ $obj->{'coment'} = 'Say what?';   # 'coment'ではなく、'comment'とするべき
+
+ハッシュのキーはコンパイル時にチェックされないため、通常この様な誤りは
+実行時まで明らかになりません。
+
+インサイドアウトオブジェクトでは、フィールドデータへのアクセスに
+I<文字列>ハッシュキーは用いません。
+フィールド名とデータインデックス (つまり $$self) は Perl
+コンパイラによりチェックされるため、タイプミスはS<C<perl -c>>を使って
+簡単に発見できます。
+
+ $coment[$$self] = $value;    # コンパイル時エラーが発生する
+    # または、ハッシュでフィールドを実装した場合
+ $comment{$$slef} = $value;   # この場合もコンパイル時エラーが発生する
+
+=back
+
+このモジュールは他のインサイドアウトオブジェクトモジュールが持つ
+全ての機能を提供する上、次の利点があります:
+
+=over
+
+=item * スピード
+
+Object::InsideOutオブジェクトのデータ取得と設定のスピードは
+I<blessされたハッシュ>に基づくオブジェクトと比べ、
+データ格納に配列を使う場合で40%、データ格納にハッシュを使う場合でも
+数%高速です。
+
+=item * スレッド
+
+Object::InsideOutはスレッドセーフです。L<threads::shared>を使う事で、
+スレッド間での完全なオブジェクト共有をサポートします。
+
+=item * 柔軟性
+
+オブジェクトIDの定義方法、アクセサの命名方法、パラメータ名マッチング、
+その他諸々をコントロールできます。
+
+=item * 実行時サポート
+
+実行時にロードされるクラス (つまり、 S<C<eval { require ...; };>> を使うこと)
+をサポートします。同様に、 L<mod_perl>内での利用もサポートします。
+その上、実行時にオブジェクトフィールドを動的に生成することもサポートします。
+
+=item * Perl 5.6と5.8
+
+Perl v5.6.0からv5.6.2、v5.8.0からv5.8.8、
+およびv5.9.4でテストしています。
+
+=item * 例外オブジェクト
+
+Object::InsideOutは、L<Exception::Class>を使い、
+オブジェクト指向と互換性のある作法でエラー処理します。
+
+=item * オブジェクトのシリアル化
+
+Object::InsideOutはオブジェクトのダンプとリロードのサポートを内蔵しています。
+これは自動的、またはクラスが提供するサブルーチンによって遂行されます。
+L<Storable>を用いたシリアル化もサポートしています。
+
+=item * 外部クラスの継承
+
+Object::InsideOutは外部 (つまりObject::InsideOutではない) クラスからの
+継承を認めています。従って、他のPerlクラスからサブクラスを作り、
+そのオブジェクトから親クラスのメソッドにアクセスすることができます。
+
+=back
+
+=head2 クラス宣言
+
+このモジュールを使うために、あなたのクラスは S<C<use Object::InsideOut;>> 
+から始めて下さい:
+
+ package My::Class; {
+     use Object::InsideOut;
+     ...
+ }
+
+ベースクラスからサブクラスを派生する場合は、
+親クラスの名前をObject::InsideOutに渡してください:
+
+ package My::Sub; {
+     use Object::InsideOut qw(My::Parent);
+     ...
+ }
+
+多重継承もサポートしています:
+
+ package My::Project; {
+     use Object::InsideOut qw(My::Class Another::Class);
+     ...
+ }
+
+Object::InsideOutは、C<base>プラグマの代わりに働きます:
+親モジュール (群) をロードし、それらのC<import>関数を呼び、サブクラスの
+@ISA配列をセットアップします。
+そのため、あなた自身で S<C<use base ...>> としたり、
+C<@ISA>配列をセットアップするべきではありません。
+
+親クラスがパラメータを受け取る場合
+ (例えば、L<Exporter|/"C<Exporter>と共に使う">
+によってエクスポートされるシンボル) は、
+親クラス名の次を配列リファレンスとして、その中に列挙します:
+
+ package My::Project; {
+     use Object::InsideOut 'My::Class'      => [ 'param1', 'param2' ],
+                           'Another::Class' => [ 'param' ];
+     ...
+ }
+
+=head2 フィールド宣言
+
+オブジェクトデータフィールドはクラスパッケージ内の複数の配列により構成し、
+オブジェクトのIDを配列インデックスとして、これらの配列にデータを格納します。
+オブジェクトフィールドとする配列は、後ろにC<:Field>属性を付けて宣言します:
+
+ my @info :Field;
+
+オブジェクトデータフィールドは、ハッシュでも構いません:
+
+ my %data :Field;
+
+ただし、配列へのアクセスはハッシュへのアクセスに比べて40%早いため、
+配列を使う事にこだわるべきです。 (ハッシュが必要となる可能性がある
+場合に関して、L</"オブジェクトID">を参照してください。)
+
+ (I<Field>という語は大文字小文字どちらでも構いませんが、慣例により、
+全ての文字を小文字にするべきではありません。)
+
+=head2 オブジェクト生成
+
+オブジェクトはC<-E<gt>new()>メソッドを使って生成します。
+C<-E<gt>new()>メソッドは、Object::InsideOutによって各クラスに
+エクスポートされています:
+
+ my $obj = My::Class->new();
+
+クラスは (通常) 自分自身のC<-E<gt>new()>メソッドを実装しません。
+クラス固有の初期化作業は、C<:Init>ラベルを付けたメソッドで処理します
+(L</"オブジェクトの初期化">を参照してください)。
+
+パラメータは、 S<C<key =E<gt> value>> ペアとハッシュリファレンスの両方、
+またはいずれかの組み合わせで渡します:
+
+ my $obj = My::Class->new('param1' => 'value1');
+     # または
+ my $obj = My::Class->new({'param1' => 'value1'});
+     # または、次の様にしても良い
+ my $obj = My::Class->new(
+     'param_X' => 'value_X',
+     'param_Y' => 'value_Y',
+     {
+         'param_A' => 'value_A',
+         'param_B' => 'value_B',
+     },
+     {
+         'param_Q' => 'value_Q',
+     },
+ );
+
+更に、特定のクラスに渡すパラメータをハッシュリファレンスで分離することが
+できます。
+
+ my $obj = My::Class->new(
+     'foo' => 'bar',
+     'My::Class'      => { 'param' => 'value' },
+     'Parent::Class'  => { 'data'  => 'info'  },
+ );
+
+上記の例では、両方のクラスの初期化メソッドが
+ S<C<'foo' =E<gt> 'bar'>> を受け取ります。
+C<My::Class>の初期化メソッドは S<C<'param' =E<gt> 'value'>> も受け取り、
+C<Parent::Class>の初期化メソッドは S<C<'data' =E<gt> 'info'>> も受け取ります。
+この仕掛けでは、特定のクラスに対するパラメータは、
+それよりも高いレベルで指定された一般的なパラメータをオーバーライドします:
+
+ my $obj = My::Class->new(
+     'default' => 'bar',
+     'Parent::Class'  => { 'default' => 'baz' },
+ );
+
+C<My::Class>は S<C<'default' =E<gt> 'bar'>> を受け取り、
+C<Parent::Class>は S<C<'default' =E<gt> 'baz'>> を受け取ります。
+
+C<new>はオブジェクトに対して呼び出す事もでき、そのオブジェクトのクラスに
+対して呼び出したのと同様に動作します (つまり、C<$obj-E<gt>new()>は
+C<ref($obj)-E<gt>new()>と同じです)。
+
+注意: Object::InsideOut自身からオブジェクトを生成することはできません。
+
+ # これは誤り
+ # my $obj = Object::InsideOut->new();
+
+この点において、Object::InsideOutは自身のオブジェクトを作るクラスではなく、
+プラグマの様に機能します。
+
+=head2 オブジェクトのクローン
+
+オブジェクトのコピーはC<-E<gt>clone()>メソッドで生成できます。
+C<-E<gt>clone()>メソッドは、Object::InsideOutによって各クラスに
+エクスポートされています:
+
+ my $obj2 = $obj->clone();
+
+C<-E<gt>clone()>を引数無しで呼ぶと、オブジェクトのI<浅い>コピーが生成されます。
+これは、オブジェクトが記憶している複雑なデータ構造 (つまり、配列、ハッシュ、
+スカラーリファレンス) が、そのクローンと共有されることを意味します。
+
+C<-E<gt>clone()>に真の引数を与えて呼ぶと:
+
+ my $obj2 = $obj->clone(1);
+
+オブジェクトのI<深い>コピーを生成し、内部で保持している配列、ハッシュ、
+スカラーリファレンス等のI<複製>が、新しく生成されたクローンに格納されます。
+
+I<深い>クローンは、フィールドレベルでも制御できます。
+更なる詳細はL</"フィールドのクローン">を参照してください。
+
+クローンでは、内部で保持しているオブジェクトをクローンしないことに
+注意してください。例えばC<$foo>がC<$bar>へのリファレンスを保持している場合、
+C<$foo>のクローンもまたC<$bar>へのリファレンスを保持します;
+C<$bar>のクローンではありません。このような振る舞いが必要な場合は、
+L<:Replicate|/"オブジェクトの複製">
+サブルーチンを使って提供しなければなりません。
+
+=head2 オブジェクトの初期化
+
+オブジェクトの初期化は、C<:InitArgs>ラベルを付けたハッシュ
+ (L<次の節|/"オブジェクト初期化引数の指定">で詳しく説明します) 
+とC<:Init>ラベルを付けたサブルーチンを組み合わせて行います。
+
+C<:InitArgs>ラベルを付けたハッシュによって、C<-E<gt>new()>メソッドに渡された
+引数リストから抽出するパラメータを指定します。抽出されたパラメータは、
+C<:Init>ラベルを付けたサブルーチンで処理するために送られます:
+
+ package My::Class; {
+     my @my_field :Field;
+
+     my %init_args :InitArgs = (
+         'MY_PARAM' => qr/MY_PARAM/i,
+     );
+
+     sub _init :Init
+     {
+         my ($self, $args) = @_;
+
+         if (exists($args->{'MY_PARAM'})) {
+             $self->set(\@my_field, $args->{'MY_PARAM'});
+         }
+     }
+ }
+
+ package main;
+
+ my $obj = My::Class->new('my_param' => 'data');
+
+(I<InitArgs>およびI<Init>という語は大文字小文字どちらでも構いませんが、
+慣例により、全ての文字を小文字にするべきではありません。)
+
+C<:Init>ラベルを付けたサブルーチンは2つの引数を受け取ります:
+新たに生成され初期化が必要なオブジェクト (つまりC<$self>) と、
+C<:InitArgs>での指定にマッチしたパラメータを含むハッシュリファレンスです。
+
+サブルーチンで処理されるデータは、オブジェクトのID (つまりC<$$self>) を使って、
+クラスのフィールド配列 (またはハッシュ) に直接代入しても構いません:
+
+ $my_field[$$self] = $args->{'MY_PARAM'};
+
+しかし、L<-E<gt>set()|/"データの設定">メソッドを使うこと強く推奨します:
+
+ $self->set(\@my_field, $args->{'MY_PARAM'});
+
+このメソッドはデータを、L<threads::shared>を使うアプリケーションで必要となる
+共有フォーマットへ変換します。
+
+=head2 オブジェクト初期化引数の指定
+
+C<-E<gt>new()>メソッドで処理されるパラメータは、C<:InitArgs>属性の
+ラベルを付けたハッシュで指定します。
+
+最も単純なパラメータ指定は、タグだけの指定です:
+
+ my %init_args :InitArgs = (
+     'DATA' => '',
+ );
+
+このケースでは、C<-E<gt>new()>メソッドに渡した引数に、
+keyが C<DATA>と正確に一致する S<C<key =E<gt> value>> ペアがあった場合、
+C<:Init>ラベルを付けたサブルーチンに渡されるハッシュリファレンスに、
+ S<C<'DATA' =E<gt> value>> が含まれます。
+
+=over
+
+=item パラメータ名マッチング
+
+パラメータ名の正確な一致を求める代わりに、正規表現を使うこともできます:
+
+ my %init_args :InitArgs = (
+     'Param' => qr/^PARA?M$/i,
+ );
+
+この場合、引数のkeyは次のいずれかで構いません:
+PARAM, PARM, Param, Parm, param, parm, 等。
+マッチが見つかると、 S<C<'Param' =E<gt> value>> がC<:Init>サブルーチンに
+渡されます。引数で渡したオリジナルのkeyの代わりに、C<:InitArgs>ハッシュの
+keyが使われることに注意してください。これはC<:Init>サブルーチンの中でkey
+のパターンマッチをせずに済ませるためです。
+
+(後述する)付加的なパラメータ指定を使う場合は指定構文が変わります。
+そして、正規表現はハッシュリファレンスの内側に移動します:
+
+ my %init_args :InitArgs = (
+     'Param' => {
+         'Regex' => qr/^PARA?M$/i,
+     },
+ );
+
+=item 必須パラメータ
+
+必須 (Mandatory) パラメータは次のように宣言します:
+
+ my %init_args :InitArgs = (
+     # 正確な一致を要求する必須パラメータ
+     'INFO' => {
+         'Mandatory' => 1,
+     },
+     # パターンマッチを使った必須パラメータ
+     'input' => {
+         'Regex'     => qr/^in(?:put)?$/i,
+         'Mandatory' => 1,
+     },
+ );
+
+C<new>の引数リストに必須パラメータが無い場合、エラーが生成されます。
+
+=item デフォルト値
+
+オプションパラメータに対して、デフォルト値を指定できます:
+
+ my %init_args :InitArgs = (
+     'LEVEL' => {
+         'Regex'   => qr/^lev(?:el)?|lvl$/i,
+         'Default' => 3,
+     },
+ );
+
+=item 型チェック
+
+パラメータの型を指定することもできます:
+
+ my %init_args :InitArgs = (
+     'LEVEL' => {
+         'Regex'   => qr/^lev(?:el)?|lvl$/i,
+         'Default' => 3,
+         'Type'    => 'Numeric',
+     },
+ );
+
+指定可能な型は次の通りです:
+
+=over
+
+=item Numeric
+
+(数値)
+C<Num>またはC<Number>と指定する事もできます。これは
+L<Scalar::Util::looks_like_number()|Scalar::Util/"looks_like_number EXPR">
+を使って入力値をチェックします。
+
+=item List
+
+(リスト) この型では、単一の値または配列リファレンスが許されます
+(単一の値の場合は配列リファレンス内に配置し直されます)。
+
+=item クラス名
+
+パラメータの型は、指定したクラスまたはそのサブクラスでなければなりません
+(つまり、型チェックはC<-E<gt>isa()>を使って行われます)。
+例えばC<My::Class>と指定します。
+
+=item その他のリファレンス型
+
+パラメータの型は、指定した (L<ref()|perlfunc/"ref EXPR">関数が返す)
+リファレンス型でなければなりません。例えばC<CODE>と指定します。
+
+=back
+
+最初の2つの型は、大文字小文字を区別しません (例 'NUMERIC', 'Numeric',
+'numeric', 等); 後ろの2つは大文字小文字を区別します。
+
+C<Type>キーワードは、独自の型チェックを提供するコードリファレンスと
+ペアにすることもできます。コードリファレンスは無名サブルーチン、または
+(公開アクセスできる) サブルーチンリファレンスのいずれかです。
+イニシャライザのコードリファレンス実行結果はブール値で返さなければなりません。
+
+ package My::Class; {
+     use Object::InsideOut;
+
+     # イニシャライザの型チェックに使用するサブルーチンを 'Private' にする事はできない
+     sub is_int {
+         my $arg = $_[0];
+         return (Scalar::Util::looks_like_number($arg) &&
+                 (int($arg) == $arg));
+     }
+
+     my @level   :Field;
+     my @comment :Field;
+
+     my %init_args :InitArgs = (
+         'LEVEL' => {
+             'Field' => \@level,
+             # 名前のあるサブルーチンを使った型チェック
+             'Type'  => \&is_int,
+         },
+         'COMMENT' => {
+             'Field' => \@comment,
+             # 無名サブルーチンを使った型チェック
+             'Type'  => sub { $_[0] ne '' }
+         },
+     );
+ }
+
+=item 自動処理
+
+フィールド配列/ハッシュにパラメータ値を直接代入する自動処理を指定できます。
+この場合、C<:Init>サブルーチンにパラメータは渡されません:
+
+ my @hosts :Field;
+
+ my %init_args :InitArgs = (
+     'HOSTS' => {
+         # 'host' または 'hosts' を許す - 大文字小文字は区別しない
+         'Regex'     => qr/^hosts?$/i,
+         # 必須パラメータ
+         'Mandatory' => 1,
+         # 単一の値または配列リファレンスを許す
+         'Type'      => 'List',
+         # パラメータを@hostsへ自動的に代入する
+         'Field'     => \@hosts,
+     },
+ );
+
+上記の例では、hostパラメータが見つかった場合は自動的にC<@hosts>配列に
+代入され、 S<C<'HOSTS' =E<gt> value>> ペアはC<:Init>サブルーチンには
+B<渡されません>。実際、全てのパラメータについてフィールドを指定すると、
+C<:Init>サブルーチンを持つ必要さえ無くなります! 
+あなたの全ての作業を引き受けてくれるでしょう。
+
+パラメータの自動処理を指定する第2の方法は、L</"フィールド宣言">
+部で行うものです:
+
+ my @data :Field('Arg' => 'data');
+
+これは、次と等価です:
+
+ my @data :Field;
+
+ my %init_args :InitArgs = (
+     'data' => {
+         'Field' => \@data,
+     },
+ );
+
+この方法では、C<-E<gt>new()>呼び出しで使うパラメータ名が、
+C<'Arg'>キーワードで指定したものと正確に一致しなければなりません。
+更に、このパラメータは任意(つまり、S<C<'Mandatory' =E<gt> 0>>)であり、
+デフォルト値を持たず、パラメータ前処理 (後述) の対象とすることができません。
+(これらの機能が必要なパラメータについては、C<:InitArgs>ハッシュを
+使わなければなりません。) フィールドのI<set>アクセサに指定した、あらゆる
+L<型チェック|/"アクセサの型チェック">がパラメータに対して適用されます。
+
+望むならば、C<'Arg'>の代わりにC<'InitArg>を使用することができます。
+
+=item パラメータ前処理
+
+前述したあらゆるパラメータ処理が行われるよりも前に呼び出されるサブルーチンを、
+パラメータに対して指定できます:
+
+ package My::Class; {
+     use Object::InsideOut;
+
+     my @data :Field;
+
+     my %init_args :InitArgs = (
+         'DATA' => {
+             'Preprocess' => \&my_preproc,
+             'Field'      => \@data,
+             'Type'       => 'Numeric',
+             'Default'    => 99,
+         },
+     );
+
+     sub my_preproc
+     {
+         my ($class, $param, $spec, $obj, $value) = @_;
+
+         # パラメータの前処理を行う
+         ...
+
+         # 結果を返す
+         return ...;
+     }
+ }
+
+上述の様に、パラメータの前処理サブルーチンには5つの引数が渡されます:
+
+=over
+
+=item * パラメータと関連づけられたクラスの名前
+
+上述の例では、C<My::Class>です。
+
+=item * パラメータ名
+
+上述の例では、C<DATA>です。
+
+=item * パラメータ指定ハッシュのリファレンス
+
+C<:InitArgs>ハッシュのC<DATA>キーとペアになったハッシュリファレンス。
+
+=item * 初期化対象のオブジェクト
+
+=item * パラメータの値
+
+C<-E<gt>new()>メソッドの引数リストの中で、パラメータに割り当てられた値。
+C<-E<gt>new()>の引数にパラメータが無い場合は、C<undef>が渡される。
+
+=back
+
+前処理サブルーチンの戻り値が、パラメータに設定されます。
+
+前処理サブルーチンが、C<外部>から渡された引数の中でどの種類のデータを
+使用できるのかということに注意してください。例えばパラメータ処理の順番は
+指定されないため、前処理サブルーチンは他のパラメータが設定されているか
+どうかに頼ることができません。
+このような処理はC<:Init>サブルーチンで行う必要があります。
+しかし、クラス階層で上位のクラスによって設定されたデータは、使用可能です。
+(初期化対象のオブジェクトが引数で渡されるのはこのためです。)
+
+パラメータ前処理では次のような事ができます:
+
+=over
+
+=item * 与えられた値のオーバーライド (またはC<undef>を返すことによる値の削除)
+
+=item * 動的に決定したデフォルト値の提供
+
+=back
+
+=back
+
+(上述した例において、I<Regex>はI<Regexp>または単にI<Re>、
+I<Default>はI<Defaults>またはI<Def>、I<Preprocess>はI<Preproc>または
+I<Pre>と指定しても構いません。これらおよび他の指定キーも、
+大文字小文字を区別しません。)
+
+=head2 オブジェクトの初期化前処理
+
+時には、オブジェクト初期化の一部としてサブクラスから親クラスに
+パラメータを送る必要があるかもしれません。
+サブクラスにC<:PreInit>ラベルを付けたサブルーチンを提供することで、
+この作業を遂行できます。これらのサブルーチンが見つかった場合、
+クラス階層の下から上に向かう順番で
+(つまり、子クラスが最初に) 呼び出されます。
+
+このサブルーチンには2つの引数が渡されます: 新しく生成された
+ (初期化されていない)オブジェクト (つまりC<$self>) と、
+C<-E<gt>new()>メソッド呼び出し時に与えられた全引数および
+他のC<:PreInit>サブルーチンで追加された引数を含むハッシュリファレンスです。
+ハッシュリファレンスはC<-E<gt>new()>に与えられたものと必ずしも同じとは限らず、
+1つのハッシュリファレンスにI<平坦化>されるでしょう。
+例を示します:
+
+ my $obj = My::Class->new(
+     'param_X' => 'value_X',
+     {
+         'param_A' => 'value_A',
+         'param_B' => 'value_B',
+     },
+     'My::Class' => { 'param' => 'value' },
+ );
+
+という呼び出しにより、
+
+ {
+     'param_X' => 'value_X',
+     'param_A' => 'value_A',
+     'param_B' => 'value_B',
+     'My::Class' => { 'param' => 'value' }
+ }
+
+というハッシュリファレンスがC<:PreInit>サブルーチンに渡されます。
+
+目的上必要ならば、C<:PreInit>サブルーチンでハッシュリファレンスのパラメータを
+追加、変更、削除しても構いません。
+
+=head2 データの取得
+
+クラスコード内では、オブジェクトのフィールド配列 (ハッシュ) から
+オブジェクトIDを使って直接データを取得できます:
+
+ $data = $field[$$self];
+     # または
+ $data = $field{$$self};
+
+=head2 データの設定
+
+Object::InsideOutは各クラスに自動的にC<-E<gt>set()>
+メソッドをエクスポートします。
+L<threads::shared>を使ったアプリケーションでクラスが使用される可能性が
+ある場合、クラスコード内でオブジェクトのフィールド配列/ハッシュにデータを
+設定する際は、 (あなたのクラスコードをスレッドセーフにするために)
+ このメソッドを使用してください。
+
+前述のように、オブジェクトIDを使ってオブジェクトのフィールド配列 (ハッシュ) へ
+直接データを設定できます:
+
+ $field[$$self] = $data;
+     # または
+ $field{$$self} = $data;
+
+しかし、スレッド間でデータ共有する (つまり、C<threads::shared>を使う)
+アプリケーションでは、C<$data>をフィールド配列 (ハッシュ) に格納できるように
+するため、共有データに変換する必要があります。
+C<-E<gt>set()>メソッドはあなたに代わってこれらの作業を行います。
+
+C<-E<gt>set()>メソッドには2つの引数を与えてください: オブジェクトフィールド
+配列/ハッシュへのリファレンスと、それに格納するデータ (スカラー) です:
+
+ $self->set(\@field, $data);
+     # または
+ $self->set(\%field, $data);
+
+整理すると、C<-E<gt>set()>メソッドはクラスコード内のみで利用可能であり、
+アプリケーションコードでは使えません。
+オブジェクトメソッド内で、オブジェクトフィールド配列/ハッシュに
+データを設定する際に、このメソッドを使ってください。
+
+メソッド名が衝突する場合は、完全修飾名を使ってC<-E<gt>set()>を呼び出せます:
+
+ $self->Object::InsideOut::set(\@field, $data);
+
+=head2 アクセサの自動生成
+
+L</"フィールド宣言">のオプションとして、
+アクセサメソッドの自動生成を指定できます。
+
+=over
+
+=item アクセサの命名
+
+次の指定により、I<標準的な名前> (つまり、I<get_>およびI<set_>
+という接頭辞が付いた名前) のアクセサメソッドペアを生成できます:
+
+ my @data :Field('Standard' => 'data');
+
+上記の指定の結果、Object::InsideOutはC<-E<gt>get_data()>
+およびC<-E<gt>set_data()>という名前のアクセサメソッドを自動的に生成します。
+(キーワードC<Standard>は大文字小文字を区別せず、C<Std>と省略できます。)
+
+また、I<get>とI<set>のアクセサを別々に指定することもできます:
+
+ my @name :Field('Get' => 'name', 'Set' => 'change_name');
+     # または
+ my @name :Field('Get' => 'get_name');
+     # または
+ my @name :Field('Set' => 'new_name');
+
+この場合、アクセサの名前は正確に指定しなければなりません
+(つまり、与えられた名前に接頭辞は追加されません)。
+(キーワードC<Get>とC<Set>は大文字小文字を区別しません。)
+
+次の指定により、I<get/set>兼用アクセサを自動生成できます:
+
+ my @comment :Field('Accessor' => 'comment');
+
+このアクセサは次のように使えます:
+
+ # 新しいコメントを設定する
+ $obj->comment("I have no comment, today.");
+
+ # 現在のコメントを取得する
+ my $cmt = $obj->comment();
+
+(C<Accessor>キーワードは大文字小文字を区別せず、C<Acc>と短縮できます。
+また、C<get_set>、C<Combined>、C<Combo>、C<Mutator>と指定することもできます。)
+
+=item All-in-One
+
+アクセサの命名とL<自動パラメータ処理|/"自動処理">
+を一度に行うことができます:
+
+ my @data :Field('All' => 'data');
+
+これは次のコードに対するI<簡略構文>です:
+
+ my @data :Field('Acc' => 'data', 'Arg' => 'data');
+
+これは翻訳すると、次と等価です:
+
+ my @data :Field('Acc' => 'data');
+
+ my %init_args :InitArgs = (
+     'data' => {
+         'Field' => \@data,
+     },
+ );
+
+I<標準的な>アクセサをお望みなら、次のようにしてください:
+
+ my @data :Field('Std_All' => 'data');
+
+=item I<Set>アクセサの返値
+
+デフォルトでは、自動生成したI<set>動作を行うメソッドは、設定された値
+(つまりI<新しい>値) を返します。
+
+C<Return>キーワードにより、I<set>アクセサの返値を指定できます。
+例えば、デフォルトの動作を明示できます:
+
+ my @data :Field('Set' => 'set_data', 'Return' => 'New');
+
+または、アクセサがI<old> (古い＝以前の) 値
+(設定されていなかった場合はC<undef>) を返すことを指定できます:
+
+ my @data :Field('Set' => 'set_data', 'Return' => 'Old');
+
+もしくは、オブジェクト自身を返すようにします:
+
+ my @data :Field('Set' => 'set_data', 'Return' => 'Object');
+
+(C<Return>は C<Ret>と短縮できます; C<Previous>、C<Prev>、C<Prior>はC<Old>
+と同じ意味です; C<Object>はC<Obj>と短縮でき、C<Self>も同じ意味です。
+これらは全て大文字小文字を区別しません。)
+
+=item メソッド連鎖
+
+フィールドがオブジェクトを格納するのに使われる場合は、
+メソッド連鎖が使われることが明らかに分かるケースです:
+格納されたオブジェクトに対するメソッドは、I<get>アクセサ呼び出しに
+連鎖することができ、オブジェクトを探索します:
+
+ $obj->get_stored_object()->stored_object_method()
+
+I<set>アクセサに対して、その返値 (前述) に基づいて連鎖することができます。
+I<新しい>値を返すI<set>アクセサの例を示します:
+
+ $obj->set_stored_object($stored_obj)->stored_object_method()
+
+I<set_stored_object()>呼び出しは、新しいオブジェクトを格納し、
+更にそのオブジェクトを返すので、I<stored_object_method()>呼び出しは
+格納した/返されたオブジェクトを介して起動されます。
+I<古い>値を返すI<set>アクセサについても同様に働きます。
+ただしこの場合は、以前格納した (そして今返された) オブジェクトに対して
+連鎖メソッドが起動されます。
+
+L<Want>モジュール (バージョン 0.12 以降) が利用可能ならば、このモジュールは
+オブジェクトを格納しない/返さないI<set>アクセサへのメソッド連鎖についても、
+I<正しいこと>を行おうと試みます。
+この場合は、I<set>アクセサを起動したオブジェクトが、連鎖メソッドの起動にも
+使われます (まるでI<set>アクセサが S<C<'Return' =E<gt> 'Object'>> 
+と共に宣言されたかの様に):
+
+ $obj->set_data('data')->do_something();
+
+ただし、I<get>アクセサや、I<兼用>アクセサを引数無しで起動した
+(つまりI<get>アクセサとして使われた) 時には、
+この特殊な処理が適用されないという事に注意してください。
+メソッド連鎖を成功させるには、これらはオブジェクトを返さなければなりません。
+
+=item アクセサの型チェック
+
+オプションとして、I<set/兼用>アクセサに型チェック
+コードを追加する事をObject::InsideOutに指示できます:
+
+
+ my @level :Field('Accessor' => 'level', 'Type' => 'Numeric');
+
+指定可能な型は次の通りです:
+
+=over
+
+=item Numeric
+
+(数値)
+C<Num>またはC<Number>と指定する事もできます。これは
+L<Scalar::Util::looks_like_number()|Scalar::Util/"looks_like_number EXPR">
+を使って入力値をチェックします。
+
+=item List または Array
+
+引数は、複数の値または1つの配列リファレンスでなければなりません
+(複数の値の場合は、配列リファレンス内に配置し直されます)。
+
+=item Array_ref
+
+(配列リファレンス)
+引数は、1つの配列リファレンスでなければなりません。
+C<Arrayref>と指定することもできます。
+
+=item Hash
+
+(ハッシュ)
+引数は、複数の S<C<key =E<gt> value>> ペアまたは1つのハッシュリファレンスで
+なければなりません
+(複数のペアの場合は、ハッシュリファレンス内に配置し直されます)。
+
+=item Hash_ref
+
+(ハッシュリファレンス)
+引数は、1つのハッシュリファレンスでなければなりません。
+C<Hashref>と指定することもできます。
+
+=item クラス名
+
+引数の型は、指定したクラスまたはそのサブクラスでなければなりません
+(つまり、型チェックはC<-E<gt>isa()>を使って行われます)。
+例えばC<My::Class>と指定します。
+
+=item その他のリファレンス型
+
+引数の型は、指定した (L<ref()|perlfunc/"ref EXPR">関数が返す) リファレンス型
+でなければなりません。例えばC<CODE>と指定します。
+
+=back
+
+最後の2つ以外の型は、大文字小文字を区別しません
+('NUMERIC'、'Numeric'、'numeric'等)。
+
+C<Type>キーワードは、独自の型チェック機能を提供するコードリファレンスと
+ペアにすることもできます。コードリファレンスは、無名サブルーチン、または
+完全修飾したサブルーチンのリファレンスのいずれかです。
+入力した引数に対してコードリファレンスを実行した結果は、
+ブール値で返さなければなりません。
+
+ package My::Class; {
+     use Object::InsideOut;
+
+     # アクセサの型チェックに使用するサブルーチンは 'Private' にする事ができる
+     sub positive :Private {
+         return (Scalar::Util::looks_like_number($_[0]) &&
+                 ($_[0] > 0));
+     }
+
+     # コードリファレンスは無名サブルーチンである
+     #  (これは引数がスカラーであることをチェックする)
+     my @data :Field('Accessor' => 'data', 'Type' => sub { !ref($_[0]) } );
+
+     # サブルーチンの完全修飾名を使ったコードリファレンス
+     my @num  :Field('Accessor' => 'num',  'Type' => \&My::Class::positive);
+ }
+
+C<Type>キーワードだけを指定したり、C<Get>キーワードだけとの組み合わせで
+使った場合はエラーになることに注意してください。
+
+Perlパーサの制約により、C<:Field>属性の途中で改行はできません:
+
+ # これは動きません
+ # my @level :Field('Get'  => 'level',
+ #                  'Set'  => 'set_level',
+ #                  'Type' => 'Num');
+
+ # 全てを1行に書かなければなりません
+ my @level :Field('Get' =>'level', 'Set' => 'set_level', 'Type' => 'Num');
+
+=item :lvalueアクセサ
+
+L<perlsub/"Lvalue subroutines">に記されているとおり、C<:lvalue>サブルーチンは
+変更可能な値を返します。
+この変更可能な値は例えば、代入文や置換演算子の左辺として使うことができます
+(これ故C<LVALUE> (左辺値) と呼ばれます)。
+
+Perl 5.8.0以降では、Object::InsideOutはC<LVALUE>コンテキストで
+使われた場合にオブジェクトのフィールドに値を設定する、
+C<:lvalue>アクセサの生成をサポートしています。
+
+ package Contact; {
+     use Object::InsideOut;
+
+     # getアクセサと:lvalue setアクセサを別々に生成する
+     my @name  :Field('Get' => 'name', 'Set' => 'set_name', 'lvalue' => 1);
+
+     # :lvalueアクセサも兼ねる標準的なアクセサを生成する
+     my @phone :Field('Std' => 'phone', 'lvalue' => 1);
+
+     # :lvalueアクセサも兼ねる兼用アクセサを生成する
+     my @email :Field('lvalue' => 'email');
+ }
+
+ package main;
+
+ my $obj = Contact->new();
+
+ # :lvalueアクセサを代入文で使う
+ $obj->set_name()  = 'Jerry D.Hedden';
+ $obj->set_phone() = '800-555-1212';
+ $obj->email()     = 'jdhedden AT cpan DOT org';
+
+ # :lvalueアクセサを置換演算子で使う
+ $obj->email() =~ s/ AT (\w+) DOT /\@$1./;
+
+ # :lvalueアクセサを 'substr' 呼び出しで使う
+ substr($obj->set_phone(), 0, 3) = '888';
+
+ print("Contact info:\n");
+ print("\tName:  ", $obj->name(),      "\n");
+ print("\tPhone: ", $obj->get_phone(), "\n");
+ print("\tEmail: ", $obj->email(),     "\n");
+
+C<:lvalue>アクセサを使うためには、CPAN からL<Want>モジュール
+(バージョン0.12以降) をインストールする必要があります。
+更なる情報はL<Want/"Lvalue subroutines:">節を参照してください。
+
+C<:lvalue>アクセサは通常のI<set>アクセサとしても働き、
+引数を受け取り、型チェックを行い、値を返すことができます:
+
+ my @pri :Field('lvalue' => 'priority', 'Return' => 'Old', 'Type' => 'Numeric');
+  ...
+ my $old_pri = $obj->priority(10);
+
+C<:lvalue>アクセサはL<メソッド連鎖|/"メソッド連鎖">の中で使うこともできます。
+
+B<警告>
+
+未だにI<実験的機能>に分類されているにもかかわらず、PerlのC<:lvalue>サポートは
+5.6.0からずっと続いており、多数のCPANモジュールがこの機能を使っています。
+
+当然ながら、C<:lvalue>アクセサはフィールドのI<位置>を返すため、
+カプセル化を壊してしまいます。
+結果として、C<:lvalue>アクセサの使用を避けるオブジェクト指向擁護者もいます。
+
+=back
+
+=head2 I<Weak (弱いリファレンス)>フィールド
+
+データまたはオブジェクトのL<弱められた|Scalar::Util/"weaken REF">
+リファレンスをフィールドに格納する事が、しばしば役に立ちます。
+このようなフィールドをC<weak>と宣言することで、
+自動生成したアクセサ、C<:InitArgs>、C<-E<gt>set()>メソッド等により
+データ(リファレンス)を配列/ハッシュに格納した後で、自動的に
+L<弱められます|Scalar::Util/"weaken REF">。
+
+ my @data :Field('Weak' => 1);
+
+注意: I<weak>フィールドにデータを直接設定した(つまり、C<-E<gt>set()>
+メソッドを使わなかった)場合は、格納後にリファレンスに対して
+L<weaken()|Scalar::Util/"weaken REF">を行わなければなりません。
+
+ $field[$$self] = $data;
+ Scalar::Util::weaken($field[$$self]);
+
+(これは、クラスコード内でC<-E<gt>set()>メソッドによってフィールドデータを
+設定する事を推奨するもう一つの理由です。)
+
+=head2 フィールドのクローン
+
+C<-E<gt>clone()>を引数無しで呼び出した際、指定したフィールドだけ
+I<深く>コピーするといった様に、オブジェクトのクローンはフィールドレベルで
+制御できます。これはC<:Field>属性に指定子を追加することで実現できます:
+
+ my @data :Field('Clone' => 'deep');
+    # または
+ my @data :Field('Copy' => 'deep');
+    # または
+ my @data :Field('Deep' => 1);
+
+(いつものように、これらのキーワードは大文字小文字を区別しません。)
+
+=head2 オブジェクトID
+
+オブジェクトのIDは、デフォルトでは、クラス階層に割り当てられた連番カウンタ
+を使って割り当てられます。これはほとんど全てのクラス開発において十分でしょう。
+もしも、モジュールコードがオブジェクトIDを制御する特別な必要
+(例として、L<Math::Random::MT::Auto>を参照してください) があるならば、
+C<:ID>とラベル付けしたサブルーチンで指定できます:
+
+ sub _id :ID
+ {
+     my $class = $_[0];
+
+     # 唯一のオブジェクトIDを生成/決定する
+     ...
+
+     return ($id);
+ }
+
+あなたのサブルーチンが返すIDは、I<規則的な>スカラー (文字列や数値など)
+ならばどんな種類でも構いません。しかしIDが小さい整数以外の場合は、
+あなたの全てのクラスがオブジェクトフィールドとしてハッシュを使うように
+構成すべきです。
+
+全てのクラス階層の中で、ただ1つのクラスだけでC<:ID>サブルーチンを指定
+してください。
+
+=head2 オブジェクトの複製
+
+オブジェクトの複製は、オブジェクトに対してC<-E<gt>clone()>メソッドが呼ばれた
+時に明示的に起こります。そして、スレッドアプリケーションで新しいスレッドが
+作成された時、暗黙のうちに複製が起こります。
+ほとんど全てのケースについて、
+Object::InsideOutは全ての細かい作業を行うでしょう。
+
+極まれなケースにおいて、オブジェクトの複製を行う特別な処理が必要となる
+クラスがあるかもしれません。この場合は、C<:Replicate>属性でラベル付けした
+サブルーチンを用意しなければなりません。
+このサブルーチンには3つの引数が渡されます:
+親オブジェクト、クローンされたオブジェクト、フラグです:
+
+ sub _replicate :Replicate
+ {
+     my ($parent, $clone, $flag) = @_;
+
+     # 特別なオブジェクト複製処理
+     if ($clone eq 'CLONE') {
+        # スレッドクローンを処理する
+        ...
+     } elsif ($clone eq 'deep') {
+        # parentの深いコピーを行う
+        ...
+     } else {
+        # 浅いコピー
+        ...
+     }
+ }
+
+スレッドクローンの場合、C<$flag>はC<'CLONE'>と設定されています。
+C<$parent>オブジェクトはただのblessされていない無名スカラーリファレンスで、
+親スレッドにおけるオブジェクトIDを格納しています。
+
+C<-E<gt>clone()>メソッドによって実行されたとき、C<$flag>は空文字列か、
+C<'deep'>と設定されています。空文字列は、クローンするためにI<浅い>コピーが
+製造される事を示し、C<'deep'>はI<深い>コピーが製造されることを示しています。
+
+C<:Replicate>サブルーチンはオブジェクトを特殊な複製処理で扱わなければ
+ならないときだけ必要となります: Object::InsideOutはその他全ての細かい
+作業を処理します。
+
+=head2 オブジェクトの破棄
+
+Object::InsideOutは、オブジェクトフィールド配列 (ハッシュ) から
+オブジェクトデータを削除するためのC<DESTROY>メソッドを、各クラスに
+エクスポートします。
+クラスに付加的な破棄処理 (例: ファイルハンドルのクローズ) が必要なら、
+C<:Destroy>属性をラベル付けしたサブルーチンを用意する必要があります。
+このサブルーチンには、破棄されようとしているオブジェクトが送られます:
+
+ sub _destroy :Destroy
+ {
+     my $obj = $_[0];
+
+     # 特別なオブジェクト破棄処理
+ }
+
+C<:Destroy>サブルーチンは、特別な破棄処理を扱うときだけ必要です:
+C<DESTROY>メソッドがその他全ての細かいオブジェクト破棄処理を行います。
+
+=head2 累積 (Cumulative) メソッド
+
+通常、クラス階層にある同じ名前のメソッドは継承によりマスク (オーバーライド)
+され、派生の最下層にあるクラスのメソッドだけが呼ばれます。
+累積メソッドではこのマスクは取り去られ、階層内の各クラスにある同名のメソッドが
+呼ばれます。それぞれの呼び出しによる返値 (がある場合) は、オリジナルの
+メソッド呼び出しに対する返値に集められます。
+例を示します:
+
+ package My::Class; {
+     use Object::InsideOut;
+
+     sub what_am_i :Cumulative
+     {
+         my $self = shift;
+
+         my $ima = (ref($self) eq __PACKAGE__)
+                     ?q/I was created as a /
+                     : q/My top class is /;
+
+         return ($ima .__PACKAGE__);
+     }
+ }
+
+ package My::Foo; {
+     use Object::InsideOut 'My::Class';
+
+     sub what_am_i :Cumulative
+     {
+         my $self = shift;
+
+         my $ima = (ref($self) eq __PACKAGE__)
+                     ?q/I was created as a /
+                     : q/I'm also a /;
+
+         return ($ima .__PACKAGE__);
+     }
+ }
+
+ package My::Child; {
+     use Object::InsideOut 'My::Foo';
+
+     sub what_am_i :Cumulative
+     {
+         my $self = shift;
+
+         my $ima = (ref($self) eq __PACKAGE__)
+                     ?q/I was created as a /
+                     : q/I'm in class /;
+
+         return ($ima .__PACKAGE__);
+     }
+ }
+
+ package main;
+
+ my $obj = My::Child->new();
+ my @desc = $obj->what_am_i();
+ print(join("\n", @desc), "\n");
+
+これは、以下を出力します:
+
+ My top class is My::Class
+ I'm also a My::Foo
+ I was created as a My::Child
+
+(上記のように) 累積メソッドがリストコンテキストで呼ばれた場合、
+積み上がった結果がリストで返されます。
+
+
+スカラーコンテキストでは、それぞれの累積メソッドの実行結果をクラスごとに
+分離した結果オブジェクトが返されます。
+このオブジェクトはオーバーロードによって、
+配列、ハッシュ、文字列、数値、またはブール値にデリファレンスできます。
+例えば、上記の例は次のように書き換えられます:
+
+ my $obj = My::Child->new();
+ my $desc = $obj->what_am_i();        # 結果オブジェクト
+ print(join("\n", @{$desc}), "\n");   # 配列としてデリファレンス
+
+次の例では、ハッシュデリファレンスを使っており:
+
+ my $obj = My::Child->new();
+ my $desc = $obj->what_am_i();
+ while (my ($class, $value) = each(%{$desc})) {
+     print("Class $class reports:\n\t$value\n");
+ }
+
+以下の結果が得られます:
+
+ Class My::Class reports:
+         My top class is My::Class
+ Class My::Child reports:
+         I was created as a My::Child
+ Class My::Foo reports:
+         I'm also a My::Foo
+
+上記のように、累積メソッドはC<:Cumulative>
+ (または S<C<:Cumulative(top down)>>) 属性でタグ付けされ、
+クラス階層をI<トップダウンで>伝搬します
+(つまり、ベースクラスから子クラスへ下向きに降りていきます)。
+S<C<:Cumulative(bottom up)>> とタグ付けされた場合は、オブジェクトのクラスから
+親クラスへ上向きに伝搬していきます。
+
+=head2 連鎖 (Chained) メソッド
+
+C<:Cumulative>に加え、Object::InsideOutは連鎖メソッドを作る方法を
+用意しています。連鎖メソッドとは、あるメソッドの結果が、同じクラス階層に
+ある同じ名前のメソッドの引数として渡されるものです。
+このように、連鎖メソッドはお互いがI<パイプで繋がれた>様に働きます。
+
+例えばC<format_name>という、テキストを表示するために整形するメソッドについて
+想像してください:
+
+ package Subscriber; {
+     use Object::InsideOut;
+
+     sub format_name {
+         my ($self, $name) = @_;
+
+         # 先頭と末尾の空白を削除する
+         $name =~ s/^\s+//;
+         $name =~ s/\s+$//;
+
+         return ($name);
+     }
+ }
+
+これとは別に、名前の大文字小文字を整形するクラスがあったとします:
+
+ package Person; {
+     use Lingua::EN::NameCase qw(nc);
+     use Object::InsideOut;
+
+     sub format_name
+     {
+         my ($self, $name) = @_;
+
+         # 名前の大文字小文字を適切にする
+         return (nc($name));
+     }
+ }
+
+そして、あなたが用意した整形と、全ての親メソッドが提供する整形の適用を
+判断したとします。
+単一の親クラスを持つ場合は通常、単に C<$self-E<gt>SUPER::format_name($name)>
+メソッドを直接呼べば良いでしょう。しかし複数の親クラスを持つ場合は、
+各親クラスのメソッドを明示して呼ばなければなりません:
+
+ package Customer; {
+     use Object::InsideOut qw(Person Subscriber);
+
+     sub format_name
+     {
+         my ($self, $name) = @_;
+
+         # 全ての連続する空白を、1つの空白に圧縮する
+         $name =~ s/\s+/ /g;
+
+         $name = $self->Subscriber::format_name($name);
+         $name = $self->Person::format_name($name);
+
+         return $name;
+     }
+ }
+
+Object::InsideOutを使う場合、各クラスのC<format_name>メソッドに
+C<:Chained>属性を付ければ、自動的にこれらのメソッドが互いに連鎖します:
+
+ package Subscriber; {
+     use Object::InsideOut;
+
+     sub format_name :Chained
+     {
+         my ($self, $name) = @_;
+
+         # 先頭と末尾の空白を削除する
+         $name =~ s/^\s+//;
+         $name =~ s/\s+$//;
+
+         return ($name);
+     }
+ }
+
+ package Person; {
+     use Lingua::EN::NameCase qw(nc);
+     use Object::InsideOut;
+
+     sub format_name :Chained
+     {
+         my ($self, $name) = @_;
+
+         # 名前の大文字小文字を適切にする
+         return (nc($name));
+     }
+ }
+
+ package Customer; {
+     use Object::InsideOut qw(Person Subscriber);
+
+     sub format_name :Chained
+     {
+         my ($self, $name) = @_;
+
+         # 全ての連続する空白を、1つの空白に圧縮する
+         $name =~ s/\s+/ /g;
+
+         return ($name);
+     }
+ }
+
+そして、誰かの名前をC<Customer>のC<format_name>に与えると、
+先頭と末尾の空白が削除され、名前の大文字小文字が適切になり、
+最後に連続する空白が1つの空白に圧縮されます。
+結果C<$name>は、呼び出し元に返されます。
+
+連鎖メソッドはデフォルトでは、階層の最上位であるベースクラスから
+子クラスへと下向きの順番で呼び出されます。
+属性を S<C<:Chained(top down)>> とすると、順番をより明示できます。
+
+S<C<:Chained(bottom up)>> 属性でラベル付けした場合は、
+S<C<:Cumulative(bottom up)>> と同様に、オブジェクトのクラスから
+親クラスへ上向きに働きます。
+
+C<:Cumulative>メソッドと異なり、C<:Chained>メソッドをスカラーコンテキストで
+使うと、スカラーが返されます; 結果オブジェクトではありません。
+
+=head2 自動メソッド (Automethod)
+
+PerlのC<AUTOLOAD>メカニズムには、クラス階層で使うと不適切な動作をするという
+重大な問題があります。それ故、Object::InsideOutはこの問題を克服するために、
+独自のC<:Automethod>メカニズムを実装しています。
+
+C<AUTOLOAD>のような機能を要求するクラスは、C<:Automethod>属性でラベル付けした
+サブルーチンを用意しなければなりません。
+C<:Automethod>サブルーチンへの引数は、オブジェクトおよびオリジナルの
+メソッド呼び出し時に与えられた引数となります (C<AUTOLOAD>と同じです)。 
+C<:Automethod>サブルーチンは、要求されたメソッドが分かる場合はその機能を
+実装したサブルーチンリファレンスを返し、そうでない場合は要求の処理方法が
+不明であることを示すため単にC<return;>で終了してください。
+
+(全てのクラスにエクスポートされている) C<AUTOLOAD>サブルーチン自身を使うと、
+Object::InsideOutはクラスツリーを歩き回り、実装されていないメソッド呼び出しを
+実現するために、必要に応じてそれぞれのC<:Automethod>サブルーチンを呼びます。
+
+呼び出されたメソッド名はC<$AUTOLOAD>の変わりにC<$_>によって渡されます。
+この名前の先頭にクラス名は含まれてI<いません>。
+C<:Automethod>サブルーチンで、呼び出し元スコープのC<$_>
+にアクセスする必要がある場合は、C<$CALLER::_>を使ってください。
+
+オートメソッドはL</"累積 (Cumulative) メソッド">または
+L</"連鎖 (Chained) メソッド">にすることもできます。
+この場合、C<:Automethod>は2つの値を返さなければなりません: 
+メソッド呼び出しを処理するサブルーチンリファレンスと、
+メソッド型を示す文字列 (designator) です。
+designatorは、C<:Cumulative>とC<:Chained>メソッドを示す際に使う属性と、
+同じ形式を持ちます:
+
+ ':Cumulative' または ':Cumulative(top down)'
+ ':Cumulative(bottom up)'
+ ':Chained'    または  ':Chained(top down)'
+ ':Chained(bottom up)'
+
+次のコードの骨組みで、C<:Automethod>サブルーチンの組み立て方法を
+説明します:
+
+ sub _automethod :Automethod
+ {
+     my $self = shift;
+     my @args = @_;
+
+     my $method_name = $_;
+
+     # このクラスがメソッドを直接扱える場合
+     if (...) {
+         my $handler = sub {
+             my $self = shift;
+             ...
+             return ...;
+         };
+
+         ### OPTIONAL ###
+         # 次の呼び出し時にメソッドを直接呼べるよう、ハンドラをインストールする
+         # no strict refs;
+         # *{__PACKAGE__.'::'.$method_name} = $handler;
+         ################
+
+         return ($handler);
+     }
+
+     # このクラスがメソッドを連鎖の一部として扱える場合
+     if (...) {
+         my $chained_handler = sub {
+             my $self = shift;
+             ...
+             return ...;
+         };
+
+         return ($chained_handler, ':Chained');
+     }
+
+     # このクラスがメソッド要求を扱えない場合
+     return;
+ }
+
+注意: 上述のI<OPTIONAL>コードは、生成したハンドラをメソッドとして
+インストールしますが、これをC<:Cumulative>やC<:Chained>オートメソッド
+と共に使ってはなりません。
+
+=head2 オブジェクトのシリアル化
+
+=over
+
+=item my $array_ref = $obj->dump();
+
+=item my $string = $obj->dump(1);
+
+Object::InsideOutはC<-E<gt>dump()>メソッドを各クラスにエクスポートします。
+このメソッドは メソッドを実行するオブジェクトのI<Perl>表現または
+文字列表現を返します。
+
+C<-E<gt>dump()>を引数無しで呼び出すと、I<Perl>表現が返されます。
+これは配列リファレンスであり、最初の要素はオブジェクトのクラス名、
+2番目の要素はオブジェクトのデータを含むハッシュリファレンスです。
+オブジェクトデータハッシュリファレンスのキーは、オブジェクト階層を
+作り上げるクラス名です。ハッシュリファレンスの値は、オブジェクトフィールドの
+S<C<key =E<gt> value>> ペアを表すハッシュリファレンスです。例:
+
+ [
+   'My::Class::Sub',
+   {
+     'My::Class' => {
+                      'data' => 'value'
+                    },
+     'My::Class::Sub' => {
+                           'life' => 42
+                         }
+   }
+ ]
+
+オブジェクトフィールド名 (上の例のI<data>とI<life>) は
+L<フィールド宣言|/"フィールド宣言">部でC<NAME>キーワードを使って
+指定できます:
+
+ my @life :Field('Name' => 'life');
+
+C<NAME>キーワードが無い場合のオブジェクトフィールド名は、
+フィールド宣言でC<'All'>またはC<'Arg'>タグにより関連付けられた名前、
+C<:InitArgs>配列でフィールドに関連付けられたタグ、
+I<get>メソッド名、
+I<set>メソッド名
+のいずれかになります。
+これらが全て失敗した場合は、C<ARRAY(0x...)>やC<HASH(0x...)>
+という形式になります。
+
+C<-E<gt>dump()>にI<真>の引数を与えて呼び出すと、L<Data::Dumper>
+を使った文字列版のI<Perl>表現が返されます。
+
+インサイドアウトオブジェクトに対して直接L<Data::Dumper>を使っても、
+望むような結果が得られないことに注意してください
+(単なるスカラーリファレンスの内容が出力されるだけでしょう)。
+同様に、インサイドアウトオブジェクトが他の構造の内部に格納されている場合、
+この構造のダンプにオブジェクトフィールドの内容は含まれません。
+
+メソッド名が衝突する場合は、完全修飾名を使ってC<-E<gt>dump()>を呼び出せます:
+
+ my $dump = $obj->Object::InsideOut::dump();
+
+=item my $obj = Object::InsideOut->pump($data);
+
+C<Object::InsideOut-E<gt>pump()>はC<-E<gt>dump()>メソッドからの出力を
+受け取り、そのデータを使って作成したオブジェクトを返します。
+C<$data>がC<$obj-E<gt>dump()>を使って返された配列リファレンスの場合、
+そのデータはオブジェクトのクラス階層にある各クラスのフィールドに
+直接挿入されます。
+C<$data>がC<$obj-E<gt>dump(1)>を使って返された文字列の場合は、
+C<eval>によって配列リファレンスを作成し、前述と同様に処理されます。
+
+C<ARRAY(0x...)>やC<HASH(0x...)>という形式のキー (前述) にダンプされた
+オブジェクトフィールドが1つでもある場合、C<Object::InsideOut-E<gt>pump()>
+を使ってデータをリロードすることはできないでしょう。
+クラス開発者はこの問題を克服するために、C<:Field>宣言にC<Name>
+キーワードを追加するか (前述)、以下に述べるC<:Dumper>/C<:Pumper>サブルーチンの
+ペアを用意してください。
+
+=item C<:Dumper>サブルーチン属性
+
+クラスのデータをダンプするのに特別な処理が必要な場合、
+C<:Dumper>属性でラベル付けしたサブルーチンを用意することができます。
+このサブルーチンには、ダンプされるオブジェクトが送られます。
+そこから、開発者が妥当と見なす任意の型のスカラーを返してください。
+おそらくこれは、オブジェクトフィールドの
+S<C<key =E<gt> value>> ペアを含むハッシュリファレンスになるでしょう。
+例を示します:
+
+ my @data :Field;
+
+ sub _dump :Dumper
+ {
+     my $obj = $_[0];
+
+     my %field_data;
+     $field_data{'data'} = $data[$$obj];
+
+     return (\%field_data);
+ }
+
+あなたのC<:Dumper>サブルーチン名は、決してC<dump>にしないでください。
+以前に説明したように、これはObject::InsideOutによってエクスポート
+されたダンプメソッドの名前です。
+
+=item C<:Pumper>サブルーチン属性
+
+クラスがC<:Dumper>サブルーチンを用意した場合はおそらく、これと対をなし、
+C<Object::InsideOut::pump()>に代わってダンプされたデータから
+オブジェクトを作成する、C<:Pumper>ラベルを付けたサブルーチンを
+用意する必要があるでしょう。
+このサブルーチンには、新しく作成されようとしているオブジェクトと、
+C<:Dumper>サブルーチンから返されたスカラーが供給されます。
+前述のC<:Dumper>の例に対応したC<:Pumper>は、次のようになります:
+
+ sub _pump :Pumper
+ {
+     my ($obj, $field_data) = @_;
+
+     $obj->set(\@data, $field_data->{'data'});
+ }
+
+=item Storable
+
+Object::InsideOutは、L<Storable>モジュールを使ったオブジェクトの
+シリアル化もサポートしています。
+クラスがL<Storable>を使ってシリアル化できることを指定する方法が2つあります。
+最初の方法は、あなたのパッケージのObject::InsideOut宣言に、
+L<Storable>を追加することです:
+
+ package My::Class; {
+     use Object::InsideOut qw(Storable);
+     ...
+ }
+
+そして、あなたのアプリケーションに S<C<use Storable;>> を追加してください。
+これにより、オブジェクトをシリアル化するためのメソッド
+C<-E<gt>store()>およびC<-E<gt>freeze()>と、
+逆シリアル化するためのサブルーチン
+C<retrieve()>およびC<thaw()>が使えるようになります。
+
+ package main;
+ use Storable;
+ use My::Class;
+
+ my $obj = My::Class->new(...);
+ $obj->store('/tmp/object.dat');
+ ...
+ my $obj2 = retrieve('/tmp/object.dat');
+
+L<Storable>によるシリアル化を指定するもう一つの方法は、
+クラスをuseする前に (C<BEGIN>ブロックの中で) そのクラスのS<C<::storable>>変数を
+設定することです:
+
+ package main;
+ use Storable;
+
+ BEGIN {
+     $My::Class::storable = 1;
+ }
+ use My::Class;
+
+=back
+
+=head2 動的なフィールド作成
+
+通常、オブジェクトフィールドはクラスコードの一部として宣言されます。
+しかし、例えばC<:Automethod>の一部として、I<実行中に>オブジェクト
+フィールドを作成する機能が必要なクラスがあるかもしれません。
+Object::InsideOutはこれを行うクラスメソッドを提供します:
+
+ # 標準的なアクセサを持つハッシュフィールドを動的に作成する
+ Object::InsideOut->create_field($class, '%'.$fld, "'Standard'=>'$fld'");
+
+最初の引数はフィールドを追加するクラスです。
+第2引数は1文字目にC<@>かC<%>を付けたフィールド名の文字列で、
+それぞれ配列フィールドかハッシュフィールドかを宣言します。
+第3引数は S<C<key =E<gt> value>> ペアを含む文字列で、
+フィールドアクセサを生成するためC<:Field>属性と共に使われるものです。
+
+これが、C<:Automethod>内での凝った使用例です:
+
+ package My::Class; {
+     use Object::InsideOut;
+
+     sub _automethod :Automethod
+     {
+         my $self = $_[0];
+         my $class = ref($self) || $self;
+         my $method = $_;
+
+         #  get_/set_メソッド名から、要求されたフィールド名を抽出する
+         my ($fld_name) = $method =~ /^[gs]et_(.*)$/;
+         if (!$fld_name) {
+             return;    # 認識できないメソッド
+         }
+
+         # フィールドと標準アクセサを作成する
+         Object::InsideOut->create_field($class, '@'.$fld_name,
+                                         "'Standard'=>'$fld_name'");
+
+         # 新しく作成したアクセサのコードリファレンスを返す
+         no strict 'refs';
+         return *{$class.'::'.$method}{'CODE'};
+     }
+ }
+
+=head2 制限 (Restricted) メソッドと私的 (Private) メソッド
+
+C<:Restricted>およびC<:Private>属性を使うことで、あるメソッドへのアクセスを
+制限することができます。
+C<:Restricted>メソッドはクラス階層の中からのみ呼び出すことができます。
+C<:Private>メソッドは、そのメソッドのクラス内からのみ呼び出すことができます。
+
+上記の属性を指定しない場合、たいていのメソッドはI<公開>アクセスを持ちます。
+望むならば、C<:Public>属性でラベル付けして明示しても構いません。
+
+L<自動生成したアクセサ|/"アクセサの自動生成">についても、
+アクセス許可を指定できます:
+
+ my @data     :Field('Standard' => 'data', 'Permission' => 'private');
+ my @info     :Field('Set' => 'set_info',  'Perm'       => 'restricted');
+ my @internal :Field('Acc' => 'internal',  'Private'    => 1);
+ my @state    :Field('Get' => 'state',     'Restricted' => 1);
+
+この許可は、フィールドに対して作成されるI<get>とI<set>
+両方のアクセサに適用されます。
+アクセサペアに異なる許可が要求される場合は、あなた自身で
+アクセサを作成し、適切なC<:Restricted>およびC<:Private>属性を使います:
+
+ # 'foo' フィールドの私的setメソッドを作成する
+ my @foo :Field('Set' => 'set_foo', 'Priv' => 1);
+
+ # 'foo' フィールドの読み込みアクセスは制限される
+ sub get_foo :Restrict
+ {
+     return ($foo[${$_[0]}]);
+ }
+
+ # 'bar' フィールドの制限setメソッドを作成する
+ my %bar :Field('Set' => 'set_bar', 'Perm' => 'restrict');
+
+ # 'foo' フィールドの読み込みアクセスは公開される
+ sub get_bar
+ {
+     return ($bar{${$_[0]}});
+ }
+
+=head2 隠し (Hidden) メソッド
+
+次の属性でマークされたサブルーチンについて:
+
+=over
+
+=item :ID
+
+=item :PreInit
+
+=item :Init
+
+=item :Replicate
+
+=item :Destroy
+
+=item :Automethod
+
+=item :Dumper
+
+=item :Pumper
+
+=item :MOD_*_ATTRS
+
+=item :FETCH_*_ATTRS
+
+=back
+
+Object::InsideOutは通常、これらのサブルーチンをクラスおよび
+アプリケーションコードから呼び出すことができなくなるようにします
+(隠してしまいます)
+(通常これらはObject::InsideOut自身でのみ必要とされるべきです)。
+もし必要なら、C<PUBLIC>、C<RESTRICTED>、C<PRIVATE> キーワードを
+以下の属性に付加することで、この動作を無効にできます:
+
+ sub _init :Init(private)    # このクラス内から呼び出し可能
+ {
+     my ($self, $args) = @_;
+
+     ...
+ }
+
+注意: Perl 5.6.0のバグにより、これらのアクセスキーワードの使用が妨げられます。
+このように上記の属性でマークしたサブルーチンはI<公開>アクセスのままに
+なるでしょう。
+
+注意: 上記のキーワードに対応する属性を使っても、目的は達成できません。例:
+
+ # sub _init :Init :Private    # 謝った文法 - 動作しない
+
+=head2 オブジェクトの強制型変換
+
+Object::InsideOutはL<overload>メカニズムを通して、
+様々な型へのオブジェクト強制型変換のサポートを提供します。
+例えば文字列の中でオブジェクトを直接使えるようにしたい場合は、
+C<:Stringify>属性でラベル付けしたサブルーチンをクラスに用意してください:
+
+ sub as_string :Stringify
+ {
+     my $self = $_[0];
+     my $string = ...;
+     return ($string);
+ }
+
+すると、次の様にすることができます:
+
+ print("The object says, '$obj'\n");
+
+ブールコンテキスト用には、次のサブルーチンを用意します:
+
+ sub as_bool :Boolify
+ {
+     my $self = $_[0];
+     my $true_or_false = ...;
+     return ($true_or_false);
+ }
+
+そして、次のように使います:
+
+ if (!defined($obj)) {
+     # オブジェクトは未定義
+     ....
+
+ } elsif (!$obj) {
+     # オブジェクトが偽を返した
+     ...
+ }
+
+以下の強制型変換属性がサポートされています:
+
+=over
+
+=item :Stringify
+
+=item :Numerify
+
+=item :Boolify
+
+=item :Arrayify
+
+=item :Hashify
+
+=item :Globify
+
+=item :Codify
+
+=back
+
+C<$$obj>はオブジェクトIDであるため、オブジェクトのスカラーへの強制型変換
+(C<:Scalarify>)はサポートされておらず、オーバーライドすることもできません。
+
+=head1 外部クラスの継承
+
+Object::InsideOutは外部の (つまりObject::InsideOutではない)
+クラスからの継承をサポートしています。
+これはつまり、他のPerlクラスからサブクラスを継承し、
+そのオブジェクトから親クラスのメソッドにアクセスできる事を意味しています。
+
+外部クラス継承を宣言する一つの方法は、あなたのパッケージ内のObject::InsideOut
+宣言にクラス名を追加することです:
+
+ package My::Class; {
+     use Object::InsideOut qw(Foreign::Class);
+     ...
+ }
+
+これにより、あなた自身のクラスから外部クラスのスタティックメソッド
+(つまりクラスメソッド) へのアクセスが許可されます。
+例えばC<Foreign::Class>がC<foo>というクラスメソッドを持っていると仮定します。
+上記の宣言により、このメソッドへのアクセスを C<My::Class-E<gt>foo()>
+で代用できます。
+
+外部クラスの多重継承も同様にサポートしています:
+
+ package My::Class; {
+     use Object::InsideOut qw(Foreign::Class Other::Foreign::Class);
+     ...
+ }
+
+=over
+
+=item $self->inherit($obj, ...);
+
+外部クラスのオブジェクトメソッドを使うためには、オブジェクトは外部クラスの
+オブジェクトからI<継承>しなければなりません。
+これは通常、クラスのC<:Init>サブルーチン内で行われます:
+
+ package My::Class; {
+     use Object::InsideOut qw(Foreign::Class);
+
+     sub init :Init
+     {
+         my ($self, $args) = @_;
+
+         my $foreign_obj = Foreign::Class->new(...);
+         $self->inherit($foreign_obj);
+     }
+ }
+
+上記により、例えばC<Foreign::Class>がC<bar>というオブジェクトメソッドを
+持っていた場合、あなた自身のオブジェクトからこのメソッドを呼び出せます:
+
+ package main;
+
+ my $obj = My::Class->new();
+ $obj->bar();
+
+Object::InsideOutのC<AUTOLOAD>サブルーチンは、内部で保持した継承
+オブジェクト (この場合はC<$foreign_obj>) を使うことで、C<-E<gt>bar()>
+メソッド呼び出しをディスパッチします。
+
+多重継承も同様にサポートしています: C<-E<gt>inherit()>メソッドを
+複数か呼び出すか、継承する全てのオブジェクトを1回の呼び出しに与えます。
+
+C<-E<gt>inherit()>は制限メソッドです。言い換えると、オブジェクトのクラスが
+属するクラスツリーの外側からは、このメソッドを使うことはできません
+(例えば、アプリケーションコードからは呼び出せません)。
+
+メソッド名が衝突する場合は、完全修飾名を使ってC<-E<gt>inherit()>を呼び出せます:
+
+ $self->Object::InsideOut::inherit($obj);
+
+=item my @objs = $self->heritage();
+
+=item my $obj = $self->heritage($class);
+
+=item my @objs = $self->heritage($class1, $class2, ...);
+
+クラスコードは、C<-E<gt>heritage()>メソッドを使うことで、
+継承したあらゆるオブジェクトを探索できます。
+引数なしで呼ばれた場合、呼び出したオブジェクトを使って、
+呼び出したクラスに保管したオブジェクトのリストを返します。
+言い換えると、もしもクラスC<My::Class>がオブジェクトC<$obj>を使って、
+外部オブジェクトC<$fobj1>とC<$fobj2>を保管した場合、その後にクラスC<My::Class>
+内で C<$obj-E<gt>heritage()> を呼ぶと、C<$fobj1>とC<$fobj2>を返すでしょう。
+
+C<-E<gt>heritage()>は1つ以上のクラス名を引数として呼ぶこともできます。
+この場合、指定したクラスのオブジェクトのみが返されます。
+
+メソッド名が衝突した場合は、完全修飾名を使ってC<-E<gt>heritage()>
+を呼び出せます:
+
+ my @objs = $self->Object::InsideOut::heritage();
+
+=item $self->disinherit($class [, ...])
+
+=item $self->disinherit($obj [, ...])
+
+C<-E<gt>disinherit()>メソッドは、外部オブジェクトの継承をオブジェクトから
+分離 (つまり削除) します。
+外部オブジェクトは、クラスまたは実際に使っている継承オブジェクト
+(例えばC<-E<gt>heritage()>により検索したオブジェクト)
+によって指定してください。
+
+この呼び出しは、最初の継承を確立したクラスコード内部で呼び出された場合のみ、
+有効です。言い換えると、クラス内部でセットアップした継承は、クラス内部からしか
+分離できません。
+
+メソッド名が衝突した場合は、完全修飾名を使ってC<-E<gt>disinherit()>
+を呼び出せます:
+
+ $self->Object::InsideOut::disinherit($obj [, ...])
+
+=back
+
+B<注意>: 外部継承では、クラスメソッドおよびオブジェクトメソッドだけに
+アクセスできます。
+継承オブジェクトは強くカプセル化されており、継承を
+行ったクラスのみが継承オブジェクトへ直接アクセスできます。
+もしもクラスの外部から、継承オブジェクト自身や、
+(I<blessされたハッシュ>に基づくオブジェクトにおける) ハッシュフィールド内部に
+アクセスする必要がある場合は、それらへのアクセサを書く必要があります。
+
+B<制約事項>: 外部メソッドにアクセスするために完全修飾名を使うことはできません
+(カプセル化した外部オブジェクトが含まれる場合)。
+従って、次の例は動作しません:
+
+ my $obj = My::Class->new();
+ $obj->Foreign::Class::bar();
+
+通常、上のようにする必要はありません: C<$obj-E<gt>bar()>とすれば十分です。
+
+唯一これが問題となるのは、I<ネイティブな>クラスが、継承した外部クラスの
+メソッドをI<オーバーライド>したときです
+(例えば、 C<My::Class> 自身がC<-E<gt>bar()>メソッドを持つ場合)。
+このようにオーバーライドされたメソッドを直接呼ぶことはできません。
+このようなオーバーライドを意図して行っているのであれば、
+これは問題にならないでしょう: 
+オーバーライドをバイパスするコードは誰も書くべきではありません。
+しかし、偶然オーバーライドしてしまった場合は、I<ネイティブ>メソッド名を
+変更するか、オーバーライドしたメソッドの機能を使えるようにする
+ラッパーメソッドをI<ネイティブ>クラスが違う名前で提供すべきです。
+
+=head2 C<use base>とメソッドの完全修飾名
+
+前述の方法で扱う外部継承手法は、Object::InsideOutではないクラスが
+それ自身のオブジェクトを生成する事に基づいており、そのオブジェクトメソッドが
+オブジェクトを介して呼び出されることを期待しています。
+
+このルールの例外があります:
+
+=over
+
+=item 1.外部オブジェクトメソッドが、継承したクラスのオブジェクトを介して
+呼び出されることを期待している場合。または外部メソッドがどのように呼ばれたかを
+気にしない場合 (つまり、呼び出したオブジェクトのリファレンスを作成しない場合)。
+
+これは、クラスがあなたのオブジェクトに対して補助的なメソッドを提供するものの、
+実際には何のオブジェクトも作成しないケースです
+(つまり通信する外部オブジェクトがなく、C<$obj-E<gt>inherit($foreign)>
+は使用されません)。
+
+この場合、次のいずれかを行えます:
+
+a.標準的な方法 (つまり、 S<C<use Object::InsideOut qw(Foreign::Class);>>)
+で外部クラスを宣言し、外部クラスのメソッドをフルパス
+(例. C<$obj-E<gt>Foreign::Class::method();>) で呼び出す; または、
+
+b.L<base>プラグマを使い、外部メソッドを呼び出すのにフルパスを使う必要を無くす。
+
+ package My::Class; {
+     use Object::InsideOut;
+     use base 'Foreign::Class';
+     ...
+ }
+
+最初の案の方が高速です。
+
+=item 2.継承されたクラスを介して呼ばれることを期待している外部クラスメソッド。
+
+前項と同様、クラスメソッドをフルパス
+(例, C<My::Class-E<gt>Foreign::Class::method();>) で呼び出すか、
+フルパスを使う必要を無くすためにS<C<use base>>を行うことができます。
+繰り返しになりますが、フルパスを使う方が高速です。
+
+L<Class::Singleton>がこのタイプの例になるクラスです。
+
+=item 3.どのように呼ばれるかを気にしないクラスメソッド
+(つまり、クラスを呼び出すためにリファレンスを作らないメソッド)。
+
+このケースでは、次のいずれかを使えます。
+首尾一貫するならば S<C<use Object::InsideOut qw(Foreign::Class);>> を、
+(わずかでも) より良いパフォーマンスが必要なら
+S<C<use base qw(Foreign::Class);>> を使ってください。
+
+=back
+
+上記の例外に当てはまるかどうか、またはどの例外に当てはまるのかを知らない等、
+外部クラス動作の内情に精通していないのなら、決まり切ったアプローチは、
+まず始めに外部継承のための文書化された方法
+(つまり、S<C<use Object::InsideOut qw(Foreign::Class);>>) を使うことでしょう。
+これが動作するならば、もっともな理由がない限り、このアプローチだけを
+使うことを強く推奨します。
+もしこれが動作しない場合は、S<C<use base>>を試してください。
+
+=head1 スレッドのサポート
+
+Perl 5.8.1以降では、このモジュールはL<threads>を完全にサポートしています
+(つまり、スレッドセーフです)。そしてL<threads::shared>を使うことで
+スレッド間でのObject::InsideOutオブジェクトの共有をサポートしています。
+
+Object::InsideOutをスレッドアプリケーションで使うためには、
+アプリケーションの最初に S<C<use threads;>> を置かなければなりません。
+(プログラム実行開始後に S<C<require threads;>> 
+を使うことはサポートされていません。)
+オブジェクト共有が利用されるのなら、 S<C<use threads::shared;>> 
+を続けて行うべきです。
+
+単に S<C<use threads;>> とだけすると、あるスレッドのオブジェクトは子スレッドで
+利用できるようににコピーされます。
+
+S<C<use threads::shared;>> を追加しても、Object::InsideOutオブジェクトの
+振る舞いは変わりません。
+デフォルトの動作では、スレッド間でオブジェクトを共有I<しません>
+(つまり、 S<C<use threads;>> 単独で使ったときと同じ動作です)。
+
+スレッド間でのオブジェクトを共有を有効にするためには、どのクラスがスレッド間の
+オブジェクト共有に含まれるかを指定しなければなりません。
+これを行う方法は2通りあります。
+1つ目の方法は、クラスをuseする前に (C<BEGIN>ブロック内で)
+C<::shared>変数を設定することです:
+
+ use threads;
+ use threads::shared;
+
+ BEGIN {
+     $My::Class::shared = 1;
+ }
+ use My::Class;
+
+もう一つの方法は、クラスの S<C<use Object::InsideOut ...>> 宣言に
+C<:SHARED>フラグを追加することです:
+
+ package My::Class; {
+     use Object::InsideOut ':SHARED';
+     ...
+ }
+
+オブジェクト階層の中のどれか一つのクラスに共有フラグが設定されると、
+階層内の全てのクラスが影響を受けます。
+
+クラスがスレッド間オブジェクト共有をサポートできない場合 (例えば、
+オブジェクトフィールドの一つが [Perlがスレッド間で共有できない] コード
+リファレンスを含む場合)、このことを明確に宣言してください:
+
+ package My::Class; {
+     use Object::InsideOut ':NOT_SHARED';
+     ...
+ }
+
+ただし、スレッド間でオブジェクトを共有するクラスと共有しないクラスを
+同じクラス階層の中に混在させることはできません:
+
+ use threads;
+ use threads::shared;
+
+ package My::Class; {
+     use Object::InsideOut ':SHARED';
+     ...
+ }
+
+ package Other::Class; {
+     use Object::InsideOut ':NOT_SHARED';
+     ...
+ }
+
+ package My::Derived; {
+     use Object::InsideOut qw(My::Class Other::Class);   # エラー!     ...
+ }
+
+スレッド間のオブジェクト共有を有効にする完全な例を示します:
+
+ use threads;
+ use threads::shared;
+
+ package My::Class; {
+     use Object::InsideOut ':SHARED';
+
+     # リスト型フィールド
+     my @data :Field('Accessor' => 'data', 'Type' => 'List');
+ }
+
+ package main;
+
+ # 新しいオブジェクト
+ my $obj = My::Class->new();
+
+ # オブジェクトの 'data' フィールドにセットする
+ $obj->data(qw(foo bar baz));
+
+ # オブジェクトのデータを出力する
+ print(join(', ', @{$obj->data()}), "\n");       # "foo, bar, baz"
+
+ # スレッドを作り、オブジェクトのdataを操作する
+ my $rc = threads->create(
+         sub {
+             # オブジェクトのdataを読む
+             my $data = $obj->data();
+             # オブジェクトのデータを出力する
+             print(join(', ', @{$data}), "\n");  # "foo, bar, baz"
+             # オブジェクトのdataを変更する
+             $obj->data(@$data[1..2], 'zooks');
+             # 変更後のオブジェクトのdataを出力する
+             print(join(', ', @{$obj->data()}), "\n");  # "bar, baz, zooks"
+             return (1);
+         }
+     )->join();
+
+ # オブジェクトの変更が親スレッドで見えることを示す
+ # つまり、本当にオブジェクトがスレッド間で共有されていることを示す
+ print(join(', ', @{$obj->data()}), "\n");       # "bar, baz, zooks"
+
+=head1 属性ハンドラ
+
+このモジュールは、L<attributes/"Package-specific Attribute Handling">
+に記述されているI<属性 '変更' ハンドラ>を使って、
+あなたのクラスにハンドラを追加するメカニズムを提供します。
+あなたの属性ハンドラは、C<MODIFY_*_ATTRIBUTES>と命名する代わりに
+その他の任意の名前とし、C<:MODIFY_*_ATTRIBUTES> (またはC<:MOD_*_ATTRS>と略した)
+属性でラベル付けして下さい。
+あなたのハンドラは、入力引数に対して
+L<attributes/"Package-specific Attribute Handling"> で記述されている
+動作をし、ハンドラで認識できない属性のリストを返さなければなりません。
+例を示します:
+
+ package My::Class; {
+     use Object::InsideOut;
+
+     sub _scalar_attrs :MOD_SCALAR_ATTRS
+     {
+         my ($pkg, $scalar, @attrs) = @_;
+         my @unused_attrs;         # 全ての処理しない属性のリスト
+
+         while (my $attr = shift(@attrs)) {
+             if ($attr =~ /.../) {
+                 # 属性を処理する
+                 ...
+             } else {
+                 # この属性は処理しない
+                 push(@unused_attrs, $attr);
+             }
+         }
+
+         return (@unused_attrs);   # 処理しなかった属性を次に伝える
+     }
+ }
+
+属性 '変更' ハンドラはクラス階層をI<上向きに>辿りながら
+(つまりI<ボトムアップ>で) 呼ばれます。
+これにより、子クラスは親クラスの属性処理をI<オーバーライド>できたり、
+(処理しなかった属性のリストを返すことにより)
+親クラスで処理するための属性を追加できたりします。
+
+I<属性 '取得' ハンドラ>についても同様の手順です:
+サブルーチンをC<:FETCH_*_ATTRIBUTES> (またはC<:FETCH_*_ATTRS>と略した)
+属性でラベル付けします。
+L<attributes/"Package-specific Attribute Handling">での記述とは異なり、
+I<属性 '取得' ハンドラ>はB<2つの>引数を受け取ります:
+関連のあるパッケージ名と、
+パッケージ定義属性の取得を要求されている変数またはサブルーチンへの
+リファレンスです。
+
+属性ハンドラは通常、L<隠しメソッド|/"隠し (Hidden) メソッド">とされます。
+
+=head1 特別な使用法
+
+=head2 C<Exporter>と共に使う
+
+L<Exporter>を使って、インサイドアウトオブジェクトクラスの関数を他のクラスに
+エクスポートできます:
+
+ use strict;
+ use warnings;
+
+ package Foo; {
+     use Object::InsideOut 'Exporter';
+     BEGIN {
+         our @EXPORT_OK = qw(foo_name);
+     }
+
+     sub foo_name
+     {
+         return (__PACKAGE__);
+     }
+ }
+
+ package Bar; {
+     use Object::InsideOut 'Foo' => [ qw(foo_name) ];
+
+     sub get_foo_name
+     {
+         return (foo_name());
+     }
+ }
+
+ package main;
+
+ print("Bar got Foo's name as '", Bar::get_foo_name(), "'\n");
+
+L<Exporter>のシンボル配列 (このケースにおけるC<@EXPORT_OK>) が正しく定義
+されることを保証するため、C<BEGIN>ブロックが必要であることに注意してください。
+
+=head2 C<require>およびC<mod_perl>と共に使う
+
+Object::InsideOutをL<mod_perl>環境で使ったり、クラスの実行時ロードを
+行うことは自動的にサポートされます; 特別なコーディングは不要です。
+
+=head2 シングルトンクラス
+
+シングルトンクラスを作る場合は、クラス自身でC<-E<gt>new()>メソッドを提供し、
+Object::InsideOutのC<-E<gt>new()>メソッドの呼び出しを代わりに
+引き受けてください:
+
+ package My::Class; {
+     use Object::InsideOut;
+
+     my $singleton;
+
+     sub new {
+         my $thing = shift;
+         if (!$singleton) {
+             $singleton = $thing->Object::InsideOut::new(@_);
+         }
+         return ($singleton);
+     }
+ }
+
+=head1 診断メッセージ
+
+このモジュールは、C<Exception::Class>を使ってエラーをレポートします。
+このモジュールの基本エラークラスはC<OIO>です。
+基本的なエラーのトラップ、処理のやり方の例は次の通りです:
+
+ my $obj;
+ eval { $obj = My::Class->new(); };
+ if (my $e = OIO->caught()) {
+     print(STDERR "Failure creating object: $e\n");
+     exit(1);
+ }
+
+エラーオブジェクトから返されるメッセージと情報ができるだけ有益になるよう、
+私は努力しました。
+改善への提案を歓迎します。
+また、Object::InsideOutのコードが原因でエラーが発生したにもかかわらず、
+Exception::Classオブジェクトを生成しない状況に遭遇したら、
+私に注意を促してください。
+このようなエラーの一例です:
+
+=over
+
+=item Invalid ARRAY/HASH attribute
+
+これは、あなたがクラスコードに次の一文を入れ忘れていることを示すエラーです:
+
+ use Object::InsideOut qw(Parent::Class ...);
+
+=back
+
+このモジュールはクラス独自コード、すなわちC<:Init>、C<:Replicate>、
+C<:Destroy>等のサブルーチンから投げられた、正道からはずれた例外を
+キャッチする為に、C<__DIE__>ハンドラ (L<perlfunc/"die LIST">および
+L<perlfunc/"eval BLOCK">を参照) をインストールします。
+このハンドラは、C<eval>ブロックから抜ける為のフロー制御の手段として
+C<die>関数を使っているコードと衝突するかもしれません。
+このケースの正しい手段は、C<eval>ブロック内でC<$SIG{'__DIE__'}>
+をローカル化する事です:
+
+ eval {
+     local $SIG{'__DIE__'};           # 全ての既存の__DIE__ハンドラを抑制する
+     ...
+     die({'found' => 1}) if $found;   # evalブロックから抜ける
+     ...
+ };
+ if ($@) {
+     die unless (ref($@) && $@->{'found'});   # '真の' エラーを伝達する
+     # 'found' の場合の処理
+     ...
+ }
+ # 'not found' の場合の処理
+
+同様に、上記の様な動作するにもかかわらずC<$SIG{'__DIE__'}>
+をローカル化しない、他モジュールのコードを呼び出す場合は、
+C<eval>ブロックによって欠陥を回避できます:
+
+ eval {
+     local $SIG{'__DIE__'};     # 全ての既存の__DIE__ハンドラを抑制する
+     Some::Module::func();      # ローカル化し損なった関数を呼ぶ
+ };
+ if ($@) {
+     # キャッチした例外の処理
+ }
+
+加えてあなたは、問題となるモジュールに対するバグレポートを、
+欠けている S<C<local $SIG{'__DIE__'};>> 文を追加するパッチと共に
+提出するべきです。
+
+=head1 バグと制約事項
+
+スカラーコンテキストにおけるオブジェクトの強制型変換をオーバーロードすることは
+できません (つまり、C<:SCALARIFY>はできません)。
+
+同一のアプリケーションで、同じクラスの2つのインスタンスについて、
+片方はスレッド間のオブジェクト共有を行い、もう片方は行わないという
+混在はできません。
+
+C<:Automethod>を使ったI<ダミーのサブルーチン宣言> (つまり、サブルーチン名を
+事前に宣言するものの、後に定義が無い) に対して、属性を使うことはできません:
+
+ package My::Class; {
+     sub method :Private;   # これは動作しません
+
+     sub _automethod :Automethod
+     {
+         # ダミーサブルーチン 'method' の呼び出しを処理するコード
+     }
+ }
+
+Perlパーサの制約により、C<:Field>属性の途中で改行することはできません。
+
+もしI<set>アクセサがスカラーを受け入れるなら、あらゆるインサイドアウト
+オブジェクト型を格納できます。もしC<Type>がC<HASH>と設定されているなら、
+あらゆるI<blessされたハッシュ>に基づくオブジェクトを格納できます。
+
+I<にせの>オブジェクトをObject::InsideOutオブジェクトとして働かせ、
+他のオブジェクトデータへのアクセスを得ることができます:
+
+ my $fake = bless(\do{my $scalar}, 'Some::Class');
+ $$fake = 86;   # 他のオブジェクトのID
+ my $stolen = $fake->get_data();
+
+こんな事に誰が挑戦したがるのか、理由は分かりません。
+また、どんな種類の悪用にどうやって用いられるのかも不明です。
+しかしこの種のI<セキュリティ>問題の回避を要求するなら、Object::InsideOut
+を使わないでください。
+
+スレッドから返されたオブジェクトは動作しません:
+
+ my $obj = threads->create(sub { return (Foo->new()); })->join();  # ダメ
+
+代わりにスレッド間オブジェクト共有を使い、スレッドを起動する前に
+オブジェクトを生成し、スレッド内でオブジェクトを操作するようにしてください:
+
+ my $obj = Foo->new();   # クラス 'Foo' には ':SHARED' が設定されている
+ threads->create(sub { $obj->set_data('bar'); })->join();
+ my $data = $obj->get_data();
+
+L<threads::shared>に関連したバグがあり、外部継承したオブジェクトの共有は
+できません。また、共有オブジェクトの内部にはオブジェクトを格納できません。
+
+Perl 5.6.0から5.8.0では、Perlのバグのため、C<:Automethod>
+サブルーチンが返したサブルーチンリファレンスから、パッケージ変数
+(例,オブジェクト属性配列/ハッシュ) を正しく参照することができません。
+Perl 5.8.0にはワークアラウンドがありません: 
+このバグが原因で、Perlがコアダンプします。
+Perl 5.6.0から5.6.2では次のワークアラウンドがあります。
+すなわち、C<:Automethod>サブルーチン内で要求する変数へのリファレンスを作り、
+サブルーチンリファレンス内ではこのリファレンスを使います:
+
+ package My::Class; {
+     use Object::InsideOut;
+
+     my %data;
+
+     sub auto :Automethod
+     {
+         my $self = $_[0];
+         my $name = $_;
+
+         my $data = \%data;      # 5.6.Xのバグに対するワークアラウンド
+
+         return sub {
+                     my $self = shift;
+                     if (!@_) {
+                         return ($$data{$name});
+                     }
+                     $$data{$name} = shift;
+                };
+     }
+ }
+
+Perl 5.8.1から5.8.4では、スレッドが破棄された際にニセの警告メッセージを
+出力するバグがあります。このメッセージは無害で、次の一文をあなたの
+アプリケーションコードに追加することで、抑制できます:
+
+ $SIG{'__WARN__'} = sub {
+         if ($_[0] !~ /^Attempt to free unreferenced scalar/) {
+             print(STDERR @_);
+         }
+     };
+
+スレッドに関する他の問題にも直面している場合は特に、CPANにある新しい
+L<threads>とL<threads::shared>に更新するのがより良い解決方法です。
+
+Perl 5.8.4と5.8.5では、Perl バグのためにL</"Storable">機能が動作しません。
+もし必要なら、Object::InsideOut v1.33を使ってください。
+
+(L<Exception::Class>で使われている) L<Devel::StackTrace>は
+I<DB>名前空間を利用します。
+このため、Object::InsideOutは S<C<package DB>> がロード済みであると考えます。
+その結果、I<DB>と言う名前のクラスを作り、他のパッケージをそのサブクラス
+にする場合、次のようにC<require>をする必要があります:
+
+ package DB::Sub; {
+     require DB;
+     use Object::InsideOut qw(DB);
+     ...
+ }
+
+既存のバグレポートの閲覧、新しいバグ、問題、パッチ等の提出は
+L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Object-InsideOut>で行ってください。
+
+=head1 必要条件
+
+Perl 5.6.0以降
+
+L<Exception::Class> v1.22以降
+
+L<Scalar::Util> v1.10以降。
+I<純粋なperl>バージョンのScalar::Utilをインストールすることができますが、
+Object::InsideOutが必要とするL<weaken()|Scalar::Util/"weaken REF">
+関数が欠けています。
+C<XS>コードをサポートするScalar::Utilに更新する必要があります。
+
+L<Test::More> v0.50以降 (インストール用)
+
+オプションで、L</":lvalueアクセサ">用にL<Want>。
+
+=head1 参考文献
+
+CPANのObject::InsideOutディスカッションフォーラム: 
+L<http://www.cpanforum.com/dist/Object-InsideOut>
+
+Object::InsideOutの注釈付きPOD: 
+L<http://annocpan.org/~JDHEDDEN/Object-InsideOut-1.52/lib/Object/InsideOut.pm>
+
+インサイドアウトオブジェクトモデル:
+L<http://www.perlmonks.org/?node_id=219378>,
+L<http://www.perlmonks.org/?node_id=483162>,
+L<http://www.perlmonks.org/?node_id=515650>,
+Damian Conway著 I<Perlベストプラクティス> 15,16章
+
+L<Storable>
+
+=head1 謝辞
+
+Abigail S<E<lt>perl AT abigail DOT nlE<gt>> for inside-out objects in general.
+
+Damian Conway S<E<lt>dconway AT cpan DOT orgE<gt>> for L<Class::Std>.
+
+David A.Golden S<E<lt>dagolden AT cpan DOT orgE<gt>> for thread handling for
+inside-out objects.
+
+Dan Kubb S<E<lt>dan.kubb-cpan AT autopilotmarketing DOT comE<gt>> for
+C<:Chained> methods.
+
+=head1 作者
+
+Jerry D.Hedden, S<E<lt>jdhedden AT cpan DOT orgE<gt>>
+
+=head1 著作権とライセンス
+
+Copyright 2005, 2006 Jerry D.Hedden.All rights reserved.
+
+This program is free software; you can redistribute it and/or modify it under
+the same terms as Perl itself.
+
+=head1 翻訳について
+
+翻訳者：TSUJII, Naofumi S<E<lt>tsun DOT nt AT gmail DOT comE<gt>>
+
+Perlドキュメント日本語訳 Project にて、
+Perlモジュール、ドキュメントの翻訳を行っております。
+
+L<http://perldocjp.sourceforge.jp/>,
+L<http://www.freeml.com/ctrl/html/MLInfoForm/perldocjp@freeml.com>,
+L<http://perldoc.jp/>
+
+=cut

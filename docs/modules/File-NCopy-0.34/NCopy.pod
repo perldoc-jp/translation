@@ -1,0 +1,181 @@
+
+=encoding euc-jp
+
+=head1 名前
+
+B<File::NCopy> - Copy file, file
+              Copy file[s] | dir[s], dir
+
+=head1 概要
+
+    use File::NCopy qw(copy);
+
+    copy "file","other_file";
+    copy "file1","file2","file3","directory";
+
+    # ディレクトリを再帰的にコピーしたい
+    copy \1,"directory1","directory2";
+    copy \1,"file1","file2","directory1","file3","directory2","file4",
+        "directory";
+
+    # ファイルハンドルへのリファレンスを使うことも出来ます。これは
+    # File::Copyとの後方互換性のためです
+    copy \*FILE1,\*FILE2;
+    copy \*FILE1,"file";
+    copy "file1",\*FILE2;
+
+
+    # ディレクトリを再帰的にコピーしたくないので
+    # 最初の引数として\1を指定しません。
+    copy "*.c","*.pl","programs";
+    copy "*", "backup";
+
+    use File::NCopy;
+
+    # デフォルトの設定値は以下の通りです
+    $file = File::NCopy->new(
+            'recursive'      => 0,
+            'preserve'       => 0,
+            'follow_links'   => 0,
+            'force_write'   => 0,
+            'set_permission' => \&File::NCopy::u_chmod,
+            'file_check'     => \&File::NCopy::f_check,
+            'set_times'      => \&File::NCopy::s_times,
+    );
+
+    set_permissionは2つのファイル名を取ります。ファイルの権限設定を取得するための
+    元のファイルと、ファイルの権限を設定する新しいファイルです。
+
+    file_checkは2つのパラメータをとります。コピーする元のファイルと
+    コピー先のファイルをチェックするためのファイル名です。私は
+    Unixシステムのためにflockを使っています。
+    これのデフォルトは\&File::NCopy::f_checkです。
+    Unixでは\&File::NCopy::unix_checkを使うこともできます。
+    これはiノードとデバイス番号を比較します。
+
+    set_times はpreserve属性がtrueであると使われます。これはファイルの
+    アクセス時刻、更新時刻を留め、元ファイルの所有者をの所有者にしよう
+    ともします。全ての人がアクセス時刻、更新時刻を保持することできますが、
+    これはrootにより使われるスクリプトでは便利でしょう。これは2つの引数を
+    取ることができます。statを取得する元のファイルとそのstatを適用する
+    先のファイルです。
+
+    Unixマシンでは心配する必要はありません。他のシステムでは独自の
+    subリファレンスを与えたいと思うかもしれません。
+
+    $file = File::NCopy->new(recursive => 1);
+    $file->copy "file","other_file";
+    $file->copy "directory1","directory2";
+
+    $file = File::NCopy->new(u_chmod => \&my_chmod,f_check => \&my_fcheck);
+    $file->copy "directory1","directory2";
+
+
+=head1 説明
+
+B<File::NCopy::copy>は複数のファイルをディレクトリに、あるいは1つの
+ファイルを別のファイルにコピーします。ファイルへコピーしたいときには、
+ファイル・ハンドルへのリファレンスを使うこともできます。機能は
+B<cp>に非常に似ています。引数がディレクトリからディレクトリへのコピーで
+recursiveフラグが設定されているときには、B<cp -R>のように再帰的に行われます。
+実際、ほとんどの部分でのUnixでのcpのように振舞います。
+配列コンテキストで呼ばれると、成功したコピーの配列が返されます。
+そうでなければ成功したコピーの数を返します。ファイル・ハンドルが渡されると、
+writeモードでファイルをオープンすることによりpoochされるために、
+私たちがコピーしているファイルが、コピーしようとしている先と同じであるかを
+確認することは困難です。これを避けるため、特に出力先のファイルにには、
+可能である場合のすべてで、ファイル名を代わりに使うことができます。
+ファイル・ハンドルが渡されると、copyが戻ってきたとき、それはクローズされて
+いません。copyによりオープンされたファイルはクローズされます。
+
+=over 4
+
+=item B<copy>
+
+ファイルを他のファイルに、あるいはファイルをディレクトリに、あるいは複数の
+ファイルとディレクトリを他のディレクトリにコピーします。あるいはディレクトリを
+他のディレクトリに。拡張されない最後の引数を除いて、ワイルドカード引数は
+展開されます。ファイルとディレクトリの権限は元のファイルの権限に設定され、
+もしpreserveが設定されていると、これは白い帽子(=White hat)をかぶっている人にだけかも
+しれませんが、uidとgidも設定しようとします。
+リスト・コンテキストでは、正常にコピーされたファイル/ディレクトリの名前の
+全てを返します。スカラー・コンテキストでは正常にコピーが行われた数を
+返します。もし全てをコピーすることをうまくいけば、ディレクトリ引数は
+1回の正常なコピーと考えられます。ディレクトリからディレクトリへの
+コピーをおこなうためには、recursiveフラグが設定されていなければいけません。
+
+=item B<cp>
+
+copyを呼び出すだけです。File::Copyと互換性のためにあります。
+
+=item B<new>
+
+これを利用すると、いくつかの設定機能をもったオブジェクト指向のモジュール
+として扱うことができます。
+
+=item B<recursive>
+
+オブジェクトとして使われると、recursive属性を設定するためにこれを利用する
+ことができます。newで生成するときに設定することもできます。他の属性は全て
+オブジェクトを生成するときに設定されなければいけません。これが指定
+されなければ、下のディレクトリは追いかけられません。
+
+=item B<preserve>
+
+ユーザとグループIDと同様に最終更新時刻とアクセス時刻を保持しようとします。
+アクセス時刻と更新時刻は常に保持されるでしょうが、uidとgidはそうでなない
+ですから、これはシステム管理者には便利な機能です。
+
+=item B<follow_links>
+
+そのリンクがディレクトリへのものであり、この属性がtrueであると、
+ディレクトリは追求され、再帰的にコピーされます。そうでないと
+リンクはリンクが示す最も元になるディレクトリに向けられます。
+例えば。
+
+/sys/ が/usr/src/i386/sysにリンクしている/usr/src/sys/にリンクしていると、
+/sys/は実際に/usr/src/sys/ではなく/usr/src/i386/sys/に
+リンクされます。
+というのも、元々リンクしたいディレクトリがまだ残っているのに
+/usr/src/sys/というリンクが削除されたときには、リンクを
+失ってしまうからです。
+
+=item B<force_write>
+
+権限が読込のみになっていたとしても、ファイルを強制的に書き込みます。
+
+=back
+
+=head1 使用例
+
+概要をご覧ください
+
+=head1 バグ
+
+リンクに従うと、出力先のディレクトリは厳密に元のディレクトリと
+同じではないかもしれません。その理由は循環していたり、死んでいるリンクに
+従わないことを確認する必要があるということです。
+結果は本当に元のディレクトリに似ていないかもしれませんし、
+まさに本物に機能です。全ての内容が同じです。:)
+
+From Ken Healy (Version 0.34)
+
+Win32では、パスのためにバックスラッシュを利用することが必要です。
+
+=head1 作者(=AUTHOR)
+
+Gabor Egressy B<gabor@vmunix.com>
+
+Copyright (c) 1998 Gabor Egressy.  All rights reserved.  All wrongs
+reversed.  This program is free software; you can redistribute and/or
+modify it under the same terms as Perl itself.
+
+Some ideas gleaned from File::Copy by Aaron Sherman & Charles Bailey,
+but the code was written from scratch.
+
+Patch at versions 0.33, and 0.34 added by MZSANFORD.
+
+=head1 翻訳者
+
+川合 孝典(GCD00051@nifty.ne.jp)
+

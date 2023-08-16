@@ -1,0 +1,2025 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+threads - Perl interpreter-based threads
+
+=end original
+
+threads - Perl のインタプリタベースのスレッド
+
+=head1 VERSION
+
+=begin original
+
+This document describes threads version 1.72
+
+=end original
+
+この文書は threads バージョン 1.72 を記述しています。
+
+=head1 SYNOPSIS
+
+    use threads ('yield',
+                 'stack_size' => 64*4096,
+                 'exit' => 'threads_only',
+                 'stringify');
+
+    sub start_thread {
+        my @args = @_;
+        print('Thread started: ', join(' ', @args), "\n");
+    }
+    my $thr = threads->create('start_thread', 'argument');
+    $thr->join();
+
+    threads->create(sub { print("I am a thread\n"); })->join();
+
+    my $thr2 = async { foreach (@files) { ... } };
+    $thr2->join();
+    if (my $err = $thr2->error()) {
+        warn("Thread error: $err\n");
+    }
+
+    # Invoke thread in list context (implicit) so it can return a list
+    my ($thr) = threads->create(sub { return (qw/a b c/); });
+    # or specify list context explicitly
+    my $thr = threads->create({'context' => 'list'},
+                              sub { return (qw/a b c/); });
+    my @results = $thr->join();
+
+    $thr->detach();
+
+    # Get a thread's object
+    $thr = threads->self();
+    $thr = threads->object($tid);
+
+    # Get a thread's ID
+    $tid = threads->tid();
+    $tid = $thr->tid();
+    $tid = "$thr";
+
+    # Give other threads a chance to run
+    threads->yield();
+    yield();
+
+    # Lists of non-detached threads
+    my @threads = threads->list();
+    my $thread_count = threads->list();
+
+    my @running = threads->list(threads::running);
+    my @joinable = threads->list(threads::joinable);
+
+    # Test thread objects
+    if ($thr1 == $thr2) {
+        ...
+    }
+
+    # Manage thread stack size
+    $stack_size = threads->get_stack_size();
+    $old_size = threads->set_stack_size(32*4096);
+
+    # Create a thread with a specific context and stack size
+    my $thr = threads->create({ 'context'    => 'list',
+                                'stack_size' => 32*4096,
+                                'exit'       => 'thread_only' },
+                              \&foo);
+
+    # Get thread's context
+    my $wantarray = $thr->wantarray();
+
+    # Check thread's state
+    if ($thr->is_running()) {
+        sleep(1);
+    }
+    if ($thr->is_joinable()) {
+        $thr->join();
+    }
+
+    # Send a signal to a thread
+    $thr->kill('SIGUSR1');
+
+    # Exit a thread
+    threads->exit();
+
+=head1 DESCRIPTION
+
+=begin original
+
+Perl 5.6 introduced something called interpreter threads.  Interpreter threads
+are different from I<5005threads> (the thread model of Perl 5.005) by creating
+a new Perl interpreter per thread, and not sharing any data or state between
+threads by default.
+
+=end original
+
+Perl 5.6 はインタプリタスレッドと呼ばれるものを導入しました。
+インタプリタスレッドは、スレッド毎に新たに Perl インタプリタを
+生成することによって、また、デフォルトではいかなるデータや状態も
+スレッド間で共有しないことによって、I<5005スレッド>
+(Perl 5.005 におけるスレッドモデル)とは区別されます。
+
+=begin original
+
+Prior to Perl 5.8, this has only been available to people embedding Perl, and
+for emulating fork() on Windows.
+
+=end original
+
+Perl 5.8 より前では、これは Perl を組み込むする人々にとってのみ、
+そして Windows で fork() をエミュレートするためにのみ利用可能でした。
+
+=begin original
+
+The I<threads> API is loosely based on the old Thread.pm API. It is very
+important to note that variables are not shared between threads, all variables
+are by default thread local.  To use shared variables one must also use
+L<threads::shared>:
+
+=end original
+
+I<threads> API は、古い Thread.pm API におおまかに基づいています。
+変数はスレッド間で共有されず、全ての変数はデフォルトで
+スレッドローカルなものであることに注意しておくことが非常に重要です。
+共有変数を利用するには、L<threads::shared> を使わなければなりません。
+
+    use threads;
+    use threads::shared;
+
+=begin original
+
+It is also important to note that you must enable threads by doing C<use
+threads> as early as possible in the script itself, and that it is not
+possible to enable threading inside an C<eval "">, C<do>, C<require>, or
+C<use>.  In particular, if you are intending to share variables with
+L<threads::shared>, you must C<use threads> before you C<use threads::shared>.
+(C<threads> will emit a warning if you do it the other way around.)
+
+=end original
+
+また、スクリプト内ではできるだけ早いうちに C<use threads> して
+スレッドを利用可能にしておくべきだし、
+C<eval "">, C<do>, C<require>, C<use> の内部では
+スレッド操作ができないことに注意してください。
+特に L<threads::shared> を使って変数を共有しようとするならば、
+C<use threads::shared> の前に C<use threads> しなければなりません。
+(逆にしてしまうと C<threads> は警告を発します。)
+
+=over
+
+=item $thr = threads->create(FUNCTION, ARGS)
+
+=begin original
+
+This will create a new thread that will begin execution with the specified
+entry point function, and give it the I<ARGS> list as parameters.  It will
+return the corresponding threads object, or C<undef> if thread creation failed.
+
+=end original
+
+これは指定されたエントリポイント関数の実行を開始し、引数として
+I<ARGS> リストが与えられる新しいスレッドを作ります。
+対応するスレッドオブジェクトか、スレッド作成に失敗した場合は
+C<undef> を返します。
+
+=begin original
+
+I<FUNCTION> may either be the name of a function, an anonymous subroutine, or
+a code ref.
+
+=end original
+
+I<FUNCTION> は関数名、無名サブルーチン、コードリファレンスのいずれかです。
+
+    my $thr = threads->create('func_name', ...);
+        # or
+    my $thr = threads->create(sub { ... }, ...);
+        # or
+    my $thr = threads->create(\&func, ...);
+
+=begin original
+
+The C<-E<gt>new()> method is an alias for C<-E<gt>create()>.
+
+=end original
+
+C<-E<gt>new()> メソッドは C<-E<gt>create()> のエイリアスです。
+
+=item $thr->join()
+
+=begin original
+
+This will wait for the corresponding thread to complete its execution.  When
+the thread finishes, C<-E<gt>join()> will return the return value(s) of the
+entry point function.
+
+=end original
+
+対応するスレッドが実行を終了するのを待ちます。
+そのスレッドが終了した時、C<-E<gt>join()> は
+エントリポイント関数の戻り値を返します。
+
+=begin original
+
+The context (void, scalar or list) for the return value(s) for C<-E<gt>join()>
+is determined at the time of thread creation.
+
+=end original
+
+C<-E<gt>join()> のコンテキスト (無効、スカラ、リストのいずれか) は、
+スレッド生成時に決定されます。
+
+    # Create thread in list context (implicit)
+    my ($thr1) = threads->create(sub {
+                                    my @results = qw(a b c);
+                                    return (@results);
+                                 });
+    #   or (explicit)
+    my $thr1 = threads->create({'context' => 'list'},
+                               sub {
+                                    my @results = qw(a b c);
+                                    return (@results);
+                               });
+    # Retrieve list results from thread
+    my @res1 = $thr1->join();
+
+    # Create thread in scalar context (implicit)
+    my $thr2 = threads->create(sub {
+                                    my $result = 42;
+                                    return ($result);
+                                 });
+    # Retrieve scalar result from thread
+    my $res2 = $thr2->join();
+
+    # Create a thread in void context (explicit)
+    my $thr3 = threads->create({'void' => 1},
+                               sub { print("Hello, world\n"); });
+    # Join the thread in void context (i.e., no return value)
+    $thr3->join();
+
+=begin original
+
+See L</"THREAD CONTEXT"> for more details.
+
+=end original
+
+さらなる詳細については L</"THREAD CONTEXT"> を参照してください。
+
+=begin original
+
+If the program exits without all threads having either been joined or
+detached, then a warning will be issued.
+
+=end original
+
+全てのスレッドが join されるか detach される前にプログラムが終了した場合、
+警告が発生します。
+
+=begin original
+
+Calling C<-E<gt>join()> or C<-E<gt>detach()> on an already joined thread will
+cause an error to be thrown.
+
+=end original
+
+既に join しているスレッドに対して C<-E<gt>join()> や C<-E<gt>detach()> を
+行うと、エラーが発生します。
+
+=item $thr->detach()
+
+=begin original
+
+Makes the thread unjoinable, and causes any eventual return value to be
+discarded.  When the program exits, any detached threads that are still
+running are silently terminated.
+
+=end original
+
+スレッドを join 不可能にし、最終的な返り値を捨てるようにします。
+プログラムが終了するとき、まだ実行中の detach されたスレッドは暗黙に
+終了します。
+
+=begin original
+
+If the program exits without all threads having either been joined or
+detached, then a warning will be issued.
+
+=end original
+
+全てのスレッドが join されるか detach される前にプログラムが終了した場合、
+警告が発生します。
+
+=begin original
+
+Calling C<-E<gt>join()> or C<-E<gt>detach()> on an already detached thread
+will cause an error to be thrown.
+
+=end original
+
+既に detach されたスレッドに C<-E<gt>join()> や C<-E<gt>detach()> を
+呼び出すと、エラーが発生します。
+
+=item threads->detach()
+
+=begin original
+
+Class method that allows a thread to detach itself.
+
+=end original
+
+スレッドが自分自身を detach するためのクラスメソッドです。
+
+=item threads->self()
+
+=begin original
+
+Class method that allows a thread to obtain its own I<threads> object.
+
+=end original
+
+スレッドが自身の I<threads> オブジェクトを取得するためのクラスメソッドです。
+
+=item $thr->tid()
+
+=begin original
+
+Returns the ID of the thread.  Thread IDs are unique integers with the main
+thread in a program being 0, and incrementing by 1 for every thread created.
+
+=end original
+
+スレッドの ID を返します。
+スレッド ID はユニークな整数であり、プログラムの始まりとなる
+メインスレッドの値は 0 で、
+新しいスレッドが生成されるたびに値を 1 増やしていきます。
+
+=item threads->tid()
+
+=begin original
+
+Class method that allows a thread to obtain its own ID.
+
+=end original
+
+スレッドが自身の ID を得るためのクラスメソッドです。
+
+=item "$thr"
+
+=begin original
+
+If you add the C<stringify> import option to your C<use threads> declaration,
+then using a threads object in a string or a string context (e.g., as a hash
+key) will cause its ID to be used as the value:
+
+=end original
+
+C<use threads> 宣言に C<stringify> インポートオプションを追加すると、
+文字列や文字列コンテキスト (例えばハッシュのキーとして) で
+スレッドオブジェクトを使おうとすると、その ID が値として使われます:
+
+    use threads qw(stringify);
+
+    my $thr = threads->create(...);
+    print("Thread $thr started...\n");  # Prints out: Thread 1 started...
+
+=item threads->object($tid)
+
+=begin original
+
+This will return the I<threads> object for the I<active> thread associated
+with the specified thread ID.  Returns C<undef> if there is no thread
+associated with the TID, if the thread is joined or detached, if no TID is
+specified or if the specified TID is undef.
+
+=end original
+
+指定されたスレッドに関連するアクティブな I<threads> オブジェクトを返します。
+もし TID で指定されたスレッドがない場合、join や detach されている場合、
+TID が指定されていない場合、指定された TID が undef の
+場合、メソッドは C<undef> を返します。
+
+=item threads->yield()
+
+=begin original
+
+This is a suggestion to the OS to let this thread yield CPU time to other
+threads.  What actually happens is highly dependent upon the underlying
+thread implementation.
+
+=end original
+
+このスレッドが他のスレッドに CPU 時間を譲ってもいいということを OS に
+示唆します。
+実際に起こることは、基になっているスレッド実装に大きく依存しています。
+
+=begin original
+
+You may do C<use threads qw(yield)>, and then just use C<yield()> in your
+code.
+
+=end original
+
+コード内では、C<use threads qw(yield)> してから、単に C<yield()> を
+使えます。
+
+=item threads->list()
+
+=item threads->list(threads::all)
+
+=item threads->list(threads::running)
+
+=item threads->list(threads::joinable)
+
+=begin original
+
+With no arguments (or using C<threads::all>) and in a list context, returns a
+list of all non-joined, non-detached I<threads> objects.  In a scalar context,
+returns a count of the same.
+
+=end original
+
+引数なしで (または C<threads::all> を使って) リストコンテキストの場合、
+join されておらず、detach されていない全ての I<threads> オブジェクトの
+リストを返します。
+スカラコンテキストでは、上述のものの数を返します。
+
+=begin original
+
+With a I<true> argument (using C<threads::running>), returns a list of all
+non-joined, non-detached I<threads> objects that are still running.
+
+=end original
+
+引数が I<真> の (または C<threads::running> を使った) 場合、
+join されておらず、detach されていない、まだ実行中の
+I<threads> オブジェクトのリストを返します。
+
+=begin original
+
+With a I<false> argument (using C<threads::joinable>), returns a list of all
+non-joined, non-detached I<threads> objects that have finished running (i.e.,
+for which C<-E<gt>join()> will not I<block>).
+
+=end original
+
+引数が I<偽> の (または C<threads::joinable> を使った) 場合、
+join されておらず、detach されていない、実行が終了した
+(つまり C<-E<gt>join()> が I<ブロック> されない) I<threads> オブジェクトの
+リストを返します。
+
+=item $thr1->equal($thr2)
+
+=begin original
+
+Tests if two threads objects are the same thread or not.  This is overloaded
+to the more natural forms:
+
+=end original
+
+2 つのスレッドオブジェクトが同じスレッドかどうかをテストします。
+これはより自然な形にオーバーロードされます:
+
+    if ($thr1 == $thr2) {
+        print("Threads are the same\n");
+    }
+    # or
+    if ($thr1 != $thr2) {
+        print("Threads differ\n");
+    }
+
+=begin original
+
+(Thread comparison is based on thread IDs.)
+
+=end original
+
+(スレッドの比較はスレッド ID を基にします。)
+
+=item async BLOCK;
+
+=begin original
+
+C<async> creates a thread to execute the block immediately following
+it.  This block is treated as an anonymous subroutine, and so must have a
+semicolon after the closing brace.  Like C<threads-E<gt>create()>, C<async>
+returns a I<threads> object.
+
+=end original
+
+C<async> はその直後に続くブロックを実行するスレッドを生成します。
+このブロックは無名サブルーチンとして扱われるので、閉じ大括弧の後に
+セミコロンをつけなければなりません。
+C<threads-E<gt>create()> 同様、C<async> は
+I<threads> オブジェクトを返します。
+
+=item $thr->error()
+
+=begin original
+
+Threads are executed in an C<eval> context.  This method will return C<undef>
+if the thread terminates I<normally>.  Otherwise, it returns the value of
+C<$@> associated with the thread's execution status in its C<eval> context.
+
+=end original
+
+スレッドは C<無効> コンテキストで実行されます。
+このメソッドは、スレッドが I<普通に> 終了した場合は C<undef> を返します。
+さもなければ、スレッドの実行状態に関連づけられた C<$@> の値を
+C<無効> コンテキストで返します。
+
+=item $thr->_handle()
+
+=begin original
+
+This I<private> method returns the memory location of the internal thread
+structure associated with a threads object.  For Win32, this is a pointer to
+the C<HANDLE> value returned by C<CreateThread> (i.e., C<HANDLE *>); for other
+platforms, it is a pointer to the C<pthread_t> structure used in the
+C<pthread_create> call (i.e., C<pthread_t *>).
+
+=end original
+
+この I<プライベート> メソッドは、スレッドオブジェクトに関連づけられた
+内部スレッド構造体のメモリ位置を返します。
+Win32 では、これは C<CreateThread> から返される C<HANDLE> 値へのポインタ
+(つまり C<HANDLE *>) です; その他のプラットフォームでは、
+C<pthread_create> 呼び出しで使われる C<pthread_t> 構造体へのポインタ
+(つまり C<pthread_t *>) です。
+
+=begin original
+
+This method is of no use for general Perl threads programming.  Its intent is
+to provide other (XS-based) thread modules with the capability to access, and
+possibly manipulate, the underlying thread structure associated with a Perl
+thread.
+
+=end original
+
+このメソッドは、一般的な Perl スレッドプログラミングには無用です。
+このメソッドの目的は、その他の (XS ベースの) スレッドモジュールが、
+Perl スレッドと関連づけられている基礎となるスレッド構造体へのアクセスおよび
+おそらくは操作を可能にすることです。
+
+=item threads->_handle()
+
+=begin original
+
+Class method that allows a thread to obtain its own I<handle>.
+
+=end original
+
+スレッドが自身の I<handle> を得るためのクラスメソッドです。
+
+=back
+
+=head1 EXITING A THREAD
+
+(スレッドの終了)
+
+=begin original
+
+The usual method for terminating a thread is to
+L<return()|perlfunc/"return EXPR"> from the entry point function with the
+appropriate return value(s).
+
+=end original
+
+スレッドを終了するための通常の手法は、エントリポイント関数で
+適切な返り値と共に L<return()|perlfunc/"return EXPR"> を使うことです。
+
+=over
+
+=item threads->exit()
+
+=begin original
+
+If needed, a thread can be exited at any time by calling
+C<threads-E<gt>exit()>.  This will cause the thread to return C<undef> in a
+scalar context, or the empty list in a list context.
+
+=end original
+
+もし必要なら、スレッドはいつでも C<threads-E<gt>exit()> を
+呼び出すことで終了させることが出来ます。
+これにより、スレッドはスカラコンテキストでは C<undef> を返し、
+リストコンテキストでは空リストを返します。
+
+=begin original
+
+When called from the I<main> thread, this behaves the same as C<exit(0)>.
+
+=end original
+
+I<main> スレッドから呼び出されると、C<exit(0)> と同様に振る舞います。
+
+=item threads->exit(status)
+
+=begin original
+
+When called from a thread, this behaves like C<threads-E<gt>exit()> (i.e., the
+exit status code is ignored).
+
+=end original
+
+スレッドから呼び出されると、C<threads-E<gt>exit()> と同様に振る舞います
+(つまり、status 終了コードは無視されます)。
+
+=begin original
+
+When called from the I<main> thread, this behaves the same as C<exit(status)>.
+
+=end original
+
+I<main> スレッドから呼び出されると、C<exit(status)> と同様に振る舞います。
+
+=item die()
+
+=begin original
+
+Calling C<die()> in a thread indicates an abnormal exit for the thread.  Any
+C<$SIG{__DIE__}> handler in the thread will be called first, and then the
+thread will exit with a warning message that will contain any arguments passed
+in the C<die()> call.
+
+=end original
+
+スレッドでの C<die()> の呼び出しは、スレッドの異常終了を意味します。
+まずスレッドでの C<$SIG{__DIE__}> ハンドラが呼び出され、
+それからスレッドは C<die()> 呼び出しに渡された引数による警告メッセージと
+共に終了します。
+
+=item exit(status)
+
+=begin original
+
+Calling L<exit()|perlfunc/"exit EXPR"> inside a thread causes the whole
+application to terminate.  Because of this, the use of C<exit()> inside
+threaded code, or in modules that might be used in threaded applications, is
+strongly discouraged.
+
+=end original
+
+スレッドの内部で L<exit()|perlfunc/"exit EXPR"> を呼び出すと、
+アプリケーション全体が終了します。
+これのことにより、スレッドコード内部や、スレッド化された
+アプリケーションで使われるかも知れないモジュールでの C<exit()> の使用は
+強く非推奨です。
+
+=begin original
+
+If C<exit()> really is needed, then consider using the following:
+
+=end original
+
+もし本当に C<exit()> が必要なら、以下を使うことを考えてください:
+
+    threads->exit() if threads->can('exit');   # Thread friendly
+    exit(status);
+
+=item use threads 'exit' => 'threads_only'
+
+=begin original
+
+This globally overrides the default behavior of calling C<exit()> inside a
+thread, and effectively causes such calls to behave the same as
+C<threads-E<gt>exit()>.  In other words, with this setting, calling C<exit()>
+causes only the thread to terminate.
+
+=end original
+
+これはスレッド内での C<exit()> 呼び出しのデフォルトの振る舞いをグローバルに
+上書きし、事実上このような呼び出しを C<threads-E<gt>exit()> と同じ
+振る舞いにします。
+言い換えると、この設定によって、C<exit()> を呼び出したときにスレッドだけを
+終了させます。
+
+=begin original
+
+Because of its global effect, this setting should not be used inside modules
+or the like.
+
+=end original
+
+これはグローバルな効果を持つので、この設定はモジュールのようなものの内部では
+使うべきではありません。
+
+=begin original
+
+The I<main> thread is unaffected by this setting.
+
+=end original
+
+I<main> スレッドはこの設定の影響を受けません。
+
+=item threads->create({'exit' => 'thread_only'}, ...)
+
+=begin original
+
+This overrides the default behavior of C<exit()> inside the newly created
+thread only.
+
+=end original
+
+これは新しく作られたスレッドの内側でだけ C<exit()> のデフォルトの
+振る舞いを上書きします。
+
+=item $thr->set_thread_exit_only(boolean)
+
+=begin original
+
+This can be used to change the I<exit thread only> behavior for a thread after
+it has been created.  With a I<true> argument, C<exit()> will cause only the
+thread to exit.  With a I<false> argument, C<exit()> will terminate the
+application.
+
+=end original
+
+これは、スレッドの I<スレッドだけ終了> の振る舞いを、スレッドが作られた
+後で変更するために使われます。
+I<真> の値を渡すと、C<exit()> によってスレッドだけが終了します。
+I<偽> の値を渡すと、C<exit()> によってアプリケーションが終了します。
+
+=begin original
+
+The I<main> thread is unaffected by this call.
+
+=end original
+
+I<main> スレッドはこの呼び出しの影響を受けません。
+
+=item threads->set_thread_exit_only(boolean)
+
+=begin original
+
+Class method for use inside a thread to change its own behavior for C<exit()>.
+
+=end original
+
+C<exit()> の振る舞いを変えるためにスレッドの内側で使うための
+クラスメソッドです。
+
+=begin original
+
+The I<main> thread is unaffected by this call.
+
+=end original
+
+I<main> スレッドはこの呼び出しの影響を受けません。
+
+=back
+
+=head1 THREAD STATE
+
+(スレッドの状態)
+
+=begin original
+
+The following boolean methods are useful in determining the I<state> of a
+thread.
+
+=end original
+
+以下の真偽値メソッドはスレッドの I<状態> を決定するのに便利です。
+
+=over
+
+=item $thr->is_running()
+
+=begin original
+
+Returns true if a thread is still running (i.e., if its entry point function
+has not yet finished or exited).
+
+=end original
+
+スレッドがまだ実行されている(つまり、そのエントリポイント関数がまだ完了または
+終了していない)なら真を返します。
+
+=item $thr->is_joinable()
+
+=begin original
+
+Returns true if the thread has finished running, is not detached and has not
+yet been joined.  In other words, the thread is ready to be joined, and a call
+to C<$thr-E<gt>join()> will not I<block>.
+
+=end original
+
+スレッドが実行を完了していて、detach も join もされていないなら真を返します。
+言い換えると、このスレッドは join する準備が出来ていて、
+C<$thr-E<gt>join()> の呼び出しは I<ブロック> されません。
+
+=item $thr->is_detached()
+
+=begin original
+
+Returns true if the thread has been detached.
+
+=end original
+
+スレッドが detach されたなら真を返します。
+
+=item threads->is_detached()
+
+=begin original
+
+Class method that allows a thread to determine whether or not it is detached.
+
+=end original
+
+スレッドが detach されているかどうかを決定できるようにするための
+クラスメソッドです。
+
+=back
+
+=head1 THREAD CONTEXT
+
+(スレッドのコンテキスト)
+
+=begin original
+
+As with subroutines, the type of value returned from a thread's entry point
+function may be determined by the thread's I<context>:  list, scalar or void.
+The thread's context is determined at thread creation.  This is necessary so
+that the context is available to the entry point function via
+L<wantarray()|perlfunc/"wantarray">.  The thread may then specify a value of
+the appropriate type to be returned from C<-E<gt>join()>.
+
+=end original
+
+サブルーチンと同様、スレッドのエントリポイント関数から返される値の型は
+スレッドの I<コンテキスト> (リスト、スカラ、無効のいずれか) によって
+決定されます。
+スレッドのコンテキストはスレッド作成時に決定されます。
+これは、コンテキストをエントリポイント関数から
+L<wantarray()|perlfunc/"wantarray"> を使って利用可能にするために必要です。
+それからスレッドは C<-E<gt>join()> から返される適切な型の値を指定します。
+
+=head2 Explicit context
+
+(明示的なコンテキスト)
+
+=begin original
+
+Because thread creation and thread joining may occur in different contexts, it
+may be desirable to state the context explicitly to the thread's entry point
+function.  This may be done by calling C<-E<gt>create()> with a hash reference
+as the first argument:
+
+=end original
+
+スレッドの作成とスレッドの join は異なったコンテキストで
+行われるかもしれないので、スレッドのエントリポイント関数で明示的に
+コンテキストを宣言することが望ましいです。
+これは最初の引数としてハッシュリファレンスを指定した C<-E<gt>create()> を
+呼び出すことで行えます:
+
+    my $thr = threads->create({'context' => 'list'}, \&foo);
+    ...
+    my @results = $thr->join();
+
+=begin original
+
+In the above, the threads object is returned to the parent thread in scalar
+context, and the thread's entry point function C<foo> will be called in list
+(array) context such that the parent thread can receive a list (array) from
+the C<-E<gt>join()> call.  (C<'array'> is synonymous with C<'list'>.)
+
+=end original
+
+上述の場合、スレッドオブジェクトは親スレッドにスカラコンテキストで
+返され、スレッドのエントリポイント関数 C<foo> はリスト(配列)コンテキストで
+予備されるので、親スレッドは C<-E<gt>join()> 呼び出しからリスト(配列)を
+受け取ります。
+(C<'array'> は C<'list'> の同義語です。)
+
+=begin original
+
+Similarly, if you need the threads object, but your thread will not be
+returning a value (i.e., I<void> context), you would do the following:
+
+=end original
+
+同様に、もしスレッドオブジェクトが必要だけれども、スレッドが値を返さない
+(つまり I<無効> コンテキスト) 場合、以下のようにします:
+
+    my $thr = threads->create({'context' => 'void'}, \&foo);
+    ...
+    $thr->join();
+
+=begin original
+
+The context type may also be used as the I<key> in the hash reference followed
+by a I<true> value:
+
+=end original
+
+コンテキスト型はまた、ハッシュリファレンスの I<キー> に引き続いて I<真> の
+値としても使えます:
+
+    threads->create({'scalar' => 1}, \&foo);
+    ...
+    my ($thr) = threads->list();
+    my $result = $thr->join();
+
+=head2 Implicit context
+
+(暗黙のコンテキスト)
+
+=begin original
+
+If not explicitly stated, the thread's context is implied from the context
+of the C<-E<gt>create()> call:
+
+=end original
+
+明示的に宣言されない場合、スレッドのコンテキストは C<-E<gt>create()>
+呼び出しのコンテキストになります:
+
+    # Create thread in list context
+    my ($thr) = threads->create(...);
+
+    # Create thread in scalar context
+    my $thr = threads->create(...);
+
+    # Create thread in void context
+    threads->create(...);
+
+=head2 $thr->wantarray()
+
+=begin original
+
+This returns the thread's context in the same manner as
+L<wantarray()|perlfunc/"wantarray">.
+
+=end original
+
+これは L<wantarray()|perlfunc/"wantarray"> と同じ方法でスレッドの
+コンテキストを返します。
+
+=head2 threads->wantarray()
+
+=begin original
+
+Class method to return the current thread's context.  This returns the same
+value as running L<wantarray()|perlfunc/"wantarray"> inside the current
+thread's entry point function.
+
+=end original
+
+現在のスレッドのコンテキストを返すクラスメソッドです。
+現在のスレッドのエントリポイント関数の内側で
+L<wantarray()|perlfunc/"wantarray"> を実行するのと同じ値を返します。
+
+=head1 THREAD STACK SIZE
+
+(スレッドのスタックサイズ)
+
+=begin original
+
+The default per-thread stack size for different platforms varies
+significantly, and is almost always far more than is needed for most
+applications.  On Win32, Perl's makefile explicitly sets the default stack to
+16 MB; on most other platforms, the system default is used, which again may be
+much larger than is needed.
+
+=end original
+
+デフォルトのスレッド毎のスタックサイズはプラットフォームによって大きく異なり、
+ほとんど常にほとんどのアプリケーションが必要な量よりはるかに多いです。
+Win32 では、Perl の makefile は明示的にデフォルトのスタックを 16 MB に
+指定しています; その他のほとんどのシステムでは、システムのデフォルトが
+使われますが、やはり必要な量よりはるかに多いです。
+
+=begin original
+
+By tuning the stack size to more accurately reflect your application's needs,
+you may significantly reduce your application's memory usage, and increase the
+number of simultaneously running threads.
+
+=end original
+
+スタックサイズをアプリケーションのニーズにより正確に反映させることにより、
+アプリケーションのメモリ使用量を著しく減少させ、同時実行スレッド数を
+増やすことができるかもしれません。
+
+=begin original
+
+Note that on Windows, address space allocation granularity is 64 KB,
+therefore, setting the stack smaller than that on Win32 Perl will not save any
+more memory.
+
+=end original
+
+従って、アドレス空間配置の粒度が 64 KB である Windows では、Win32 Perl で
+これより小さい値にスタックを設定してもメモリを節約できないことに
+注意してください。
+
+=over
+
+=item threads->get_stack_size();
+
+=begin original
+
+Returns the current default per-thread stack size.  The default is zero, which
+means the system default stack size is currently in use.
+
+=end original
+
+現在のデフォルトのスレッド毎のスタックサイズを返します。
+デフォルトは 0 で、これはシステムのデフォルトスタックサイズを
+使っていることを示します。
+
+=item $size = $thr->get_stack_size();
+
+=begin original
+
+Returns the stack size for a particular thread.  A return value of zero
+indicates the system default stack size was used for the thread.
+
+=end original
+
+特定のスレッドのスタックサイズを返します。
+返り値 0 は、そのスレッドでシステムデフォルトのスタックサイズが
+使われていることを示します。
+
+=item $old_size = threads->set_stack_size($new_size);
+
+=begin original
+
+Sets a new default per-thread stack size, and returns the previous setting.
+
+=end original
+
+新しいデフォルトのスレッド毎のスタックサイズを設定し、以前の設定を
+返します。
+
+=begin original
+
+Some platforms have a minimum thread stack size.  Trying to set the stack size
+below this value will result in a warning, and the minimum stack size will be
+used.
+
+=end original
+
+最小スレッドスタックサイズがあるプラットフォームもあります。
+その値よりスタックサイズを小さくしようとすると警告が出て、最小
+スタックサイズが使われます。
+
+=begin original
+
+Some Linux platforms have a maximum stack size.  Setting too large of a stack
+size will cause thread creation to fail.
+
+=end original
+
+最大スタックサイズのある Linux プラットフォームもあります。
+大きすぎるスタックサイズを設定するとスレッド作成に失敗します。
+
+=begin original
+
+If needed, C<$new_size> will be rounded up to the next multiple of the memory
+page size (usually 4096 or 8192).
+
+=end original
+
+必要なら、C<$new_size> は次のメモリページサイズ(普通は4096 か 8192)倍数に
+切り上げられます。
+
+=begin original
+
+Threads created after the stack size is set will then either call
+C<pthread_attr_setstacksize()> I<(for pthreads platforms)>, or supply the
+stack size to C<CreateThread()> I<(for Win32 Perl)>.
+
+=end original
+
+スタックサイズが設定された後に作られたスレッドは
+C<pthread_attr_setstacksize()> を呼び出す I<(pthreads プラットフォームの
+場合)> か C<CreateThread()> にスタックサイズを渡します
+I<(Win32 Perl の場合)>。
+
+=begin original
+
+(Obviously, this call does not affect any currently extant threads.)
+
+=end original
+
+(明らかに、この呼び出しは既に存在するスレッドには影響を与えません。)
+
+=item use threads ('stack_size' => VALUE);
+
+=begin original
+
+This sets the default per-thread stack size at the start of the application.
+
+=end original
+
+これはアプリケーションの開始時にスタック単位のデフォルトのスタックサイズを
+設定します。
+
+=item $ENV{'PERL5_ITHREADS_STACK_SIZE'}
+
+=begin original
+
+The default per-thread stack size may be set at the start of the application
+through the use of the environment variable C<PERL5_ITHREADS_STACK_SIZE>:
+
+=end original
+
+デフォルトのスレッド毎のスタックサイズは環境変数
+C<PERL5_ITHREADS_STACK_SIZE> を使ってアプリケーションの開始時に設定できます:
+
+    PERL5_ITHREADS_STACK_SIZE=1048576
+    export PERL5_ITHREADS_STACK_SIZE
+    perl -e'use threads; print(threads->get_stack_size(), "\n")'
+
+=begin original
+
+This value overrides any C<stack_size> parameter given to C<use threads>.  Its
+primary purpose is to permit setting the per-thread stack size for legacy
+threaded applications.
+
+=end original
+
+この値は C<use threads> に与えられる C<stack_size> 引数で上書きできます。
+主な目的はレガシーなスレッドアプリケーションでスレッド毎のスタックサイズを
+設定できるようにすることです。
+
+=item threads->create({'stack_size' => VALUE}, FUNCTION, ARGS)
+
+=begin original
+
+To specify a particular stack size for any individual thread, call
+C<-E<gt>create()> with a hash reference as the first argument:
+
+=end original
+
+個々のスレッドの個別のスタックサイズを指定するには、最初の引数として
+ハッシュリファレンスを指定して C<-E<gt>create()> を呼び出します:
+
+    my $thr = threads->create({'stack_size' => 32*4096}, \&foo, @args);
+
+=item $thr2 = $thr1->create(FUNCTION, ARGS)
+
+=begin original
+
+This creates a new thread (C<$thr2>) that inherits the stack size from an
+existing thread (C<$thr1>).  This is shorthand for the following:
+
+=end original
+
+これは既に存在するスレッド (C<$thr1>) からスタックサイズを継承して新しい
+スレッド (C<$thr2>) を作成します。
+これは以下のものの短縮形です:
+
+    my $stack_size = $thr1->get_stack_size();
+    my $thr2 = threads->create({'stack_size' => $stack_size}, FUNCTION, ARGS);
+
+=back
+
+=head1 THREAD SIGNALLING
+
+(スレッドとシグナル)
+
+=begin original
+
+When safe signals is in effect (the default behavior - see L</"Unsafe signals">
+for more details), then signals may be sent and acted upon by individual
+threads.
+
+=end original
+
+安全なシグナルが有効なとき (デフォルトの振る舞いです - さらなる
+詳細については L</"Unsafe signals"> を参照してください)、シグナルは
+それぞれのスレッドに対して送られて動作します。
+
+=over 4
+
+=item $thr->kill('SIG...');
+
+=begin original
+
+Sends the specified signal to the thread.  Signal names and (positive) signal
+numbers are the same as those supported by
+L<kill()|perlfunc/"kill SIGNAL, LIST">.  For example, 'SIGTERM', 'TERM' and
+(depending on the OS) 15 are all valid arguments to C<-E<gt>kill()>.
+
+=end original
+
+指定されたシグナルをスレッドに送ります。
+シグナル名と(正の)シグナル番号は L<kill()|perlfunc/"kill SIGNAL, LIST"> で
+対応しているものと同じです。
+例えば、'SIGTERM', 'TERM' と (OS に依存しますが) 15 は全て
+C<-E<gt>kill()> への妥当な引数です。
+
+=begin original
+
+Returns the thread object to allow for method chaining:
+
+=end original
+
+メソッドチェーンができるように、スレッドオブジェクトを返します:
+
+    $thr->kill('SIG...')->join();
+
+=back
+
+=begin original
+
+Signal handlers need to be set up in the threads for the signals they are
+expected to act upon.  Here's an example for I<cancelling> a thread:
+
+=end original
+
+シグナルハンドラは対応することを想定しているシグナルに対してスレッドで
+設定される必要があります。
+以下はスレッドを I<キャンセルする> 例です:
+
+    use threads;
+
+    sub thr_func
+    {
+        # Thread 'cancellation' signal handler
+        $SIG{'KILL'} = sub { threads->exit(); };
+
+        ...
+    }
+
+    # Create a thread
+    my $thr = threads->create('thr_func');
+
+    ...
+
+    # Signal the thread to terminate, and then detach
+    # it so that it will get cleaned up automatically
+    $thr->kill('KILL')->detach();
+
+=begin original
+
+Here's another simplistic example that illustrates the use of thread
+signalling in conjunction with a semaphore to provide rudimentary I<suspend>
+and I<resume> capabilities:
+
+=end original
+
+以下は基本的な I<中断> と I<再開> の機能を提供するためにスレッドの
+シグナルをセマフォと組み合わせた使い方を示すための単純化されたもう一つの
+例です:
+
+    use threads;
+    use Thread::Semaphore;
+
+    sub thr_func
+    {
+        my $sema = shift;
+
+        # Thread 'suspend/resume' signal handler
+        $SIG{'STOP'} = sub {
+            $sema->down();      # Thread suspended
+            $sema->up();        # Thread resumes
+        };
+
+        ...
+    }
+
+    # Create a semaphore and pass it to a thread
+    my $sema = Thread::Semaphore->new();
+    my $thr = threads->create('thr_func', $sema);
+
+    # Suspend the thread
+    $sema->down();
+    $thr->kill('STOP');
+
+    ...
+
+    # Allow the thread to continue
+    $sema->up();
+
+=begin original
+
+CAVEAT:  The thread signalling capability provided by this module does not
+actually send signals via the OS.  It I<emulates> signals at the Perl-level
+such that signal handlers are called in the appropriate thread.  For example,
+sending C<$thr-E<gt>kill('STOP')> does not actually suspend a thread (or the
+whole process), but does cause a C<$SIG{'STOP'}> handler to be called in that
+thread (as illustrated above).
+
+=end original
+
+警告: このモジュールによって提供されているスレッドへのシグナル機能は
+実際には OS 経由でシグナルを送っていません。
+シグナルハンドラが適切なスレッドで呼び出されるように Perl レベルでシグナルを
+I<エミュレート> しています。
+例えば、C<$thr-E<gt>kill('STOP')> は実際にはスレッド(またはプロセス全体)を
+停止させませんが、(上述したように) 対象のスレッドの C<$SIG{'STOP'}>
+ハンドラが呼び出されます。
+
+=begin original
+
+As such, signals that would normally not be appropriate to use in the
+C<kill()> command (e.g., C<kill('KILL', $$)>) are okay to use with the
+C<-E<gt>kill()> method (again, as illustrated above).
+
+=end original
+
+そのため、普通は C<kill()> コマンドでの使用が適切ではないようなシグナル
+(例えば C<kill('KILL', $$)>)) は C<-E<gt>kill()> メソッドで使っても
+(再び上述したように)問題ありません。
+
+=begin original
+
+Correspondingly, sending a signal to a thread does not disrupt the operation
+the thread is currently working on:  The signal will be acted upon after the
+current operation has completed.  For instance, if the thread is I<stuck> on
+an I/O call, sending it a signal will not cause the I/O call to be interrupted
+such that the signal is acted up immediately.
+
+=end original
+
+同様に、スレッドにシグナルを送ってもスレッドが今処理している操作を
+妨害しません: シグナルは現在の処理が終了した後に処理されます。
+例えば、スレッドが I/O 呼び出して I<固まっている> なら、シグナルが直ちに
+処理されるように I/O 呼び出しを中断はしません。
+
+=begin original
+
+Sending a signal to a terminated thread is ignored.
+
+=end original
+
+終了したスレッドへのシグナル送信は無視されます。
+
+=head1 WARNINGS
+
+(警告)
+
+=over 4
+
+=item Perl exited with active threads:
+
+=begin original
+
+If the program exits without all threads having either been joined or
+detached, then this warning will be issued.
+
+=end original
+
+全てのスレッドが join されるか detach される前にプログラムが終了した場合、
+この警告が発生します。
+
+=begin original
+
+NOTE:  If the I<main> thread exits, then this warning cannot be suppressed
+using C<no warnings 'threads';> as suggested below.
+
+=end original
+
+注意: I<main> スレッドが存在しているなら、後に示唆しているようにこの警告は
+C<no warnings 'threads';> を使って抑制できません。
+
+=item Thread creation failed: pthread_create returned #
+
+=begin original
+
+See the appropriate I<man> page for C<pthread_create> to determine the actual
+cause for the failure.
+
+=end original
+
+失敗の実際の原因を決定するには C<pthread_create> の適切な I<man> ページを
+参照してください。
+
+=item Thread # terminated abnormally: ...
+
+=begin original
+
+A thread terminated in some manner other than just returning from its entry
+point function, or by using C<threads-E<gt>exit()>.  For example, the thread
+may have terminated because of an error, or by using C<die>.
+
+=end original
+
+スレッドが単にエントリポイント関数から返ったか C<threads-E<gt>exit()> を
+使った以外の何らかの方法で終了しました。
+例えば、エラーや C<die> の使用によってスレッドが終了しました。
+
+=item Using minimum thread stack size of #
+
+=begin original
+
+Some platforms have a minimum thread stack size.  Trying to set the stack size
+below this value will result in the above warning, and the stack size will be
+set to the minimum.
+
+=end original
+
+最低スレッドスタックサイズがあるプラットフォームもあります。
+スタックサイズをその値以下に設定しようとするとこの警告が出て、
+スタックサイズは最小値に設定されます。
+
+=item Thread creation failed: pthread_attr_setstacksize(I<SIZE>) returned 22
+
+=begin original
+
+The specified I<SIZE> exceeds the system's maximum stack size.  Use a smaller
+value for the stack size.
+
+=end original
+
+指定された I<SIZE> がシステムの最大スタックサイズを超えています。
+スタックサイズとしてより小さい値を使ってください。
+
+=back
+
+=begin original
+
+If needed, thread warnings can be suppressed by using:
+
+=end original
+
+もし必要なら、スレッドの警告は以下のものを:
+
+    no warnings 'threads';
+
+=begin original
+
+in the appropriate scope.
+
+=end original
+
+適切なスコープで使うことで抑制できます。
+
+=head1 ERRORS
+
+(エラー)
+
+=over 4
+
+=item This Perl not built to support threads
+
+=begin original
+
+The particular copy of Perl that you're trying to use was not built using the
+C<useithreads> configuration option.
+
+=end original
+
+使おうとしている Perl が C<useithreads> 設定オプションを使って
+ビルドされていません。
+
+=begin original
+
+Having threads support requires all of Perl and all of the XS modules in the
+Perl installation to be rebuilt; it is not just a question of adding the
+L<threads> module (i.e., threaded and non-threaded Perls are binary
+incompatible.)
+
+=end original
+
+スレッド対応にするためには Perl の全てと Perl インストールの全ての XS
+モジュールを再ビルドする必要があります; これは L<threads> モジュールを
+追加するためだけではありません (つまり、スレッド対応 Perl と非対応 Perl は
+バイナリ互換性がありません。)
+
+=item Cannot change stack size of an existing thread
+
+=begin original
+
+The stack size of currently extant threads cannot be changed, therefore, the
+following results in the above error:
+
+=end original
+
+現在既にあるスレッドのスタックサイズは変更できないので、以下のようなものは
+上述のエラーになります:
+
+    $thr->set_stack_size($size);
+
+=item Cannot signal threads without safe signals
+
+=begin original
+
+Safe signals must be in effect to use the C<-E<gt>kill()> signalling method.
+See L</"Unsafe signals"> for more details.
+
+=end original
+
+C<-E<gt>kill()> シグナルメソッドを使うには安全なシグナルが
+有効でなければなりません。
+さらなる詳細については L</"Unsafe signals"> を参照してください。
+
+=item Unrecognized signal name: ...
+
+=begin original
+
+The particular copy of Perl that you're trying to use does not support the
+specified signal being used in a C<-E<gt>kill()> call.
+
+=end original
+
+使おうとしている Perl が C<-E<gt>kill()> 呼び出しで使おうとしているシグナルに
+対応していません。
+
+=back
+
+=head1 BUGS AND LIMITATIONS
+
+(バグと制限)
+
+=begin original
+
+Before you consider posting a bug report, please consult, and possibly post a
+message to the discussion forum to see if what you've encountered is a known
+problem.
+
+=end original
+
+バグ報告を投稿することを考える前に、まず相談してください; そしてできれば
+遭遇したものが既知の問題かどうかを見るために議論フォーラムにメッセージを
+投稿してください。
+
+=over
+
+=item Thread-safe modules
+
+(スレッドセーフなモジュール)
+
+=begin original
+
+See L<perlmod/"Making your module threadsafe"> when creating modules that may
+be used in threaded applications, especially if those modules use non-Perl
+data, or XS code.
+
+=end original
+
+スレッド対応アプリケーションで使われるかもしれないモジュールを作るとき、
+とくにモジュールが非 Perl データや XS コードを使っているときは、
+L<perlmod/"Making your module threadsafe"> を参照してください。
+
+=item Using non-thread-safe modules
+
+(非スレッドセーフなモジュールを使う)
+
+=begin original
+
+Unfortunately, you may encounter Perl modules that are not I<thread-safe>.
+For example, they may crash the Perl interpreter during execution, or may dump
+core on termination.  Depending on the module and the requirements of your
+application, it may be possible to work around such difficulties.
+
+=end original
+
+残念ながら、I<スレッドセーフ> ではない Perl モジュールに
+遭遇するかもしれません。
+例えば、実行中に Perl インタプリタがクラッシュしたり、コアダンプして
+終了したりするかもしれません。
+モジュールとアプリケーションの必要事項に依存して、このような問題を
+回避できることがあります。
+
+=begin original
+
+If the module will only be used inside a thread, you can try loading the
+module from inside the thread entry point function using C<require> (and
+C<import> if needed):
+
+=end original
+
+モジュールがスレッドの中でだけ使われているなら、スレッドエントリ関数の
+内側から C<require> (および必要なら C<import>) を使ってモジュールを
+読み込んでみてください:
+
+    sub thr_func
+    {
+        require Unsafe::Module
+        # Unsafe::Module->import(...);
+
+        ....
+    }
+
+=begin original
+
+If the module is needed inside the I<main> thread, try modifying your
+application so that the module is loaded (again using C<require> and
+C<-E<gt>import()>) after any threads are started, and in such a way that no
+other threads are started afterwards.
+
+=end original
+
+モジュールが I<main> スレッドの内側で必要なら、スレッドを開始してから
+(再び C<require> と C<-E<gt>import()> を使って) モジュールが
+読み込まれるように、そしてその後他のスレッドが開始しないように
+アプリケーションを修正してみてください。
+
+=begin original
+
+If the above does not work, or is not adequate for your application, then file
+a bug report on L<http://rt.cpan.org/Public/> against the problematic module.
+
+=end original
+
+上述のものが動作しないか、アプリケーションに適切でないなら、問題のある
+モジュールに対して L<http://rt.cpan.org/Public/> にバグ報告を
+登録してください。
+
+=item Current working directory
+
+(カレントワーキングディレクトリ)
+
+=begin original
+
+On all platforms except MSWin32, the setting for the current working directory
+is shared among all threads such that changing it in one thread (e.g., using
+C<chdir()>) will affect all the threads in the application.
+
+=end original
+
+MSWin32 以外の全てのプラットフォームでは、カレントワーキングディレクトリの
+設定は全てのスレッドで共有されるので、あるスレッドでこれを変更する
+(つまり C<chdir()> を使う) とアプリケーションの全てのスレッドに
+影響します。
+
+=begin original
+
+On MSWin32, each thread maintains its own the current working directory
+setting.
+
+=end original
+
+MSWin32 では、それぞれのカレントワーキングディレクトリ設定を独自に
+管理しています。
+
+=item Environment variables
+
+(環境変数)
+
+=begin original
+
+Currently, on all platforms except MSWin32, all I<system> calls (e.g., using
+C<system()> or back-ticks) made from threads use the environment variable
+settings from the I<main> thread.  In other words, changes made to C<%ENV> in
+a thread will not be visible in I<system> calls made by that thread.
+
+=end original
+
+現在のところ、MSWin32 以外の全てのプラットフォームでは、
+スレッドによって作られた (C<system()> または逆クォートによる) 全ての
+I<system> 呼び出しは I<main> スレッドの環境変数設定を使います。
+言い換えると、スレッドで行った C<%ENV> への変更は、そのスレッドで作られた
+I<system> 呼び出しでは見えません。
+
+=begin original
+
+To work around this, set environment variables as part of the I<system> call.
+For example:
+
+=end original
+
+これを回避するには、I<system> 呼び出しの一部として環境変数をセットします。
+例えば:
+
+    my $msg = 'hello';
+    system("FOO=$msg; echo \$FOO");   # Outputs 'hello' to STDOUT
+
+=begin original
+
+On MSWin32, each thread maintains its own set of environment variables.
+
+=end original
+
+MSWin32 では、各スレッドでは独自の環境変数集合を管理します。
+
+=item Parent-child threads
+
+(親-子スレッド)
+
+=begin original
+
+On some platforms, it might not be possible to destroy I<parent> threads while
+there are still existing I<child> threads.
+
+=end original
+
+プラットフォームによっては、I<子> スレッドがまだ存在している間は
+I<親> スレッドを破壊することができないことがあります。
+
+=item Creating threads inside special blocks
+
+(特殊ブロックの中でスレッドを作る)
+
+=begin original
+
+Creating threads inside C<BEGIN>, C<CHECK> or C<INIT> blocks should not be
+relied upon.  Depending on the Perl version and the application code, results
+may range from success, to (apparently harmless) warnings of leaked scalar, or
+all the way up to crashing of the Perl interpreter.
+
+=end original
+
+C<BEGIN>, C<CHECK>, C<INIT> ブロックの内側でスレッドを作成することを
+信頼するべきではありません。
+Perl バージョンとアプリケーションコードに依存して、成功から(おそらくは
+無害な)リークしたスカラの警告、Perl インタプリタのクラッシュまでさまざまな
+結果となります。
+
+=item Unsafe signals
+
+(安全でないシグナル)
+
+=begin original
+
+Since Perl 5.8.0, signals have been made safer in Perl by postponing their
+handling until the interpreter is in a I<safe> state.  See
+L<perl58delta/"Safe Signals"> and L<perlipc/"Deferred Signals (Safe Signals)">
+for more details.
+
+=end original
+
+Perl 5.8.0 から、インタプリタが I<安全な> 状態になるまでシグナル操作を
+延期することでシグナルはより安全になりました。
+さらなる詳細については L<perl58delta/"Safe Signals"> と
+L<perlipc/"Deferred Signals (Safe Signals)"> を参照してください。
+
+=begin original
+
+Safe signals is the default behavior, and the old, immediate, unsafe
+signalling behavior is only in effect in the following situations:
+
+=end original
+
+安全なシグナルはデフォルトの振る舞いで、古い、即時で、安全でないシグナルの
+振る舞いは以下の状況でのみ有効です。
+
+=over 4
+
+=item * Perl has been built with C<PERL_OLD_SIGNALS> (see C<perl -V>).
+
+(Perl が C<PERL_OLD_SIGNALS> でビルドされている(C<perl -V> 参照)。)
+
+=item * The environment variable C<PERL_SIGNALS> is set to C<unsafe> (see L<perlrun/"PERL_SIGNALS">).
+
+(環境変数 C<PERL_SIGNALS> が C<unsafe> に設定されている (L<perlrun/"PERL_SIGNALS"> 参照)。)
+
+=item * The module L<Perl::Unsafe::Signals> is used.
+
+(L<Perl::Unsafe::Signals> モジュールが使われている。)
+
+=back
+
+=begin original
+
+If unsafe signals is in effect, then signal handling is not thread-safe, and
+the C<-E<gt>kill()> signalling method cannot be used.
+
+=end original
+
+安全でないシグナルが有効の場合、シグナルの扱いはスレッドセーフではなく、
+C<-E<gt>kill()> シグナルメソッドは使えません。
+
+=item Returning closures from threads
+
+(スレッドからクロージャを返す)
+
+=begin original
+
+Returning closures from threads should not be relied upon.  Depending of the
+Perl version and the application code, results may range from success, to
+(apparently harmless) warnings of leaked scalar, or all the way up to crashing
+of the Perl interpreter.
+
+=end original
+
+スレッドからクロージャを返すことを信頼するべきではありｍせん。
+Perl バージョンとアプリケーションコードに依存して、成功から(おそらくは
+無害な)リークしたスカラの警告、Perl インタプリタのクラッシュまでさまざまな
+結果となります。
+
+=item Returning objects from threads
+
+(スレッドからオブジェクトを返す)
+
+=begin original
+
+Returning objects from threads does not work.  Depending on the classes
+involved, you may be able to work around this by returning a serialized
+version of the object (e.g., using L<Data::Dumper> or L<Storable>), and then
+reconstituting it in the joining thread.  If you're using Perl 5.10.0 or
+later, and if the class supports L<shared objects|threads::shared/"OBJECTS">,
+you can pass them via L<shared queues| Thread::Queue>.
+
+=end original
+
+スレッドからオブジェクトを返すのは動作しません。
+使うクラスに依存して、(例えば L<Data::Dumper> や L<Storable> を使って)
+直列化されたオブジェクトを返して、join したスレッドでこれを再構成することで
+これを回避できることがあります。
+Perl 5.10.0 以降を使っていて、クラスが
+L<共有オブジェクト|threads::shared/"OBJECTS"> に対応しているなら、
+L<共有キュー| Thread::Queue> 経由で渡すことができます。
+
+=item END blocks in threads
+
+(スレッドの END ブロック)
+
+=begin original
+
+It is possible to add L<END blocks|perlmod/"BEGIN, UNITCHECK, CHECK, INIT and
+END"> to threads by using L<require|perlfunc/"require VERSION"> or
+L<eval|perlfunc/"eval EXPR"> with the appropriate code.  These C<END> blocks
+will then be executed when the thread's interpreter is destroyed (i.e., either
+during a C<-E<gt>join()> call, or at program termination).
+
+=end original
+
+適切なコードで L<require|perlfunc/"require VERSION"> や
+L<eval|perlfunc/"eval EXPR"> を使うことでスレッドに
+L<END ブロック|perlmod/"BEGIN, UNITCHECK, CHECK, INIT and
+END"> を追加することは可能です。
+これらの C<END> ブロックはスレッドインタプリタが破壊される
+(つまり C<-E<gt>join()> の呼び出しの間かプログラムが終了する)ときに
+実行されます。
+
+=begin original
+
+However, calling any L<threads> methods in such an C<END> block will most
+likely I<fail> (e.g., the application may hang, or generate an error) due to
+mutexes that are needed to control functionality within the L<threads> module.
+
+=end original
+
+しかし、C<END> ブロックのような中で L<threads> メソッドを呼び出すと、
+L<threads> モジュール内部の機能を制御するために必要なミューテックスのために
+ほぼ間違いなく I<失敗> (例えばアプリケーションがハングしたりエラーが
+発生したり)します。
+
+=begin original
+
+For this reason, the use of C<END> blocks in threads is B<strongly>
+discouraged.
+
+=end original
+
+この理由により、スレッド中の C<END> の使用は B<強く> 非推奨です。
+
+=item Perl Bugs and the CPAN Version of L<threads>
+
+(Perl のバグと CPAN 版の L<threads>)
+
+=begin original
+
+Support for threads extends beyond the code in this module (i.e.,
+F<threads.pm> and F<threads.xs>), and into the Perl interpreter itself.  Older
+versions of Perl contain bugs that may manifest themselves despite using the
+latest version of L<threads> from CPAN.  There is no workaround for this other
+than upgrading to the latest version of Perl.
+
+=end original
+
+スレッドの対応は
+このモジュール (つまり F<threads.pm> と F<threads.xs>) のコードを超えて
+Perl インタプリタ自身に拡張されます。
+より古いバージョンの Perl には CPAN から最新版の L<threads> を使っているにも
+関わらず自分自身を示すというバグがあります。
+Perl を最新版にアップグレードする以外に回避方法はありません。
+
+=begin original
+
+Even with the latest version of Perl, it is known that certain constructs
+with threads may result in warning messages concerning leaked scalars or
+unreferenced scalars.  However, such warnings are harmless, and may safely be
+ignored.
+
+=end original
+
+最新版の Perl でも、スレッドとある種の構造はリークしたスカラや
+参照されていないスカラ内観する警告メッセージが出ることがあります。
+しかし、このような警告は無害で、安全に無視できます。
+
+=begin original
+
+You can search for L<threads> related bug reports at
+L<http://rt.cpan.org/Public/>.  If needed submit any new bugs, problems,
+patches, etc. to: L<http://rt.cpan.org/Public/Dist/Display.html?Name=threads>
+
+=end original
+
+L<threads> 関連のバグ報告を L<http://rt.cpan.org/Public/> で探せます。
+新しいバグ、問題、パッチなどを投稿する必要があるなら:
+L<http://rt.cpan.org/Public/Dist/Display.html?Name=threads>
+
+=back
+
+=head1 REQUIREMENTS
+
+(必要条件)
+
+=begin original
+
+Perl 5.8.0 or later
+
+=end original
+
+Perl 5.8.0 以降
+
+=head1 SEE ALSO
+
+=begin original
+
+L<threads> Discussion Forum on CPAN:
+L<http://www.cpanforum.com/dist/threads>
+
+=end original
+
+CPAN の L<threads> ディスカッションフォーラム:
+L<http://www.cpanforum.com/dist/threads>
+
+=begin original
+
+Annotated POD for L<threads>:
+L<http://annocpan.org/~JDHEDDEN/threads-1.72/threads.pm>
+
+=end original
+
+L<threads> の注釈付き POD:
+L<http://annocpan.org/~JDHEDDEN/threads-1.72/threads.pm>
+
+=begin original
+
+Source repository:
+L<http://code.google.com/p/threads-shared/>
+
+=end original
+
+ソースレポジトリ:
+L<http://code.google.com/p/threads-shared/>
+
+L<threads::shared>, L<perlthrtut>
+
+=begin original
+
+L<http://www.perl.com/pub/a/2002/06/11/threads.html> and
+L<http://www.perl.com/pub/a/2002/09/04/threads.html>
+
+=end original
+
+L<http://www.perl.com/pub/a/2002/06/11/threads.html> と
+L<http://www.perl.com/pub/a/2002/09/04/threads.html>
+
+=begin original
+
+Perl threads mailing list:
+L<http://lists.cpan.org/showlist.cgi?name=iThreads>
+
+=end original
+
+Perl スレッドメーリングリスト:
+L<http://lists.cpan.org/showlist.cgi?name=iThreads>
+
+=begin original
+
+Stack size discussion:
+L<http://www.perlmonks.org/?node_id=532956>
+
+=end original
+
+スタックサイズの議論:
+L<http://www.perlmonks.org/?node_id=532956>
+
+=head1 AUTHOR
+
+Artur Bergman E<lt>sky AT crucially DOT netE<gt>
+
+CPAN version produced by Jerry D. Hedden <jdhedden AT cpan DOT org>
+
+=head1 LICENSE
+
+threads is released under the same license as Perl.
+
+=head1 ACKNOWLEDGEMENTS
+
+Richard Soderberg E<lt>perl AT crystalflame DOT netE<gt> -
+Helping me out tons, trying to find reasons for races and other weird bugs!
+
+Simon Cozens E<lt>simon AT brecon DOT co DOT ukE<gt> -
+Being there to answer zillions of annoying questions
+
+Rocco Caputo E<lt>troc AT netrus DOT netE<gt>
+
+Vipul Ved Prakash E<lt>mail AT vipul DOT netE<gt> -
+Helping with debugging
+
+Dean Arnold E<lt>darnold AT presicient DOT comE<gt> -
+Stack size API
+
+=cut
+
+=begin meta
+
+Translate: まかまか <makamaka@donzoko.net>
+Update: Kentaro Shirakata <argrath@ub32.org> (5.8.4, 1.67-)
+Status: completed
+
+=end meta
+

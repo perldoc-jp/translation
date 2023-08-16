@@ -1,0 +1,590 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+Net::HTTP - Low-level HTTP connection (client)
+
+=end original
+
+Net::HTTP - 低レベル HTTP 接続 (クライアント)
+
+=head1 SYNOPSIS
+
+ use Net::HTTP;
+ my $s = Net::HTTP->new(Host => "www.perl.com") || die $@;
+ $s->write_request(GET => "/", 'User-Agent' => "Mozilla/5.0");
+ my($code, $mess, %h) = $s->read_response_headers;
+
+ while (1) {
+    my $buf;
+    my $n = $s->read_entity_body($buf, 1024);
+    die "read failed: $!" unless defined $n;
+    last unless $n;
+    print $buf;
+ }
+
+=head1 DESCRIPTION
+
+=begin original
+
+The C<Net::HTTP> class is a low-level HTTP client.  An instance of the
+C<Net::HTTP> class represents a connection to an HTTP server.  The
+HTTP protocol is described in RFC 2616.  The C<Net::HTTP> class
+support C<HTTP/1.0> and C<HTTP/1.1>.
+
+=end original
+
+C<Net::HTTP> クラスは低レベル HTTP クライアントです。
+一つの C<Net::HTTP> クラスの実体は一つの HTTP サーバへの接続を表現します。
+HTTP プロトコルは RFC 2616 に記述されています。
+C<Net::HTTP> クラスは C<HTTP/1.0> と C<HTTP/1.1> に対応しています。
+
+=begin original
+
+C<Net::HTTP> is a sub-class of C<IO::Socket::INET>.  You can mix the
+methods described below with reading and writing from the socket
+directly.  This is not necessary a good idea, unless you know what you
+are doing.
+
+=end original
+
+C<Net::HTTP> は C<IO::Socket::INET> のサブクラスです。
+後述するメソッドと、ソケットからの直接の読み書きを混ぜることができます。
+これは、何をしようとしているのかを分かっていない限り、いい考えでは
+ありません。
+
+=begin original
+
+The following methods are provided (in addition to those of
+C<IO::Socket::INET>):
+
+=end original
+
+(C<IO::Socket::INET> のものに加えて)以下のメソッドが提供されます:
+
+=over
+
+=item $s = Net::HTTP->new( %options )
+
+=begin original
+
+The C<Net::HTTP> constructor method takes the same options as
+C<IO::Socket::INET>'s as well as these:
+
+=end original
+
+C<Net::HTTP> コンストラクタメソッドは C<IO::Socket::INET> と同様
+以下のオプションを取ります:
+
+  Host:            Initial host attribute value
+  KeepAlive:       Initial keep_alive attribute value
+  SendTE:          Initial send_te attribute_value
+  HTTPVersion:     Initial http_version attribute value
+  PeerHTTPVersion: Initial peer_http_version attribute value
+  MaxLineLength:   Initial max_line_length attribute value
+  MaxHeaderLines:  Initial max_header_lines attribute value
+
+=begin original
+
+The C<Host> option is also the default for C<IO::Socket::INET>'s
+C<PeerAddr>.  The C<PeerPort> defaults to 80 if not provided.
+
+=end original
+
+また、C<Host> オプションはのデフォルトは C<IO::Socket::INET> の
+C<PeerAddr> です。
+C<PeerPort> が提供されなかった場合のデフォルトは 80 です。
+
+=begin original
+
+The C<Listen> option provided by C<IO::Socket::INET>'s constructor
+method is not allowed.
+
+=end original
+
+C<IO::Socket::INET> のコンストラクタメソッドで提供されている
+C<Listen> オプションは使えません。
+
+=begin original
+
+If unable to connect to the given HTTP server then the constructor
+returns C<undef> and $@ contains the reason.  After a successful
+connect, a C<Net:HTTP> object is returned.
+
+=end original
+
+指定された HTTP サーバに接続できない場合、コンストラクタは C<undef> を
+返し、$@ に理由が入ります。
+接続に成功した後は、C<Net:HTTP> オブジェクトが返されます。
+
+=item $s->host
+
+=begin original
+
+Get/set the default value of the C<Host> header to send.  The $host
+must not be set to an empty string (or C<undef>) for HTTP/1.1.
+
+=end original
+
+送信する C<Host> ヘッダのデフォルト値を取得/設定します。
+HTTP/1.1 では $host は空文字列 (あるいは C<undef>)は設定できません。
+
+=item $s->keep_alive
+
+=begin original
+
+Get/set the I<keep-alive> value.  If this value is TRUE then the
+request will be sent with headers indicating that the server should try
+to keep the connection open so that multiple requests can be sent.
+
+=end original
+
+I<keep-alive> の値を取得/設定できます。
+この値が TRUE の場合、サーバは接続を開いたまま維持しようとするので
+複数のリクエストを送ることができることを示すヘッダを付けてリクエストが
+送られます。
+
+=begin original
+
+The actual headers set will depend on the value of the C<http_version>
+and C<peer_http_version> attributes.
+
+=end original
+
+実際のヘッダ集合は C<http_version> と C<peer_http_version> 属性に
+依存します。
+
+=item $s->send_te
+
+=begin original
+
+Get/set the a value indicating if the request will be sent with a "TE"
+header to indicate the transfer encodings that the server can choose to
+use.  If the C<Compress::Zlib> module is installed then this will
+announce that this client accept both the I<deflate> and I<gzip>
+encodings.
+
+=end original
+
+サーバが使うことを選べる転送エンコーディングを示す "TE" ヘッダ付きで
+リクエストが送られるかどうかを示す値を取得/設定します。
+C<Compress::Zlib> モジュールがインストールされている場合は、この
+クライアントは I<deflate> と I<gzip> のエンコーディングの両方を
+受け付けることを通知します。
+
+=item $s->http_version
+
+=begin original
+
+Get/set the HTTP version number that this client should announce.
+This value can only be set to "1.0" or "1.1".  The default is "1.1".
+
+=end original
+
+クライアントが告げる HTTP のバージョン番号を取得/設定します。
+この値は "1.0" か "1.1" だけが設定できます。
+デフォルトは "1.1" です。
+
+=item $s->peer_http_version
+
+=begin original
+
+Get/set the protocol version number of our peer.  This value will
+initially be "1.0", but will be updated by a successful
+read_response_headers() method call.
+
+=end original
+
+相手のプロトコルバージョン番号を取得/設定します。
+この値は最初は "1.0" ですが、read_response_headers() メソッド呼び出しが
+成功することで更新されます。
+
+=item $s->max_line_length
+
+=begin original
+
+Get/set a limit on the length of response line and response header
+lines.  The default is 4096.  A value of 0 means no limit.
+
+=end original
+
+レスポンス行とレスポンスヘッダ行の長さの制限を取得/設定できます。
+デフォルトは 4096 です。
+値 0 は無制限を意味します。
+
+=item $s->max_header_length
+
+=begin original
+
+Get/set a limit on the number of headers lines that a response can
+have.  The default is 128.  A value of 0 means no limit.
+
+=end original
+
+レスポンスがもつことのできるヘッダ行の数の制限を設定/取得します。
+デフォルトは 128 です。
+値 0 は無制限を意味します。
+
+=item $s->format_request($method, $uri, %headers, [$content])
+
+=begin original
+
+Format a request message and return it as a string.  If the headers do
+not include a C<Host> header, then a header is inserted with the value
+of the C<host> attribute.  Headers like C<Connection> and
+C<Keep-Alive> might also be added depending on the status of the
+C<keep_alive> attribute.
+
+=end original
+
+リクエストメッセージを整形して文字列として返します。
+ヘッダに C<Host> がない場合、C<host> 属性の値が挿入されます。
+C<Connection> や C<Keep-Alive> のようなヘッダも、
+C<keep_alive> 属性の状態によって追加されるかもしれません。
+
+=begin original
+
+If $content is given (and it is non-empty), then a C<Content-Length>
+header is automatically added unless it was already present.
+
+=end original
+
+$content が指定された (かつ空白でない) 場合、(既にない限り)
+C<Content-Length> ヘッダが追加されます。
+
+=item $s->write_request($method, $uri, %headers, [$content])
+
+=begin original
+
+Format and send a request message.  Arguments are the same as for
+format_request().  Returns true if successful.
+
+=end original
+
+リクエストメッセージを整形して送信します。
+引数は format_request() と同じです。
+成功すると真を返します。
+
+=item $s->format_chunk( $data )
+
+=begin original
+
+Returns the string to be written for the given chunk of data.  
+
+=end original
+
+与えられたデータの塊のために書かれた文字列を返します。
+
+=item $s->write_chunk($data)
+
+=begin original
+
+Will write a new chunk of request entity body data.  This method
+should only be used if the C<Transfer-Encoding> header with a value of
+C<chunked> was sent in the request.  Note, writing zero-length data is
+a no-op.  Use the write_chunk_eof() method to signal end of entity
+body data.
+
+=end original
+
+リクエストエンティティボディデータの新しい塊を書き込みます。
+このメソッドは
+C<Transfer-Encoding> ヘッダに C<chunked> を設定したリクエストを
+送った場合にのみ使うべきです。
+長さ 0 のデータを書き込んでも何も起こらないことに注意してください。
+エンティティボディデータの終わりを知らせるには write_chunk_eof() メソッドを
+使います。
+
+=begin original
+
+Returns true if successful.
+
+=end original
+
+成功すると真を返します。
+
+=item $s->format_chunk_eof( %trailers )
+
+=begin original
+
+Returns the string to be written for signaling EOF when a
+C<Transfer-Encoding> of C<chunked> is used.
+
+=end original
+
+C<chunked> の C<Transfer-Encoding> を使っているときに、EOF を
+知らせるために書かれる文字列を返します。
+
+=item $s->write_chunk_eof( %trailers )
+
+=begin original
+
+Will write eof marker for chunked data and optional trailers.  Note
+that trailers should not really be used unless is was signaled
+with a C<Trailer> header.
+
+=end original
+
+塊のデータとオプションの末尾につけるヘッダのためにファイル終端マーカを
+書き込みます。
+末尾に付けるヘッダは実際には C<Trailer> ヘッダで通知されるまで
+使われません。
+
+=begin original
+
+Returns true if successful.
+
+=end original
+
+成功すると真を返します。
+
+=item ($code, $mess, %headers) = $s->read_response_headers( %opts )
+
+=begin original
+
+Read response headers from server and return it.  The $code is the 3
+digit HTTP status code (see L<HTTP::Status>) and $mess is the textual
+message that came with it.  Headers are then returned as key/value
+pairs.  Since key letter casing is not normalized and the same key can
+even occur multiple times, assigning these values directly to a hash
+is not wise.  Only the $code is returned if this method is called in
+scalar context.
+
+=end original
+
+サーバからレスポンスヘッダを読み込んで返します。
+$code は 3 桁の HTTP ステータスコード (L<HTTP::Status> 参照)、
+$mess はそのテキストメッセージです。
+それからヘッダがキー/値の組で返されます。
+キーの大文字小文字は正規化されず、同じキーが複数回現れる可能性があるので、
+これらの値を直接ヘッダに代入することは賢明ではありません。
+このメソッドがスカラコンテキストで呼び出されると、$code だけが返されます。
+
+=begin original
+
+As a side effect this method updates the 'peer_http_version'
+attribute.
+
+=end original
+
+副作用として、このメソッドは 'peer_http_version' 属性を更新します。
+
+=begin original
+
+Options might be passed in as key/value pairs.  There are currently
+only two options supported; C<laxed> and C<junk_out>.
+
+=end original
+
+オプションはキー/値の組で渡せます。
+現在二つのオプション (C<laxed> と C<junk_out>) だけに対応しています。
+
+=begin original
+
+The C<laxed> option will make read_response_headers() more forgiving
+towards servers that have not learned how to speak HTTP properly.  The
+C<laxed> option is a boolean flag, and is enabled by passing in a TRUE
+value.  The C<junk_out> option can be used to capture bad header lines
+when C<laxed> is enabled.  The value should be an array reference.
+Bad header lines will be pushed onto the array.
+
+=end original
+
+C<laxed> オプションは、read_response_headers() を、
+HTTP の正しい話し方を学んでいないサーバに対してより寛容ににします。
+C<laxed> オプションは真偽値フラグで、TRUE 値を渡すことで有効になります。
+C<junk_out> オプションは、C<laxed> が有効の時に間違ったヘッダ行を
+捕捉するのに使われます。
+値は配列リファレンスです。
+間違ったヘッダ行はこの配列に push されます。
+
+=begin original
+
+The C<laxed> option must be specified in order to communicate with
+pre-HTTP/1.0 servers that don't describe the response outcome or the
+data they send back with a header block.  For these servers
+peer_http_version is set to "0.9" and this method returns (200,
+"Assumed OK").
+
+=end original
+
+C<laxed> オプションは、レスポンスやヘッダブロックを返さない、HTTP/1.0 以前の
+サーバと通信するために指定しなければなりません。
+これらのサーバのために peer_http_version は "0.9" に設定され、
+このメソッドは (200, "Assumed OK") を返します。
+
+=begin original
+
+The method will raise an exception (die) if the server does not speak
+proper HTTP or if the C<max_line_length> or C<max_header_length>
+limits are reached.  If the C<laxed> option is turned on and
+C<max_line_length> and C<max_header_length> checks are turned off,
+then no exception will be raised and this method will always
+return a response code.
+
+=end original
+
+このメソッドは、サーバが適切な HTTP を話さなかったり
+C<max_line_length> や C<max_header_length> の制限に達した場合に
+例外を発生させます (die します)。
+C<laxed> オプションを有効にして C<max_line_length> と
+C<max_header_length> のチェックを無効にすると、例外が発生することは
+なくなり、このメソッドは常にレスポンスコードが返されます。
+
+=item $n = $s->read_entity_body($buf, $size);
+
+=begin original
+
+Reads chunks of the entity body content.  Basically the same interface
+as for read() and sysread(), but the buffer offset argument is not
+supported yet.  This method should only be called after a successful
+read_response_headers() call.
+
+=end original
+
+エンティティボディの内容のチャンクを読み込みます。
+基本的に read() および sysread() と同じインターフェースですが、バッファ
+オフセット引数はまだ対応していません。
+このメソッドは、read_response_headers() 呼び出しに成功した後にのみ
+呼び出されるべきです。
+
+=begin original
+
+The return value will be C<undef> on read errors, 0 on EOF, -1 if no data
+could be returned this time, otherwise the number of bytes assigned
+to $buf.  The $buf is set to "" when the return value is -1.
+
+=end original
+
+返り値は、読み込みエラー時は C<undef>、EOF なら 0、今回データが
+返されなければ -1、それ以外は $buf に代入されたバイト数を示します。
+返り値が -1 の場合は $buf には "" が設定されます。
+
+=begin original
+
+You normally want to retry this call if this function returns either
+-1 or C<undef> with C<$!> as EINTR or EAGAIN (see L<Errno>).  EINTR
+can happen if the application catches signals and EAGAIN can happen if
+you made the socket non-blocking.
+
+=end original
+
+この関数が -1 を返すか、C<undef> が返されて C<$!> が EINTR か
+EAGAIN (L<Errno> 参照) の場合、普通はこの呼び出しを繰り返したいはずです。
+EINTR はアプリケーションがシグナルを受けたときに起こることがあり、
+EAGAIN はソケットを非ブロッキングにしたときに起こることがあります。
+
+=begin original
+
+This method will raise exceptions (die) if the server does not speak
+proper HTTP.  This can only happen when reading chunked data.
+
+=end original
+
+このメソッドは、サーバが適切な HTTP を話さない場合は例外を
+起こします(die します)。
+これはデータの塊を読み込み中にのみ起こることがあります。
+
+=item %headers = $s->get_trailers
+
+=begin original
+
+After read_entity_body() has returned 0 to indicate end of the entity
+body, you might call this method to pick up any trailers.
+
+=end original
+
+エンティティボディの終わりを示すために read_entity_body() が 0 を
+返した後、末尾に付けるヘッダを取得するためにこのメソッドを呼び出すかも
+しれません。
+
+=item $s->_rbuf
+
+=begin original
+
+Get/set the read buffer content.  The read_response_headers() and
+read_entity_body() methods use an internal buffer which they will look
+for data before they actually sysread more from the socket itself.  If
+they read too much, the remaining data will be left in this buffer.
+
+=end original
+
+読み込みバッファ内容を取得/設定します。
+read_response_headers() メソッドと read_entity_body() メソッドは
+実際にソケット地震から sysread する前にデータを探す内部バッファを使います。
+もし読み込みすぎた場合、残りのデータはこのバッファに残ります。
+
+=item $s->_rbuf_length
+
+=begin original
+
+Returns the number of bytes in the read buffer.  This should always be
+the same as:
+
+=end original
+
+読み込みバッファのバイト数を返します。
+これは常に以下と同じです:
+
+    length($s->_rbuf)
+
+=begin original
+
+but might be more efficient.
+
+=end original
+
+しかしもっと効果的かもしれません。
+
+=back
+
+=head1 SUBCLASSING
+
+(サブクラス化)
+
+=begin original
+
+The read_response_headers() and read_entity_body() will invoke the
+sysread() method when they need more data.  Subclasses might want to
+override this method to control how reading takes place.
+
+=end original
+
+read_response_headers() と read_entity_body() は、もっとデータが必要な
+場合は sysread() メソッドを起動します。
+サブクラスは、読み込みをどのように行うかを制御するためにこのメソッドを
+オーバーライドしたいかもしれません。
+
+=begin original
+
+The object itself is a glob.  Subclasses should avoid using hash key
+names prefixed with C<http_> and C<io_>.
+
+=end original
+
+オブジェクト自身はグロブです。
+サブクラスは C<http_> と C<io_> を接頭辞使ったハッシュキー名は
+避けるべきです。
+
+=head1 SEE ALSO
+
+L<LWP>, L<IO::Socket::INET>, L<Net::HTTP::NB>
+
+=head1 COPYRIGHT
+
+Copyright 2001-2003 Gisle Aas.
+
+This library is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
+
+=begin meta
+
+Translated: SHIRAKATA Kentaro <argrath@ub32.org>
+
+=end meta
+
+=cut
+

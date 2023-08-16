@@ -1,0 +1,6734 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+perlguts - Introduction to the Perl API
+
+=end original
+
+perlguts - Perl API の紹介
+
+=head1 DESCRIPTION
+
+=begin original
+
+This document attempts to describe how to use the Perl API, as well as
+to provide some info on the basic workings of the Perl core. It is far
+from complete and probably contains many errors. Please refer any
+questions or comments to the author below.
+
+=end original
+
+このドキュメントでは Perl API の使い方、および Perl コアの基本的な動作に
+関するいくばくかの情報を提供しようとしています。
+完璧からは程遠いものですし、間違いも多いと思います。
+疑問点やコメントは後述する著者に対して行なってください。
+
+=head1 Variables
+
+(変数)
+
+=head2 Datatypes
+
+(データ型)
+
+=begin original
+
+Perl has three typedefs that handle Perl's three main data types:
+
+=end original
+
+Perl では、主となる三つのデータ型を扱うために三つの型定義を行なっています:
+
+    SV  Scalar Value
+    AV  Array Value
+    HV  Hash Value
+
+=begin original
+
+Each typedef has specific routines that manipulate the various data types.
+
+=end original
+
+それぞれの typedef には様々なデータ型を操作するための特別なルーチンが
+用意されています。
+
+=head2 What is an "IV"?
+
+("IV" ってなに?)
+
+=begin original
+
+Perl uses a special typedef IV which is a simple signed integer type that is
+guaranteed to be large enough to hold a pointer (as well as an integer).
+Additionally, there is the UV, which is simply an unsigned IV.
+
+=end original
+
+Perl では、符号付き整数でもポインタでも十分に入れることのできる特別な
+typedef である IV を使います。
+更に、単に符号なしの IV である UV もあります。
+
+=begin original
+
+Perl also uses two special typedefs, I32 and I16, which will always be at
+least 32-bits and 16-bits long, respectively. (Again, there are U32 and U16,
+as well.)  They will usually be exactly 32 and 16 bits long, but on Crays
+they will both be 64 bits.
+
+=end original
+
+Perl はまた、二つの特殊な typedef である I32 と I16 を使っています;
+これらはそれぞれ、常に最低 32bit、16bit の長さを持っているものです。
+(再び、同様に U32 と U16 もあります。)
+これらは普通は正確に 32 ビットと 16 ビットですが、Cray では両方とも
+64 ビットです。
+
+=head2 Working with SVs
+
+(SV に対する作業)
+
+=begin original
+
+An SV can be created and loaded with one command.  There are five types of
+values that can be loaded: an integer value (IV), an unsigned integer
+value (UV), a double (NV), a string (PV), and another scalar (SV).
+
+=end original
+
+SV は、1 つのコマンドで生成し、値をロードすることができます。
+ロードできる値の型には、整数 (IV)、符号なし整数 (UV)、
+倍精度 (NV)、文字列 (PV)、その他のスカラ (SV) があります。
+
+=begin original
+
+The seven routines are:
+
+=end original
+
+これらを行なう、7 つのルーチンは:
+
+    SV*  newSViv(IV);
+    SV*  newSVuv(UV);
+    SV*  newSVnv(double);
+    SV*  newSVpv(const char*, STRLEN);
+    SV*  newSVpvn(const char*, STRLEN);
+    SV*  newSVpvf(const char*, ...);
+    SV*  newSVsv(SV*);
+
+=begin original
+
+C<STRLEN> is an integer type (Size_t, usually defined as size_t in
+F<config.h>) guaranteed to be large enough to represent the size of
+any string that perl can handle.
+
+=end original
+
+C<STRLEN> は perl が扱えるどんな文字列のサイズも表現するのに十分なだけの
+大きさを持つことが保証されている整数型(Size_t, 普通は F<config.h> で
+size_t として定義されています)。
+
+=begin original
+
+In the unlikely case of a SV requiring more complex initialisation, you
+can create an empty SV with newSV(len).  If C<len> is 0 an empty SV of
+type NULL is returned, else an SV of type PV is returned with len + 1 (for
+the NUL) bytes of storage allocated, accessible via SvPVX.  In both cases
+the SV has value undef.
+
+=end original
+
+あまりなさそうですが、SV がもっと複雑な初期化を必要とする場合、
+newSV(len) で空の SV も作成できます。
+もし C<len> が 0 なら、NULL 型の空の SV が返され、さもなければ
+PV 型の SV は、SvPVX でアクセスできる len + 1 (NUL のため) バイトの領域を
+割り当てられて返されます。
+両方の場合で、SV の値は未定義値です。
+
+    SV *sv = newSV(0);   /* no storage allocated  */
+    SV *sv = newSV(10);  /* 10 (+1) bytes of uninitialised storage allocated  */
+
+=begin original
+
+To change the value of an I<already-existing> SV, there are eight routines:
+
+=end original
+
+I<既に存在する> スカラの値を変更するために 8 つのルーチンがあります:
+
+    void  sv_setiv(SV*, IV);
+    void  sv_setuv(SV*, UV);
+    void  sv_setnv(SV*, double);
+    void  sv_setpv(SV*, const char*);
+    void  sv_setpvn(SV*, const char*, STRLEN)
+    void  sv_setpvf(SV*, const char*, ...);
+    void  sv_vsetpvfn(SV*, const char*, STRLEN, va_list *, SV **, I32, bool *);
+    void  sv_setsv(SV*, SV*);
+
+=begin original
+
+Notice that you can choose to specify the length of the string to be
+assigned by using C<sv_setpvn>, C<newSVpvn>, or C<newSVpv>, or you may
+allow Perl to calculate the length by using C<sv_setpv> or by specifying
+0 as the second argument to C<newSVpv>.  Be warned, though, that Perl will
+determine the string's length by using C<strlen>, which depends on the
+string terminating with a NUL character.
+
+=end original
+
+代入すべき文字列の長さを C<sv_setpvn> や C<newSVpv>、あるいは
+C<newSVpv> を使って指定することもできますし、C<sv_setpv> を使ったり
+C<newSVpv> の第二引数に 0 を指定することによって、Perl 自身に
+文字列の長さを計算させることもできます。
+ただし Perl は、NUL 文字で終了することに依存している
+C<strlen> を使って長さを計算しているということに注意してください。
+
+=begin original
+
+The arguments of C<sv_setpvf> are processed like C<sprintf>, and the
+formatted output becomes the value.
+
+=end original
+
+C<sv_setpvf> の引数は C<sprintf> と同じように処理され、書式化された
+出力が値となります。
+
+=begin original
+
+C<sv_vsetpvfn> is an analogue of C<vsprintf>, but it allows you to specify
+either a pointer to a variable argument list or the address and length of
+an array of SVs.  The last argument points to a boolean; on return, if that
+boolean is true, then locale-specific information has been used to format
+the string, and the string's contents are therefore untrustworthy (see
+L<perlsec>).  This pointer may be NULL if that information is not
+important.  Note that this function requires you to specify the length of
+the format.
+
+=end original
+
+C<sv_vsetpvfn> は C<vsprintf> と同じようなものですが、可変引数リストに対する
+ポインタか SV の配列のアドレスと長さのいずれかを指定することができます。
+最後の引数は真偽値を指し示します; 関数から返ってきたときにこれが
+真であれば、フォーマット文字列としてロケール固有の情報が使われているので
+その文字列の内容は信頼するできないことを表わしています(L<perlsec> を参照)。
+ロケールに関する情報が重要でないのなら、このポインタは NULL であっても
+かまいません。
+この関数はフォーマットの長さを要求していることに注意してください。
+
+=begin original
+
+The C<sv_set*()> functions are not generic enough to operate on values
+that have "magic".  See L<Magic Virtual Tables> later in this document.
+
+=end original
+
+C<sv_set*()> 関数群は "magic" を持っている値に対する
+操作に対して充分に一般化されたものではありません。
+後述する L<Magic Virtual Tables> を参照してください。
+
+=begin original
+
+All SVs that contain strings should be terminated with a NUL character.
+If it is not NUL-terminated there is a risk of
+core dumps and corruptions from code which passes the string to C
+functions or system calls which expect a NUL-terminated string.
+Perl's own functions typically add a trailing NUL for this reason.
+Nevertheless, you should be very careful when you pass a string stored
+in an SV to a C function or system call.
+
+=end original
+
+すべてのSV は、必須と言うわけではありませんが NUL キャラクターで
+終端されているべきです。
+この終端の NUL が無かった場合、コアダンプしたり文字列を
+(文字列が NUL で終端されていることを期待している) C 関数やシステムコールに
+渡すコードをおかしくする危険があります。
+Perl 自身の典型的な関数は、この理由により終端に NUL を追加します。
+そうであったとしても、あなたが SV に格納されている文字列を C の関数や
+システムコールに渡す時には十二分に気をつけるべきなのです。
+
+=begin original
+
+To access the actual value that an SV points to, you can use the macros:
+
+=end original
+
+SV が指し示す実際の値をアクセスするには、以下のマクロを使えます:
+
+    SvIV(SV*)
+    SvUV(SV*)
+    SvNV(SV*)
+    SvPV(SV*, STRLEN len)
+    SvPV_nolen(SV*)
+
+=begin original
+
+which will automatically coerce the actual scalar type into an IV, UV, double,
+or string.
+
+=end original
+
+これは実際のスカラの型を自動的に IV や UV や倍精度や文字列にします。
+
+=begin original
+
+In the C<SvPV> macro, the length of the string returned is placed into the
+variable C<len> (this is a macro, so you do I<not> use C<&len>).  If you do
+not care what the length of the data is, use the C<SvPV_nolen> macro.
+Historically the C<SvPV> macro with the global variable C<PL_na> has been
+used in this case.  But that can be quite inefficient because C<PL_na> must
+be accessed in thread-local storage in threaded Perl.  In any case, remember
+that Perl allows arbitrary strings of data that may both contain NULs and
+might not be terminated by a NUL.
+
+=end original
+
+C<SvPV> マクロでは、返される文字列の長さは、変数 C<len> に格納されます
+(これはマクロですから、C<&len> と I<しないで> ください)。
+もしデータの長さを気にしないのであれば、C<SvPV_nolen> マクロを
+使ってください。
+歴史的に、この場合にはグローバル変数 C<PL_na> に C<SvPV> マクロが
+使われてきました。
+しかしこれは可能ですが効率は良くありません;
+なぜなら C<PL_na> はスレッド化した Perl ではスレッドローカルな
+領域にアクセスしなければならないからです。
+いずれの場合にも、Perl は NUL を含んでいる文字列と NUL で
+終端されていないような文字列の両方を扱うことができるということを
+覚えておいてください。
+
+=begin original
+
+Also remember that C doesn't allow you to safely say C<foo(SvPV(s, len),
+len);>. It might work with your compiler, but it won't work for everyone.
+Break this sort of statement up into separate assignments:
+
+=end original
+
+同様に、Cで C<foo(SvPV(s, len), len);> とすることが安全ではないことを
+忘れないでください。
+これはあなたの使うコンパイラによってはうまくいきますが、
+いつでもそうだとは限らないのです。
+そこで、こういったステートメントは以下のように分割します:
+
+    SV *s;
+    STRLEN len;
+    char * ptr;
+    ptr = SvPV(s, len);
+    foo(ptr, len);
+
+=begin original
+
+If you want to know if the scalar value is TRUE, you can use:
+
+=end original
+
+単にスカラ値が真かどうかを知りたいだけならば、
+
+    SvTRUE(SV*)
+
+=begin original
+
+Although Perl will automatically grow strings for you, if you need to force
+Perl to allocate more memory for your SV, you can use the macro
+
+=end original
+
+Perl は、SV にもっとメモリを割り当てて欲しいときには自動的に文字列を
+大きくしてくれますが、さらにメモリを割り当てさせることが必要であれば
+
+    SvGROW(SV*, STRLEN newlen)
+
+=begin original
+
+which will determine if more memory needs to be allocated.  If so, it will
+call the function C<sv_grow>.  Note that C<SvGROW> can only increase, not
+decrease, the allocated memory of an SV and that it does not automatically
+add a byte for the a trailing NUL (perl's own string functions typically do
+C<SvGROW(sv, len + 1)>).
+
+=end original
+
+というマクロが使えます。
+もし必要なら、このマクロが C<sv_grow>を呼びます。
+C<SvGROW> は SV に割り当てたメモリを増やすだけで、減らすことは
+できないということと、終端の NUL の分のバイトが自動的に加算されない
+(perl 自身の文字列関数は 大概 C<SvGROW(sv, len + 1)> としています)と
+いうことに注意してください。
+
+=begin original
+
+If you have an SV and want to know what kind of data Perl thinks is stored
+in it, you can use the following macros to check the type of SV you have.
+
+=end original
+
+手元にある SV の、Perl から見たデータの種類を知りたいときには、
+その SV の型をチェックするのに
+
+    SvIOK(SV*)
+    SvNOK(SV*)
+    SvPOK(SV*)
+
+=begin original
+
+You can get and set the current length of the string stored in an SV with
+the following macros:
+
+=end original
+
+SV に納められた文字列の現在の長さを取得したり設定したりするのには以下の
+マクロが使えます。
+
+    SvCUR(SV*)
+    SvCUR_set(SV*, I32 val)
+
+=begin original
+
+You can also get a pointer to the end of the string stored in the SV
+with the macro:
+
+=end original
+
+同様に、SV に格納されている文字列の終端へのポインタを以下のマクロを
+使って得ることができます。
+
+    SvEND(SV*)
+
+=begin original
+
+But note that these last three macros are valid only if C<SvPOK()> is true.
+
+=end original
+
+ただし、これらは C<SvPOK()> が真のときだけ有効だということに気を
+つけてください。
+
+=begin original
+
+If you want to append something to the end of string stored in an C<SV*>,
+you can use the following functions:
+
+=end original
+
+C<SV*> に格納されている文字列の末尾になにかを追加したいときに以下のような
+関数が使えます。
+
+    void  sv_catpv(SV*, const char*);
+    void  sv_catpvn(SV*, const char*, STRLEN);
+    void  sv_catpvf(SV*, const char*, ...);
+    void  sv_vcatpvfn(SV*, const char*, STRLEN, va_list *, SV **, I32, bool);
+    void  sv_catsv(SV*, SV*);
+
+=begin original
+
+The first function calculates the length of the string to be appended by
+using C<strlen>.  In the second, you specify the length of the string
+yourself.  The third function processes its arguments like C<sprintf> and
+appends the formatted output.  The fourth function works like C<vsprintf>.
+You can specify the address and length of an array of SVs instead of the
+va_list argument. The fifth function extends the string stored in the first
+SV with the string stored in the second SV.  It also forces the second SV
+to be interpreted as a string.
+
+=end original
+
+最初の関数は C<strlen> を使って追加する文字列の長さを計算します。
+二番目の関数では、関数を使用する人が文字列の長さを指定します。
+三番目の関数はその引数を C<sprintf> の様に処理し、整形された結果を追加します。
+四番目の関数は C<vsprintf> のように動作します。
+va_list 引数の代わりに、SV の配列のアドレスと長さを指定できます。
+五番目の関数は最初の SV にある文字列を二番目の SV にある文字列で拡張します。
+また、この関数は二番目の SV を強制的に文字列として解釈します。
+
+=begin original
+
+The C<sv_cat*()> functions are not generic enough to operate on values that
+have "magic".  See L<Magic Virtual Tables> later in this document.
+
+=end original
+
+C<sv_cat*()> 関数群は "magic" を持っている値に対する
+操作に対して充分に一般化されたものではありません。
+後述する L<Magic Virtual Tables> を参照してください。
+
+=begin original
+
+If you know the name of a scalar variable, you can get a pointer to its SV
+by using the following:
+
+=end original
+
+スカラ変数の名前がわかれば、その SV へのポインタは以下のようにして
+得られます:
+
+    SV*  get_sv("package::varname", 0);
+
+=begin original
+
+This returns NULL if the variable does not exist.
+
+=end original
+
+これは変数が存在していない場合には NULL を返します。
+
+=begin original
+
+If you want to know if this variable (or any other SV) is actually C<defined>,
+you can call:
+
+=end original
+
+その変数 (もしくは他の任意の SV) が、実際に B<定義されているか> を
+知りたいならば、
+
+    SvOK(SV*)
+
+=begin original
+
+The scalar C<undef> value is stored in an SV instance called C<PL_sv_undef>.
+
+=end original
+
+スカラの C<undef> 値は、C<PL_sv_undef> という SV のインスタンスに
+納められています。
+
+=begin original
+
+Its address can be used whenever an C<SV*> is needed. Make sure that
+you don't try to compare a random sv with C<&PL_sv_undef>. For example
+when interfacing Perl code, it'll work correctly for:
+
+=end original
+
+そのアドレスは、C<SV*> が必要とされるところで使用することができます。
+任意の sv を C<&PL_sv_undef> を比較しようとしないように気をつけてください。
+例えば、Perl コードとのインターフェースで、以下は正しく動きます:
+
+  foo(undef);
+
+=begin original
+
+But won't work when called as:
+
+=end original
+
+しかし、以下のように呼び出すと動作しません:
+
+  $x = undef;
+  foo($x);
+
+=begin original
+
+So to repeat always use SvOK() to check whether an sv is defined.
+
+=end original
+
+従って、sv が定義されているかをチェックするために、毎回繰り返して
+SvOK() を使ってください。
+
+=begin original
+
+Also you have to be careful when using C<&PL_sv_undef> as a value in
+AVs or HVs (see L<AVs, HVs and undefined values>).
+
+=end original
+
+また、AV や HV の値として C<&PL_sv_undef> を使うときにも
+注意しなければなりません (L<AVs, HVs and undefined values> を
+参照してください)。
+
+=begin original
+
+There are also the two values C<PL_sv_yes> and C<PL_sv_no>, which contain
+boolean TRUE and FALSE values, respectively.  Like C<PL_sv_undef>, their
+addresses can be used whenever an C<SV*> is needed.
+
+=end original
+
+真偽値の真と偽を表わす、C<PL_sv_yes> や C<PL_sv_no> という値もあります。
+C<PL_sv_undef> と同様に、これらのアドレスも C<SV*> が必要なところで
+使うことができます。
+
+=begin original
+
+Do not be fooled into thinking that C<(SV *) 0> is the same as C<&PL_sv_undef>.
+Take this code:
+
+=end original
+
+C<(SV *0)> と C<&PL_sv_undef> が同じであると考えて、だまされてはいけません。
+次のようなコードを見てください:
+
+    SV* sv = (SV*) 0;
+    if (I-am-to-return-a-real-value) {
+            sv = sv_2mortal(newSViv(42));
+    }
+    sv_setsv(ST(0), sv);
+
+=begin original
+
+This code tries to return a new SV (which contains the value 42) if it should
+return a real value, or undef otherwise.  Instead it has returned a NULL
+pointer which, somewhere down the line, will cause a segmentation violation,
+bus error, or just weird results.  Change the zero to C<&PL_sv_undef> in the
+first line and all will be well.
+
+=end original
+
+このコードは、実値を返さなければならないときには、(値として 42 を
+持つ) 新しい SV を返そうとし、さもなくば undef を返そうとします。
+ですが、どこかの行でヌルポインタを返して、セグメントバイオレーションが
+起こるか、何かおかしな結果になってしまいます。
+最初の行の 0 を C<&PL_sv_undef> に変えれば、すべてがうまくいきます。
+
+=begin original
+
+To free an SV that you've created, call C<SvREFCNT_dec(SV*)>.  Normally this
+call is not necessary (see L<Reference Counts and Mortality>).
+
+=end original
+
+生成した SV を解放するためには、C<SvREFCNT_dec(SV*)> を呼びます。
+普通は、この呼び出しは必要ありません(L<Reference Counts and Mortality> を
+参照してください)。
+
+=head2 Offsets
+
+(オフセット)
+
+=begin original
+
+Perl provides the function C<sv_chop> to efficiently remove characters
+from the beginning of a string; you give it an SV and a pointer to
+somewhere inside the PV, and it discards everything before the
+pointer. The efficiency comes by means of a little hack: instead of
+actually removing the characters, C<sv_chop> sets the flag C<OOK>
+(offset OK) to signal to other functions that the offset hack is in
+effect, and it puts the number of bytes chopped off into the IV field
+of the SV. It then moves the PV pointer (called C<SvPVX>) forward that
+many bytes, and adjusts C<SvCUR> and C<SvLEN>.
+
+=end original
+
+Perl は文字列の先頭から効率的に文字を削除するための関数 C<sv_chop> を
+提供されています; これに SV と、PV の内側のどこかへのポインタを渡すと、
+そのポインタより手前の全てを削除します。
+効率性はちょっとしたハックによるものです: 実際に文字を削除する代わりに、
+C<sv_chop> は、他の関数にオフセットハックが有効であることを示す C<OOK>
+(offset OK) フラグを設定して、SV の IV フィールドに、切り落とすバイト数を
+設定します。
+それから(C<SvPVX> と呼ばれる)PV ポインタを移動させて、C<SvCUR> と
+C<SvLEN> を調整します。
+
+=begin original
+
+Hence, at this point, the start of the buffer that we allocated lives
+at C<SvPVX(sv) - SvIV(sv)> in memory and the PV pointer is pointing
+into the middle of this allocated storage.
+
+=end original
+
+従って、この時点で、割り当てられたバッファの先頭はメモリ中の
+C<SvPVX(sv) - SvIV(sv)> であり、PV ポインタは割り当てられた保管領域の中間を
+指しています。
+
+=begin original
+
+This is best demonstrated by example:
+
+=end original
+
+これは例による最良の実演です:
+
+  % ./perl -Ilib -MDevel::Peek -le '$a="12345"; $a=~s/.//; Dump($a)'
+  SV = PVIV(0x8128450) at 0x81340f0
+    REFCNT = 1
+    FLAGS = (POK,OOK,pPOK)
+    IV = 1  (OFFSET)
+    PV = 0x8135781 ( "1" . ) "2345"\0
+    CUR = 4
+    LEN = 5
+
+=begin original
+
+Here the number of bytes chopped off (1) is put into IV, and
+C<Devel::Peek::Dump> helpfully reminds us that this is an offset. The
+portion of the string between the "real" and the "fake" beginnings is
+shown in parentheses, and the values of C<SvCUR> and C<SvLEN> reflect
+the fake beginning, not the real one.
+
+=end original
+
+ここで切り落とされたバイト数 (1) は IV に設定され、C<Devel::Peek::Dump> は
+これがオフセットであることを示す助けをしてくれます。
+「実際」と「偽物」の開始の間の文字列の部分はかっこで示され、
+C<SvCUR> と C<SvLEN> の値は実際のものではなく偽物の先頭を反映します。
+
+=begin original
+
+Something similar to the offset hack is performed on AVs to enable
+efficient shifting and splicing off the beginning of the array; while
+C<AvARRAY> points to the first element in the array that is visible from
+Perl, C<AvALLOC> points to the real start of the C array. These are
+usually the same, but a C<shift> operation can be carried out by
+increasing C<AvARRAY> by one and decreasing C<AvFILL> and C<AvMAX>.
+Again, the location of the real start of the C array only comes into
+play when freeing the array. See C<av_shift> in F<av.c>.
+
+=end original
+
+オフセットハックと似たようなものは、配列の先頭の効率的なシフトと切り落としを
+有効にするために AV に対しても行われます; 
+C<AvARRAY> は Perl から見える配列の最初の要素を指していますが、C<AvALLOC> は
+C の配列の実際の先頭を指しています。
+これらは普通は同じですが、C<shift> 演算子は C<AvARRAY> を一つ増やして、
+C<AvFILL> と C<AvMAX> を一つ減らします。
+再び、C の配列の実際の先頭の一は、配列を解放するときにだけ使われます。
+F<av.c> の C<av_shift> を参照してください。
+
+=head2 What's Really Stored in an SV?
+
+(SV に実際に格納されているものは何ですか?)
+
+=begin original
+
+Recall that the usual method of determining the type of scalar you have is
+to use C<Sv*OK> macros.  Because a scalar can be both a number and a string,
+usually these macros will always return TRUE and calling the C<Sv*V>
+macros will do the appropriate conversion of string to integer/double or
+integer/double to string.
+
+=end original
+
+自分で保持しているスカラの型を決定する通常の方法は、マクロ C<Sv*OK> を
+使うものでした。
+スカラは数値にも文字列にもなり得ますから、普通、これらのマクロはいつも真を
+返します; そして C<Sv*V> マクロを呼ぶことで、文字列から整数/倍精度、
+整数/倍精度から文字列への変換を行ないます。
+
+=begin original
+
+If you I<really> need to know if you have an integer, double, or string
+pointer in an SV, you can use the following three macros instead:
+
+=end original
+
+もし、本当に SV にあるのが整数か、倍精度か、文字列ポインタかを
+知りたいのであれば、以下のようなマクロを代わりに使えます:
+
+    SvIOKp(SV*)
+    SvNOKp(SV*)
+    SvPOKp(SV*)
+
+=begin original
+
+These will tell you if you truly have an integer, double, or string pointer
+stored in your SV.  The "p" stands for private.
+
+=end original
+
+これらのマクロは、実際に SV に入っているものが整数か、倍精度か、
+文字列ポインタかを教えてくれます。
+"p" はプライベートの意味です。
+
+=begin original
+
+The are various ways in which the private and public flags may differ.
+For example, a tied SV may have a valid underlying value in the IV slot
+(so SvIOKp is true), but the data should be accessed via the FETCH
+routine rather than directly, so SvIOK is false. Another is when
+numeric conversion has occurred and precision has been lost: only the
+private flag is set on 'lossy' values. So when an NV is converted to an
+IV with loss, SvIOKp, SvNOKp and SvNOK will be set, while SvIOK wont be.
+
+=end original
+
+プライベートと公的なフラグが異なるのは様々な方法があります。
+例えば、tie された SV は IV スロットに妥当な値を保持している
+(従って SvIOKp は真) かもしれませんが、データは直接ではなく FETCH ルーチンを
+通してアクセスされるべきなため、SvIOK は偽です。
+他の例としては数値変換が起こり、精度が落ちた場合です:プライベートな
+フラグのみが「精度が落ちた」値に設定されます。
+それで、NV が精度が落ちる形で IV に変換されると、SvIOKp, SvNOKp, SvNOK は
+設定されますが、SvIOK は設定されません。
+
+=begin original
+
+In general, though, it's best to use the C<Sv*V> macros.
+
+=end original
+
+しかし一般的には、C<Sv*V> マクロを使うだけにした方が良いでしょう。
+
+=head2 Working with AVs
+
+(AV に対する作業)
+
+=begin original
+
+There are two ways to create and load an AV.  The first method creates an
+empty AV:
+
+=end original
+
+AV を生成して値を設定するのには、二つの方法があります。
+最初の方法は、単に空の AV を作るものです:
+
+    AV*  newAV();
+
+=begin original
+
+The second method both creates the AV and initially populates it with SVs:
+
+=end original
+
+ふたつめの方法は、AV を生成した上で、初期値として SV の値を入れます:
+
+    AV*  av_make(I32 num, SV **ptr);
+
+=begin original
+
+The second argument points to an array containing C<num> C<SV*>'s.  Once the
+AV has been created, the SVs can be destroyed, if so desired.
+
+=end original
+
+二番目の引数は num 個の SV* の配列を指しています。
+AV が生成されてしまえば、SV は(それを望むのなら)破棄することができます。
+
+=begin original
+
+Once the AV has been created, the following operations are possible on AVs:
+
+=end original
+
+いったん AV が生成されると、AV に対して、以下のような操作が行えます:
+
+
+    void  av_push(AV*, SV*);
+    SV*   av_pop(AV*);
+    SV*   av_shift(AV*);
+    void  av_unshift(AV*, I32 num);
+
+=begin original
+
+These should be familiar operations, with the exception of C<av_unshift>.
+This routine adds C<num> elements at the front of the array with the C<undef>
+value.  You must then use C<av_store> (described below) to assign values
+to these new elements.
+
+=end original
+
+これらは、C<av_unshift> を除いては、お馴染みの演算でしょう。
+C<av_unshift> は、配列の先頭に C<num> 個の C<undef> 値の要素を付け加えます。
+その後で、(後述する) C<av_store> を使って新しい要素に値を
+代入しなければなりません。
+
+=begin original
+
+Here are some other functions:
+
+=end original
+
+他にもいくつか関数があります:
+
+    I32   av_len(AV*);
+    SV**  av_fetch(AV*, I32 key, I32 lval);
+    SV**  av_store(AV*, I32 key, SV* val);
+
+=begin original
+
+The C<av_len> function returns the highest index value in array (just
+like $#array in Perl).  If the array is empty, -1 is returned.  The
+C<av_fetch> function returns the value at index C<key>, but if C<lval>
+is non-zero, then C<av_fetch> will store an undef value at that index.
+The C<av_store> function stores the value C<val> at index C<key>, and does
+not increment the reference count of C<val>.  Thus the caller is responsible
+for taking care of that, and if C<av_store> returns NULL, the caller will
+have to decrement the reference count to avoid a memory leak.  Note that
+C<av_fetch> and C<av_store> both return C<SV**>'s, not C<SV*>'s as their
+return value.
+
+=end original
+
+関数 C<av_len> は配列における最高位の添え字を(ちょうど Perl の $#array と
+同じように)返します。
+もし配列が空であれば、-1 を返します。
+関数 C<av_fetch> は添え字 C<key> の位置にある値を返しますが、C<lval> が
+非ゼロであれば、C<av_fetch> はその位置に undef を格納しようとします。
+関数 C<av_store> は添え字 C<key> の位置に値 C<val> を格納し、C<val> の
+参照カウントをインクリメントしません。
+従って、呼び出し側はこの振る舞いに注意して対処し、C<av_store> が
+NULL を返した場合には、メモリリークを防ぐために参照カウントの
+デクリメントを行う必要があるでしょう。
+C<av_fetch> と C<av_store> の両方ともがその戻り値として
+C<SV*> ではなく、C<SV**> を返すということに注意してください。
+
+    void  av_clear(AV*);
+    void  av_undef(AV*);
+    void  av_extend(AV*, I32 key);
+
+=begin original
+
+The C<av_clear> function deletes all the elements in the AV* array, but
+does not actually delete the array itself.  The C<av_undef> function will
+delete all the elements in the array plus the array itself.  The
+C<av_extend> function extends the array so that it contains at least C<key+1>
+elements.  If C<key+1> is less than the currently allocated length of the array,
+then nothing is done.
+
+=end original
+
+関数 C<av_clear> は、配列 AV* にあるすべての要素を削除しますが、
+配列自身の削除は行いません。
+関数 C<av_undef> は配列にあるすべての要素に加え、配列自身の削除も行います。
+関数 C<av_extend>  は配列を C<key+1> 要素だけ拡張します。
+C<key+1> が配列のその時点での長さより短ければ、何も行なわれません。
+
+=begin original
+
+If you know the name of an array variable, you can get a pointer to its AV
+by using the following:
+
+=end original
+
+配列変数の名前がわかっているのであれば、次のようにしてその配列に
+対応する AV へのポインタが得られます:
+
+    AV*  get_av("package::varname", 0);
+
+=begin original
+
+This returns NULL if the variable does not exist.
+
+=end original
+
+これは変数が存在していない場合には NULL を返します。
+
+=begin original
+
+See L<Understanding the Magic of Tied Hashes and Arrays> for more
+information on how to use the array access functions on tied arrays.
+
+=end original
+
+tie された配列における配列アクセス関数の使い方についての詳細は
+L<Understanding the Magic of Tied Hashes and Arrays> を参照してください。
+
+=head2 Working with HVs
+
+(HV に対する作業)
+
+=begin original
+
+To create an HV, you use the following routine:
+
+=end original
+
+HV を生成するには、以下のようなルーチンを使います:
+
+    HV*  newHV();
+
+=begin original
+
+Once the HV has been created, the following operations are possible on HVs:
+
+=end original
+
+いったん HV が生成されると HV に対して以下のような操作が行えます:
+
+    SV**  hv_store(HV*, const char* key, U32 klen, SV* val, U32 hash);
+    SV**  hv_fetch(HV*, const char* key, U32 klen, I32 lval);
+
+=begin original
+
+The C<klen> parameter is the length of the key being passed in (Note that
+you cannot pass 0 in as a value of C<klen> to tell Perl to measure the
+length of the key).  The C<val> argument contains the SV pointer to the
+scalar being stored, and C<hash> is the precomputed hash value (zero if
+you want C<hv_store> to calculate it for you).  The C<lval> parameter
+indicates whether this fetch is actually a part of a store operation, in
+which case a new undefined value will be added to the HV with the supplied
+key and C<hv_fetch> will return as if the value had already existed.
+
+=end original
+
+引数 C<klen> は、渡される key の長さです
+(Perl にキーの長さを計算させるために、C<klen> の値として 0 を渡すことは
+できないということに注意してください)。
+引数 C<val> は、設定されるスカラへの SV ポインタを入れ、hash は、
+あらかじめ計算したハッシュ値 (C<hv_store> に計算させる場合にはゼロ) です。
+引数 C<lval> で、このフェッチ操作が実はストア操作の一部であるかどうかを
+示します; ストア操作であれば、新たな未定義値が与えられたキーを伴って
+HV に追加され、C<hv_fetch> はその値が既に存在していたかのように
+リターンします。
+
+=begin original
+
+Remember that C<hv_store> and C<hv_fetch> return C<SV**>'s and not just
+C<SV*>.  To access the scalar value, you must first dereference the return
+value.  However, you should check to make sure that the return value is
+not NULL before dereferencing it.
+
+=end original
+
+C<hv_store> や C<hv_fetch> は、C<SV**> を返すもので、C<SV*> ではないことに
+注意してください。
+スカラ値をアクセスするには、まず戻り値の参照外し(dereference)をする
+必要があります。
+しかし、その前に返却値が NULL でないことを確認すべきです。
+
+=begin original
+
+These two functions check if a hash table entry exists, and deletes it.
+
+=end original
+
+ハッシュテーブルのエントリが存在するかをチェックし、削除を行う
+関数があります。
+
+    bool  hv_exists(HV*, const char* key, U32 klen);
+    SV*   hv_delete(HV*, const char* key, U32 klen, I32 flags);
+
+=begin original
+
+If C<flags> does not include the C<G_DISCARD> flag then C<hv_delete> will
+create and return a mortal copy of the deleted value.
+
+=end original
+
+C<flag> に C<G_DISCARD> フラグが含まれていなければ、C<hv_delete> は
+削除された値の揮発性のコピー(mortal copy)を生成し、それを返します。
+
+=begin original
+
+And more miscellaneous functions:
+
+=end original
+
+さらに様々な関数があります:
+
+    void   hv_clear(HV*);
+    void   hv_undef(HV*);
+
+=begin original
+
+Like their AV counterparts, C<hv_clear> deletes all the entries in the hash
+table but does not actually delete the hash table.  The C<hv_undef> deletes
+both the entries and the hash table itself.
+
+=end original
+
+引数に AV を取る似たような関数と同様、C<hv_clear> はハッシュテーブルにある
+すべてのエントリーを削除しますがハッシュテーブル自身は削除しません。
+C<hv_undef> はエントリーとハッシュテーブル自身の両方を削除します。
+
+=begin original
+
+Perl keeps the actual data in linked list of structures with a typedef of HE.
+These contain the actual key and value pointers (plus extra administrative
+overhead).  The key is a string pointer; the value is an C<SV*>.  However,
+once you have an C<HE*>, to get the actual key and value, use the routines
+specified below.
+
+=end original
+
+Perl は実際のデータを HE と typedef された構造体のリンクリストを使って
+保持しています。
+これらは実際のキーと値のポインタ(それに加えて管理のための
+ちょっとしたもの)を保持しています。
+キーは文字列へのポインタであり、値は C<SV*> です。
+しかしながら、一度 C<HE*> を持てば、実際のキーと値とを取得するためには
+以下に挙げるようなルーチンを使います。
+
+=begin original
+
+    I32    hv_iterinit(HV*);
+            /* Prepares starting point to traverse hash table */
+    HE*    hv_iternext(HV*);
+            /* Get the next entry, and return a pointer to a
+               structure that has both the key and value */
+    char*  hv_iterkey(HE* entry, I32* retlen);
+            /* Get the key from an HE structure and also return
+               the length of the key string */
+    SV*    hv_iterval(HV*, HE* entry);
+            /* Return an SV pointer to the value of the HE
+               structure */
+    SV*    hv_iternextsv(HV*, char** key, I32* retlen);
+            /* This convenience routine combines hv_iternext,
+	       hv_iterkey, and hv_iterval.  The key and retlen
+	       arguments are return values for the key and its
+	       length.  The value is returned in the SV* argument */
+
+=end original
+
+    I32    hv_iterinit(HV*);
+            /* ハッシュテーブルをたどるための開始点を準備 */
+    HE*    hv_iternext(HV*);
+            /* 次のエントリーを取得して、キーと値両方を持つ構造
+               体へのポインタを返す */
+    char*  hv_iterkey(HE* entry, I32* retlen);
+            /* HE 構造体からキーを取得し、そのキー文字列の長さを
+               返す */
+    SV*    hv_iterval(HV*, HE* entry);
+            /* HE 構造体の値に対する SV ポインタを返す */
+    SV*    hv_iternextsv(HV*, char** key, I32* retlen);
+            /* この便利なルーチンは、hv_iternext、hv_iterkey、
+                hv_itervalを組み合わせたものです。
+                引数keyとretlenは、キーとその長さを表わす戻り値です。
+                関数の戻り値はSV* で返されます */
+
+=begin original
+
+If you know the name of a hash variable, you can get a pointer to its HV
+by using the following:
+
+=end original
+
+配列変数の名前がわかるのであれば、以下のようにしてその変数の HV への
+ポインタが得られます:
+
+    HV*  get_hv("package::varname", 0);
+
+=begin original
+
+This returns NULL if the variable does not exist.
+
+=end original
+
+これは変数が存在していない場合には NULL を返します。
+
+=begin original
+
+The hash algorithm is defined in the C<PERL_HASH(hash, key, klen)> macro:
+
+=end original
+
+ハッシュアルゴリズムは C<PERL_HASH(hash, key, klen)> というマクロで
+定義されています。
+
+    hash = 0;
+    while (klen--)
+	hash = (hash * 33) + *key++;
+    hash = hash + (hash >> 5);			/* after 5.6 */
+
+=begin original
+
+The last step was added in version 5.6 to improve distribution of
+lower bits in the resulting hash value.
+
+=end original
+
+最後のステップは、結果となるハッシュ値の低位ビットの分散を改良するために
+バージョン 5.6 で追加されました。
+
+=begin original
+
+See L<Understanding the Magic of Tied Hashes and Arrays> for more
+information on how to use the hash access functions on tied hashes.
+
+=end original
+
+tie されたハッシュに対するハッシュアクセス関数の使い方に関する詳細は、
+L<Understanding the Magic of Tied Hashes and Arrays> を参照してください。
+
+=head2 Hash API Extensions
+
+(ハッシュ API 拡張)
+
+=begin original
+
+Beginning with version 5.004, the following functions are also supported:
+
+=end original
+
+バージョン 5.004 から、以下の関数がサポートされました。
+
+    HE*     hv_fetch_ent  (HV* tb, SV* key, I32 lval, U32 hash);
+    HE*     hv_store_ent  (HV* tb, SV* key, SV* val, U32 hash);
+
+    bool    hv_exists_ent (HV* tb, SV* key, U32 hash);
+    SV*     hv_delete_ent (HV* tb, SV* key, I32 flags, U32 hash);
+
+    SV*     hv_iterkeysv  (HE* entry);
+
+=begin original
+
+Note that these functions take C<SV*> keys, which simplifies writing
+of extension code that deals with hash structures.  These functions
+also allow passing of C<SV*> keys to C<tie> functions without forcing
+you to stringify the keys (unlike the previous set of functions).
+
+=end original
+
+これらの関数が、ハッシュ構造を扱うエクステンションの記述を単純にする
+C<SV*> キーを引数にとることに注意してください。
+これらの関数はまた、C<SV*> キーを(先に挙げた関数群とは異なり)
+文字列化することなしに C<tie> 関数に渡すことを許しています。
+
+=begin original
+
+They also return and accept whole hash entries (C<HE*>), making their
+use more efficient (since the hash number for a particular string
+doesn't have to be recomputed every time).  See L<perlapi> for detailed
+descriptions.
+
+=end original
+
+これらの関数はまた、ハッシュエントリー全体 (C<HE*>) を返したり受け付けて、
+より効率良く使用します(特定の文字列に対するハッシュ番号は
+毎回計算しなおす必要はないからです)。
+詳しくは L<perlapi> を参照してください。
+
+=begin original
+
+The following macros must always be used to access the contents of hash
+entries.  Note that the arguments to these macros must be simple
+variables, since they may get evaluated more than once.  See
+L<perlapi> for detailed descriptions of these macros.
+
+=end original
+
+以下に挙げるマクロは、ハッシュエントリーの内容にアクセスするのに
+常に使わなければならないものです。
+これらのマクロはその引数を二度以上評価する可能性があるので、マクロに
+対する引数は単純な変数でなければならないということに注意してください。
+これらのマクロに関する詳細は L<perlapi> を参照してください。
+
+    HePV(HE* he, STRLEN len)
+    HeVAL(HE* he)
+    HeHASH(HE* he)
+    HeSVKEY(HE* he)
+    HeSVKEY_force(HE* he)
+    HeSVKEY_set(HE* he, SV* sv)
+
+=begin original
+
+These two lower level macros are defined, but must only be used when
+dealing with keys that are not C<SV*>s:
+
+=end original
+
+低レベルマクロが二つ定義されていますが、これらは C<SV*> ではないキーを
+扱うときにのみ使わなければならないものです。
+
+    HeKEY(HE* he)
+    HeKLEN(HE* he)
+
+=begin original
+
+Note that both C<hv_store> and C<hv_store_ent> do not increment the
+reference count of the stored C<val>, which is the caller's responsibility.
+If these functions return a NULL value, the caller will usually have to
+decrement the reference count of C<val> to avoid a memory leak.
+
+=end original
+
+C<hv_store> と C<hv_store_ent> の両方ともが、C<val> に格納されている
+参照カウントのインクリメントをしないということに注意してください;
+それは呼び出し側の責任です。
+これらの関数が NULL を返した場合、呼び出し側はメモリリークを防ぐために、
+C<val> の参照カウントのデクリメントを行う必要が一般にはあるでしょう。
+
+=head2 AVs, HVs and undefined values
+
+(AV, HV と未定義値)
+
+=begin original
+
+Sometimes you have to store undefined values in AVs or HVs. Although
+this may be a rare case, it can be tricky. That's because you're
+used to using C<&PL_sv_undef> if you need an undefined SV.
+
+=end original
+
+AV や HV に未定義値を保管しなければならないこともあります。
+これは珍しい場合ですが、手の込んだものになります。
+なぜなら、未定義の SV が必要なら、C<&PL_sv_undef> を使うことになるからです。
+
+=begin original
+
+For example, intuition tells you that this XS code:
+
+=end original
+
+例えば、直感ではこの XS コードは:
+
+    AV *av = newAV();
+    av_store( av, 0, &PL_sv_undef );
+
+=begin original
+
+is equivalent to this Perl code:
+
+=end original
+
+以下の Perl コードと等価です:
+
+    my @av;
+    $av[0] = undef;
+
+=begin original
+
+Unfortunately, this isn't true. AVs use C<&PL_sv_undef> as a marker
+for indicating that an array element has not yet been initialized.
+Thus, C<exists $av[0]> would be true for the above Perl code, but
+false for the array generated by the XS code.
+
+=end original
+
+残念ながら、これは正しくありません。
+AV は、配列要素がまだ初期化されていないことを示すための印として
+C<&PL_sv_undef> を使います。
+従って、上述の Perl コードは C<exists $av[0]> は真ですが、
+XS コードによって生成された配列では偽です。
+
+=begin original
+
+Other problems can occur when storing C<&PL_sv_undef> in HVs:
+
+=end original
+
+HV に C<&PL_sv_undef> を保管する時にも別の問題が起こりえます:
+
+    hv_store( hv, "key", 3, &PL_sv_undef, 0 );
+
+=begin original
+
+This will indeed make the value C<undef>, but if you try to modify
+the value of C<key>, you'll get the following error:
+
+=end original
+
+実際これは C<undef> 値を作りますが、C<key> の値を変更しようとすると、
+以下のようなエラーが出ます:
+
+    Modification of non-creatable hash value attempted
+
+=begin original
+
+In perl 5.8.0, C<&PL_sv_undef> was also used to mark placeholders
+in restricted hashes. This caused such hash entries not to appear
+when iterating over the hash or when checking for the keys
+with the C<hv_exists> function.
+
+=end original
+
+perl 5.8.0 では、C<&PL_sv_undef> は制限ハッシュのプレースホルダを
+マークするためにも使われていました。
+これは、ハッシュを反復するときや C<hv_exists> 関数でキーを
+チェックするときには、そのようなハッシュエントリは現れないということです。
+
+=begin original
+
+You can run into similar problems when you store C<&PL_sv_yes> or
+C<&PL_sv_no> into AVs or HVs. Trying to modify such elements
+will give you the following error:
+
+=end original
+
+C<&PL_sv_yes> や C<&PL_sv_no> を AV や HV に保管するときにも同じような
+問題が起こります。
+このような要素を修正しようとすると、以下のようなエラーが出ます:
+
+    Modification of a read-only value attempted
+
+=begin original
+
+To make a long story short, you can use the special variables
+C<&PL_sv_undef>, C<&PL_sv_yes> and C<&PL_sv_no> with AVs and
+HVs, but you have to make sure you know what you're doing.
+
+=end original
+
+長い物語を短くすると、特殊変数 C<&PL_sv_undef>, C<&PL_sv_yes>,
+C<&PL_sv_no> を AV や HV に使えますが、何をしているかを知っている必要が
+あります。
+
+=begin original
+
+Generally, if you want to store an undefined value in an AV
+or HV, you should not use C<&PL_sv_undef>, but rather create a
+new undefined value using the C<newSV> function, for example:
+
+=end original
+
+一般的に、AV や HV に未定義値を保管したいなら、C<&PL_sv_undef> を使わず、
+C<newSV> 関数を使って新しい未定義値を使ってください; 例えば:
+
+    av_store( av, 42, newSV(0) );
+    hv_store( hv, "foo", 3, newSV(0), 0 );
+
+=head2 References
+
+(リファレンス)
+
+=begin original
+
+References are a special type of scalar that point to other data types
+(including references).
+
+=end original
+
+リファレンスは、(リファレンスを含む) 他のスカラ型を指す特別なスカラ型です。
+
+=begin original
+
+To create a reference, use either of the following functions:
+
+=end original
+
+リファレンスを生成するには、
+
+    SV* newRV_inc((SV*) thing);
+    SV* newRV_noinc((SV*) thing);
+
+=begin original
+
+The C<thing> argument can be any of an C<SV*>, C<AV*>, or C<HV*>.  The
+functions are identical except that C<newRV_inc> increments the reference
+count of the C<thing>, while C<newRV_noinc> does not.  For historical
+reasons, C<newRV> is a synonym for C<newRV_inc>.
+
+=end original
+
+C<thing> には、C<SV*>, C<AV*>, C<HV*> のいずれかを置くことができます。
+これら二つの関数は、C<newRV_inc> が C<thing> の参照カウントを
+インクリメントするけれども C<newRV_noinc> はインクリメントしないという点を
+除き、同一です。
+歴史的な理由により、C<newRV> は C<newRV_inc> の同義語となっています。
+
+=begin original
+
+Once you have a reference, you can use the following macro to dereference
+the reference:
+
+=end original
+
+リファレンスができれば、以下のマクロを使ってリファレンスの参照外し
+(dereference)ができます。
+
+    SvRV(SV*)
+
+=begin original
+
+then call the appropriate routines, casting the returned C<SV*> to either an
+C<AV*> or C<HV*>, if required.
+
+=end original
+
+というマクロが使うことができ、返された C<SV*> を C<AV*> か C<HV*> に
+キャストして、適切なルーチンを呼ぶことになります。
+
+=begin original
+
+To determine if an SV is a reference, you can use the following macro:
+
+=end original
+
+SV がリファレンスであるかどうかを確認するために、以下のマクロを
+使うことができます。
+
+    SvROK(SV*)
+
+=begin original
+
+To discover what type of value the reference refers to, use the following
+macro and then check the return value.
+
+=end original
+
+リファレンスが参照している型を見つけるために、以下のマクロを使いその戻り値を
+チェックします。
+
+    SvTYPE(SvRV(SV*))
+
+=begin original
+
+The most useful types that will be returned are:
+
+=end original
+
+戻り値として返される型で有益なものは以下の通りです。
+
+=begin original
+
+    SVt_IV    Scalar
+    SVt_NV    Scalar
+    SVt_PV    Scalar
+    SVt_RV    Scalar
+    SVt_PVAV  Array
+    SVt_PVHV  Hash
+    SVt_PVCV  Code
+    SVt_PVGV  Glob (possible a file handle)
+    SVt_PVMG  Blessed or Magical Scalar
+
+=end original
+
+    SVt_IV    スカラ
+    SVt_NV    スカラ
+    SVt_PV    スカラ
+    SVt_RV    スカラ
+    SVt_PVAV  配列
+    SVt_PVHV  ハッシュ
+    SVt_PVCV  コード
+    SVt_PVGV  グロブ (ファイルハンドルかも)
+    SVt_PVMG  bress されたかマジカルなスカラ
+
+=begin original
+
+See the F<sv.h> header file for more details.
+
+=end original
+
+詳しくはヘッダファイル F<sv.h> を参照してください。
+
+=head2 Blessed References and Class Objects
+
+(bless されたリファレンスとクラスオブジェクト)
+
+=begin original
+
+References are also used to support object-oriented programming.  In perl's
+OO lexicon, an object is simply a reference that has been blessed into a
+package (or class).  Once blessed, the programmer may now use the reference
+to access the various methods in the class.
+
+=end original
+
+リファレンスはオブジェクト指向プログラミングをサポートするためにも使われます。
+perl のオブジェクト指向用語では、オブジェクトとはパッケージ
+(もしくはクラス)に bless された単純なリファレンスです。
+一度 bless されれば、プログラマーはそのリファレンスをクラスにおける様々な
+メソッドにアクセスするために使うことができます。
+
+=begin original
+
+A reference can be blessed into a package with the following function:
+
+=end original
+
+以下の関数を使って、リファレンスをパッケージに bless することができます。
+
+    SV* sv_bless(SV* sv, HV* stash);
+
+=begin original
+
+The C<sv> argument must be a reference value.  The C<stash> argument
+specifies which class the reference will belong to.  See
+L<Stashes and Globs> for information on converting class names into stashes.
+
+=end original
+
+引数 C<sv> はリファレンス値でなければなりません。
+引数 C<stash> はリファレンスが属するクラスを指定します。
+クラス名のstashへの変換についての詳細は L<Stashes and Globs> を
+参照してください。
+
+=begin original
+
+/* Still under construction */
+
+=end original
+
+/* Still under construction */
+
+=begin original
+
+Upgrades rv to reference if not already one.  Creates new SV for rv to
+point to.  If C<classname> is non-null, the SV is blessed into the specified
+class.  SV is returned.
+
+=end original
+
+まだ存在していなければ、rv をリファレンスにアップグレードします。
+rv が指し示すための新たな SV を生成します。
+C<classname> がヌルでなければ、SV は指定されたクラスに bless されます。
+SV が返されます。
+
+	SV* newSVrv(SV* rv, const char* classname);
+
+=begin original
+
+Copies integer, unsigned integer or double into an SV whose reference is C<rv>.  SV is blessed
+if C<classname> is non-null.
+
+=end original
+
+整数、符号なし整数、倍精度実数を C<rv> が参照している SV へコピーします。
+SV は C<classname> がヌルでなければ bless されます。
+
+	SV* sv_setref_iv(SV* rv, const char* classname, IV iv);
+	SV* sv_setref_uv(SV* rv, const char* classname, UV uv);
+	SV* sv_setref_nv(SV* rv, const char* classname, NV iv);
+
+=begin original
+
+Copies the pointer value (I<the address, not the string!>) into an SV whose
+reference is rv.  SV is blessed if C<classname> is non-null.
+
+=end original
+
+ポインタ値(B<アドレスであって、文字列ではありません!>)を rv が
+参照している SV へコピーします。
+SV は C<classname> がヌルでなければ bless されます。
+
+	SV* sv_setref_pv(SV* rv, const char* classname, PV iv);
+
+=begin original
+
+Copies string into an SV whose reference is C<rv>.  Set length to 0 to let
+Perl calculate the string length.  SV is blessed if C<classname> is non-null.
+
+=end original
+
+文字列を C<rv> が参照している SV へコピーします。
+length に 0 を設定すると、Perl が文字列の長さを計算します。
+SV は C<classname> がヌルでなければ bless されます。
+
+	SV* sv_setref_pvn(SV* rv, const char* classname, PV iv, STRLEN length);
+
+=begin original
+
+Tests whether the SV is blessed into the specified class.  It does not
+check inheritance relationships.
+
+=end original
+
+SV が特定のクラスに bless されているかどうかを検査します。
+これは継承の関係のチェックはしません。
+
+	int  sv_isa(SV* sv, const char* name);
+
+=begin original
+
+Tests whether the SV is a reference to a blessed object.
+
+=end original
+
+SV が bless されたオブジェクトのリファレンスであるかどうかを検査します。
+
+	int  sv_isobject(SV* sv);
+
+=begin original
+
+Tests whether the SV is derived from the specified class. SV can be either
+a reference to a blessed object or a string containing a class name. This
+is the function implementing the C<UNIVERSAL::isa> functionality.
+
+=end original
+
+SV が特定のクラスから派生したものがどうかを検査します。
+SV は bless されたオブジェクトのリファレンスでも、
+クラス名を保持している文字列であってもかまいません。
+これは C<UNIVERSAL::isa> の機能を実装している関数です。
+
+	bool sv_derived_from(SV* sv, const char* name);
+
+=begin original
+
+To check if you've got an object derived from a specific class you have
+to write:
+
+=end original
+
+ある特定のクラスの派生オブジェクトを受け取ったかどうか検査するには、
+以下のように書く必要があります。
+
+	if (sv_isobject(sv) && sv_derived_from(sv, class)) { ... }
+
+=head2 Creating New Variables
+
+(新しい変数の作成)
+
+=begin original
+
+To create a new Perl variable with an undef value which can be accessed from
+your Perl script, use the following routines, depending on the variable type.
+
+=end original
+
+Perl スクリプトからアクセスできる未定義値を持つ新たな Perl の変数を
+生成するには、以下に示すルーチンを変数の型に応じて使います。
+
+    SV*  get_sv("package::varname", GV_ADD);
+    AV*  get_av("package::varname", GV_ADD);
+    HV*  get_hv("package::varname", GV_ADD);
+
+=begin original
+
+Notice the use of GV_ADD as the second parameter.  The new variable can now
+be set, using the routines appropriate to the data type.
+
+=end original
+
+二番目のパラメータとして GV_ADD を使っているということに注意してください。
+新しい変数はここでデータ型に対する適切なルーチンを使うことで設定できます。
+
+=begin original
+
+There are additional macros whose values may be bitwise OR'ed with the
+C<GV_ADD> argument to enable certain extra features.  Those bits are:
+
+=end original
+
+C<GV_ADD> 引数とビット和を取って、幾つかの追加機能を有効とするような
+二つのマクロがあります。
+ビットは以下の通りです:
+
+=over
+
+=item GV_ADDMULTI
+
+=begin original
+
+Marks the variable as multiply defined, thus preventing the:
+
+=end original
+
+変数に多重定義 (multiply defined) であると印を付け:
+
+  Name <varname> used only once: possible typo
+
+=begin original
+
+warning.
+
+=end original
+
+警告を防ぎます。
+
+=item GV_ADDWARN
+
+=begin original
+
+Issues the warning:
+
+=end original
+
+以下の警告を:
+
+  Had to create <varname> unexpectedly
+
+=begin original
+
+if the variable did not exist before the function was called.
+
+=end original
+
+変数が、その関数の呼び出し以前に存在してなかった場合に発生させます。
+
+=back
+
+=begin original
+
+If you do not specify a package name, the variable is created in the current
+package.
+
+=end original
+
+パッケージ名を指定しなかった場合、変数はカレントパッケージで生成されます。
+
+=head2 Reference Counts and Mortality
+
+(参照カウントと揮発性)
+
+=begin original
+
+Perl uses a reference count-driven garbage collection mechanism. SVs,
+AVs, or HVs (xV for short in the following) start their life with a
+reference count of 1.  If the reference count of an xV ever drops to 0,
+then it will be destroyed and its memory made available for reuse.
+
+=end original
+
+Perl は参照カウント駆動(reference count-driven)のガベージコレクション
+機構を使用しています。
+SV、AV、そしてHV(以下 xV と省略します) 
+はその一生を参照カウント 1 から始めます。
+xV の参照カウントが 0 まで落ちた場合、そのリファレンスは破棄されて、
+それが使っていたメモリは再利用できるようにされます。
+
+=begin original
+
+This normally doesn't happen at the Perl level unless a variable is
+undef'ed or the last variable holding a reference to it is changed or
+overwritten.  At the internal level, however, reference counts can be
+manipulated with the following macros:
+
+=end original
+
+これは、Perl レベルにおいては、変数が undef されるとかリファレンスを
+保持している最後の変数が変更されたとか上書きされるということがない限りは
+起こりません。
+しかし内部的には、参照カウントは以下に挙げるマクロを使って操作できます。
+
+    int SvREFCNT(SV* sv);
+    SV* SvREFCNT_inc(SV* sv);
+    void SvREFCNT_dec(SV* sv);
+
+=begin original
+
+However, there is one other function which manipulates the reference
+count of its argument.  The C<newRV_inc> function, you will recall,
+creates a reference to the specified argument.  As a side effect,
+it increments the argument's reference count.  If this is not what
+you want, use C<newRV_noinc> instead.
+
+=end original
+
+その引数の参照カウントを操作する別の関数が一つあります。
+C<newRV_inc> という関数がそれです。
+これは指定された引数の参照を生成して、その副作用として引数の
+参照カウントをインクリメントします。
+もしこの副作用が邪魔であれば、C<newRV_noinc> を代わりに使ってください。
+
+=begin original
+
+For example, imagine you want to return a reference from an XSUB function.
+Inside the XSUB routine, you create an SV which initially has a reference
+count of one.  Then you call C<newRV_inc>, passing it the just-created SV.
+This returns the reference as a new SV, but the reference count of the
+SV you passed to C<newRV_inc> has been incremented to two.  Now you
+return the reference from the XSUB routine and forget about the SV.
+But Perl hasn't!  Whenever the returned reference is destroyed, the
+reference count of the original SV is decreased to one and nothing happens.
+The SV will hang around without any way to access it until Perl itself
+terminates.  This is a memory leak.
+
+=end original
+
+たとえば、XSUB 関数からリファレンスを返したいと思ったとしましょう。
+XSUB ルーチンの中で、初期値として参照カウント 1 を持つ SV を生成します。
+それから今作成した SV を引数にして C<newRV_inc> を呼びます。
+これは新たな SV としての参照を返しますが、C<newRV_inc> に引数として渡した
+SV の参照カウントは 2 にインクリメントされます。
+ここで XSUB ルーチンからそのリファレンスを戻り値として返し、SV のことは
+忘れましょう。
+けれども Perl は忘れてません! 
+戻り値で返されたリファレンスが破棄されたときにはいつも、元々の SV の
+参照カウントが 1 へと減じられ、そして何事もおこりません。
+その SV は、Perl 自身が終了するまではそれにアクセスするなんの手段も
+持たずに中ぶらりんになります。
+これはメモリリークです。
+
+=begin original
+
+The correct procedure, then, is to use C<newRV_noinc> instead of
+C<newRV_inc>.  Then, if and when the last reference is destroyed,
+the reference count of the SV will go to zero and it will be destroyed,
+stopping any memory leak.
+
+=end original
+
+ここでの正しい手順は、C<newRV_inc> ではなく C<newRV_noinc> を
+使うということです。
+これによって、最後のリファレンスが破棄されたときに SV の参照カウントは
+0 となってその SV が破棄されて、メモリリークを食い止めます。
+
+=begin original
+
+There are some convenience functions available that can help with the
+destruction of xVs.  These functions introduce the concept of "mortality".
+An xV that is mortal has had its reference count marked to be decremented,
+but not actually decremented, until "a short time later".  Generally the
+term "short time later" means a single Perl statement, such as a call to
+an XSUB function.  The actual determinant for when mortal xVs have their
+reference count decremented depends on two macros, SAVETMPS and FREETMPS.
+See L<perlcall> and L<perlxs> for more details on these macros.
+
+=end original
+
+xV を破棄するのを助けるような便利な関数が幾つかあります。
+これらの関数は「揮発性」(mortality) のコンセプトを導入します。
+ある揮発性の xV はその参照カウントをデクリメントするようにマークしますが、
+実際には「ちょっと後」(a short time later)までデクリメントが行なわれません。
+一般的には、「ちょっと後」とは、XSUB 関数の呼び出しのような
+Perl の一つの文です。
+揮発性の xV が持っている参照カウントのデクリメントを行うタイミングの決定は
+二つのマクロ、SAVETMPS と FREETMPS に依存しています。
+これら二つのマクロについての説明は
+L<perlcall> と L<perlxs> を参照してください。
+
+=begin original
+
+"Mortalization" then is at its simplest a deferred C<SvREFCNT_dec>.
+However, if you mortalize a variable twice, the reference count will
+later be decremented twice.
+
+=end original
+
+「揮発化」("Mortalization") はそれから、C<SvREFCNT_dec> に決定権を委ねます。
+しかし、ある変数を二度揮発的にした場合、その参照カウントは後で
+二度デクリメントされます。
+
+=begin original
+
+"Mortal" SVs are mainly used for SVs that are placed on perl's stack.
+For example an SV which is created just to pass a number to a called sub
+is made mortal to have it cleaned up automatically when it's popped off
+the stack. Similarly, results returned by XSUBs (which are pushed on the
+stack) are often made mortal.
+
+=end original
+
+「揮発性」SV は主に、perl のスタックに置かれる SV に対して使われます。
+例えば、単に数値を呼び出したサブルーチンに渡すために作られた SV は
+スタックからポップされたときに自動的に片付けられるように揮発性になります。
+同様に、(スタックにプッシュされた) XSUB から返された結果はしばしば
+揮発性となります。
+
+=begin original
+
+To create a mortal variable, use the functions:
+
+=end original
+
+揮発性の変数を生成するには、以下の関数を使います:
+
+    SV*  sv_newmortal()
+    SV*  sv_2mortal(SV*)
+    SV*  sv_mortalcopy(SV*)
+
+=begin original
+
+The first call creates a mortal SV (with no value), the second converts an existing
+SV to a mortal SV (and thus defers a call to C<SvREFCNT_dec>), and the
+third creates a mortal copy of an existing SV.
+Because C<sv_newmortal> gives the new SV no value,it must normally be given one
+via C<sv_setpv>, C<sv_setiv>, etc. :
+
+=end original
+
+最初のものは(値のない)揮発性の SV を生成し、ふたつめは既にある SV を
+揮発性の SV に変換します(そして、このために C<SvREFCNT_dec> を呼び出しを
+遅らせます); 三つめは、既に存在する SV の揮発性のコピーを生成します。
+C<sv_newmortal> は値のない新しい SV を作るので、普通は
+C<sv_setpv>, C<sv_setiv> などを使って作らなければなりません:
+
+    SV *tmp = sv_newmortal();
+    sv_setiv(tmp, an_integer);
+
+=begin original
+
+As that is multiple C statements it is quite common so see this idiom instead:
+
+=end original
+
+これは C の複数文なので、代わりにこの慣用法がとても一般的です:
+
+    SV *tmp = sv_2mortal(newSViv(an_integer));
+
+=begin original
+
+You should be careful about creating mortal variables.  Strange things
+can happen if you make the same value mortal within multiple contexts,
+or if you make a variable mortal multiple times. Thinking of "Mortalization"
+as deferred C<SvREFCNT_dec> should help to minimize such problems.
+For example if you are passing an SV which you I<know> has high enough REFCNT
+to survive its use on the stack you need not do any mortalization.
+If you are not sure then doing an C<SvREFCNT_inc> and C<sv_2mortal>, or
+making a C<sv_mortalcopy> is safer.
+
+=end original
+
+揮発性の変数を生成するに当たっては十分注意すべきです。
+もし、同じ変数を複合コンテキストの中で揮発性にしたり、ある変数を複数回
+揮発性にしてしまったりすればおかしな自体が起こるかもしれません。
+保留した C<SvREFCNT_dec> として「揮発化」を考えるとこのような問題を
+最小化する助けになるでしょう。
+例えば、スタック上で使っても生き残るのに十分に大きな REFCNT を持つと
+I<知っている> SV を渡す場合、揮発化は不要です。
+C<SvREFCNT_inc> と C<sv_2mortal> をするかどうかはっきりしないときは、
+C<sv_mortalcopy> を作るのがより安全です。
+
+=begin original
+
+The mortal routines are not just for SVs; AVs and HVs can be
+made mortal by passing their address (type-casted to C<SV*>) to the
+C<sv_2mortal> or C<sv_mortalcopy> routines.
+
+=end original
+
+揮発性のルーチンは、単に SV のためだけではありません;
+AV や HV も、C<sv_2mortal> や C<sv_mortalcopy> ルーチンに、アドレスを
+(C<SV*> にキャストして) 渡すことで、揮発性にすることができます。
+
+=head2 Stashes and Globs
+
+(スタッシュとグロブ)
+
+=begin original
+
+A B<stash> is a hash that contains all variables that are defined
+within a package.  Each key of the stash is a symbol
+name (shared by all the different types of objects that have the same
+name), and each value in the hash table is a GV (Glob Value).  This GV
+in turn contains references to the various objects of that name,
+including (but not limited to) the following:
+
+=end original
+
+B<スタッシュ> ("stash")とは、パッケージ内で定義された全ての変数が
+入っているハッシュのことです。
+ハッシュテーブルにあるそれぞれの key は、(同じ名前のすべての異なる型の
+オブジェクトで共有される) シンボル名で、ハッシュテーブルの個々の
+値は、(グローバル値のための) GV と呼ばれます。
+GV には、以下のものを含む (これらに限りませんが)、その名前の様々な
+オブジェクトへのリファレンスが次々に入ることになります。
+
+    Scalar Value
+    Array Value
+    Hash Value
+    I/O Handle
+    Format
+    Subroutine
+
+=begin original
+
+There is a single stash called C<PL_defstash> that holds the items that exist
+in the C<main> package.  To get at the items in other packages, append the
+string "::" to the package name.  The items in the C<Foo> package are in
+the stash C<Foo::> in PL_defstash.  The items in the C<Bar::Baz> package are
+in the stash C<Baz::> in C<Bar::>'s stash.
+
+=end original
+
+C<main> パッケージにあるアイテムを保持する C<PL_defstash> と呼ばれる
+スタッシュがあります。
+他のパッケージにあるアイテムを取得するには、パッケージ名に「::」を付加します。
+C<Foo> というパッケージにあるアイテムは PL_defstash の C<Foo::> という
+スタッシュの中にあります。
+パッケージ C<Bar::Baz> にあるアイテムは C<Bar::> のスタッシュの中の
+C<Baz::> のスタッシュの中にあります。
+
+=begin original
+
+To get the stash pointer for a particular package, use the function:
+
+=end original
+
+特定のパッケージの HV ポインタの入手には、以下の関数が使えます:
+
+    HV*  gv_stashpv(const char* name, I32 flags)
+    HV*  gv_stashsv(SV*, I32 flags)
+
+=begin original
+
+The first function takes a literal string, the second uses the string stored
+in the SV.  Remember that a stash is just a hash table, so you get back an
+C<HV*>.  The C<flags> flag will create a new package if it is set to GV_ADD.
+
+=end original
+
+最初の関数が、リテラル文字列をとり、二番目が SV に入れた文字列を使います。
+stash は単なるハッシュなので、C<HV*> を受け取るということを
+忘れないでください。
+C<flags> フラグが GV_ADD にセットされている場合には新たなパッケージを
+生成します。
+
+=begin original
+
+The name that C<gv_stash*v> wants is the name of the package whose symbol table
+you want.  The default package is called C<main>.  If you have multiply nested
+packages, pass their names to C<gv_stash*v>, separated by C<::> as in the Perl
+language itself.
+
+=end original
+
+C<gv_stash*v> が要求する name はシンボルテーブルを手に入れようとする
+パッケージの名前です。
+デフォルトのパッケージは、C<main> というものです。
+多重にネストしたパッケージであれば、Perl での場合と同様に、
+C<::> で区切って C<gv_stash*v> に名前を渡すのが正しい方法です。
+
+=begin original
+
+Alternately, if you have an SV that is a blessed reference, you can find
+out the stash pointer by using:
+
+=end original
+
+あるいは、もし bless されたリファレンスである SV があれば、
+以下のようにしてを使ってもスタッシュポインタを探すことができ:
+
+    HV*  SvSTASH(SvRV(SV*));
+
+=begin original
+
+then use the following to get the package name itself:
+
+=end original
+
+パッケージ名自身は、以下のようにして得られます:
+
+    char*  HvNAME(HV* stash);
+
+=begin original
+
+If you need to bless or re-bless an object you can use the following
+function:
+
+=end original
+
+Perl スクリプトへ bless された値を返す必要があれば、以下の関数が使えます:
+
+    SV*  sv_bless(SV*, HV* stash)
+
+=begin original
+
+where the first argument, an C<SV*>, must be a reference, and the second
+argument is a stash.  The returned C<SV*> can now be used in the same way
+as any other SV.
+
+=end original
+
+最初の引数 C<SV*> はリファレンスで、二番目の引数がスタッシュです。
+返された C<SV*> は、他の SV と同様に使うことができます。
+
+=begin original
+
+For more information on references and blessings, consult L<perlref>.
+
+=end original
+
+リファレンスと bless についてのより詳しい情報は L<perlref> を
+参照してください。
+
+=head2 Double-Typed SVs
+
+(二重型 SV)
+
+=begin original
+
+Scalar variables normally contain only one type of value, an integer,
+double, pointer, or reference.  Perl will automatically convert the
+actual scalar data from the stored type into the requested type.
+
+=end original
+
+スカラ変数は通常、整数、倍精度、ポインタ、リファレンスのうちの
+いずれか一つの型をとります。
+Perl は実際のデータに対して、蓄積されている型から要求されている型へ、
+自動的に変換を行ないます。
+
+=begin original
+
+Some scalar variables contain more than one type of scalar data.  For
+example, the variable C<$!> contains either the numeric value of C<errno>
+or its string equivalent from either C<strerror> or C<sys_errlist[]>.
+
+=end original
+
+ある種のスカラ変数は、複数の型のスカラデータを持つようになっています。
+たとえば変数 C<$!> は、C<errno> の数値としての値と、
+C<strerror> や C<sys_errlist[]> から得たのと同値な文字列を持っています。
+
+=begin original
+
+To force multiple data values into an SV, you must do two things: use the
+C<sv_set*v> routines to add the additional scalar type, then set a flag
+so that Perl will believe it contains more than one type of data.  The
+four macros to set the flags are:
+
+=end original
+
+SV に複数のデータ値を入れるようにするには、二つのことをしなくてはなりません:
+スカラ型を別に追加するために C<sv_set*v> ルーチンを使用すること; それから、
+フラグを設定して Perl に複数のデータを持っていることを知らせることです。
+フラグを設定するための四つのマクロは以下のものです:
+
+	SvIOK_on
+	SvNOK_on
+	SvPOK_on
+	SvROK_on
+
+=begin original
+
+The particular macro you must use depends on which C<sv_set*v> routine
+you called first.  This is because every C<sv_set*v> routine turns on
+only the bit for the particular type of data being set, and turns off
+all the rest.
+
+=end original
+
+使用するマクロは、最初にどの C<sv_set*v> ルーチンを呼ぶのかに
+関わってきます。
+これは、C<sv_set*v> ルーチンはすべて特定のデータ型のビットだけを
+設定して、他をクリアしてしまうからです。
+
+=begin original
+
+For example, to create a new Perl variable called "dberror" that contains
+both the numeric and descriptive string error values, you could use the
+following code:
+
+=end original
+
+たとえば、"dberror" という新しい Perl 変数を作って、エラー値を数値と
+メッセージ文字列で持つようにするには、以下のように書きます:
+
+    extern int  dberror;
+    extern char *dberror_list;
+
+    SV* sv = get_sv("dberror", GV_ADD);
+    sv_setiv(sv, (IV) dberror);
+    sv_setpv(sv, dberror_list[dberror]);
+    SvIOK_on(sv);
+
+=begin original
+
+If the order of C<sv_setiv> and C<sv_setpv> had been reversed, then the
+macro C<SvPOK_on> would need to be called instead of C<SvIOK_on>.
+
+=end original
+
+C<sv_setiv> と C<sv_setpv> の順序が逆であった場合、C<SvIOK_on> マクロの
+代わりに C<SvPOK_on> マクロを呼ばなければなりません。
+
+=head2 Magic Variables
+
+(マジック変数)
+
+=begin original
+
+[This section still under construction.  Ignore everything here.  Post no
+bills.  Everything not permitted is forbidden.]
+
+=end original
+
+[この節はまだ作成中です。
+ここにある全ては無視してください。
+張り紙禁止。
+許可されていないこと全ては禁止。]
+
+=begin original
+
+Any SV may be magical, that is, it has special features that a normal
+SV does not have.  These features are stored in the SV structure in a
+linked list of C<struct magic>'s, typedef'ed to C<MAGIC>.
+
+=end original
+
+すべての SV は magical、つまり、通常の SV が持っていないような特殊な
+属性を持つようにすることができます。
+これらの属性は C<MAGIC> として typedef されている C<struct magic> の
+リンクリストにある SV 構造体に格納されます。
+
+    struct magic {
+        MAGIC*      mg_moremagic;
+        MGVTBL*     mg_virtual;
+        U16         mg_private;
+        char        mg_type;
+        U8          mg_flags;
+        I32         mg_len;
+        SV*         mg_obj;
+        char*       mg_ptr;
+    };
+
+=begin original
+
+Note this is current as of patchlevel 0, and could change at any time.
+
+=end original
+
+これは、パッチレベル 0 の時点でのものです; 変更される可能性があります。
+
+=head2 Assigning Magic
+
+(マジックの代入)
+
+=begin original
+
+Perl adds magic to an SV using the sv_magic function:
+
+=end original
+
+Perl は sv_magic 関数を使った SV にマジックを追加します。
+
+    void sv_magic(SV* sv, SV* obj, int how, const char* name, I32 namlen);
+
+=begin original
+
+The C<sv> argument is a pointer to the SV that is to acquire a new magical
+feature.
+
+=end original
+
+引数 C<sv> は、新たにマジック機能を獲得する SV へのポインタです。
+
+=begin original
+
+If C<sv> is not already magical, Perl uses the C<SvUPGRADE> macro to
+convert C<sv> to type C<SVt_PVMG>. Perl then continues by adding new magic
+to the beginning of the linked list of magical features.  Any prior entry
+of the same type of magic is deleted.  Note that this can be overridden,
+and multiple instances of the same type of magic can be associated with an
+SV.
+
+=end original
+
+C<sv> がまだマジカルでなければ、Perl は C<sv> を C<SVt_PVMG> に
+変換するために C<SvUPGRADE> を使います。
+Perl はそれから、マジック機能のリンクリストの先頭にそれを追加します。
+以前に存在していた同じタイプのマジックは削除されます。
+これはオーバーライドすることができ、複数の同じ型のマジックのインスタンスを
+一つの SV に結び付けることができるということに注意してください。
+
+=begin original
+
+The C<name> and C<namlen> arguments are used to associate a string with
+the magic, typically the name of a variable. C<namlen> is stored in the
+C<mg_len> field and if C<name> is non-null then either a C<savepvn> copy of
+C<name> or C<name> itself is stored in the C<mg_ptr> field, depending on
+whether C<namlen> is greater than zero or equal to zero respectively.  As a
+special case, if C<(name && namlen == HEf_SVKEY)> then C<name> is assumed
+to contain an C<SV*> and is stored as-is with its REFCNT incremented.
+
+=end original
+
+引数 C<name> と C<namlen> はある文字列と magic とを結び付けるために
+使われます; 典型的には変数の名前です。
+C<namlen> は C<mg_len> フィールドに格納され、C<name> がヌルなら、
+C<namlen> が 0 より大きいか、0 かに依存して、それぞれ
+C<name> の C<savepvn> コピーか、C<name> 自身に保管されます。
+特殊な場合として、C<(name && namlen == HEf_SVKEY)> なら
+C<name> は C<SV*> を含んでいるものと仮定して REFCNT をインクリメントして
+そのままの形で保管されます。
+
+=begin original
+
+The sv_magic function uses C<how> to determine which, if any, predefined
+"Magic Virtual Table" should be assigned to the C<mg_virtual> field.
+See the L<Magic Virtual Tables> section below.  The C<how> argument is also
+stored in the C<mg_type> field. The value of C<how> should be chosen
+from the set of macros C<PERL_MAGIC_foo> found in F<perl.h>. Note that before
+these macros were added, Perl internals used to directly use character
+literals, so you may occasionally come across old code or documentation
+referring to 'U' magic rather than C<PERL_MAGIC_uvar> for example.
+
+=end original
+
+関数 sv_magic は C<how> を、あらかじめ定義されている
+マジック仮想テーブル("Magic Virtual Table") のどれを
+C<mg_virtual> フィールドに設定するかを決定するのに使います。
+後述する L<Magic Virtual Tables> の節を参照してください。
+C<how> 引数もまた C<mg_type> フィールドに保管されます。
+C<how> の値は F<perl.h> にある C<PERL_MAGIC_foo> マクロの集合から
+選ばれるべきです。
+これらのマクロが追加される前は、Perl の内部では文字リテラルを直接
+使っていたので、古いコードや文書では例えば C<PERL_MAGIC_uvar> の
+代わりに 'U' マジックを使っているものに出会うことがあるかもしれません。
+
+=begin original
+
+The C<obj> argument is stored in the C<mg_obj> field of the C<MAGIC>
+structure.  If it is not the same as the C<sv> argument, the reference
+count of the C<obj> object is incremented.  If it is the same, or if
+the C<how> argument is C<PERL_MAGIC_arylen>, or if it is a NULL pointer,
+then C<obj> is merely stored, without the reference count being incremented.
+
+=end original
+
+引数 C<obj> は C<MAGIC> 構造体の C<mg_obj> フィールドに格納されます。
+これが C<sv> 引数と同じでなかった場合、C<obj> の参照カウントは
+インクリメントされます。
+同じであった場合、もしくは引数 C<how> が
+C<PERL_MAGIC_arylen> かヌルポインタであった場合には、C<obj> は
+参照カウントのインクリメントをさせることなく格納されます。
+
+=begin original
+
+See also C<sv_magicext> in L<perlapi> for a more flexible way to add magic
+to an SV.
+
+=end original
+
+SV にマジックを追加する、より柔軟な方法については L<perlapi> の
+C<sv_magicext> も参照してください。
+
+=begin original
+
+There is also a function to add magic to an C<HV>:
+
+=end original
+
+同様に C<HV> にマジックを付加する関数があります。
+
+    void hv_magic(HV *hv, GV *gv, int how);
+
+=begin original
+
+This simply calls C<sv_magic> and coerces the C<gv> argument into an C<SV>.
+
+=end original
+
+これは単純に C<sv_magic> を呼び出し、引数 C<gv> を強制的に C<SV> にします。
+
+=begin original
+
+To remove the magic from an SV, call the function sv_unmagic:
+
+=end original
+
+SV からマジックを取り除くには、sv_unmagic という関数を呼び出します。
+
+    int sv_unmagic(SV *sv, int type);
+
+=begin original
+
+The C<type> argument should be equal to the C<how> value when the C<SV>
+was initially made magical.
+
+=end original
+
+引数 C<type> は、C<SV> が magical にされたときの C<how> の値と同じに
+なるようにすべきです。
+
+=begin original
+
+However, note that C<sv_unmagic> removes all magic of a certain C<type> from the
+C<SV>. If you want to remove only certain magic of a C<type> based on the magic
+virtual table, use C<sv_unmagicext> instead:
+
+=end original
+
+しかし、C<sv_unmagic> は C<SV> から、ある C<type> の全てのマジックを
+削除することに注意してください。
+マジック下層テーブルを基に C<type> の特定のマジックのみを削除したい場合は、
+代わりに C<sv_unmagicext> を使ってください:
+
+    int sv_unmagicext(SV *sv, int type, MGVTBL *vtbl);
+
+=head2 Magic Virtual Tables
+
+(マジック仮想テーブル)
+
+=begin original
+
+The C<mg_virtual> field in the C<MAGIC> structure is a pointer to an
+C<MGVTBL>, which is a structure of function pointers and stands for
+"Magic Virtual Table" to handle the various operations that might be
+applied to that variable.
+
+=end original
+
+C<MAGIC> 構造体の C<mg_virtual> フィールドは C<MGVTBL> へのポインタで、
+これは関数ポインタの構造体であり、また対応する変数に対して
+適用される可能性のあるさまざまな操作を扱うための
+「マジック仮想テーブル」("Magic Virtual Table") を意味しています。
+
+=begin original
+
+The C<MGVTBL> has five (or sometimes eight) pointers to the following
+routine types:
+
+=end original
+
+C<MGVTBL> は、以下に挙げる 5 種類(あるいは時々 8 種類)の
+ポインタを持っています。
+
+    int  (*svt_get)(SV* sv, MAGIC* mg);
+    int  (*svt_set)(SV* sv, MAGIC* mg);
+    U32  (*svt_len)(SV* sv, MAGIC* mg);
+    int  (*svt_clear)(SV* sv, MAGIC* mg);
+    int  (*svt_free)(SV* sv, MAGIC* mg);
+
+    int  (*svt_copy)(SV *sv, MAGIC* mg, SV *nsv, const char *name, I32 namlen);
+    int  (*svt_dup)(MAGIC *mg, CLONE_PARAMS *param);
+    int  (*svt_local)(SV *nsv, MAGIC *mg);
+
+=begin original
+
+This MGVTBL structure is set at compile-time in F<perl.h> and there are
+currently 32 types.  These different structures contain pointers to various
+routines that perform additional actions depending on which function is
+being called.
+
+=end original
+
+この MGVTBL は F<perl.h> の中でコンパイル時に設定され、現在 32 の型が
+あります。
+これらの異なった構造体は、関数が呼び出されたときに依存して追加動作を
+行うような様々なルーチンへのポインタを保持しています。
+
+=begin original
+
+    Function pointer    Action taken
+    ----------------    ------------
+    svt_get             Do something before the value of the SV is retrieved.
+    svt_set             Do something after the SV is assigned a value.
+    svt_len             Report on the SV's length.
+    svt_clear           Clear something the SV represents.
+    svt_free            Free any extra storage associated with the SV.
+
+=end original
+
+     関数ポインタ     その振る舞い
+    ----------------    ------------
+    svt_get             SV の値が取得された前に何かを行う。
+    svt_set             SV に値を代入した後で何かを行う。
+    svt_len             SV の長さを報告する。
+    svt_clear		SV が表わしているものををクリアする。
+    svt_free            SV に結び付けられてい領域を解放する。
+
+=begin original
+
+    svt_copy            copy tied variable magic to a tied element
+    svt_dup             duplicate a magic structure during thread cloning
+    svt_local           copy magic to local value during 'local'
+
+=end original
+
+    svt_copy            tie された変数のマジックを tie された要素にコピーする
+    svt_dup             スレッドのクローン化中にマジック構造体を複製する
+    svt_local           'local' 中にマジックをローカル変数にコピーする
+
+=begin original
+
+For instance, the MGVTBL structure called C<vtbl_sv> (which corresponds
+to an C<mg_type> of C<PERL_MAGIC_sv>) contains:
+
+=end original
+
+たとえば、C<vtbl_sv> (C<PERL_MAGIC_sv> の C<mg_type> に対応します)と
+呼ばれる MGVTBL 構造体の内容は以下の様になっています。
+
+    { magic_get, magic_set, magic_len, 0, 0 }
+
+=begin original
+
+Thus, when an SV is determined to be magical and of type C<PERL_MAGIC_sv>,
+if a get operation is being performed, the routine C<magic_get> is
+called.  All the various routines for the various magical types begin
+with C<magic_>.  NOTE: the magic routines are not considered part of
+the Perl API, and may not be exported by the Perl library.
+
+=end original
+
+したがって、ある SV がマジカルであると決定されてその型が
+C<PERL_MAGIC_sv> であったとき、操作が実行されたならば、C<magic_get> が
+呼び出されます。
+マジカル型に対するルーチンはすべて、C<magic_> で始まります。
+NOTE: マジックルーチンは Perl API の一部として扱われず、
+Perl ライブラリによってエクスポートされません。
+
+=begin original
+
+The last three slots are a recent addition, and for source code
+compatibility they are only checked for if one of the three flags
+MGf_COPY, MGf_DUP or MGf_LOCAL is set in mg_flags. This means that most
+code can continue declaring a vtable as a 5-element value. These three are
+currently used exclusively by the threading code, and are highly subject
+to change.
+
+=end original
+
+末尾の三つのスロットは最近追加されたもので、ソースコードの互換性のために、
+mg_flags に MGf_COPY, MGf_DUP, MGf_LOCAL のいずれか一つが設定されている
+場合にのみチェックされます。
+これは、ほとんどのコードは vtable を 5 要素の値として定義したままで
+よいということです。
+これらの三つは現在のところスレッドのコードのみで使われていて、
+変更される可能性が高いです。
+
+=begin original
+
+The current kinds of Magic Virtual Tables are:
+
+=end original
+
+現時点でのMagic Virtual Tables の種類は以下の通りです。
+
+=begin original
+
+    mg_type
+    (old-style char and macro)   MGVTBL          Type of magic
+    --------------------------   ------          -------------
+    \0 PERL_MAGIC_sv             vtbl_sv         Special scalar variable
+    A  PERL_MAGIC_overload       vtbl_amagic     %OVERLOAD hash
+    a  PERL_MAGIC_overload_elem  vtbl_amagicelem %OVERLOAD hash element
+    c  PERL_MAGIC_overload_table (none)          Holds overload table (AMT)
+                                                 on stash
+    B  PERL_MAGIC_bm             vtbl_bm         Boyer-Moore (fast string search)
+    D  PERL_MAGIC_regdata        vtbl_regdata    Regex match position data
+                                                 (@+ and @- vars)
+    d  PERL_MAGIC_regdatum       vtbl_regdatum   Regex match position data
+                                                 element
+    E  PERL_MAGIC_env            vtbl_env        %ENV hash
+    e  PERL_MAGIC_envelem        vtbl_envelem    %ENV hash element
+    f  PERL_MAGIC_fm             vtbl_fm         Formline ('compiled' format)
+    g  PERL_MAGIC_regex_global   vtbl_mglob      m//g target / study()ed string
+    H  PERL_MAGIC_hints          vtbl_hints      %^H hash
+    h  PERL_MAGIC_hintselem      vtbl_hintselem  %^H hash element
+    I  PERL_MAGIC_isa            vtbl_isa        @ISA array
+    i  PERL_MAGIC_isaelem        vtbl_isaelem    @ISA array element
+    k  PERL_MAGIC_nkeys          vtbl_nkeys      scalar(keys()) lvalue
+    L  PERL_MAGIC_dbfile         (none)          Debugger %_<filename
+    l  PERL_MAGIC_dbline         vtbl_dbline     Debugger %_<filename element
+    o  PERL_MAGIC_collxfrm       vtbl_collxfrm   Locale collate transformation
+    P  PERL_MAGIC_tied           vtbl_pack       Tied array or hash
+    p  PERL_MAGIC_tiedelem       vtbl_packelem   Tied array or hash element
+    q  PERL_MAGIC_tiedscalar     vtbl_packelem   Tied scalar or handle
+    r  PERL_MAGIC_qr             vtbl_qr         precompiled qr// regex
+    S  PERL_MAGIC_sig            vtbl_sig        %SIG hash
+    s  PERL_MAGIC_sigelem        vtbl_sigelem    %SIG hash element
+    t  PERL_MAGIC_taint          vtbl_taint      Taintedness
+    U  PERL_MAGIC_uvar           vtbl_uvar       Available for use by extensions
+    v  PERL_MAGIC_vec            vtbl_vec        vec() lvalue
+    V  PERL_MAGIC_vstring        (none)          v-string scalars
+    w  PERL_MAGIC_utf8           vtbl_utf8       UTF-8 length+offset cache
+    x  PERL_MAGIC_substr         vtbl_substr     substr() lvalue
+    y  PERL_MAGIC_defelem        vtbl_defelem    Shadow "foreach" iterator
+                                                 variable / smart parameter
+                                                 vivification
+    #  PERL_MAGIC_arylen         vtbl_arylen     Array length ($#ary)
+    .  PERL_MAGIC_pos            vtbl_pos        pos() lvalue
+    <  PERL_MAGIC_backref        vtbl_backref    back pointer to a weak ref 
+    ~  PERL_MAGIC_ext            (none)          Available for use by extensions
+    :  PERL_MAGIC_symtab         (none)          hash used as symbol table
+    %  PERL_MAGIC_rhash          (none)          hash used as restricted hash
+    @  PERL_MAGIC_arylen_p       vtbl_arylen_p   pointer to $#a from @a
+
+=end original
+
+    mg_type
+    (old-style char and macro)   MGVTBL          Type of magic
+    --------------------------   ------          -------------
+    \0 PERL_MAGIC_sv             vtbl_sv         特殊スカラ変数
+    A  PERL_MAGIC_overload       vtbl_amagic     %OVERLOAD ハッシュ
+    a  PERL_MAGIC_overload_elem  vtbl_amagicelem %OVERLOAD ハッシュ要素
+    c  PERL_MAGIC_overload_table (none)          スタッシュのオーバーロード
+                                                 テーブル(AMT) を保持
+    B  PERL_MAGIC_bm             vtbl_bm         Boyer-Moore (高速文字列検索)
+    D  PERL_MAGIC_regdata        vtbl_regdata    正規表現マッチング位置データ
+                                                 (@+ と @- の変数)
+    d  PERL_MAGIC_regdatum       vtbl_regdatum   正規表現マッチング位置データ
+                                                 要素
+    E  PERL_MAGIC_env            vtbl_env        %ENV ハッシュ
+    e  PERL_MAGIC_envelem        vtbl_envelem    %ENV ハッシュ要素
+    f  PERL_MAGIC_fm             vtbl_fm         フォーム行(「コンパイル済み」
+                                                 フォーマット)
+    g  PERL_MAGIC_regex_global   vtbl_mglob      m//g のターゲット / study() した文字列
+    H  PERL_MAGIC_hints          vtbl_hints      %^H ハッシュ
+    h  PERL_MAGIC_hintselem      vtbl_hintselem  %^H ハッシュ要素
+    I  PERL_MAGIC_isa            vtbl_isa        @ISA 配列
+    i  PERL_MAGIC_isaelem        vtbl_isaelem    @ISA 配列要素
+    k  PERL_MAGIC_nkeys          vtbl_nkeys      scalar(keys()) 左辺値
+    L  PERL_MAGIC_dbfile         (none)          デバッガの %_<filename
+    l  PERL_MAGIC_dbline         vtbl_dbline     デバッガの %_<filename 要素
+    o  PERL_MAGIC_collxfrm       vtbl_collxfrm   ロケール照合変換
+    P  PERL_MAGIC_tied           vtbl_pack       tie された配列やハッシュ
+    p  PERL_MAGIC_tiedelem       vtbl_packelem   tie された配列やハッシュの要素
+    q  PERL_MAGIC_tiedscalar     vtbl_packelem   tie されたスカラやハンドル
+    r  PERL_MAGIC_qr             vtbl_qr         事前コンパイルされた qr// 正規表現
+    S  PERL_MAGIC_sig            vtbl_sig        %SIG ハッシュ
+    s  PERL_MAGIC_sigelem        vtbl_sigelem    %SIG ハッシュ要素
+    t  PERL_MAGIC_taint          vtbl_taint      汚染性
+    U  PERL_MAGIC_uvar           vtbl_uvar       エクステンションで使用可能
+    v  PERL_MAGIC_vec            vtbl_vec        vec() 左辺値
+    V  PERL_MAGIC_vstring        (none)          v-文字列スカラ
+    w  PERL_MAGIC_utf8           vtbl_utf8       UTF-8 長さ+オフセットキャッシュ
+    x  PERL_MAGIC_substr         vtbl_substr     substr() 左辺値
+    y  PERL_MAGIC_defelem        vtbl_defelem    影の "foreach" 反復子
+                                                 変数 / スマート引数
+                                                 自動有効化
+    #  PERL_MAGIC_arylen         vtbl_arylen     配列の長さ ($#ary)
+    .  PERL_MAGIC_pos            vtbl_pos        pos() 左辺値
+    <  PERL_MAGIC_backref        vtbl_backref    弱いリファレンスへの後方ポインタ
+    ~  PERL_MAGIC_ext            (none)          エクステンションで使用可能
+    :  PERL_MAGIC_symtab         (none)          シンボルテーブルとして使われるハッシュ
+    %  PERL_MAGIC_rhash          (none)          制限ハッシュとして使われるハッシュ
+    @  PERL_MAGIC_arylen_p       vtbl_arylen_p   @a から $#a へのポインタ
+
+=begin original
+
+When an uppercase and lowercase letter both exist in the table, then the
+uppercase letter is typically used to represent some kind of composite type
+(a list or a hash), and the lowercase letter is used to represent an element
+of that composite type. Some internals code makes use of this case
+relationship.  However, 'v' and 'V' (vec and v-string) are in no way related.
+
+=end original
+
+テーブル中で大文字小文字の両方が存在していた場合、大文字は典型的には複合型
+(リストもしくはハッシュ)の種類を表わすのに使われ、小文字はその複合型の
+要素を表わすのに使われます。
+内部コードにはこの大文字小文字の関係を使っているものもあります。
+しかし、'v' と 'V' (ベクタと v-文字列) は全く関係がありません。
+
+=begin original
+
+The C<PERL_MAGIC_ext> and C<PERL_MAGIC_uvar> magic types are defined
+specifically for use by extensions and will not be used by perl itself.
+Extensions can use C<PERL_MAGIC_ext> magic to 'attach' private information
+to variables (typically objects).  This is especially useful because
+there is no way for normal perl code to corrupt this private information
+(unlike using extra elements of a hash object).
+
+=end original
+
+マジック型 C<PERL_MAGIC_ext> と C<PERL_MAGIC_uvar> はエクステンションから
+使われ、Perl 自身からは使われないように特別に定義されています。
+エクステンションは C<PERL_MAGIC_ext> マジックを、
+プライベート情報を変数(典型的なオブジェクト)に「アタッチ」(attach)
+するために使うことができます。
+これは、通常の perl コードが(ハッシュオブジェクトの要素を使うのとは違って)
+そのプライベート情報を壊す恐れがないのでとても便利です。
+
+=begin original
+
+Similarly, C<PERL_MAGIC_uvar> magic can be used much like tie() to call a
+C function any time a scalar's value is used or changed.  The C<MAGIC>'s
+C<mg_ptr> field points to a C<ufuncs> structure:
+
+=end original
+
+同様に、C<PERL_MAGIC_uvar> マジックは、スカラの値が使われたり
+変更されたりしたときに C 関数を呼び出すという、tie() とよく似た形で使えます。
+C<MAGIC> の C<mg_ptr> フィールドは C<ufuncs> 構造体へのポインタです:
+
+    struct ufuncs {
+        I32 (*uf_val)(pTHX_ IV, SV*);
+        I32 (*uf_set)(pTHX_ IV, SV*);
+        IV uf_index;
+    };
+
+=begin original
+
+When the SV is read from or written to, the C<uf_val> or C<uf_set>
+function will be called with C<uf_index> as the first arg and a pointer to
+the SV as the second.  A simple example of how to add C<PERL_MAGIC_uvar>
+magic is shown below.  Note that the ufuncs structure is copied by
+sv_magic, so you can safely allocate it on the stack.
+
+=end original
+
+SV が読み書きされたとき、C<uf_index> を最初の引数、SV へのポインタを
+2 番目の引数として C<uf_val> または C<uf_set> 関数が呼び出されます。
+どのように C<PERL_MAGIC_uvar> マジックを追加するかの簡単な例を以下に示します。
+ufuncs 構造体は sv_magic によってコピーされるので、スタック上に安全に
+割り当てられることに注意してください。
+
+    void
+    Umagic(sv)
+        SV *sv;
+    PREINIT:
+        struct ufuncs uf;
+    CODE:
+        uf.uf_val   = &my_get_fn;
+        uf.uf_set   = &my_set_fn;
+        uf.uf_index = 0;
+        sv_magic(sv, 0, PERL_MAGIC_uvar, (char*)&uf, sizeof(uf));
+
+=begin original
+
+Attaching C<PERL_MAGIC_uvar> to arrays is permissible but has no effect.
+
+=end original
+
+C<PERL_MAGIC_uvar> を配列にアタッチすることは可能ですが、何の意味も
+ありません。
+
+=begin original
+
+For hashes there is a specialized hook that gives control over hash
+keys (but not values).  This hook calls C<PERL_MAGIC_uvar> 'get' magic
+if the "set" function in the C<ufuncs> structure is NULL.  The hook
+is activated whenever the hash is accessed with a key specified as
+an C<SV> through the functions C<hv_store_ent>, C<hv_fetch_ent>,
+C<hv_delete_ent>, and C<hv_exists_ent>.  Accessing the key as a string
+through the functions without the C<..._ent> suffix circumvents the
+hook.  See L<Hash::Util::Fieldhash/Guts> for a detailed description.
+
+=end original
+
+ハッシュについては、ハッシュのキー(値ではありません)の制御をするための
+専門化されたフックがあります。
+このフックは、C<ufuncs> 構造体の "set" 関数が NULL のとき、
+C<PERL_MAGIC_uvar> 'get' マジックを呼び出します。
+このフックは、C<hv_store_ent>, C<hv_fetch_ent>, C<hv_delete_ent>,
+C<hv_exists_ent> 関数を通して C<SV> で指定されたキーでハッシュに
+アクセスされたときに有効になります。
+C<..._ent> 接尾辞を持たない関数を等して文字列としてキーにアクセスすると、
+フックを通りません。
+詳細な説明については L<Hash::Util::Fieldhash/Guts> を参照してください。
+
+=begin original
+
+Note that because multiple extensions may be using C<PERL_MAGIC_ext>
+or C<PERL_MAGIC_uvar> magic, it is important for extensions to take
+extra care to avoid conflict.  Typically only using the magic on
+objects blessed into the same class as the extension is sufficient.
+For C<PERL_MAGIC_ext> magic, it is usually a good idea to define an
+C<MGVTBL>, even if all its fields will be C<0>, so that individual
+C<MAGIC> pointers can be identified as a particular kind of magic
+using their magic virtual table. C<mg_findext> provides an easy way
+to do that:
+
+=end original
+
+複数のエクステンションが C<PERL_MAGIC_ext> や C<PERL_MAGIC_uvar> マジックを
+使う可能性があるので、エクステンションがそれを扱うには気をつけることが
+重要であることに注意してください。
+典型的には、これはオブジェクトをエクステンションが扱えるように同じクラスに
+bless するときにのみ使います。
+C<PERL_MAGIC_ext> マジックでは、たとえ全てのフィールドが C<0> でも、
+C<MGVTBL> を定義するのが普通はよい考えです; 個々の C<MAGIC> ポインタは
+それぞれのマジック仮想テーブルを使ったある種のマジックとして
+識別されるからです。
+C<mg_findext> はそうするための簡単な方法を提供します:
+
+    STATIC MGVTBL my_vtbl = { 0, 0, 0, 0, 0, 0, 0, 0 };
+
+    MAGIC *mg;
+    if ((mg = mg_findext(sv, PERL_MAGIC_ext, &my_vtbl))) {
+        /* this is really ours, not another module's PERL_MAGIC_ext */
+        my_priv_data_t *priv = (my_priv_data_t *)mg->mg_ptr;
+        ...
+    }
+
+=begin original
+
+Also note that the C<sv_set*()> and C<sv_cat*()> functions described
+earlier do B<not> invoke 'set' magic on their targets.  This must
+be done by the user either by calling the C<SvSETMAGIC()> macro after
+calling these functions, or by using one of the C<sv_set*_mg()> or
+C<sv_cat*_mg()> functions.  Similarly, generic C code must call the
+C<SvGETMAGIC()> macro to invoke any 'get' magic if they use an SV
+obtained from external sources in functions that don't handle magic.
+See L<perlapi> for a description of these functions.
+For example, calls to the C<sv_cat*()> functions typically need to be
+followed by C<SvSETMAGIC()>, but they don't need a prior C<SvGETMAGIC()>
+since their implementation handles 'get' magic.
+
+=end original
+
+C<sv_set*()> と C<sv_cat*()> といった関数群はそのターゲットに対して
+'set' マジックを B<起動しない> ということにも注意してください。
+これには、ユーザーが C<svSETMAGIC> マクロを呼び出した後でこれらの関数を
+呼び出すか、あるいは C<sv_set*_mg()> か
+C<sv_cat*_mg()> の何れかの関数を使わなければなりません。
+同様に、一般的な C コードは、それがマジックを扱っていないような関数から
+得られたSV を使っているのであれば、'get' マジックを起動するために
+C<SvGETMAGIC> を呼び出さなければなりません。
+これらの関数については L<perlapi> を参照してください。
+例えば、C<sv_cat*()> 関数群の呼び出しは通常引き続いて C<SvSETMAGIC()> を
+呼び出す必要がありますが、 C<SvGETMAGIC> が先行している必要はありません;
+なぜなら、その実装は 'get' マジックを扱うからです。
+
+=head2 Finding Magic
+
+(マジックを見つけだす)
+
+    MAGIC *mg_find(SV *sv, int type); /* Finds the magic pointer of that type */
+
+=begin original
+
+This routine returns a pointer to a C<MAGIC> structure stored in the SV.
+If the SV does not have that magical feature, C<NULL> is returned. If the
+SV has multiple instances of that magical feature, the first one will be
+returned. C<mg_findext> can be used to find a C<MAGIC> structure of an SV
+based on both it's magic type and it's magic virtual table:
+
+=end original
+
+このルーチンは SV に格納されている C<MAGIC> 構造体へのポインタを返します。
+SV がマジカル機能を持っていなければ、C<NULL> が返されます。
+SV にマジカル機能を複数持っている場合、最初の物が返されます。
+C<mg_findext> は、マジック型とマジック仮想表の両方を元とする SV の
+C<MAGIC> 構造体を探すのに使えます:
+
+    MAGIC *mg_findext(SV *sv, int type, MGVTBL *vtbl);
+
+=begin original
+
+Also, if the SV passed to C<mg_find> or C<mg_findext> is not of type
+SVt_PVMG, Perl may core dump.
+
+=end original
+
+また、C<mg_find> や C<mg_findext> に渡された SV が Svt_PVMG の型でなければ
+Perl はコアダンプするかもしれません。
+
+    int mg_copy(SV* sv, SV* nsv, const char* key, STRLEN klen);
+
+=begin original
+
+This routine checks to see what types of magic C<sv> has.  If the mg_type
+field is an uppercase letter, then the mg_obj is copied to C<nsv>, but
+the mg_type field is changed to be the lowercase letter.
+
+=end original
+
+このルーチンは C<sv> が持っているマジックの型を検査します。
+mg_type フィールドが大文字であれば、mg_obj が C<nsv> にコピーされますが、
+mg_type フィールドは小文字に変更されます。
+
+=head2 Understanding the Magic of Tied Hashes and Arrays
+
+(tie されたハッシュと配列のマジックを理解する)
+
+=begin original
+
+Tied hashes and arrays are magical beasts of the C<PERL_MAGIC_tied>
+magic type.
+
+=end original
+
+tie されたハッシュと配列は C<PERL_MAGIC_tied> マジック型の magical beast です。
+
+=begin original
+
+WARNING: As of the 5.004 release, proper usage of the array and hash
+access functions requires understanding a few caveats.  Some
+of these caveats are actually considered bugs in the API, to be fixed
+in later releases, and are bracketed with [MAYCHANGE] below. If
+you find yourself actually applying such information in this section, be
+aware that the behavior may change in the future, umm, without warning.
+
+=end original
+
+警告: リリース 5.004 以降、配列やハッシュに対するアクセス関数の正しい使い方は、
+幾つかの注意点を理解していることを要求しています。
+これら幾つかの注意点は実際には API におけるバグとして
+みなされるものであって、将来のリリースにおいては修正されます;
+また、注意点は [MAYCHANGE] というブラケットで囲まれています。
+このセクションにある情報をあなたが実際に使おうというのであれば、
+将来それらは警告なしに変わる可能性があることに注意してください。
+
+=begin original
+
+The perl tie function associates a variable with an object that implements
+the various GET, SET, etc methods.  To perform the equivalent of the perl
+tie function from an XSUB, you must mimic this behaviour.  The code below
+carries out the necessary steps - firstly it creates a new hash, and then
+creates a second hash which it blesses into the class which will implement
+the tie methods. Lastly it ties the two hashes together, and returns a
+reference to the new tied hash.  Note that the code below does NOT call the
+TIEHASH method in the MyTie class -
+see L<Calling Perl Routines from within C Programs> for details on how
+to do this.
+
+=end original
+
+perl の tie 関数は、ある変数と GET、SET 等といった様々なメソッドを
+実装しているオブジェクトとを結び付けるものです。
+XSUB から perl の tie 関数と等価な働きをさせるには、ちょっとした
+オマジナイをしなければなりません。
+以下の例が必要なステップです - まず最初にハッシュを作り、それから
+tie メソッドを実装するクラスに bless した二番目のハッシュを作ります。
+最後に二つのハッシュを tie し、新たに生成した tie されたハッシュに対する
+リファレンスを返します。
+以下の例では MyTie クラスの中で TIEHASH を呼び出していないということに
+注意してください - この件に関する詳細は
+L<Calling Perl Routines from within C Programs> を参照してください。
+
+    SV*
+    mytie()
+    PREINIT:
+        HV *hash;
+        HV *stash;
+        SV *tie;
+    CODE:
+        hash = newHV();
+        tie = newRV_noinc((SV*)newHV());
+        stash = gv_stashpv("MyTie", GV_ADD);
+        sv_bless(tie, stash);
+        hv_magic(hash, (GV*)tie, PERL_MAGIC_tied);
+        RETVAL = newRV_noinc(hash);
+    OUTPUT:
+        RETVAL
+
+=begin original
+
+The C<av_store> function, when given a tied array argument, merely
+copies the magic of the array onto the value to be "stored", using
+C<mg_copy>.  It may also return NULL, indicating that the value did not
+actually need to be stored in the array.  [MAYCHANGE] After a call to
+C<av_store> on a tied array, the caller will usually need to call
+C<mg_set(val)> to actually invoke the perl level "STORE" method on the
+TIEARRAY object.  If C<av_store> did return NULL, a call to
+C<SvREFCNT_dec(val)> will also be usually necessary to avoid a memory
+leak. [/MAYCHANGE]
+
+=end original
+
+tie された配列を引数に与えられたときの C<av_store> 関数は、単に配列の
+magic を C<mg_copy> を使って「保管」されるように値をコピーするだけです。
+この関数は、その値が実際には配列に格納する必要のないものであることを
+示す NULL を返す可能性があります。
+[MAYCHANGE]
+tie された配列に対して C<av_store> を呼び出した後、呼び出し側は TIEARRAY
+オブジェクトに対して Perl レベルの "STORE" メソッドを起動するために
+C<av_store> を呼び出すことが通常は必要となります。
+C<av_store> が NULL を返したならば、メモリリークを防ぐために
+C<SvREFCNT_dec(val)> を呼び出すことが必要となります。
+[/MAYCHANGE] 
+
+=begin original
+
+The previous paragraph is applicable verbatim to tied hash access using the
+C<hv_store> and C<hv_store_ent> functions as well.
+
+=end original
+
+先の段落の説明は、tie されたハッシュにアクセスするのに使用する
+C<hv_store> と C<hv_store_ent> についても同様です。
+
+=begin original
+
+C<av_fetch> and the corresponding hash functions C<hv_fetch> and
+C<hv_fetch_ent> actually return an undefined mortal value whose magic
+has been initialized using C<mg_copy>.  Note the value so returned does not
+need to be deallocated, as it is already mortal.  [MAYCHANGE] But you will
+need to call C<mg_get()> on the returned value in order to actually invoke
+the perl level "FETCH" method on the underlying TIE object.  Similarly,
+you may also call C<mg_set()> on the return value after possibly assigning
+a suitable value to it using C<sv_setsv>,  which will invoke the "STORE"
+method on the TIE object. [/MAYCHANGE]
+
+=end original
+
+C<av_fetch> と、対応するハッシュ関数 C<hv_fetch> および C<hv_fetch_ent> は
+実際には C<mg_copy> を使って初期化が行なわれている未定義の揮発値を返します。
+返された値はすでに揮発性なので、解放する必要がないことに注意してください。
+[MAYCHANGE]
+しかし、TIE オブジェクトに対応した perl レベルの "FETCH" メソッドを
+実行するには、返されたその値に対してC<mg_get()> を呼び出す必要があるでしょう。
+同様に、TIE オブジェクトに対する "STORE" メソッドの起動である
+C<sv_setsv> を使って適切な値を代入した後で、返された値に対して
+C<mg_set()> を呼び出すことができます。
+[/MAYCHANGE]
+
+=begin original
+
+[MAYCHANGE]
+In other words, the array or hash fetch/store functions don't really
+fetch and store actual values in the case of tied arrays and hashes.  They
+merely call C<mg_copy> to attach magic to the values that were meant to be
+"stored" or "fetched".  Later calls to C<mg_get> and C<mg_set> actually
+do the job of invoking the TIE methods on the underlying objects.  Thus
+the magic mechanism currently implements a kind of lazy access to arrays
+and hashes.
+
+=end original
+
+[MAYCHANGE]
+言い換えれば、配列やハッシュをフェッチしたりストアする関数は、
+tie されている配列やハッシュに対する場合には実際に値をフェッチしたり
+保管したりするわけではないということです。
+それらの関数は「保管」されたり「フェッチ」された値に対してマジックを
+付加するために、単に C<mg_copy> を呼び出すだけです。
+その後の C<mg_get> と C<mg_set> の呼び出しは実際には元となっている
+オブジェクトへの TIE メソッドの起動を行います。
+従って現在の所マジック機構は配列とハッシュへの一種の遅延アクセスを
+実装しています。
+
+=begin original
+
+Currently (as of perl version 5.004), use of the hash and array access
+functions requires the user to be aware of whether they are operating on
+"normal" hashes and arrays, or on their tied variants.  The API may be
+changed to provide more transparent access to both tied and normal data
+types in future versions.
+[/MAYCHANGE]
+
+=end original
+
+現在(バージョン 5.004)、ハッシュや配列に対するアクセス関数を使用する
+際には、ユーザーが「通常の」ハッシュや配列なのか、あるいはそれが
+tie されたものであるのかを気をつけることが要求されています。
+将来のバージョンでは、この API は tie されたデータに対するアクセスと
+通常のデータに対するアクセスをより透過的にするために変更されるかも
+しれません。
+[/MAYCHANGE]
+
+=begin original
+
+You would do well to understand that the TIEARRAY and TIEHASH interfaces
+are mere sugar to invoke some perl method calls while using the uniform hash
+and array syntax.  The use of this sugar imposes some overhead (typically
+about two to four extra opcodes per FETCH/STORE operation, in addition to
+the creation of all the mortal variables required to invoke the methods).
+This overhead will be comparatively small if the TIE methods are themselves
+substantial, but if they are only a few statements long, the overhead
+will not be insignificant.
+
+=end original
+
+TIEARRAY や TIEHASH といったインターフェースが、統一的な
+ハッシュ/配列構文を使うための perl メソッドを起動をするための単なる
+砂糖であることを良く理解したことでしょう。
+これらの砂糖の使用はいくらかのオーバーヘッド(通常、FETCH/STORE 操作
+当たり二つから四つの余分なオペコード、それに加えてメソッドを
+起動するために必要なすべての揮発性変数の生成)を招きます。
+このオーバーヘッドは TIE メソッド自身がしっかりしたものであれば、ほぼ
+同等なくらい小さなものでしかありませんが、ほんの少し文が長いだけでも
+オーバーヘッドは無視できないものになります。
+
+=head2 Localizing changes
+
+(変更をローカル化する)
+
+=begin original
+
+Perl has a very handy construction
+
+=end original
+
+Perl には非常に便利な構造があります。
+
+  {
+    local $var = 2;
+    ...
+  }
+
+=begin original
+
+This construction is I<approximately> equivalent to
+
+=end original
+
+この構造は以下のものと I<ほぼ> 同じです
+
+  {
+    my $oldvar = $var;
+    $var = 2;
+    ...
+    $var = $oldvar;
+  }
+
+=begin original
+
+The biggest difference is that the first construction would
+reinstate the initial value of $var, irrespective of how control exits
+the block: C<goto>, C<return>, C<die>/C<eval>, etc. It is a little bit
+more efficient as well.
+
+=end original
+
+両者の最も大きな違いは、最初のものが C<goto>、C<return>、C<die>/C<eval> など
+どのようにブロックから脱出しようとも、$var の元々の値を
+復帰するということです。
+効率といった面では大きな違いはありません。
+
+=begin original
+
+There is a way to achieve a similar task from C via Perl API: create a
+I<pseudo-block>, and arrange for some changes to be automatically
+undone at the end of it, either explicit, or via a non-local exit (via
+die()). A I<block>-like construct is created by a pair of
+C<ENTER>/C<LEAVE> macros (see L<perlcall/"Returning a Scalar">).
+Such a construct may be created specially for some important localized
+task, or an existing one (like boundaries of enclosing Perl
+subroutine/block, or an existing pair for freeing TMPs) may be
+used. (In the second case the overhead of additional localization must
+be almost negligible.) Note that any XSUB is automatically enclosed in
+an C<ENTER>/C<LEAVE> pair.
+
+=end original
+
+Perl API を通して C から同様の処理を行う方法もあります:
+I<擬似ブロック>(pseudo-block)を生成し、そのブロックの最後で自動的に
+復帰するような幾つかの変更を行います。
+ブロックから抜けるのは、明示的に抜けるための指示があっても良いし、
+非局所的な脱出(die() を使ったもの)でもかまいません。
+ブロックに似たこの構造は C<ENTER>/C<LEAVE> マクロのペアによって
+生成されます(L<perlcall/"Returning a Scalar"> を参照してください)。
+このような構造ではなにか重要なローカル化されたタスクのための特別なものを
+作成したり、あるいは既に存在しているもの(Perl のサブルーチン/ブロックに
+束縛されたものとか、あるいは解放する一時変数のペア)を使うことも可能です
+(二番目のケースでは、ローカル化するためのオーバーヘッドはほとんど
+無視できるものです)。
+すべての XSUB は自動的に C<ENTER>/C<LEAVE> の
+ペアによって囲まれているということに注意してください。
+
+=begin original
+
+Inside such a I<pseudo-block> the following service is available:
+
+=end original
+
+このような I<擬似ブロック> の中では以下のサービスが利用可能です:
+
+=over 4
+
+=item C<SAVEINT(int i)>
+
+=item C<SAVEIV(IV i)>
+
+=item C<SAVEI32(I32 i)>
+
+=item C<SAVELONG(long i)>
+
+=begin original
+
+These macros arrange things to restore the value of integer variable
+C<i> at the end of enclosing I<pseudo-block>.
+
+=end original
+
+これらのマクロはそれを囲む I<擬似ブロック> において
+整数変数 C<i> の値をリストアするようにします。
+
+=item C<SAVESPTR(s)>
+
+=item C<SAVEPPTR(p)>
+
+=begin original
+
+These macros arrange things to restore the value of pointers C<s> and
+C<p>. C<s> must be a pointer of a type which survives conversion to
+C<SV*> and back, C<p> should be able to survive conversion to C<char*>
+and back.
+
+=end original
+
+これらのマクロは、ポインタC<s>もしくは C<p> の値をリストアします。
+C<s> は C<SV*> に対する型変換をできるポインタでなければなりません;
+C<p> は C<char*> への型変換が可能であるべきものです。
+
+=item C<SAVEFREESV(SV *sv)>
+
+=begin original
+
+The refcount of C<sv> would be decremented at the end of
+I<pseudo-block>.  This is similar to C<sv_2mortal> in that it is also a
+mechanism for doing a delayed C<SvREFCNT_dec>.  However, while C<sv_2mortal>
+extends the lifetime of C<sv> until the beginning of the next statement,
+C<SAVEFREESV> extends it until the end of the enclosing scope.  These
+lifetimes can be wildly different.
+
+=end original
+
+I<擬似ブロック> の終端において C<sv> の参照カウントはデクリメントされます。
+これは、遅延した C<SvREFCNT_dec> を行うための機構という意味で
+C<sv_2motral> に似たものです。
+しかし、C<sv_2mortal> は C<sv> の生存時間を次の文の始めまで延ばす一方、
+C<SAVEFREESV> は囲まれているスコープの終わりまで延ばします。
+これらの生存時間は大きく異なるかもしれません。
+
+=begin original
+
+Also compare C<SAVEMORTALIZESV>.
+
+=end original
+
+また、C<SAVEMORTALIZESV> を比較します。
+
+=item C<SAVEMORTALIZESV(SV *sv)>
+
+=begin original
+
+Just like C<SAVEFREESV>, but mortalizes C<sv> at the end of the current
+scope instead of decrementing its reference count.  This usually has the
+effect of keeping C<sv> alive until the statement that called the currently
+live scope has finished executing.
+
+=end original
+
+C<SAVEFREESV> と同様ですが、参照カウントを減らすのではなく、現在のスコープの
+終わりで C<sv> を揮発化します。
+これは普通、現在有効なスコープが実行を終了する文まで C<sv> を
+生存させ続けます。
+
+=item C<SAVEFREEOP(OP *op)>
+
+=begin original
+
+The C<OP *> is op_free()ed at the end of I<pseudo-block>.
+
+=end original
+
+C<OP *> は I<擬似ブロック> の終端において op_free() されます。
+
+=item C<SAVEFREEPV(p)>
+
+=begin original
+
+The chunk of memory which is pointed to by C<p> is Safefree()ed at the
+end of I<pseudo-block>.
+
+=end original
+
+C<p> によって指し示されているメモリの塊は I<擬似ブロック> の終端で
+Safefree() されます。
+
+=item C<SAVECLEARSV(SV *sv)>
+
+=begin original
+
+Clears a slot in the current scratchpad which corresponds to C<sv> at
+the end of I<pseudo-block>.
+
+=end original
+
+B<擬似ブロック> の終端において、C<sv> に対応している
+カレントのスクラッチパッドにおけるスロットをクリアします。
+
+=item C<SAVEDELETE(HV *hv, char *key, I32 length)>
+
+=begin original
+
+The key C<key> of C<hv> is deleted at the end of I<pseudo-block>. The
+string pointed to by C<key> is Safefree()ed.  If one has a I<key> in
+short-lived storage, the corresponding string may be reallocated like
+this:
+
+=end original
+
+I<擬似ブロック> の終端で C<hv> にあるキー C<key> は削除されます。
+C<key> によって指し示されている文字列は Safefree() されます。
+short-lived storageにある I<key> を持っているものがあった場合には
+以下のようにして対応する文字列が再割り当てされます。
+
+  SAVEDELETE(PL_defstash, savepv(tmpbuf), strlen(tmpbuf));
+
+=item C<SAVEDESTRUCTOR(DESTRUCTORFUNC_NOCONTEXT_t f, void *p)>
+
+=begin original
+
+At the end of I<pseudo-block> the function C<f> is called with the
+only argument C<p>.
+
+=end original
+
+I<擬似ブロック> の終端において関数 C<f> が呼び出されます;
+この関数 C<f> は C<p> のみを引数に取ります。
+
+=item C<SAVEDESTRUCTOR_X(DESTRUCTORFUNC_t f, void *p)>
+
+=begin original
+
+At the end of I<pseudo-block> the function C<f> is called with the
+implicit context argument (if any), and C<p>.
+
+=end original
+
+I<疑似ブロック> の最後に、関数 C<f> が(もしあれば)暗黙のコンテキスト
+引数と C<p> で呼び出されます。
+
+=item C<SAVESTACK_POS()>
+
+=begin original
+
+The current offset on the Perl internal stack (cf. C<SP>) is restored
+at the end of I<pseudo-block>.
+
+=end original
+
+I<擬似ブロック> の終端において Perl の内部スタック(C<SP>)のカレント
+オフセットがリストアされます。
+
+=back
+
+=begin original
+
+The following API list contains functions, thus one needs to
+provide pointers to the modifiable data explicitly (either C pointers,
+or Perlish C<GV *>s).  Where the above macros take C<int>, a similar
+function takes C<int *>.
+
+=end original
+
+以下の API リストは、変更可能なデータを指し示すポインタ
+(C のポインタか、Perl 的な C<GV *> のいずれか)を必要とする関数群です。
+前述の C<int> を引数に取るマクロに似て、
+C<int *> を引数に取る関数があります。
+
+=over 4
+
+=item C<SV* save_scalar(GV *gv)>
+
+=begin original
+
+Equivalent to Perl code C<local $gv>.
+
+=end original
+
+Perl コード C<local $gv> と等価です。
+
+=item C<AV* save_ary(GV *gv)>
+
+=item C<HV* save_hash(GV *gv)>
+
+=begin original
+
+Similar to C<save_scalar>, but localize C<@gv> and C<%gv>.
+
+=end original
+
+C<save_scalar> に似ていますが、C<@gv> と C<%gv> の局所化を行います。
+
+=item C<void save_item(SV *item)>
+
+=begin original
+
+Duplicates the current value of C<SV>, on the exit from the current
+C<ENTER>/C<LEAVE> I<pseudo-block> will restore the value of C<SV>
+using the stored value. It doesn't handle magic. Use C<save_scalar> if
+magic is affected.
+
+=end original
+
+C<SV> のカレントの値を複製し、カレントの C<ENTER>/C<LEAVE>
+B<擬似ブロック> を抜けるときに C<SV> の保存した値を復帰します。
+マジックを扱いません。
+マジックを有効にしたい場合は C<save_scalar> を使ってください。
+
+=item C<void save_list(SV **sarg, I32 maxsarg)>
+
+=begin original
+
+A variant of C<save_item> which takes multiple arguments via an array
+C<sarg> of C<SV*> of length C<maxsarg>.
+
+=end original
+
+複数の引数を長さ C<maxarg> の C<SV*> の配列 C<sarg> として取る
+C<save_item> の複数の値を取るバリエーションです。
+
+=item C<SV* save_svref(SV **sptr)>
+
+=begin original
+
+Similar to C<save_scalar>, but will reinstate an C<SV *>.
+
+=end original
+
+C<save_scalar> に似ていますが、C<SV *> の復帰を行います。
+
+=item C<void save_aptr(AV **aptr)>
+
+=item C<void save_hptr(HV **hptr)>
+
+=begin original
+
+Similar to C<save_svref>, but localize C<AV *> and C<HV *>.
+
+=end original
+
+C<save_svref> に似ていますが、C<AV *> と C<HV *> のローカル化を行います。
+
+=back
+
+=begin original
+
+The C<Alias> module implements localization of the basic types within the
+I<caller's scope>.  People who are interested in how to localize things in
+the containing scope should take a look there too.
+
+=end original
+
+C<Alias> モジュールは B<呼び出し側のスコープ> 中での基本型のローカル化を
+実装します。
+スコープを持った何かのローカル化に興味のある人は
+そこに何があるかも見ておいた方が良いでしょう。
+
+=head1 Subroutines
+
+(サブルーチン)
+
+=head2 XSUBs and the Argument Stack
+
+(XSUB と引数スタック)
+
+=begin original
+
+The XSUB mechanism is a simple way for Perl programs to access C subroutines.
+An XSUB routine will have a stack that contains the arguments from the Perl
+program, and a way to map from the Perl data structures to a C equivalent.
+
+=end original
+
+XSUB の仕組みは、Perl プログラムが C のサブルーチンを
+アクセスするための単純な方法です。
+XSUB には、Perl プログラムからの引数を入れるスタックと、Perl のデータ
+構造を C の等価なものにマッピングする方法を用意しています。
+
+=begin original
+
+The stack arguments are accessible through the C<ST(n)> macro, which returns
+the C<n>'th stack argument.  Argument 0 is the first argument passed in the
+Perl subroutine call.  These arguments are C<SV*>, and can be used anywhere
+an C<SV*> is used.
+
+=end original
+
+スタック引数は C<ST(n)> というマクロを使ってアクセスできます;
+これは、C<n> 番目のスタック引数を返すものです。
+引数 0 は、Perl のサブルーチン呼び出しで渡された最初の引数です。
+これらの引数は C<SV*> で、C<SV*> が使われるところであればどこでも
+使うことができます。
+
+=begin original
+
+Most of the time, output from the C routine can be handled through use of
+the RETVAL and OUTPUT directives.  However, there are some cases where the
+argument stack is not already long enough to handle all the return values.
+An example is the POSIX tzname() call, which takes no arguments, but returns
+two, the local time zone's standard and summer time abbreviations.
+
+=end original
+
+ほとんどの場合には、C ルーチンからの出力は RETVAL 指示子と
+OUTPUT 指示子を使って扱うことができます。
+しかし、引数スタックのスペースがすべての返却値を扱うのに十分で
+なくなる場合があります。
+例としては、引数をとらないでローカルなタイムゾーンと夏時間の省略形の
+二つの返却値を返す、POSIX の tzname() の呼び出しがあります。
+
+=begin original
+
+To handle this situation, the PPCODE directive is used and the stack is
+extended using the macro:
+
+=end original
+
+このような状況を扱うためには、PPCODE ディレクティブを使い、さらに
+スタックを以下のマクロを使って拡張します:
+
+    EXTEND(SP, num);
+
+=begin original
+
+where C<SP> is the macro that represents the local copy of the stack pointer,
+and C<num> is the number of elements the stack should be extended by.
+
+=end original
+
+ここで C<SP> はスタックポインタで、C<num> はスタックを拡張すべき
+要素の数です。
+
+=begin original
+
+Now that there is room on the stack, values can be pushed on it using C<PUSHs>
+macro. The pushed values will often need to be "mortal" (See
+L</Reference Counts and Mortality>):
+
+=end original
+
+スタック上に場所を確保したら、C<PUSHs> マクロを使って値をスタックへ
+プッシュします。
+プッシュされた値はしばしば「揮発性」である必要があります(
+L</Reference Counts and Mortality> を参照してください):
+
+    PUSHs(sv_2mortal(newSViv(an_integer)))
+    PUSHs(sv_2mortal(newSVuv(an_unsigned_integer)))
+    PUSHs(sv_2mortal(newSVnv(a_double)))
+    PUSHs(sv_2mortal(newSVpv("Some String",0)))
+    /* Although the last example is better written as the more efficient: */
+    PUSHs(newSVpvs_flags("Some String", SVs_TEMP))
+
+=begin original
+
+And now the Perl program calling C<tzname>, the two values will be assigned
+as in:
+
+=end original
+
+これで、C<tzname> を呼ぶ Perl プログラムでは、二つの値は
+以下のように代入できます。
+
+    ($standard_abbrev, $summer_abbrev) = POSIX::tzname;
+
+=begin original
+
+An alternate (and possibly simpler) method to pushing values on the stack is
+to use the macro:
+
+=end original
+
+スタックに値を積む、別の (おそらくはより簡単な) 方法は、
+以下のマクロを使うことです。
+
+    XPUSHs(SV*)
+
+=begin original
+
+This macro automatically adjust the stack for you, if needed.  Thus, you
+do not need to call C<EXTEND> to extend the stack.
+
+=end original
+
+こちらのマクロは、必要ならば自動的にスタックを調整してくれます。
+このため、C<EXTEND> をスタックを拡張するために呼ぶ必要はありません。
+
+=begin original
+
+Despite their suggestions in earlier versions of this document the macros
+C<(X)PUSH[iunp]> are I<not> suited to XSUBs which return multiple results.
+For that, either stick to the C<(X)PUSHs> macros shown above, or use the new
+C<m(X)PUSH[iunp]> macros instead; see L</Putting a C value on Perl stack>.
+
+=end original
+
+この文書の以前のバージョンでの推奨にも関わらず、マクロ C<(X)PUSH[iunp]> は
+複数の結果を返す XSUB には向いて I<いません>。
+このためには、上述の C<(X)PUSHs> マクロにこだわるか、代わりに新しい
+C<m(X)PUSH[iunp]> マクロを使ってください;
+L</Putting a C value on Perl stack> を参照してください。
+
+=begin original
+
+For more information, consult L<perlxs> and L<perlxstut>.
+
+=end original
+
+より詳しい情報は、L<perlxs> と L<perlxstut> を参照してください。
+
+=head2 Calling Perl Routines from within C Programs
+
+(CプログラムからのPerlルーチンの呼び出し)
+
+=begin original
+
+There are four routines that can be used to call a Perl subroutine from
+within a C program.  These four are:
+
+=end original
+
+C プログラムから Perl サブルーチンを呼び出すために使用することのできる
+ルーチンが 四つあります。
+その四つは:
+
+    I32  call_sv(SV*, I32);
+    I32  call_pv(const char*, I32);
+    I32  call_method(const char*, I32);
+    I32  call_argv(const char*, I32, register char**);
+
+=begin original
+
+The routine most often used is C<call_sv>.  The C<SV*> argument
+contains either the name of the Perl subroutine to be called, or a
+reference to the subroutine.  The second argument consists of flags
+that control the context in which the subroutine is called, whether
+or not the subroutine is being passed arguments, how errors should be
+trapped, and how to treat return values.
+
+=end original
+
+最もよく使われるはずのものは、C<call_sv> です。
+引数 C<SV*> には呼び出される Perl サブルーチンの名前か、その
+サブルーチンへのリファレンスが含まれます。
+二番目の引数には、そのサブルーチンが呼び出されたコンテキストを制御する
+フラグが置かれます; これはサブルーチンに引数が渡されたか渡されていないか、
+エラーをどのようにトラップすべきなのか、どのように戻り値を返すのかを
+制御するものです。
+
+=begin original
+
+All four routines return the number of arguments that the subroutine returned
+on the Perl stack.
+
+=end original
+
+四つのルーチンはいずれも、サブルーチンが Perl スタック上に返した
+引数の数を返します。
+
+=begin original
+
+These routines used to be called C<perl_call_sv>, etc., before Perl v5.6.0,
+but those names are now deprecated; macros of the same name are provided for
+compatibility.
+
+=end original
+
+これらのルーチンは Perl v5.6.0 以前では C<perl_call_sv> などと
+呼ばれていましたが、しかしこれらの名前は現在では非推奨です; 同じ名前の
+マクロが互換性のために提供されています。
+
+=begin original
+
+When using any of these routines (except C<call_argv>), the programmer
+must manipulate the Perl stack.  These include the following macros and
+functions:
+
+=end original
+
+これらのルーチンを使うときには(C<call_argv> を除いて)、プログラマが
+Perl スタックを操作しなくてはなりません。
+以下のマクロと関数が用意されています:
+
+    dSP
+    SP
+    PUSHMARK()
+    PUTBACK
+    SPAGAIN
+    ENTER
+    SAVETMPS
+    FREETMPS
+    LEAVE
+    XPUSH*()
+    POP*()
+
+=begin original
+
+For a detailed description of calling conventions from C to Perl,
+consult L<perlcall>.
+
+=end original
+
+C から Perl を呼び出す約束ごとについての詳しい記述は
+L<perlcall> を参照してください。
+
+=head2 Memory Allocation
+
+(メモリ割り当て)
+
+=head3 Allocation
+
+(割り当て)
+
+=begin original
+
+All memory meant to be used with the Perl API functions should be manipulated
+using the macros described in this section.  The macros provide the necessary
+transparency between differences in the actual malloc implementation that is
+used within perl.
+
+=end original
+
+Perl API 関数と共に使うような全てのメモリはこのセクションで
+説明されているマクロを使って扱うべきです。
+マクロは実際の malloc の
+実装と、perl で使われているものとの差を透過的にします。
+
+=begin original
+
+It is suggested that you enable the version of malloc that is distributed
+with Perl.  It keeps pools of various sizes of unallocated memory in
+order to satisfy allocation requests more quickly.  However, on some
+platforms, it may cause spurious malloc or free errors.
+
+=end original
+
+Perl と一緒に配布されていて、あなたがこれを使うことを推奨されている
+malloc の変種です。
+これは様々な大きさの未割り付けのメモリをプールしておき、
+より早く割り付け要求に応えようとするものです。
+しかしながら一部のプラットフォームでは、これは不法な malloc エラーや
+free エラーを引き起こす可能性があります。
+
+=begin original
+
+The following three macros are used to initially allocate memory :
+
+=end original
+
+これら三つのマクロはメモリの割り付けのために使われます:
+
+    Newx(pointer, number, type);
+    Newxc(pointer, number, type, cast);
+    Newxz(pointer, number, type);
+
+=begin original
+
+The first argument C<pointer> should be the name of a variable that will
+point to the newly allocated memory.
+
+=end original
+
+1 番目の引数 C<pointer> は、新たにメモリを割り付けられる変数の名前にします。
+
+=begin original
+
+The second and third arguments C<number> and C<type> specify how many of
+the specified type of data structure should be allocated.  The argument
+C<type> is passed to C<sizeof>.  The final argument to C<Newxc>, C<cast>,
+should be used if the C<pointer> argument is different from the C<type>
+argument.
+
+=end original
+
+3 番目と 4 番目の引数 C<number> と C<type> は、指定された構造体を
+どれだけ割り付けるのかを指定します。
+引数 C<type> は C<sizeof> に渡されます。
+C<Newxc>に対する最後の引数 C<cast>は、引数 C<pointer> が
+引数 C<type> と異なるときに使うべきものです。
+
+=begin original
+
+Unlike the C<Newx> and C<Newxc> macros, the C<Newxz> macro calls C<memzero>
+to zero out all the newly allocated memory.
+
+=end original
+
+C<Newx> や C<Newxc> とは異なり、C<Newxz> は割り付けたメモリのすべてを
+ゼロで埋めるために C<memzero> を呼び出します。
+
+=head3 Reallocation
+
+(再割り当て)
+
+    Renew(pointer, number, type);
+    Renewc(pointer, number, type, cast);
+    Safefree(pointer)
+
+=begin original
+
+These three macros are used to change a memory buffer size or to free a
+piece of memory no longer needed.  The arguments to C<Renew> and C<Renewc>
+match those of C<New> and C<Newc> with the exception of not needing the
+"magic cookie" argument.
+
+=end original
+
+上記の三つのマクロは、メモリのバッファーサイズを変更したりもう
+使わなくなったメモリ領域を解放するために使われます。
+C<Renew> とC<Renewc> の引数は、"魔法のクッキー" 引数が必要ないと
+いうことを除きそれぞれ C<New> と C<Newc> に一致します。
+
+=head3 Moving
+
+(移動)
+
+    Move(source, dest, number, type);
+    Copy(source, dest, number, type);
+    Zero(dest, number, type);
+
+=begin original
+
+These three macros are used to move, copy, or zero out previously allocated
+memory.  The C<source> and C<dest> arguments point to the source and
+destination starting points.  Perl will move, copy, or zero out C<number>
+instances of the size of the C<type> data structure (using the C<sizeof>
+function).
+
+=end original
+
+この三つのマクロは、それぞれ割り付けたメモリ領域に対する移動、
+複写、ゼロで埋めるといったことに使われます。
+C<source> と C<dest> という引数は、転送元と転送先の開始番地へのポインタです。
+Perl は、構造体 C<type> の大きさ (C<sizeof> 関数を使います)のインスタンスの
+C<number> 個分だけ、移動、複写、ゼロ埋めを行います。
+
+=head2 PerlIO
+
+=begin original
+
+The most recent development releases of Perl has been experimenting with
+removing Perl's dependency on the "normal" standard I/O suite and allowing
+other stdio implementations to be used.  This involves creating a new
+abstraction layer that then calls whichever implementation of stdio Perl
+was compiled with.  All XSUBs should now use the functions in the PerlIO
+abstraction layer and not make any assumptions about what kind of stdio
+is being used.
+
+=end original
+
+最新リリースの Perl の開発では、Perl の「通常の」標準入出力ライブラリに
+依存している部分を取り除くことと、Perl で別の標準入出力の実装が
+使えるようにすることが試みられました。
+これにより必然的に、Perl と共にコンパイルされた標準入出力の実装を
+呼び出すような新しい抽象層が作られました。
+すべての XSUB は、今では PerlIO 抽象層の関数を使うべきで、
+これまで使っていた標準入出力に関してのすべての仮定はすべきではありません。
+
+=begin original
+
+For a complete description of the PerlIO abstraction, consult L<perlapio>.
+
+=end original
+
+PerlIO 抽象化に関する詳しい記述は  L<perlapio> を参照してください。
+
+=head2 Putting a C value on Perl stack
+
+(C での値を Perl スタックに入れる)
+
+=begin original
+
+A lot of opcodes (this is an elementary operation in the internal perl
+stack machine) put an SV* on the stack. However, as an optimization
+the corresponding SV is (usually) not recreated each time. The opcodes
+reuse specially assigned SVs (I<target>s) which are (as a corollary)
+not constantly freed/created.
+
+=end original
+
+たくさんのオペコード(これは内部的な perl スタックマシンでの基本的な
+操作です)が SV をスタックに置きます。
+しかしながら、SV に対する最適化のようなものは(通常は)毎回
+行なわれるわけではありません。
+オペコードは解放されたり、生成されることのない特別に割り当てられた
+SV (I<target>) を再利用します。
+
+=begin original
+
+Each of the targets is created only once (but see
+L<Scratchpads and recursion> below), and when an opcode needs to put
+an integer, a double, or a string on stack, it just sets the
+corresponding parts of its I<target> and puts the I<target> on stack.
+
+=end original
+
+それぞれの targets は、一度だけ生成して(ただし、後述する
+L<Scratchpads and recursion> を参照のこと)、オペコードがスタックに
+整数値、倍精度実数値、文字列といったものを置くことを必要とするときに、
+スタックに I<target> を置きます。
+
+=begin original
+
+The macro to put this target on stack is C<PUSHTARG>, and it is
+directly used in some opcodes, as well as indirectly in zillions of
+others, which use it via C<(X)PUSH[iunp]>.
+
+=end original
+
+この target をスタックに置くためのマクロが C<PUSHTARG> です; このマクロは、
+他の多くのマクロが C<(X)PUSH[iunp]> を通じて間接的に使っているのと同様に、
+幾つかのオペコードで直接使われています。
+
+=begin original
+
+Because the target is reused, you must be careful when pushing multiple
+values on the stack. The following code will not do what you think:
+
+=end original
+
+ターゲットは再利用されるので、スタックに複数の値をプッシュするときには
+注意しなければなりません。
+以下のコードはあなたが考えているようには動作しません:
+
+    XPUSHi(10);
+    XPUSHi(20);
+
+=begin original
+
+This translates as "set C<TARG> to 10, push a pointer to C<TARG> onto
+the stack; set C<TARG> to 20, push a pointer to C<TARG> onto the stack".
+At the end of the operation, the stack does not contain the values 10
+and 20, but actually contains two pointers to C<TARG>, which we have set
+to 20.
+
+=end original
+
+これは、「C<TARG> に 10 を設定して、C<TARG> へのポインタをスタックに
+プッシュする; C<TARG> に 20 を設定して、C<TARG> へのポインタをスタックに
+プッシュする」と解釈されます。
+操作の終了時、スタックには値 10 と 20 はなく、値 を 20 に設定された
+C<TARG> へのポインタが二つあります。
+
+=begin original
+
+If you need to push multiple different values then you should either use
+the C<(X)PUSHs> macros, or else use the new C<m(X)PUSH[iunp]> macros,
+none of which make use of C<TARG>.  The C<(X)PUSHs> macros simply push an
+SV* on the stack, which, as noted under L</XSUBs and the Argument Stack>,
+will often need to be "mortal".  The new C<m(X)PUSH[iunp]> macros make
+this a little easier to achieve by creating a new mortal for you (via
+C<(X)PUSHmortal>), pushing that onto the stack (extending it if necessary
+in the case of the C<mXPUSH[iunp]> macros), and then setting its value.
+Thus, instead of writing this to "fix" the example above:
+
+=end original
+
+複数の異なった値をプッシュしたい場合、C<(X)PUSHs> マクロを使うか、新しい
+C<m(X)PUSH[iunp]> マクロを使う必要があります; どちらもC<TARG> は使いません。
+C<(X)PUSHs> マクロは単に SV* をスタックにプッシュし、この値は、
+L</XSUBs and the Argument Stack> で注意されているように、
+しばしば「揮発性」である必要があります。
+新しい C<m(X)PUSH[iunp]> マクロは、新しい揮発性値を
+(C<(X)PUSHmortal> を使って)作成し、それをスタックにプッシュし
+(C<mXPUSH[iunp]> マクロの場合もし必要なら拡張して)、それから値を設定します。
+従って、前述の例を「修正」するのに以下のように書く代わりに:
+
+    XPUSHs(sv_2mortal(newSViv(10)))
+    XPUSHs(sv_2mortal(newSViv(20)))
+
+=begin original
+
+you can simply write:
+
+=end original
+
+単純にこう書けます:
+
+    mXPUSHi(10)
+    mXPUSHi(20)
+
+=begin original
+
+On a related note, if you do use C<(X)PUSH[iunp]>, then you're going to
+need a C<dTARG> in your variable declarations so that the C<*PUSH*>
+macros can make use of the local variable C<TARG>.  See also C<dTARGET>
+and C<dXSTARG>.
+
+=end original
+
+関連する注意として、C<(X)PUSH[iunp]> を使うなら、C<*PUSH*> マクロが
+ローカル変数 C<TARG> を使うように、変数宣言に C<dTARG> が必要でしょう。
+C<dTARGET> と C<dXSTARG> も参照してください。
+
+=head2 Scratchpads
+
+(スクラッチパッド)
+
+=begin original
+
+The question remains on when the SVs which are I<target>s for opcodes
+are created. The answer is that they are created when the current
+unit--a subroutine or a file (for opcodes for statements outside of
+subroutines)--is compiled. During this time a special anonymous Perl
+array is created, which is called a scratchpad for the current unit.
+
+=end original
+
+残っている疑問は、オペコードに対する I<target>s である SV をいつ
+生成するのかということでしょう。
+その答えは、カレントユニット -- サブルーチンもしくは(サブルーチンの
+外側にある文のためのオペコードのための)ファイル -- が
+コンパイルされたときです。
+この間、特別な無名配列が生成されます; これはカレントユニットのための
+スクラッチパッド (scrachpad) と呼ばれるものです。
+
+=begin original
+
+A scratchpad keeps SVs which are lexicals for the current unit and are
+targets for opcodes. One can deduce that an SV lives on a scratchpad
+by looking on its flags: lexicals have C<SVs_PADMY> set, and
+I<target>s have C<SVs_PADTMP> set.
+
+=end original
+
+スクラッチパッドはカレントユニットのためのレキシカルやオペコードのための
+target である SV を保持します。
+SV があるスクラッチパッドを、SV のフラグを見ることによって
+推測することができます: レキシカルでは C<SVs_PADMY> されていて、
+I<target> では C<SVs_PADTMP> がセットされています。
+
+=begin original
+
+The correspondence between OPs and I<target>s is not 1-to-1. Different
+OPs in the compile tree of the unit can use the same target, if this
+would not conflict with the expected life of the temporary.
+
+=end original
+
+オペコードと I<target>s の間の対応は一対一ではありません。
+あるユニットの翻訳木 (compile tree)にある異なるオペコードは、これが一時変数の
+expected life と衝突していなければ同じ target を使うことができます。
+
+=head2 Scratchpads and recursion
+
+(スクラッチパッドと再帰)
+
+=begin original
+
+In fact it is not 100% true that a compiled unit contains a pointer to
+the scratchpad AV. In fact it contains a pointer to an AV of
+(initially) one element, and this element is the scratchpad AV. Why do
+we need an extra level of indirection?
+
+=end original
+
+コンパイルされたユニットがスクラッチパッド AV へのポインタを
+保持しているということは、100% 本当のことではありません。
+実際は、(初期値では)一要素の AV へのポインタを保持していて、この要素が
+スクラッチパッド AV なのです。
+なぜ、こういう余計な間接レベルを必要としているのでしょう?
+
+=begin original
+
+The answer is B<recursion>, and maybe B<threads>. Both
+these can create several execution pointers going into the same
+subroutine. For the subroutine-child not write over the temporaries
+for the subroutine-parent (lifespan of which covers the call to the
+child), the parent and the child should have different
+scratchpads. (I<And> the lexicals should be separate anyway!)
+
+=end original
+
+その答えは B<再帰> と、おそらく B<スレッド> です。
+これら二つは同じサブルーチンに対する別々の実行ポインタを
+生成しようとするかもしれません。
+子サブルーチンが(呼び出す子サブルーチンを覆っている寿命を持つ)
+親サブルーチンの一時変数を上書きしてしまわないように、
+親と子では、異なるスクラッチパッドを持つようにすべきです。
+(I<かつ>、レキシカルは分けておくべきなのです!)
+
+=begin original
+
+So each subroutine is born with an array of scratchpads (of length 1).
+On each entry to the subroutine it is checked that the current
+depth of the recursion is not more than the length of this array, and
+if it is, new scratchpad is created and pushed into the array.
+
+=end original
+
+各サブルーチンは、スクラッチパッドの(長さが 1 の)配列を伴って生成されます。
+サブルーチンに対する各エントリーはその時点での再帰の深さが
+この配列の長さよりも大きくないことをチェックします; そして、もし
+そうであれば、新たなスクラッチパッドが生成されて配列へとプッシュされます。
+
+=begin original
+
+The I<target>s on this scratchpad are C<undef>s, but they are already
+marked with correct flags.
+
+=end original
+
+このスクラッチパッドにある I<target>s は C<undef> ですが、これらはすでに
+正しいフラグによってマークされています。
+
+=head1 Compiled code
+
+(コンパイルされたコード)
+
+=head2 Code tree
+
+(コード木)
+
+=begin original
+
+Here we describe the internal form your code is converted to by
+Perl. Start with a simple example:
+
+=end original
+
+ここで、Perl によって変換されたプログラムの内部形式を説明しましょう。
+簡単な例から始めます。
+
+  $a = $b + $c;
+
+=begin original
+
+This is converted to a tree similar to this one:
+
+=end original
+
+これは次のような木構造へ変換されます:
+
+             assign-to
+           /           \
+          +             $a
+        /   \
+      $b     $c
+
+=begin original
+
+(but slightly more complicated).  This tree reflects the way Perl
+parsed your code, but has nothing to do with the execution order.
+There is an additional "thread" going through the nodes of the tree
+which shows the order of execution of the nodes.  In our simplified
+example above it looks like:
+
+=end original
+
+(実際にはもっと複雑です)。
+この木構造は、Perl があなたのプログラムを解析したやり方を反映していますが、
+実行の順序については反映していません。
+ノードの実行順序を表わす木構造のノードを辿ろうとする別の
+「スレッド」(thread) があります。
+先の簡単な例では、次のようになります。
+
+     $b ---> $c ---> + ---> $a ---> assign-to
+
+=begin original
+
+But with the actual compile tree for C<$a = $b + $c> it is different:
+some nodes I<optimized away>.  As a corollary, though the actual tree
+contains more nodes than our simplified example, the execution order
+is the same as in our example.
+
+=end original
+
+しかし、C<$a = $b + $c> に対する実際の解析木はこれと異なります: 一部の
+ノードがI<最適化>されています。
+その結果として、実際の木構造が私たちの単純な例よりも多くのノードを
+持っていたとしても、その実行順序は同じになります。
+
+=head2 Examining the tree
+
+(木を検査する)
+
+=begin original
+
+If you have your perl compiled for debugging (usually done with
+C<-DDEBUGGING> on the C<Configure> command line), you may examine the
+compiled tree by specifying C<-Dx> on the Perl command line.  The
+output takes several lines per node, and for C<$b+$c> it looks like
+this:
+
+=end original
+
+perl をデバッグ用にコンパイルした(通常は C<Configure> のコマンドラインで
+C<-DDEBUGGING> を使って行います)場合、Perl のコマンドラインで
+C<-Dx> を指定することによって解析木を検査することができます。
+その出力はノード毎に数行を取り、C<$b+$c> は以下のようになります。
+
+    5           TYPE = add  ===> 6
+                TARG = 1
+                FLAGS = (SCALAR,KIDS)
+                {
+                    TYPE = null  ===> (4)
+                      (was rv2sv)
+                    FLAGS = (SCALAR,KIDS)
+                    {
+    3                   TYPE = gvsv  ===> 4
+                        FLAGS = (SCALAR)
+                        GV = main::b
+                    }
+                }
+                {
+                    TYPE = null  ===> (5)
+                      (was rv2sv)
+                    FLAGS = (SCALAR,KIDS)
+                    {
+    4                   TYPE = gvsv  ===> 5
+                        FLAGS = (SCALAR)
+                        GV = main::c
+                    }
+                }
+
+=begin original
+
+This tree has 5 nodes (one per C<TYPE> specifier), only 3 of them are
+not optimized away (one per number in the left column).  The immediate
+children of the given node correspond to C<{}> pairs on the same level
+of indentation, thus this listing corresponds to the tree:
+
+=end original
+
+この木には五つのノード(C<TYPE> 毎にひとつ)があって、そのうちの
+三つだけが最適化されないものです(左側に数字のあるもの)。
+与えられたノードのすぐ下にある子供は同じレベルのインデントにある C<{}> の
+ペアに対応します; したがって、このリストは以下の木に対応します。
+
+                   add
+                 /     \
+               null    null
+                |       |
+               gvsv    gvsv
+
+=begin original
+
+The execution order is indicated by C<===E<gt>> marks, thus it is C<3
+4 5 6> (node C<6> is not included into above listing), i.e.,
+C<gvsv gvsv add whatever>.
+
+=end original
+
+実行順序は C<===E<gt>> マークによって表わされますから、C<3 4 5 6>
+(ノード C<6>は、上にあるリストには含まれません)となります;
+つまり、C<gvsv gvsv add whatever> ということになります。
+
+=begin original
+
+Each of these nodes represents an op, a fundamental operation inside the
+Perl core. The code which implements each operation can be found in the
+F<pp*.c> files; the function which implements the op with type C<gvsv>
+is C<pp_gvsv>, and so on. As the tree above shows, different ops have
+different numbers of children: C<add> is a binary operator, as one would
+expect, and so has two children. To accommodate the various different
+numbers of children, there are various types of op data structure, and
+they link together in different ways.
+
+=end original
+
+ノードのそれぞれは op を示し、これは Perl コア内部の基本的な操作です。
+それぞれの操作を実装しているコードは F<pp*.c> ファイルにあります;
+C<gvsv> 型の op を実装している関数は C<pp_gvsv>、といった形です。
+上述の木において、異なった op は異なった数の子を持ちます: C<add> は
+二項演算子で、推測される通り、二つの子を持ちます。
+様々に異なる数の子に対応するために、op データ構造には様々な種類があり、
+異なった方法で互いにリンクしています。
+
+=begin original
+
+The simplest type of op structure is C<OP>: this has no children. Unary
+operators, C<UNOP>s, have one child, and this is pointed to by the
+C<op_first> field. Binary operators (C<BINOP>s) have not only an
+C<op_first> field but also an C<op_last> field. The most complex type of
+op is a C<LISTOP>, which has any number of children. In this case, the
+first child is pointed to by C<op_first> and the last child by
+C<op_last>. The children in between can be found by iteratively
+following the C<op_sibling> pointer from the first child to the last.
+
+=end original
+
+op 構造体の最も単純な型は C<OP> です: これは子はありません。
+単項演算子である C<UNOP> は一つの子を持ち、これは C<op_first>
+フィールドによって示されています。
+二項演算子 (C<BINOP>) は C<op_first> フィールドだけでなく
+C<op_last> フィールドも持ちます。
+最も複雑な op の型は C<LISTOP> で、任意の数の子を持ちます。
+この場合、最初の子は C<op_first> で示され、最後の子は C<op_last> で示されます。
+その間の子は、最初の子から最後の子まで C<op_sibling> ポインタを反復的に
+辿ることで見つけられます。
+
+=begin original
+
+There are also two other op types: a C<PMOP> holds a regular expression,
+and has no children, and a C<LOOP> may or may not have children. If the
+C<op_children> field is non-zero, it behaves like a C<LISTOP>. To
+complicate matters, if a C<UNOP> is actually a C<null> op after
+optimization (see L</Compile pass 2: context propagation>) it will still
+have children in accordance with its former type.
+
+=end original
+
+あと二つの op 型があります: C<PMOP> は正規表現を保持し、子はありません;
+また C<LOOP> は子があるかもしれませんしないかもしれません。
+C<op_children> フィールドが非ゼロなら、C<LISTOP> のように振る舞います。
+問題を複雑にするために、もし C<UNOP> が最適化の後実際には
+C<null> op になった場合 (L</Compile pass 2: context propagation> を
+参照してください)、これは以前の形に一致する形で子を持ちます。
+
+=begin original
+
+Another way to examine the tree is to use a compiler back-end module, such
+as L<B::Concise>.
+
+=end original
+
+木を調べるその他の方法は、L<B::Concise> のようなコンパイラバックエンド
+モジュールを使うことです。
+
+=head2 Compile pass 1: check routines
+
+(コンパイルパス1: チェックルーチン)
+
+=begin original
+
+The tree is created by the compiler while I<yacc> code feeds it
+the constructions it recognizes. Since I<yacc> works bottom-up, so does
+the first pass of perl compilation.
+
+=end original
+
+この木構造は、I<yacc> が perl プログラムを読み込んでその構造を解析している
+間にコンパイラによって生成されます。
+yacc はボトムアップで動作するので、perl によるコンパイルの最初のパスで
+行なわれます。
+
+=begin original
+
+What makes this pass interesting for perl developers is that some
+optimization may be performed on this pass.  This is optimization by
+so-called "check routines".  The correspondence between node names
+and corresponding check routines is described in F<opcode.pl> (do not
+forget to run C<make regen_headers> if you modify this file).
+
+=end original
+
+perl 開発者にとって興味深いのは、このパスで行なわれるいくつかの
+最適化でしょう。
+これは、"check routines" とも呼ばれる最適化です。
+ノード名と対応するチェックルーチンとの間の対応は F<opcode.pl> に
+記述されています(このファイルを修正した場合には、C<make regen_headers> を
+実行することを忘れないでください)。
+
+=begin original
+
+A check routine is called when the node is fully constructed except
+for the execution-order thread.  Since at this time there are no
+back-links to the currently constructed node, one can do most any
+operation to the top-level node, including freeing it and/or creating
+new nodes above/below it.
+
+=end original
+
+チェックルーチンは、ノードが実行順序スレッドを除いて完全に
+構築されたときに呼び出されます。
+この時点では、構築されたノードに対する back-line が存在しないので、
+トップレベルノードに対して、新たなノードを生成したりノードを
+解放したりすることを含めて、ほとんどの操作を行うことができます。
+
+=begin original
+
+The check routine returns the node which should be inserted into the
+tree (if the top-level node was not modified, check routine returns
+its argument).
+
+=end original
+
+このチェックルーチンは木に挿入すべきノードを返します(トップレベルの
+ノードが変更されていなければ、チェックルーチンはその引数を返します)。
+
+=begin original
+
+By convention, check routines have names C<ck_*>. They are usually
+called from C<new*OP> subroutines (or C<convert>) (which in turn are
+called from F<perly.y>).
+
+=end original
+
+規約により、チェックルーチンは C<ck_*> のような名前を持ちます。
+これらは通常サブルーチン C<new*OP> (もしくは C<convert>) から
+呼び出されます(これらのサブルーチンは F<perly.y> から呼び出されます)。
+
+=head2 Compile pass 1a: constant folding
+
+(コンパイルパス1a: 定数の畳み込み)
+
+=begin original
+
+Immediately after the check routine is called the returned node is
+checked for being compile-time executable.  If it is (the value is
+judged to be constant) it is immediately executed, and a I<constant>
+node with the "return value" of the corresponding subtree is
+substituted instead.  The subtree is deleted.
+
+=end original
+
+チェックルーチンが呼び出された直後に、返されたノードはコンパイル時実行の
+ためのチェックが行なわれます。
+もしそうであれば(値が定数であると判定された)、そのノードは即座に実行されて、
+「戻り値」に対応する部分木は B<定数> ノードで置換され、部分木が削除されます。
+
+=begin original
+
+If constant folding was not performed, the execution-order thread is
+created.
+
+=end original
+
+定数の畳み込み(constant folding)が働かなければ、実行順序スレッドが
+生成されます。
+
+=head2 Compile pass 2: context propagation
+
+(コンパイルパス2: コンテキスト伝播)
+
+=begin original
+
+When a context for a part of compile tree is known, it is propagated
+down through the tree.  At this time the context can have 5 values
+(instead of 2 for runtime context): void, boolean, scalar, list, and
+lvalue.  In contrast with the pass 1 this pass is processed from top
+to bottom: a node's context determines the context for its children.
+
+=end original
+
+解析木の一部分のコンテキストがわかっているとき、それは木の末端へ伝播します。
+このとき、コンテキストは(実行時コンテキストの二種類ではなく)
+無効、真偽値、スカラ、リスト、左辺値の五種類の値を持つことができます。
+パス 1 とは対照的に、このパスではトップから末端へと処理が進みます:
+あるノードのコンテキストは、その下にある部分のコンテキストを決定します。
+
+=begin original
+
+Additional context-dependent optimizations are performed at this time.
+Since at this moment the compile tree contains back-references (via
+"thread" pointers), nodes cannot be free()d now.  To allow
+optimized-away nodes at this stage, such nodes are null()ified instead
+of free()ing (i.e. their type is changed to OP_NULL).
+
+=end original
+
+コンテキストに依存した最適化はこのときに行なわれます。
+この動作では解析木が("スレッド" ポインタを通じて)後方参照を含んでいるので、
+ノードをこの時に free() することはできません。
+このステージでノードを最適化するのを許すために、対象となるノードは
+free() されるかわりに null() されます(つまり、そのノードの型が OP_NULL に
+変えられるということ)。
+
+=head2 Compile pass 3: peephole optimization
+
+(コンパイルパス 3: 覗き穴最適化)
+
+=begin original
+
+After the compile tree for a subroutine (or for an C<eval> or a file)
+is created, an additional pass over the code is performed. This pass
+is neither top-down or bottom-up, but in the execution order (with
+additional complications for conditionals).  Optimizations performed
+at this stage are subject to the same restrictions as in the pass 2.
+
+=end original
+
+サブルーチン(もしくは C<eval> かファイル)に対する解析木が生成された後で、
+そのコードに対する追加パスが実行されます。
+このパスはトップダウンでもボトムアップでもなく、(条件に対する複雑さを伴った)
+実行順序です。
+このステージで行なわれる最適化はパス 2 でのものと同じ制限に従います。
+
+=begin original
+
+Peephole optimizations are done by calling the function pointed to
+by the global variable C<PL_peepp>.  By default, C<PL_peepp> just
+calls the function pointed to by the global variable C<PL_rpeepp>.
+By default, that performs some basic op fixups and optimisations along
+the execution-order op chain, and recursively calls C<PL_rpeepp> for
+each side chain of ops (resulting from conditionals).  Extensions may
+provide additional optimisations or fixups, hooking into either the
+per-subroutine or recursive stage, like this:
+
+=end original
+
+大域変数 C<PL_peepp> で示されている関数を呼び出すことによって、覗き穴最適化が
+行われます。
+デフォルトでは、C<PL_peepp> は単に大域変数 C<PL_rpeepp> で示されている
+関数を呼び出します。
+デフォルトでは、これは実行順 op チェーンに対する基本的な op の修正と最適化を
+行い、また(条件文の結果の) op のチェーンの両側に対して再帰的に C<PL_rpeepp> を
+呼び出します。
+エクステンションは、以下のように、サブルーチン毎か再帰ステージのどちらかに
+フックすることでさらなる最適化や修正を提供できます:
+
+    static peep_t prev_peepp;
+    static void my_peep(pTHX_ OP *o)
+    {
+        /* custom per-subroutine optimisation goes here */
+        prev_peepp(o);
+        /* custom per-subroutine optimisation may also go here */
+    }
+    BOOT:
+        prev_peepp = PL_peepp;
+        PL_peepp = my_peep;
+
+    static peep_t prev_rpeepp;
+    static void my_rpeep(pTHX_ OP *o)
+    {
+        OP *orig_o = o;
+        for(; o; o = o->op_next) {
+            /* custom per-op optimisation goes here */
+        }
+        prev_rpeepp(orig_o);
+    }
+    BOOT:
+        prev_rpeepp = PL_rpeepp;
+        PL_rpeepp = my_rpeep;
+
+=head2 Pluggable runops
+
+(プラガブルな runops)
+
+=begin original
+
+The compile tree is executed in a runops function.  There are two runops
+functions, in F<run.c> and in F<dump.c>.  C<Perl_runops_debug> is used
+with DEBUGGING and C<Perl_runops_standard> is used otherwise.  For fine
+control over the execution of the compile tree it is possible to provide
+your own runops function.
+
+=end original
+
+コンパイル木は runops 関数で実行されます。
+F<run.c> と F<dump.c> に二つの関数があります。
+C<Perl_runops_debug> は DEBUGGING で使われ、C<Perl_runops_standard> は
+その他で使われます。
+コンパイル木の実行を細かく制御するために、独自の runops 関数を
+設定できます。
+
+=begin original
+
+It's probably best to copy one of the existing runops functions and
+change it to suit your needs.  Then, in the BOOT section of your XS
+file, add the line:
+
+=end original
+
+既にある runops 関数の一つをコピーして、必要性に合わせて変更するのが
+おそらく最良です。
+それから、XS ファイルの BOOT セクションに、以下の行を追加します:
+
+  PL_runops = my_runops;
+
+=begin original
+
+This function should be as efficient as possible to keep your programs
+running as fast as possible.
+
+=end original
+
+この関数はプログラムを出来るだけ早く実行し続けられるように、出来るだけ
+効率的にするべきです。
+
+=head2 Compile-time scope hooks
+
+(コンパイル時スコープフック)
+
+=begin original
+
+As of perl 5.14 it is possible to hook into the compile-time lexical
+scope mechanism using C<Perl_blockhook_register>. This is used like
+this:
+
+=end original
+
+perl 5.14 から、C<Perl_blockhook_register> を使って、コンパイル時
+レキシカルスコープ機構にフックすることができるようになりました。
+これは次のようにして使います:
+
+    STATIC void my_start_hook(pTHX_ int full);
+    STATIC BHK my_hooks;
+
+    BOOT:
+        BhkENTRY_set(&my_hooks, bhk_start, my_start_hook);
+        Perl_blockhook_register(aTHX_ &my_hooks);
+
+=begin original
+
+This will arrange to have C<my_start_hook> called at the start of
+compiling every lexical scope. The available hooks are:
+
+=end original
+
+これは、レキシカルスコープのコンパイルを開始する毎に C<my_start_hook> が
+呼び出されるように設定します。
+利用可能なフックは:
+
+=over 4
+
+=item C<void bhk_start(pTHX_ int full)>
+
+=begin original
+
+This is called just after starting a new lexical scope. Note that Perl
+code like
+
+=end original
+
+これは新しいレキシカルスコープの開始の直後に呼び出されます。
+次のような Perl コードは
+
+    if ($x) { ... }
+
+=begin original
+
+creates two scopes: the first starts at the C<(> and has C<full == 1>,
+the second starts at the C<{> and has C<full == 0>. Both end at the
+C<}>, so calls to C<start> and C<pre/post_end> will match. Anything
+pushed onto the save stack by this hook will be popped just before the
+scope ends (between the C<pre_> and C<post_end> hooks, in fact).
+
+=end original
+
+二つのスコープを作ることに注意してください: 一つ目は C<(> の場所で
+C<full == 1> を持って始まり、二つ目は C<{> の場所で C<full == 0> を持って
+始まります。
+両方の末尾は C<}> なので、C<start> と C<pre/post_end> の呼び出しは
+一致します。
+このフックで保存スタックにプッシュされたあらゆるものはスコープが終わる直前
+(実際には C<pre_> と C<post_end> のフックの間) にポップされます。
+
+=item C<void bhk_pre_end(pTHX_ OP **o)>
+
+=begin original
+
+This is called at the end of a lexical scope, just before unwinding the
+stack. I<o> is the root of the optree representing the scope; it is a
+double pointer so you can replace the OP if you need to.
+
+=end original
+
+これはレキシカルスコープの終わり、スタックを巻き戻す直前に呼び出されます。
+I<o> はスコープを表現する op 木のルートです; これはダブルポインタなので
+必要なら OP を入れ替えることができます。
+
+=item C<void bhk_post_end(pTHX_ OP **o)>
+
+=begin original
+
+This is called at the end of a lexical scope, just after unwinding the
+stack. I<o> is as above. Note that it is possible for calls to C<pre_>
+and C<post_end> to nest, if there is something on the save stack that
+calls string eval.
+
+=end original
+
+これはレキシカルスコープの終わり、スタックを巻き戻した直後に呼び出されます。
+I<o> は上述の通りです。
+保存スタック上に文字列 eval を呼び出すものがあった場合、C<pre_> と
+C<post_end> がネストして呼び出される可能性があることに注意してください。
+
+=item C<void bhk_eval(pTHX_ OP *const o)>
+
+=begin original
+
+This is called just before starting to compile an C<eval STRING>, C<do
+FILE>, C<require> or C<use>, after the eval has been set up. I<o> is the
+OP that requested the eval, and will normally be an C<OP_ENTEREVAL>,
+C<OP_DOFILE> or C<OP_REQUIRE>.
+
+=end original
+
+これは C<eval STRING>, C<do FILE>, C<require>, C<use> のコンパイルを始める
+直前、eval が設定された後に呼び出されます。
+I<o> は eval を要求した OP で、通常は C<OP_ENTEREVAL>, C<OP_DOFILE>,
+C<OP_REQUIRE> のいずれかです。
+
+=back
+
+=begin original
+
+Once you have your hook functions, you need a C<BHK> structure to put
+them in. It's best to allocate it statically, since there is no way to
+free it once it's registered. The function pointers should be inserted
+into this structure using the C<BhkENTRY_set> macro, which will also set
+flags indicating which entries are valid. If you do need to allocate
+your C<BHK> dynamically for some reason, be sure to zero it before you
+start.
+
+=end original
+
+フック関数を持つと、それを入れる C<BHK> 構造体が必要です。
+これは静的に割り当てるのが最良です; 一度登録すると解放する方法はないからです。
+関数ポインタは C<BhkENTRY_set> マクロを使ってこの構造体に挿入されます;
+これはまたどのエントリが有効化を示すフラグを設定します。
+何らかの理由で C<BHK> を動的に割り当てる必要がある場合、開始前にゼロで
+埋めておく必要があります。
+
+=begin original
+
+Once registered, there is no mechanism to switch these hooks off, so if
+that is necessary you will need to do this yourself. An entry in C<%^H>
+is probably the best way, so the effect is lexically scoped; however it
+is also possible to use the C<BhkDISABLE> and C<BhkENABLE> macros to
+temporarily switch entries on and off. You should also be aware that
+generally speaking at least one scope will have opened before your
+extension is loaded, so you will see some C<pre/post_end> pairs that
+didn't have a matching C<start>.
+
+=end original
+
+フックが一旦登録されると、無効にするための機構はないので、それが必要な
+場合は自分自身でそうする必要があります。
+C<%^H> のエントリはおそらく最良の方法です; 効果はレキシカルスコープを
+持つからです; しかし一時的にエントリを有効または無効にするために
+C<BhkDISABLE> と C<BhkENABLE> マクロを使うことも可能です。
+また、一般的に言ってエクステンションが読み込まれる前に最低一つのスコープが
+開いているので、対になる C<start> のない C<pre/post_end> の組を見ることにも
+注意するべきです。
+
+=head1 Examining internal data structures with the C<dump> functions
+
+(内部データ構造を C<dump> 関数で調べる)
+
+=begin original
+
+To aid debugging, the source file F<dump.c> contains a number of
+functions which produce formatted output of internal data structures.
+
+=end original
+
+デバッグを助けるために、ソースファイル F<dump.c> に内部データ構造の
+フォーマットした出力を生成する多くの関数があります。
+
+=begin original
+
+The most commonly used of these functions is C<Perl_sv_dump>; it's used
+for dumping SVs, AVs, HVs, and CVs. The C<Devel::Peek> module calls
+C<sv_dump> to produce debugging output from Perl-space, so users of that
+module should already be familiar with its format.
+
+=end original
+
+これらの関数で最もよく使われるものは C<Perl_sv_dump> です; これは
+SV, AV, HV, CV をダンプするために使います。
+C<Devel::Peek> モジュールは、Perl 空間からのデバッグ出力を作成するために
+C<sv_dump> を呼び出すので、このモジュールのユーザーは既にこのフォーマットに
+親しみがあるはずです。
+
+=begin original
+
+C<Perl_op_dump> can be used to dump an C<OP> structure or any of its
+derivatives, and produces output similar to C<perl -Dx>; in fact,
+C<Perl_dump_eval> will dump the main root of the code being evaluated,
+exactly like C<-Dx>.
+
+=end original
+
+C<Perl_op_dump> は、C<OP> 構造体やその派生をダンプするために使い、
+C<perl -Dx> と同様の出力を作成します; 実際のところ、C<Perl_dump_eval> は
+C<-Dx> と正確に同じように、評価されたコードの main ルートをダンプします。
+
+=begin original
+
+Other useful functions are C<Perl_dump_sub>, which turns a C<GV> into an
+op tree, C<Perl_dump_packsubs> which calls C<Perl_dump_sub> on all the
+subroutines in a package like so: (Thankfully, these are all xsubs, so
+there is no op tree)
+
+=end original
+
+その他の有用な関数は、C<GV> を op 木に変換する C<Perl_dump_sub> と、
+パッケージの全てのサブルーチンで C<Perl_dump_sub> を呼び出す
+C<Perl_dump_packsubs>: (ありがたいことに、これらは全て xsub なので、
+op 木はありません)
+
+    (gdb) print Perl_dump_packsubs(PL_defstash)
+
+    SUB attributes::bootstrap = (xsub 0x811fedc 0)
+
+    SUB UNIVERSAL::can = (xsub 0x811f50c 0)
+
+    SUB UNIVERSAL::isa = (xsub 0x811f304 0)
+
+    SUB UNIVERSAL::VERSION = (xsub 0x811f7ac 0)
+
+    SUB DynaLoader::boot_DynaLoader = (xsub 0x805b188 0)
+
+=begin original
+
+and C<Perl_dump_all>, which dumps all the subroutines in the stash and
+the op tree of the main root.
+
+=end original
+
+および、stash の全てのサブルーチンと main ルートの op 木をダンプする
+C<Perl_dump_all> です。
+
+=head1 How multiple interpreters and concurrency are supported
+
+(複数インタプリタと並列性にどのように対応しているか)
+
+=head2 Background and PERL_IMPLICIT_CONTEXT
+
+(背景と PERL_IMPLICIT_CONTEXT)
+
+=begin original
+
+The Perl interpreter can be regarded as a closed box: it has an API
+for feeding it code or otherwise making it do things, but it also has
+functions for its own use.  This smells a lot like an object, and
+there are ways for you to build Perl so that you can have multiple
+interpreters, with one interpreter represented either as a C structure,
+or inside a thread-specific structure.  These structures contain all
+the context, the state of that interpreter.
+
+=end original
+
+Perl インタプリタはブラックボックスとして扱われます: コードに与えたり、
+何かをするための API がありますが、自分自身で使うための関数もあります。
+これはオブジェクトのような匂いがして、それぞれを C の構造体や
+スレッド固有の構造体の内部として表現する、複数のインタプリタを使えるように
+Perl をビルドするための方法があります。
+これらの構造体はそのインタプリタの全てのコンテキストと状態を含みます。
+
+=begin original
+
+One macro controls the major Perl build flavor: MULTIPLICITY. The
+MULTIPLICITY build has a C structure that packages all the interpreter
+state. With multiplicity-enabled perls, PERL_IMPLICIT_CONTEXT is also
+normally defined, and enables the support for passing in a "hidden" first
+argument that represents all three data structures. MULTIPLICITY makes
+multi-threaded perls possible (with the ithreads threading model, related
+to the macro USE_ITHREADS.)
+
+=end original
+
+一つのマクロは主な Perl ビルド設定: MULTIPLICITY です。
+MULTIPLICITY ビルドは全てのインタプリタ状態をパッケージした C の構造体を
+持ちます。
+MULTIPLICITY を遊行した perl では、PERL_IMPLICIT_CONTEXT も普通設定され、
+三つのデータ構造体全てを表現する「隠された」最初の引数を渡すことへの
+対応が有効になります。
+MULTIPLICITY は(マクロ USE_ITHREADS に関連する ithread スレッドモデルで)
+マルチスレッド perl を可能にします。
+
+=begin original
+
+Two other "encapsulation" macros are the PERL_GLOBAL_STRUCT and
+PERL_GLOBAL_STRUCT_PRIVATE (the latter turns on the former, and the
+former turns on MULTIPLICITY.)  The PERL_GLOBAL_STRUCT causes all the
+internal variables of Perl to be wrapped inside a single global struct,
+struct perl_vars, accessible as (globals) &PL_Vars or PL_VarsPtr or
+the function  Perl_GetVars().  The PERL_GLOBAL_STRUCT_PRIVATE goes
+one step further, there is still a single struct (allocated in main()
+either from heap or from stack) but there are no global data symbols
+pointing to it.  In either case the global struct should be initialised
+as the very first thing in main() using Perl_init_global_struct() and
+correspondingly tear it down after perl_free() using Perl_free_global_struct(),
+please see F<miniperlmain.c> for usage details.  You may also need
+to use C<dVAR> in your coding to "declare the global variables"
+when you are using them.  dTHX does this for you automatically.
+
+=end original
+
+あと二つの「カプセル化」マクロは PERL_GLOBAL_STRUCT と
+PERL_GLOBAL_STRUCT_PRIVATE です(後者は前者を有効にして、前者は
+MULTIPLICITY を有効にします。)
+PERL_GLOBAL_STRUCT は Perl の全ての内部変数を一つグローバル構造体である
+struct perl_vars にラップして、(グローバルに) &PL_Vars, PL_VarsPtr,
+Perl_GetVars() 関数でアクセスできます。
+PERL_GLOBAL_STRUCT_PRIVATE はもう一歩進めて、やはり(main() でヒープか
+スタックに割り当てられた)一つの構造体ですが、これを示すグローバルな
+データシンボルはありません。
+どちらの場合でもグローバルな構造体は Perl_init_global_struct() を使って
+main() の最初で初期化され、Perl_free_global_struct() を使って perl_free() の
+後で解放されます; 詳細な使用法については F<miniperlmain.c> を
+参照してください。
+これらを使う時、「グローバル変数を宣言する」ためにコード中で C<dVAR> を
+使う必要があるかもしれません。
+dTHX はこれを自動的に行います。
+
+=begin original
+
+To see whether you have non-const data you can use a BSD-compatible C<nm>:
+
+=end original
+
+非 const データがあるかどうかを見るには、BSD 互換の C<nm> を使えます:
+
+  nm libperl.a | grep -v ' [TURtr] '
+
+=begin original
+
+If this displays any C<D> or C<d> symbols, you have non-const data.
+
+=end original
+
+C<D> または C<d> シンボルが表示されたら、非 const データがあります。
+
+=begin original
+
+For backward compatibility reasons defining just PERL_GLOBAL_STRUCT
+doesn't actually hide all symbols inside a big global struct: some
+PerlIO_xxx vtables are left visible.  The PERL_GLOBAL_STRUCT_PRIVATE
+then hides everything (see how the PERLIO_FUNCS_DECL is used).
+
+=end original
+
+後方互換性のために、単に PERL_GLOBAL_STRUCT を定義しただけでは
+大きなグローバル構造体の全てのシンボルは隠れません: いくつかの
+PerlIO_xxx vtables は見えるままです。
+PERL_GLOBAL_STRUCT_PRIVATE は全てを隠します ( PERLIO_FUNCS_DECL の
+使い方を参照してください)。
+
+=begin original
+
+All this obviously requires a way for the Perl internal functions to be
+either subroutines taking some kind of structure as the first
+argument, or subroutines taking nothing as the first argument.  To
+enable these two very different ways of building the interpreter,
+the Perl source (as it does in so many other situations) makes heavy
+use of macros and subroutine naming conventions.
+
+=end original
+
+これら全ては明らかに、Perl 内部関数を、ある種の構造体を最初の引数として取る
+サブルーチンか、最初の引数に何も取らないサブルーチンにする方法が必要です。
+インタプリタのビルドをかなり異なった方法でこれら二つを有効にするために、
+Perl ソースは(その他の多くの状況で行うのと同様) マクロとサブルーチンの
+命名規則を激しく使っています。
+
+=begin original
+
+First problem: deciding which functions will be public API functions and
+which will be private.  All functions whose names begin C<S_> are private
+(think "S" for "secret" or "static").  All other functions begin with
+"Perl_", but just because a function begins with "Perl_" does not mean it is
+part of the API. (See L</Internal Functions>.) The easiest way to be B<sure> a
+function is part of the API is to find its entry in L<perlapi>.
+If it exists in L<perlapi>, it's part of the API.  If it doesn't, and you
+think it should be (i.e., you need it for your extension), send mail via
+L<perlbug> explaining why you think it should be.
+
+=end original
+
+最初の問題: どの関数が公的な API 関数になる関数で、どの関数が
+プライベートかを決定する。
+名前が C<S_> で始まる全ての関数はプライベートです ("S" は "secret" または
+"static" と考えてください)。
+その他の全ての関数は "Perl_" で始まりますが、"Perl_" で始まっているからと
+いって API の一部とは限りません。
+(L</Internal Functions> を参照してください。)
+関数が API の一部であることを B<確認する> 最も簡単な方法は、
+L<perlapi> からエントリを探すことです。
+もし L<perlapi> にあれば、API の一部です。
+もしなくて、あなたが これは API であるべきと考える(つまり、あなたの
+エクステンションに必要)なら、どうしてそう考えるかを説明したメールを
+L<perlbug> で送ってください。
+
+=begin original
+
+Second problem: there must be a syntax so that the same subroutine
+declarations and calls can pass a structure as their first argument,
+or pass nothing.  To solve this, the subroutines are named and
+declared in a particular way.  Here's a typical start of a static
+function used within the Perl guts:
+
+=end original
+
+二番目の問題: 同じサブルーチン定義と呼び出しが最初の引数として構造体を
+渡せるようにするか、何も渡さないようにする文法でなければなりません。
+問題を解決するために、サブルーチンは決められた方法で命名して宣言されます。
+以下は、Perl の内部で使われている静的関数の典型的な開始部分です:
+
+  STATIC void
+  S_incline(pTHX_ char *s)
+
+=begin original
+
+STATIC becomes "static" in C, and may be #define'd to nothing in some
+configurations in future.
+
+=end original
+
+STATIC は C では "static" になり、将来一部の設定では何もしないように
+#define されます。
+
+=begin original
+
+A public function (i.e. part of the internal API, but not necessarily
+sanctioned for use in extensions) begins like this:
+
+=end original
+
+公的な関数(つまり内部 API の一部ですが、エクステンションで使うのに許可は
+不要なもの)は以下のように始まります:
+
+  void
+  Perl_sv_setiv(pTHX_ SV* dsv, IV num)
+
+=begin original
+
+C<pTHX_> is one of a number of macros (in F<perl.h>) that hide the
+details of the interpreter's context.  THX stands for "thread", "this",
+or "thingy", as the case may be.  (And no, George Lucas is not involved. :-)
+The first character could be 'p' for a B<p>rototype, 'a' for B<a>rgument,
+or 'd' for B<d>eclaration, so we have C<pTHX>, C<aTHX> and C<dTHX>, and
+their variants.
+
+=end original
+
+C<pTHX_> は、インタプリタのコンテキストの詳細を隠すための(F<perl.h> にある)
+多くのマクロの一つです。
+THX は "thread", "this", "thingy" などから来ています。
+(そしてジョージルーカスは関係ありません。:-)
+最初の文字は 'p' がプロトタイプ(B<p>rototype)、'a' が引数(B<a>rgument)、
+'d' が宣言(B<d>eclaration) を意味するので、C<pTHX>, C<aTHX>, C<dTHX> および
+その変形があります。
+
+=begin original
+
+When Perl is built without options that set PERL_IMPLICIT_CONTEXT, there is no
+first argument containing the interpreter's context.  The trailing underscore
+in the pTHX_ macro indicates that the macro expansion needs a comma
+after the context argument because other arguments follow it.  If
+PERL_IMPLICIT_CONTEXT is not defined, pTHX_ will be ignored, and the
+subroutine is not prototyped to take the extra argument.  The form of the
+macro without the trailing underscore is used when there are no additional
+explicit arguments.
+
+=end original
+
+PERL_IMPLICIT_CONTEXT が設定されたオプションなしで Perl がビルドされると、
+インタプリタのコンテキストに最初の引数は含まれません。
+pTHX_ マクロの末尾の下線は、他の引数が引き続くのでマクロ拡張はコンテキスト
+引数の後にカンマが必要であることを示しています。
+PERL_IMPLICIT_CONTEXT が定義されていない場合、pTHX_ は無視され、
+サブルーチンは追加の引数を取るようなプロトタイプを持ちません。
+引き続く下線なしのマクロの形式は、追加の明示的な引数がない場合に使われます。
+
+=begin original
+
+When a core function calls another, it must pass the context.  This
+is normally hidden via macros.  Consider C<sv_setiv>.  It expands into
+something like this:
+
+=end original
+
+コア関数が他の関数を呼び出すとき、コンテキストを渡さなければなりません。
+これは普通マクロ経由で隠されます。
+C<sv_setiv> を考えてみます。
+これは以下のような感じに展開されます:
+
+    #ifdef PERL_IMPLICIT_CONTEXT
+      #define sv_setiv(a,b)      Perl_sv_setiv(aTHX_ a, b)
+      /* can't do this for vararg functions, see below */
+    #else
+      #define sv_setiv           Perl_sv_setiv
+    #endif
+
+=begin original
+
+This works well, and means that XS authors can gleefully write:
+
+=end original
+
+これはうまく動きますし、XS 作者は喜んで以下のように書けます:
+
+    sv_setiv(foo, bar);
+
+=begin original
+
+and still have it work under all the modes Perl could have been
+compiled with.
+
+=end original
+
+そしてやはり Perl がコンパイルされる全てのモードで動作します。
+
+=begin original
+
+This doesn't work so cleanly for varargs functions, though, as macros
+imply that the number of arguments is known in advance.  Instead we
+either need to spell them out fully, passing C<aTHX_> as the first
+argument (the Perl core tends to do this with functions like
+Perl_warner), or use a context-free version.
+
+=end original
+
+しかし、可変長引数関数ではそれほどきれいには動作しません; マクロは事前に
+引数の数が分かっていることを仮定しているからです。
+どちらかを完全に綴る必要があるようにする代わりに、最初の引数として
+C<aTHX_> を渡す(Perl コアは Perl_warner のような関数でこれをする
+傾向があります)か、コンテキストの影響を受けないバージョンを使います。
+
+=begin original
+
+The context-free version of Perl_warner is called
+Perl_warner_nocontext, and does not take the extra argument.  Instead
+it does dTHX; to get the context from thread-local storage.  We
+C<#define warner Perl_warner_nocontext> so that extensions get source
+compatibility at the expense of performance.  (Passing an arg is
+cheaper than grabbing it from thread-local storage.)
+
+=end original
+
+Perl_warner のコンテキストの影響を受けないバージョンは
+Perl_warner_nocontext と呼ばれ、追加の引数を取りません。
+代わりに、スレッドローカルなストレージからコンテキストを得るために
+dTHX; します。
+エクステンションが性能のコストでソース互換性を得るために
+C<#define warner Perl_warner_nocontext> とします。
+(一つの引数を渡すのはスレッドローカルなストレージから値を取り出すよりも
+安価です。)
+
+=begin original
+
+You can ignore [pad]THXx when browsing the Perl headers/sources.
+Those are strictly for use within the core.  Extensions and embedders
+need only be aware of [pad]THX.
+
+=end original
+
+Perl ヘッダ/ソースを見るときには [pad]THXx を無視できます。
+これらは純粋にコア内部での使用のためのものです。
+エクステンションと組み込みだけが [pad]THX の存在を知る必要があります。
+
+=head2 So what happened to dTHR?
+
+(それで dTHR に何が起こるの?)
+
+=begin original
+
+C<dTHR> was introduced in perl 5.005 to support the older thread model.
+The older thread model now uses the C<THX> mechanism to pass context
+pointers around, so C<dTHR> is not useful any more.  Perl 5.6.0 and
+later still have it for backward source compatibility, but it is defined
+to be a no-op.
+
+=end original
+
+C<dTHR> は、古いスレッドモデルに対応するために perl 5.005 で導入されました。
+古いスレッドモデルは今ではコンテキストのポインタを渡すのに C<THX> 機構を
+使うので、C<dTHR> はもはや有用ではありません。
+Perl 5.6.0 以降では、ソースの後方互換性のためにまだ存在していますが、
+何もしないように定義されています。
+
+=head2 How do I use all this in extensions?
+
+(これら全てをエクステンションで使うには?)
+
+=begin original
+
+When Perl is built with PERL_IMPLICIT_CONTEXT, extensions that call
+any functions in the Perl API will need to pass the initial context
+argument somehow.  The kicker is that you will need to write it in
+such a way that the extension still compiles when Perl hasn't been
+built with PERL_IMPLICIT_CONTEXT enabled.
+
+=end original
+
+Perl が PERL_IMPLICIT_CONTEXT 付きでビルドされると、Perl API の関数を
+呼び出すエクステンションは何か初期コンテキスト引数を渡す必要があります。
+キッカーは、Perl が PERL_IMPLICIT_CONTEXT を有効にせずにビルドされたときにも
+エクステンションがコンパイルできるようにそれを書く方法が必要ということです。
+
+=begin original
+
+There are three ways to do this.  First, the easy but inefficient way,
+which is also the default, in order to maintain source compatibility
+with extensions: whenever F<XSUB.h> is #included, it redefines the aTHX
+and aTHX_ macros to call a function that will return the context.
+Thus, something like:
+
+=end original
+
+これをするには三つの方法があります。
+最初に、簡単だけれども効率的ではない方法ですが、エクステンションのソース
+互換性を維持するために、これがデフォルトです: F<XSUB.h> が #include されると、
+コンテキストを返す関数を呼び出すように aTHX と aTHX_ のマクロを再定義します。
+従って、以下のようなものが:
+
+        sv_setiv(sv, num);
+
+=begin original
+
+in your extension will translate to this when PERL_IMPLICIT_CONTEXT is
+in effect:
+
+=end original
+
+エクステンションにあると、PERL_IMPLICIT_CONTEXT が有効なら、以下のように
+翻訳します:
+
+        Perl_sv_setiv(Perl_get_context(), sv, num);
+
+=begin original
+
+or to this otherwise:
+
+=end original
+
+さもなければ、こうなります:
+
+        Perl_sv_setiv(sv, num);
+
+=begin original
+
+You have to do nothing new in your extension to get this; since
+the Perl library provides Perl_get_context(), it will all just
+work.
+
+=end original
+
+これをするためにエクステンション何の新しいこともする必要はありません;
+Perl ライブラリは Perl_get_context() を提供するので、全てうまく動作します。
+
+=begin original
+
+The second, more efficient way is to use the following template for
+your Foo.xs:
+
+=end original
+
+次に、より効率的な方法は、Foo.xs に以下のテンプレートを使うことです:
+
+        #define PERL_NO_GET_CONTEXT     /* we want efficiency */
+        #include "EXTERN.h"
+        #include "perl.h"
+        #include "XSUB.h"
+
+        STATIC void my_private_function(int arg1, int arg2);
+
+        STATIC void
+        my_private_function(int arg1, int arg2)
+        {
+            dTHX;       /* fetch context */
+            ... call many Perl API functions ...
+        }
+
+        [... etc ...]
+
+        MODULE = Foo            PACKAGE = Foo
+
+        /* typical XSUB */
+
+        void
+        my_xsub(arg)
+                int arg
+            CODE:
+                my_private_function(arg, 10);
+
+=begin original
+
+Note that the only two changes from the normal way of writing an
+extension is the addition of a C<#define PERL_NO_GET_CONTEXT> before
+including the Perl headers, followed by a C<dTHX;> declaration at
+the start of every function that will call the Perl API.  (You'll
+know which functions need this, because the C compiler will complain
+that there's an undeclared identifier in those functions.)  No changes
+are needed for the XSUBs themselves, because the XS() macro is
+correctly defined to pass in the implicit context if needed.
+
+=end original
+
+エクステンションを書く通常の方法とただ二つの違いは、Perl ヘッダを
+インクルードする前に C<#define PERL_NO_GET_CONTEXT> を追加して、
+Perl API を呼び出す全ての関数の先頭に C<dTHX;> 宣言を書くということに
+注意してください。
+(どの関数にこれが必要なのかは分かります; これらの関数に未宣言の識別子があると
+C コンパイラがエラーを出すからです。)
+XSUB 自身には変更は必要ありません; なぜなら XS() マクロは、もし必要なら
+暗黙のコンテキストを渡すように正しく定義されるからです。
+
+=begin original
+
+The third, even more efficient way is to ape how it is done within
+the Perl guts:
+
+=end original
+
+3 番目に、さらに効率的な方法は、Perl の内部で行われている方法を
+真似ることです:
+
+        #define PERL_NO_GET_CONTEXT     /* we want efficiency */
+        #include "EXTERN.h"
+        #include "perl.h"
+        #include "XSUB.h"
+
+        /* pTHX_ only needed for functions that call Perl API */
+        STATIC void my_private_function(pTHX_ int arg1, int arg2);
+
+        STATIC void
+        my_private_function(pTHX_ int arg1, int arg2)
+        {
+            /* dTHX; not needed here, because THX is an argument */
+            ... call Perl API functions ...
+        }
+
+        [... etc ...]
+
+        MODULE = Foo            PACKAGE = Foo
+
+        /* typical XSUB */
+
+        void
+        my_xsub(arg)
+                int arg
+            CODE:
+                my_private_function(aTHX_ arg, 10);
+
+=begin original
+
+This implementation never has to fetch the context using a function
+call, since it is always passed as an extra argument.  Depending on
+your needs for simplicity or efficiency, you may mix the previous
+two approaches freely.
+
+=end original
+
+この実装は、関数呼び出しを使ってコンテキストを取得する必要はありません;
+なぜなら常に追加の引数として渡されるからです。
+単純さと効率性のどちらが必要かに応じて、前述の二つの手法と自由に
+混ぜてもかまいません。
+
+=begin original
+
+Never add a comma after C<pTHX> yourself--always use the form of the
+macro with the underscore for functions that take explicit arguments,
+or the form without the argument for functions with no explicit arguments.
+
+=end original
+
+C<pTHX> の後ろに自分でカンマを追加しないでください -- 明示的な引数を
+取る関数の場合は下線のあるマクロの形式を、明示的な引数のない関数では
+引数なしの形式を、常に使ってください。
+
+=begin original
+
+If one is compiling Perl with the C<-DPERL_GLOBAL_STRUCT> the C<dVAR>
+definition is needed if the Perl global variables (see F<perlvars.h>
+or F<globvar.sym>) are accessed in the function and C<dTHX> is not
+used (the C<dTHX> includes the C<dVAR> if necessary).  One notices
+the need for C<dVAR> only with the said compile-time define, because
+otherwise the Perl global variables are visible as-is.
+
+=end original
+
+C<-DPERL_GLOBAL_STRUCT> 付きで Perl をコンパイルすると、Perl グローバル変数
+(F<perlvars.h> や F<globvar.sym> を参照)が関数内でアクセスされて、
+C<dVAR> が使われない(C<dTHX> は、必要なら C<dVAR> をインクルードします)場合、
+C<dVAR> 定義が必要です。
+C<dVAR> の必要性はコンパイル時の定義でのみ気付きます; なぜならさもなければ
+Perl グローバル変数はそのまま見えるからです。
+
+=head2 Should I do anything special if I call perl from multiple threads?
+
+(複数のスレッドから perl を呼び出すのに何か特別なことをするべき?)
+
+=begin original
+
+If you create interpreters in one thread and then proceed to call them in
+another, you need to make sure perl's own Thread Local Storage (TLS) slot is
+initialized correctly in each of those threads.
+
+=end original
+
+あるスレッドでインタプリタを作成して、それから他のスレッドでそれを
+呼び出そうとするなら、perl の独自のスレッドローカルストレージ
+(Thread Local Storage (TLS)) スロットがそれぞれのスレッドで正しく
+初期化されるようにする必要があります。
+
+=begin original
+
+The C<perl_alloc> and C<perl_clone> API functions will automatically set
+the TLS slot to the interpreter they created, so that there is no need to do
+anything special if the interpreter is always accessed in the same thread that
+created it, and that thread did not create or call any other interpreters
+afterwards.  If that is not the case, you have to set the TLS slot of the
+thread before calling any functions in the Perl API on that particular
+interpreter.  This is done by calling the C<PERL_SET_CONTEXT> macro in that
+thread as the first thing you do:
+
+=end original
+
+C<perl_alloc> と C<perl_clone> の API 関数は、作成されたインタプリタへの
+TLS スロットを自動的に設定するので、インタプリタを作成したスレッドと
+同じスレッドでだけ使って、そのスレッドがその後他のインタプリタを作成したり
+呼び出したりしないのなら、何も特別なことをする必要はありません。
+そうでない場合、特定のインタプリタの Perl API の関数を呼び出す前に、
+そのスレッドの TLS スロットを設定する必要があります。
+これは、そのスレッドで最初にすることとして C<PERL_SET_CONTEXT> マクロを
+呼び出すことで行われます:
+
+	/* do this before doing anything else with some_perl */
+	PERL_SET_CONTEXT(some_perl);
+
+	... other Perl API calls on some_perl go here ...
+
+=head2 Future Plans and PERL_IMPLICIT_SYS
+
+(将来の計画と PERL_IMPLICIT_SYS)
+
+=begin original
+
+Just as PERL_IMPLICIT_CONTEXT provides a way to bundle up everything
+that the interpreter knows about itself and pass it around, so too are
+there plans to allow the interpreter to bundle up everything it knows
+about the environment it's running on.  This is enabled with the
+PERL_IMPLICIT_SYS macro.  Currently it only works with USE_ITHREADS on
+Windows.
+
+=end original
+
+PERL_IMPLICIT_CONTEXT が、インタプリタが自分自身および渡されたものに関して
+知っていること全てをまとめる方法を提供しているのとちょうど同じように、
+インタプリタが自分が実行している環境について知っている全てを
+まとられるようにする計画があります。
+これは PERL_IMPLICIT_SYS マクロで有効にされます。
+現在のところ、これは Windows で USE_ITHREADS 付きの場合にのみ動作します。
+
+=begin original
+
+This allows the ability to provide an extra pointer (called the "host"
+environment) for all the system calls.  This makes it possible for
+all the system stuff to maintain their own state, broken down into
+seven C structures.  These are thin wrappers around the usual system
+calls (see F<win32/perllib.c>) for the default perl executable, but for a
+more ambitious host (like the one that would do fork() emulation) all
+the extra work needed to pretend that different interpreters are
+actually different "processes", would be done here.
+
+=end original
+
+これにより、全てのシステムコールのための(「ホスト」環境と呼ばれる)
+追加のポインタを提供する能力を持つようになります。
+これにより、独自の状態を保守する全てのシステムの機能について、七つの
+C 構造体に分解することが可能になります。
+デフォルトの perl 実行ファイルのために、通常のシステムコールへの
+薄いラッパです (F<win32/perllib.c> を参照してください) が、
+(fork() エミュレーションを行うような)より意欲的なホストのために、
+異なるインタプリタが実際には異なる「プロセス」であることを装うために
+必要になる全ての作業は、ここで行われます。
+
+=begin original
+
+The Perl engine/interpreter and the host are orthogonal entities.
+There could be one or more interpreters in a process, and one or
+more "hosts", with free association between them.
+
+=end original
+
+Perl エンジン/インタプリタとホストは直交する概念です。
+一つのプロセスに複数のインタプリタがあることもありますし、複数の「ホスト」が
+互いに自由に関連しながらあることもあります。
+
+=head1 Internal Functions
+
+(内部関数)
+
+=begin original
+
+All of Perl's internal functions which will be exposed to the outside
+world are prefixed by C<Perl_> so that they will not conflict with XS
+functions or functions used in a program in which Perl is embedded.
+Similarly, all global variables begin with C<PL_>. (By convention,
+static functions start with C<S_>.)
+
+=end original
+
+外部の世界に曝されている Perl の内部関数の全ては C<Perl_> の接頭辞が
+ついているので、XS 関数や Perl が組み込まれている関数で使われている関数と
+衝突しません。
+同様に、全てのグローバル変数は C<PL_> で始まります。
+(慣例的に、静的関数は C<S_> で始まります。)
+
+=begin original
+
+Inside the Perl core (C<PERL_CORE> defined), you can get at the functions
+either with or without the C<Perl_> prefix, thanks to a bunch of defines
+that live in F<embed.h>. Note that extension code should I<not> set
+C<PERL_CORE>; this exposes the full perl internals, and is likely to cause
+breakage of the XS in each new perl release.
+
+=end original
+
+(C<PERL_CORE> が定義されている) Perl コアの内側では、F<embed.h> にある
+たくさんの define のおかげで、C<Perl_> 接頭辞ありとなしのどちらかの関数を
+使えます。
+エクステンションコードは C<PERL_CORE> を設定するべきでは I<ありません>;
+これは完全な perl 内部を暴露して、新しい perl のリリース毎に XS を
+壊す原因となります。
+
+=begin original
+
+The file F<embed.h> is generated automatically from
+F<embed.pl> and F<embed.fnc>. F<embed.pl> also creates the prototyping
+header files for the internal functions, generates the documentation
+and a lot of other bits and pieces. It's important that when you add
+a new function to the core or change an existing one, you change the
+data in the table in F<embed.fnc> as well. Here's a sample entry from
+that table:
+
+=end original
+
+ファイル F<embed.h> F<embed.pl> と F<embed.fnc> から自動的に生成されます。
+F<embed.pl> は内部関数のためのヘッダファイルのプロトタイプも作成し、
+その他の多くの欠片の文書も生成します。
+新しい関数をコアに追加したり既にあるものを変更したりした場合、
+F<embed.fnc> にある表のデータも変更することが重要です。
+以下はその表のエントリの例です:
+
+    Apd |SV**   |av_fetch   |AV* ar|I32 key|I32 lval
+
+=begin original
+
+The second column is the return type, the third column the name. Columns
+after that are the arguments. The first column is a set of flags:
+
+=end original
+
+2 番目の列は返り値型で、3 番目の列は名前です。
+それ以降の列は引数です。
+最初の列はフラグの集合です:
+
+=over 3
+
+=item A
+
+=begin original
+
+This function is a part of the public API. All such functions should also
+have 'd', very few do not.
+
+=end original
+
+この関数は公式 API の一部です。
+このような関数全ては 'd' も持っているべきですが、ごく一部は違います。
+
+=item p
+
+=begin original
+
+This function has a C<Perl_> prefix; i.e. it is defined as
+C<Perl_av_fetch>.
+
+=end original
+
+この関数は C<Perl_> 接頭辞を持っています; つまり、C<Perl_av_fetch> として
+定義されています。
+
+=item d
+
+=begin original
+
+This function has documentation using the C<apidoc> feature which we'll
+look at in a second.  Some functions have 'd' but not 'A'; docs are good.
+
+=end original
+
+この関数は、すぐに見られる C<apidoc> 機能を使った文書があります。
+一部の関数は 'd' ですが 'A' ではありません; 文書はよいものです。
+
+=back
+
+=begin original
+
+Other available flags are:
+
+=end original
+
+その他の利用可能なフラグは:
+
+=over 3
+
+=item s
+
+=begin original
+
+This is a static function and is defined as C<STATIC S_whatever>, and
+usually called within the sources as C<whatever(...)>.
+
+=end original
+
+これは静的関数で、C<STATIC S_whatever> として定義されており、普通は
+ソース中で C<whatever(...)> として呼び出されます。
+
+=item n
+
+=begin original
+
+This does not need a interpreter context, so the definition has no
+C<pTHX>, and it follows that callers don't use C<aTHX>.  (See
+L<perlguts/Background and PERL_IMPLICIT_CONTEXT>.)
+
+=end original
+
+これはインタプリタのコンテキストを必要としないので、定義には C<pTHX> はなく、
+呼び出し元は C<aTHX> を使いません。
+(L<perlguts/Background and PERL_IMPLICIT_CONTEXT> を参照してください。)
+
+=item r
+
+=begin original
+
+This function never returns; C<croak>, C<exit> and friends.
+
+=end original
+
+この関数は返りません; C<croak>, C<exit> のようなものです。
+
+=item f
+
+=begin original
+
+This function takes a variable number of arguments, C<printf> style.
+The argument list should end with C<...>, like this:
+
+=end original
+
+この関数は C<printf> 形式の可変長の引数を取ります。
+引数のリストは以下のように C<...> で終わります:
+
+    Afprd   |void   |croak          |const char* pat|...
+
+=item M
+
+=begin original
+
+This function is part of the experimental development API, and may change
+or disappear without notice.
+
+=end original
+
+この関数は実験的開発 API の一部で、注意なしに変更されたり消滅したり
+するかもしれません。
+
+=item o
+
+=begin original
+
+This function should not have a compatibility macro to define, say,
+C<Perl_parse> to C<parse>. It must be called as C<Perl_parse>.
+
+=end original
+
+この関数は、C<Perl_parse> から C<parse> のような定義されている互換性マクロを
+持っていません。
+これは C<Perl_parse> として呼び出されなければなりません。
+
+=item x
+
+=begin original
+
+This function isn't exported out of the Perl core.
+
+=end original
+
+この関数は Perl コアの外側へエクスポートされません。
+
+=item m
+
+=begin original
+
+This is implemented as a macro.
+
+=end original
+
+これはマクロとして実装されています。
+
+=item X
+
+=begin original
+
+This function is explicitly exported.
+
+=end original
+
+この関数は明示的にエクスポートされます。
+
+=item E
+
+=begin original
+
+This function is visible to extensions included in the Perl core.
+
+=end original
+
+この関数は Perl コアに含まれるエクステンションから見えます。
+
+=item b
+
+=begin original
+
+Binary backward compatibility; this function is a macro but also has
+a C<Perl_> implementation (which is exported).
+
+=end original
+
+バイナリ後方互換性; この関数はマクロですが、(エクスポートされている)
+C<Perl_> 実装もあります。
+
+=item others
+
+=begin original
+
+See the comments at the top of C<embed.fnc> for others.
+
+=end original
+
+その他については C<embed.fnc> の先頭のコメントを参照してください。
+
+=back
+
+=begin original
+
+If you edit F<embed.pl> or F<embed.fnc>, you will need to run
+C<make regen_headers> to force a rebuild of F<embed.h> and other
+auto-generated files.
+
+=end original
+
+F<embed.pl> または F<embed.fnc> を編集した場合、F<embed.h> およびその他の
+自動生成ファイルを強制的にリビルドするために C<make regen_headers> を
+実行する必要があります。
+
+=head2 Formatted Printing of IVs, UVs, and NVs
+
+(IV, UV, NV のフォーマットされた表示)
+
+=begin original
+
+If you are printing IVs, UVs, or NVS instead of the stdio(3) style
+formatting codes like C<%d>, C<%ld>, C<%f>, you should use the
+following macros for portability
+
+=end original
+
+IV, UV, NVS を、stdio(3) 形式の C<%d>, C<%ld>, C<%f> のような
+フォーマッティングコードではなく表示したいなら、互換性のために以下の
+マクロを使うべきです
+
+=begin original
+
+        IVdf            IV in decimal
+        UVuf            UV in decimal
+        UVof            UV in octal
+        UVxf            UV in hexadecimal
+        NVef            NV %e-like
+        NVff            NV %f-like
+        NVgf            NV %g-like
+
+=end original
+
+        IVdf            IV を 10 進で
+        UVuf            UV を 10 進で
+        UVof            UV を 8 進で
+        UVxf            UV を 16 進で
+        NVef            NV を %e 風に
+        NVff            NV を %f 風に
+        NVgf            NV を %g 風に
+
+=begin original
+
+These will take care of 64-bit integers and long doubles.
+For example:
+
+=end original
+
+これらは 64 ビット整数や long double も考慮します。
+例えば:
+
+        printf("IV is %"IVdf"\n", iv);
+
+=begin original
+
+The IVdf will expand to whatever is the correct format for the IVs.
+
+=end original
+
+IVdf は、なんであれ IV のための正しいフォーマットに拡張されます。
+
+=begin original
+
+If you are printing addresses of pointers, use UVxf combined
+with PTR2UV(), do not use %lx or %p.
+
+=end original
+
+ポインタのアドレスを表示したいなら、PTR2UV() で UVxf を使ってください;
+%lx や %p は使わないでください。
+
+=head2 Pointer-To-Integer and Integer-To-Pointer
+
+(ポインタから整数と整数からポインタ)
+
+=begin original
+
+Because pointer size does not necessarily equal integer size,
+use the follow macros to do it right.
+
+=end original
+
+ポインタサイズは整数のサイズと同じである必要はないので、正しく行うために
+以下のマクロを使ってください。
+
+        PTR2UV(pointer)
+        PTR2IV(pointer)
+        PTR2NV(pointer)
+        INT2PTR(pointertotype, integer)
+
+=begin original
+
+For example:
+
+=end original
+
+例えば:
+
+        IV  iv = ...;
+        SV *sv = INT2PTR(SV*, iv);
+
+=begin original
+
+and
+
+=end original
+
+および
+
+        AV *av = ...;
+        UV  uv = PTR2UV(av);
+
+=head2 Exception Handling
+
+(例外処理)
+
+=begin original
+
+There are a couple of macros to do very basic exception handling in XS
+modules. You have to define C<NO_XSLOCKS> before including F<XSUB.h> to
+be able to use these macros:
+
+=end original
+
+XS モジュールでのとても基本的な例外処理を行うためのいくつかのマクロがあります。
+これらのマクロを使えるようにするために F<XSUB.h> をインクルードする前に
+C<NO_XSLOCKS> を定義する必要があります:
+
+        #define NO_XSLOCKS
+        #include "XSUB.h"
+
+=begin original
+
+You can use these macros if you call code that may croak, but you need
+to do some cleanup before giving control back to Perl. For example:
+
+=end original
+
+croak するかもしれないコードを呼び出すときにこれらのマクロが使えますが、
+Perl に制御を戻す前に一部掃除掃除をする必要があります。
+例えば:
+
+        dXCPT;    /* set up necessary variables */
+
+        XCPT_TRY_START {
+          code_that_may_croak();
+        } XCPT_TRY_END
+
+        XCPT_CATCH
+        {
+          /* do cleanup here */
+          XCPT_RETHROW;
+        }
+
+=begin original
+
+Note that you always have to rethrow an exception that has been
+caught. Using these macros, it is not possible to just catch the
+exception and ignore it. If you have to ignore the exception, you
+have to use the C<call_*> function.
+
+=end original
+
+捕捉した例外を常に再スローする必要があることに注意してください。
+これらのマクロを使って、単に例外を捕捉して無視することはできません。
+例外を無視する必要があるなら、C<call_*> 関数を使う必要があります。
+
+=begin original
+
+The advantage of using the above macros is that you don't have
+to setup an extra function for C<call_*>, and that using these
+macros is faster than using C<call_*>.
+
+=end original
+
+上述のマクロを使う利点は、C<call_*> のための追加の関数を設定する
+必要がないことと、これらのマクロを使うと C<call_*> を使うよりも
+高速であることです。
+
+=head2 Source Documentation
+
+(ソース文書)
+
+=begin original
+
+There's an effort going on to document the internal functions and
+automatically produce reference manuals from them - L<perlapi> is one
+such manual which details all the functions which are available to XS
+writers. L<perlintern> is the autogenerated manual for the functions
+which are not part of the API and are supposedly for internal use only.
+
+=end original
+
+内部関数の文書を書いて、そこからリファレンスマニュアルを自動的に
+生成しようという作業が行われています - L<perlapi> はその一つで、XS 作者が
+利用可能な全ての関数の詳細に関するマニュアルです。
+L<perlintern> は、API の一部ではなく、内部使用専用と想定されている関数の
+自動生成マニュアルです。
+
+=begin original
+
+Source documentation is created by putting POD comments into the C
+source, like this:
+
+=end original
+
+ソース文書は、以下のように、C ソースに POD コメントを書くことで作成されます:
+
+ /*
+ =for apidoc sv_setiv
+
+ Copies an integer into the given SV.  Does not handle 'set' magic.  See
+ C<sv_setiv_mg>.
+
+ =cut
+ */
+
+=begin original
+
+Please try and supply some documentation if you add functions to the
+Perl core.
+
+=end original
+
+Perl コアに関数を追加するなら、文書を書いて提供するようにしてください。
+
+=head2 Backwards compatibility
+
+(後方互換性)
+
+=begin original
+
+The Perl API changes over time. New functions are added or the interfaces
+of existing functions are changed. The C<Devel::PPPort> module tries to
+provide compatibility code for some of these changes, so XS writers don't
+have to code it themselves when supporting multiple versions of Perl.
+
+=end original
+
+Perl API は時が経つにつれて変わります。
+新しい関数が追加されたり、既にある関数のインターフェースが変更されたりします。
+C<Devel::PPPort> モジュールはこれらの変更の一部に関して互換コードを
+提供しようとするので、XS 作者は複数バージョンの Perl に対応するときに
+そのためのコードを自分自身で作る必要はありません。
+
+=begin original
+
+C<Devel::PPPort> generates a C header file F<ppport.h> that can also
+be run as a Perl script. To generate F<ppport.h>, run:
+
+=end original
+
+C<Devel::PPPort> は、Perl スクリプトとしても実行される C ヘッダファイル
+F<ppport.h> を生成します。
+F<ppport.h> を生成するには、以下のものを実行します:
+
+    perl -MDevel::PPPort -eDevel::PPPort::WriteFile
+
+=begin original
+
+Besides checking existing XS code, the script can also be used to retrieve
+compatibility information for various API calls using the C<--api-info>
+command line switch. For example:
+
+=end original
+
+既にある XS コードをチェックするほかに、このスクリプトは、C<--api-info>
+コマンドラインオプションを使うことで、様々な API 呼び出しの互換性情報を
+取得するのにも使えます。
+例えば:
+
+  % perl ppport.h --api-info=sv_magicext
+
+=begin original
+
+For details, see C<perldoc ppport.h>.
+
+=end original
+
+詳細については、C<perldoc ppport.h> を参照してください。
+
+=head1 Unicode Support
+
+(Unicode 対応)
+
+=begin original
+
+Perl 5.6.0 introduced Unicode support. It's important for porters and XS
+writers to understand this support and make sure that the code they
+write does not corrupt Unicode data.
+
+=end original
+
+Perl 5.6.0 から Unicode 対応が導入されました。
+porters と XS 作者にとって、この対応を理解して、書いたコードが Unicode
+データを壊さないようにすることは重要です。
+
+=head2 What B<is> Unicode, anyway?
+
+(ところで、Unicode って B<何> ?)
+
+=begin original
+
+In the olden, less enlightened times, we all used to use ASCII. Most of
+us did, anyway. The big problem with ASCII is that it's American. Well,
+no, that's not actually the problem; the problem is that it's not
+particularly useful for people who don't use the Roman alphabet. What
+used to happen was that particular languages would stick their own
+alphabet in the upper range of the sequence, between 128 and 255. Of
+course, we then ended up with plenty of variants that weren't quite
+ASCII, and the whole point of it being a standard was lost.
+
+=end original
+
+古く、あまり啓蒙されていなかった時代、私たち全ては ASCII を使っていました。
+とりあえず、私たちのほとんどはそうでした。
+ASCII の大きな問題は、これは英語だったことです。
+えっと、これは本当の問題ではありません; 問題は、英文字を使わない
+人々にとっては特に有用ではないということです。
+起こったことは、ある種の言語は独自のアルファベットを並びの上半分、
+128 から 255 にくっつけるということでした。
+もちろん、結局完全に ASCII ではないものの変種だらけになり、標準となるものは
+失われました。
+
+=begin original
+
+Worse still, if you've got a language like Chinese or
+Japanese that has hundreds or thousands of characters, then you really
+can't fit them into a mere 256, so they had to forget about ASCII
+altogether, and build their own systems using pairs of numbers to refer
+to one character.
+
+=end original
+
+さらに悪いことに、数百または数千の文字がある中国語や日本語のような言語を
+使うとき、これらを単に 256 に納めるのは不可能なので、ASCII を完全に
+忘れてしまって、一つの文字を参照するのに二つの数の組み合わせを使う
+独自のシステムを構築しました。
+
+=begin original
+
+To fix this, some people formed Unicode, Inc. and
+produced a new character set containing all the characters you can
+possibly think of and more. There are several ways of representing these
+characters, and the one Perl uses is called UTF-8. UTF-8 uses
+a variable number of bytes to represent a character. You can learn more
+about Unicode and Perl's Unicode model in L<perlunicode>.
+
+=end original
+
+これを修正するために、一部の人々は Unicode, Inc. を作り、考えられる全ての
+文字以上のものを含む新しい文字集合を作成しました。
+これらの文字を表現するにはいくつかの方法があり、Perl が使うものは
+UTF-8 と呼ばれます。
+UTF-8 は 1 文字を表現するのに可変の数のバイトを使います。
+Unicode と Perl の Unicode モデルについては、L<perlunicode> で学べます。
+
+=head2 How can I recognise a UTF-8 string?
+
+(UTF-8 文字列を認識するには?)
+
+=begin original
+
+You can't. This is because UTF-8 data is stored in bytes just like
+non-UTF-8 data. The Unicode character 200, (C<0xC8> for you hex types)
+capital E with a grave accent, is represented by the two bytes
+C<v196.172>. Unfortunately, the non-Unicode string C<chr(196).chr(172)>
+has that byte sequence as well. So you can't tell just by looking - this
+is what makes Unicode input an interesting problem.
+
+=end original
+
+出来ません。
+これは、UTF-8 データは非 UTF-8 データと同じようにバイトとして
+保管されるからです。
+Unicode 文字 200 (16 進数で書くなら C<0xC8>) である、
+大文字 E(重アクセント記号付) は 2 バイト C<v196.172> で表現されます。
+残念ながら、非 Unicode 文字列 C<chr(196).chr(172)> も同じバイト並びを持ちます。
+従って、見ただけで判断することは出来ません - これが Unicode 入力を
+興味深い問題にしているものです。
+
+=begin original
+
+In general, you either have to know what you're dealing with, or you
+have to guess.  The API function C<is_utf8_string> can help; it'll tell
+you if a string contains only valid UTF-8 characters. However, it can't
+do the work for you. On a character-by-character basis, C<is_utf8_char>
+will tell you whether the current character in a string is valid UTF-8. 
+
+=end original
+
+一般的に、どうやって扱うかを知るか、推測するかのどちらかが必要です。
+API 関数 C<is_utf8_string> が助けになります; これは、文字列が有効な UTF-8
+文字列のみを含んでいるかを返します。
+しかし、これはあなたのための作業は出来ません。
+文字単位では、C<is_utf8_char> は文字列中の現在の文字が有効な
+UTF-8 かどうかを返します。
+
+=head2 How does UTF-8 represent Unicode characters?
+
+(どうやって UTF-8 は Unicode 文字を表現するの?)
+
+=begin original
+
+As mentioned above, UTF-8 uses a variable number of bytes to store a
+character. Characters with values 0...127 are stored in one byte, just
+like good ol' ASCII. Character 128 is stored as C<v194.128>; this
+continues up to character 191, which is C<v194.191>. Now we've run out of
+bits (191 is binary C<10111111>) so we move on; 192 is C<v195.128>. And
+so it goes on, moving to three bytes at character 2048.
+
+=end original
+
+上述したように、UTF-8 は文字を格納するのに可変の数のバイトを使います。
+値 0...127 の文字はちょうど ASCII と同じように 1 バイトで保管されます。
+文字 128 は C<v194.128> として保管されます; これは 文字 191 C<v194.191> まで
+続きます。
+ここでビットがなくなるので (191 は 2 進数では C<10111111>)、次に進みます;
+192 は C<v195.128> です。
+このように進んでいき、文字 2048 では 3 バイトになります。
+
+=begin original
+
+Assuming you know you're dealing with a UTF-8 string, you can find out
+how long the first character in it is with the C<UTF8SKIP> macro:
+
+=end original
+
+UTF-8 文字列の扱い方を知っていると仮定すると、最初の文字の長さは
+C<UTF8SKIP> マクロで知ることができます:
+
+    char *utf = "\305\233\340\240\201";
+    I32 len;
+
+    len = UTF8SKIP(utf); /* len is 2 here */
+    utf += len;
+    len = UTF8SKIP(utf); /* len is 3 here */
+
+=begin original
+
+Another way to skip over characters in a UTF-8 string is to use
+C<utf8_hop>, which takes a string and a number of characters to skip
+over. You're on your own about bounds checking, though, so don't use it
+lightly.
+
+=end original
+
+UTF-8 文字列で文字をスキップするもう一つの方法は、C<utf8_hop> を使うことで、
+これは文字列とスキップする文字数を取ります。
+しかし、独自でも境界チェックは出来るので、これを軽率に使わないでください。
+
+=begin original
+
+All bytes in a multi-byte UTF-8 character will have the high bit set,
+so you can test if you need to do something special with this
+character like this (the UTF8_IS_INVARIANT() is a macro that tests
+whether the byte can be encoded as a single byte even in UTF-8):
+
+=end original
+
+マルチバイト UTF-8 文字の全てのバイトは最上位ビットが設定されているので、
+このようにこの文字に何か特別のことをする必要がある場合は、これで
+テストできます(UTF8_IS_INVARIANT() は、たとえ UTF-8 であったとしても
+単一のバイトでエンコードされているかどうかをテストします):
+
+    U8 *utf;
+    UV uv;	/* Note: a UV, not a U8, not a char */
+
+    if (!UTF8_IS_INVARIANT(*utf))
+        /* Must treat this as UTF-8 */
+        uv = utf8_to_uv(utf);
+    else
+        /* OK to treat this character as a byte */
+        uv = *utf;
+
+=begin original
+
+You can also see in that example that we use C<utf8_to_uv> to get the
+value of the character; the inverse function C<uv_to_utf8> is available
+for putting a UV into UTF-8:
+
+=end original
+
+この例では、文字の値を得るために C<utf8_to_uv> を使うところも見られます;
+逆関数 C<uv_to_utf8> は、UV を UTF-8 にするのに使えます:
+
+    if (!UTF8_IS_INVARIANT(uv))
+        /* Must treat this as UTF8 */
+        utf8 = uv_to_utf8(utf8, uv);
+    else
+        /* OK to treat this character as a byte */
+        *utf8++ = uv;
+
+=begin original
+
+You B<must> convert characters to UVs using the above functions if
+you're ever in a situation where you have to match UTF-8 and non-UTF-8
+characters. You may not skip over UTF-8 characters in this case. If you
+do this, you'll lose the ability to match hi-bit non-UTF-8 characters;
+for instance, if your UTF-8 string contains C<v196.172>, and you skip
+that character, you can never match a C<chr(200)> in a non-UTF-8 string.
+So don't do that!
+
+=end original
+
+UTF-8 文字列と非 UTF-8 文字列のマッチングをする必要がある場合は、上述の
+関数を使って UV に変換 B<しなければなりません> 。
+このような場合では UTF-8 文字列を読み飛ばすことはできません。
+これをすると、最上位ビットの立った非 UTF-8 文字をマッチングする能力を
+失います; 例えば、UTF-8 文字列に C<v196.172> が含まれていて、この文字を
+スキップすると、非 UTF-8 文字列の C<chr(200)> にマッチングできません。
+従って、そうしないでください!
+
+=head2 How does Perl store UTF-8 strings?
+
+(どうやって Perl は UTF-8 文字列を保管するの?)
+
+=begin original
+
+Currently, Perl deals with Unicode strings and non-Unicode strings
+slightly differently. A flag in the SV, C<SVf_UTF8>, indicates that the
+string is internally encoded as UTF-8. Without it, the byte value is the
+codepoint number and vice versa (in other words, the string is encoded
+as iso-8859-1, but C<use feature 'unicode_strings'> is needed to get iso-8859-1
+semantics). You can check and manipulate this flag with the
+following macros:
+
+=end original
+
+現在のところ、Perl は Unicode 文字列と非 Unicode 文字列を少し違う形で扱います。
+SV のフラグ C<SVf_UTF8> は、文字列が内部で UTF-8 で
+エンコードされていることを示します。
+これがない場合は、バイトの値が符号位置で、逆も成り立ちます (言い換えると、
+文字列は iso-8859-1 としてエンコードされますが、iso-8859-1 の意味論を
+使うには C<use feature 'unicode_strings'> が必要です)。
+以下のマクロでこのフラグのチェックと操作ができます:
+
+    SvUTF8(sv)
+    SvUTF8_on(sv)
+    SvUTF8_off(sv)
+
+=begin original
+
+This flag has an important effect on Perl's treatment of the string: if
+Unicode data is not properly distinguished, regular expressions,
+C<length>, C<substr> and other string handling operations will have
+undesirable results.
+
+=end original
+
+このフラグは、Perl の文字列の扱いに重要な効果があります: Unicode データが
+適切に識別されないと、正規表現、C<length>、C<substr> およびその他の
+文字列操作演算子が想定外の結果となります。
+
+=begin original
+
+The problem comes when you have, for instance, a string that isn't
+flagged as UTF-8, and contains a byte sequence that could be UTF-8 -
+especially when combining non-UTF-8 and UTF-8 strings.
+
+=end original
+
+問題は、例えば、UTF-8 としてフラグが経っていない文字列と、UTF-8 になり得る
+バイト並びがある時に起こります - 特に非 UTF-8 文字列と UTF-8 文字列を
+結合するときに起こります。
+
+=begin original
+
+Never forget that the C<SVf_UTF8> flag is separate to the PV value; you
+need be sure you don't accidentally knock it off while you're
+manipulating SVs. More specifically, you cannot expect to do this:
+
+=end original
+
+C<SVf_UTF8> フラグは PV の値とは分かれていることを決して忘れないでください;
+SV の捜査中に間違ってオフにしないように注意する必要があります。
+より具体的には、以下のようにすることは想定できません:
+
+    SV *sv;
+    SV *nsv;
+    STRLEN len;
+    char *p;
+
+    p = SvPV(sv, len);
+    frobnicate(p);
+    nsv = newSVpvn(p, len);
+
+=begin original
+
+The C<char*> string does not tell you the whole story, and you can't
+copy or reconstruct an SV just by copying the string value. Check if the
+old SV has the UTF8 flag set, and act accordingly:
+
+=end original
+
+C<char*> 文字列は一部始終を示しはせず、単に文字列の値をコピーするだけでは
+SV のコピーや再構成は出来ません。
+もし古い SV の UTF8 フラグがセットされているかどうかを調べて、それに従って
+行動します:
+
+    p = SvPV(sv, len);
+    frobnicate(p);
+    nsv = newSVpvn(p, len);
+    if (SvUTF8(sv))
+        SvUTF8_on(nsv);
+
+=begin original
+
+In fact, your C<frobnicate> function should be made aware of whether or
+not it's dealing with UTF-8 data, so that it can handle the string
+appropriately.
+
+=end original
+
+実際、C<frobnicate> 関数は、文字列を適切に扱えるようにするために、
+UTF-8 データを扱えるかどうかが分かるようにするべきです。
+
+=begin original
+
+Since just passing an SV to an XS function and copying the data of
+the SV is not enough to copy the UTF8 flags, even less right is just
+passing a C<char *> to an XS function.
+
+=end original
+
+単に XS 関数に SV を渡して、SV のデータをコピーするだけでは、
+UTF8 フラグをコピーするのは不十分です; 正しいのが C<char *> を XS 関数に
+渡すことでもです。
+
+=head2 How do I convert a string to UTF-8?
+
+(どうやって文字列を UTF-8 に変換するの?)
+
+=begin original
+
+If you're mixing UTF-8 and non-UTF-8 strings, it is necessary to upgrade
+one of the strings to UTF-8. If you've got an SV, the easiest way to do
+this is:
+
+=end original
+
+UTF-8 と non-UTF-8 の文字列を混ぜるなら、文字列の片方を UTF-8 に
+昇格させる必要があります。
+SV を使っているなら、これをするのに最も簡単な方法は:
+
+    sv_utf8_upgrade(sv);
+
+=begin original
+
+However, you must not do this, for example:
+
+=end original
+
+しかし、例えば以下のようにしてはいけません:
+
+    if (!SvUTF8(left))
+        sv_utf8_upgrade(left);
+
+=begin original
+
+If you do this in a binary operator, you will actually change one of the
+strings that came into the operator, and, while it shouldn't be noticeable
+by the end user, it can cause problems in deficient code.
+
+=end original
+
+これを二項演算子で行うなら、演算子から来る文字列の一つを実際に変更し、
+エンドユーザーは気がつくべきではない一方、不完全なコードによる
+問題を引き起こすかもしれません。
+
+=begin original
+
+Instead, C<bytes_to_utf8> will give you a UTF-8-encoded B<copy> of its
+string argument. This is useful for having the data available for
+comparisons and so on, without harming the original SV. There's also
+C<utf8_to_bytes> to go the other way, but naturally, this will fail if
+the string contains any characters above 255 that can't be represented
+in a single byte.
+
+=end original
+
+代わりに、C<bytes_to_utf8> は、文字列引数を UTF-8 でエンコードした
+B<コピー> を作ります。
+これは、元の SV に影響を与えることなく、比較などに使えるデータを作るのに
+有用です。
+また、逆方向を自然に行う C<utf8_to_bytes> もあります; これは文字列に
+単一バイトで表現できない、番号 255 を超える文字が含まれていると失敗します。
+
+=head2 Is there anything else I need to know?
+
+(他に知っておくべきことは?)
+
+=begin original
+
+Not really. Just remember these things:
+
+=end original
+
+実際にはありません。
+単に以下のことを覚えておいてください:
+
+=over 3
+
+=item *
+
+=begin original
+
+There's no way to tell if a string is UTF-8 or not. You can tell if an SV
+is UTF-8 by looking at is C<SvUTF8> flag. Don't forget to set the flag if
+something should be UTF-8. Treat the flag as part of the PV, even though
+it's not - if you pass on the PV to somewhere, pass on the flag too.
+
+=end original
+
+文字列が UTF-8 かどうかを知らせる方法はありません。
+SV が UTF-8 であるなら C<SvUTF8> フラグを見ることで分かります。
+何かが UTF-8 であるべきならフラグを設定することを忘れないでください。
+たとえそうでなくても、このフラグを PV の一部として扱ってください - PV を
+どこかに渡すときは、このフラグも渡してください。
+
+=item *
+
+=begin original
+
+If a string is UTF-8, B<always> use C<utf8_to_uv> to get at the value,
+unless C<UTF8_IS_INVARIANT(*s)> in which case you can use C<*s>.
+
+=end original
+
+文字列が UTF-8 なら、値を得るときは B<常に> C<utf8_to_uv> を使ってください;
+但し、C<UTF8_IS_INVARIANT(*s)> の場合は C<*s> を使えます。
+
+=item *
+
+=begin original
+
+When writing a character C<uv> to a UTF-8 string, B<always> use
+C<uv_to_utf8>, unless C<UTF8_IS_INVARIANT(uv))> in which case
+you can use C<*s = uv>.
+
+=end original
+
+文字 C<uv> を UTF-8 文字列を書き込むときは B<常に> C<uv_to_utf8> を
+使ってください; 但し、C<UTF8_IS_INVARIANT(uv))> の場合は C<*s = uv> を
+使えます。
+
+=item *
+
+=begin original
+
+Mixing UTF-8 and non-UTF-8 strings is tricky. Use C<bytes_to_utf8> to get
+a new string which is UTF-8 encoded, and then combine them.
+
+=end original
+
+UTF-8 と 非 UTF-8 の文字列を混ぜるのはトリッキーです。
+UTF-8 エンコードされた新しい文字列を得るには C<bytes_to_utf8> を
+使ってから、結合してください。
+
+=back
+
+=head1 Custom Operators
+
+(カスタム演算子)
+
+=begin original
+
+Custom operator support is a new experimental feature that allows you to
+define your own ops. This is primarily to allow the building of
+interpreters for other languages in the Perl core, but it also allows
+optimizations through the creation of "macro-ops" (ops which perform the
+functions of multiple ops which are usually executed together, such as
+C<gvsv, gvsv, add>.)
+
+=end original
+
+カスタム演算子対応は独自の op を定義できる新しい実験的機能です。
+これは主に Perl コアに他の言語のためのインタプリタを
+構築できるようにするためのものですが、「マクロ op」
+(C<gvsv, gvsv, add> のように、普段一緒に実行される複数の op の関数を
+実行する op) を作成することで最適化できるようにもします。
+
+=begin original
+
+This feature is implemented as a new op type, C<OP_CUSTOM>. The Perl
+core does not "know" anything special about this op type, and so it will
+not be involved in any optimizations. This also means that you can
+define your custom ops to be any op structure - unary, binary, list and
+so on - you like.
+
+=end original
+
+この機能は 新しい op 型である C<OP_CUSTOM> として実装されています。
+Perl コアはこの op 型について何も特別なことは「知りません」し、
+どのような最適化も行いません。
+これはまた、どのような op 構造 - 単項、二項、リストなど - でも
+好きなものになれるカスタム op を定義できるということです。 
+
+=begin original
+
+It's important to know what custom operators won't do for you. They
+won't let you add new syntax to Perl, directly. They won't even let you
+add new keywords, directly. In fact, they won't change the way Perl
+compiles a program at all. You have to do those changes yourself, after
+Perl has compiled the program. You do this either by manipulating the op
+tree using a C<CHECK> block and the C<B::Generate> module, or by adding
+a custom peephole optimizer with the C<optimize> module.
+
+=end original
+
+カスタム演算子がしないことを知ることは重要です。
+これは Perl に直接新しい文法を追加するものではありません。
+これは直接新しいキーワードを追加するものではありません。
+実際のところ、Perl がプログラムする方法を何も変えません。
+これらの変更は、Perl がプログラムをコンパイルした後、自分でする必要があります。
+これは、C<CHECK> ブロックと C<B::Generate> モジュールを使って op 木を
+操作するか、C<optimize> モジュールでカスタム覗き穴最適化器を追加することで
+行います。
+
+=begin original
+
+When you do this, you replace ordinary Perl ops with custom ops by
+creating ops with the type C<OP_CUSTOM> and the C<pp_addr> of your own
+PP function. This should be defined in XS code, and should look like
+the PP ops in C<pp_*.c>. You are responsible for ensuring that your op
+takes the appropriate number of values from the stack, and you are
+responsible for adding stack marks if necessary.
+
+=end original
+
+これを行うとき、C<OP_CUSTOM> 型と独自の PP 関数の C<pp_addr> を持つ
+カスタム op を作成して、普通の Perl op を置き換えます。
+これは XS コードで定義されるべきで、C<pp_*.c> の PP op のように
+見えるべきです。
+作成した op がスタックから適切な数の値を取ることと、必要ならスタックに
+マークを追加することは作成者が責任を持ちます。
+
+=begin original
+
+You should also "register" your op with the Perl interpreter so that it
+can produce sensible error and warning messages. Since it is possible to
+have multiple custom ops within the one "logical" op type C<OP_CUSTOM>,
+Perl uses the value of C<< o->op_ppaddr >> to determine which custom op
+it is dealing with. You should create an C<XOP> structure for each
+ppaddr you use, set the properties of the custom op with
+C<XopENTRY_set>, and register the structure against the ppaddr using
+C<Perl_custom_op_register>. A trivial example might look like:
+
+=end original
+
+また、Perl インタプリタに作成した op を「登録」して、適切なエラーと
+警告メッセージを生成できるようにします。
+一つの「論理」op 型 C<OP_CUSTOM> に複数のカスタム op を
+含めることができるので、Perl はどのカスタム op を扱うかを決定するのに
+C<< o->op_ppaddr >> の値を使います。
+Perl は、どのカスタム op を扱うのかを決定するために  C<< o->op_ppaddr >> を
+使います。
+使用する ppaddr 毎に C<XOP> 構造体を作成し、カスタム op のプロパティに
+C<XopENTRY_set> を設定し、C<Perl_custom_op_register> を使って構造体の ppaddr を
+登録するべきです。
+典型的な例は次のようなものです:
+
+    static XOP my_xop;
+    static OP *my_pp(pTHX);
+
+    BOOT:
+        XopENTRY_set(&my_xop, xop_name, "myxop");
+        XopENTRY_set(&my_xop, xop_desc, "Useless custom op");
+        Perl_custom_op_register(aTHX_ my_pp, &my_xop);
+
+=begin original
+
+The available fields in the structure are:
+
+=end original
+
+この構造体で利用可能なフィールドは:
+
+=over 4
+
+=item xop_name
+
+=begin original
+
+A short name for your op. This will be included in some error messages,
+and will also be returned as C<< $op->name >> by the L<B|B> module, so
+it will appear in the output of module like L<B::Concise|B::Concise>.
+
+=end original
+
+op のための短い名前です。
+これは一部のエラーメッセージに含まれ、また L<B|B> モジュールによって
+C<< $op->name >> として返されるので、L<B::Concise|B::Concise> のような
+モジュールの出力として現れます。
+
+=item xop_desc
+
+=begin original
+
+A short description of the function of the op.
+
+=end original
+
+この op の関数の短い説明。0l
+
+=item xop_class
+
+=begin original
+
+Which of the various C<*OP> structures this op uses. This should be one of
+the C<OA_*> constants from F<op.h>, namely
+
+=end original
+
+この op が様々な C<*OP> 構造体のどれを使うか。
+これは F<op.h> の C<OA_*> 定数のいずれかです; つまり
+
+=over 4
+
+=item OA_BASEOP
+
+=item OA_UNOP
+
+=item OA_BINOP
+
+=item OA_LOGOP
+
+=item OA_LISTOP
+
+=item OA_PMOP
+
+=item OA_SVOP
+
+=item OA_PADOP
+
+=item OA_PVOP_OR_SVOP
+
+=begin original
+
+This should be interpreted as 'C<PVOP>' only. The C<_OR_SVOP> is because
+the only core C<PVOP>, C<OP_TRANS>, can sometimes be a C<SVOP> instead.
+
+=end original
+
+これは 'C<PVOP>' のみとして解釈されるべきです。
+なぜなら C<_OR_SVOP> はコアの C<PVOP> のみで、C<OP_TRANS> は時々代わりに
+C<SVOP> になります。
+
+=item OA_LOOP
+
+=item OA_COP
+
+=back
+
+=begin original
+
+The other C<OA_*> constants should not be used.
+
+=end original
+
+その他の C<OA_*> 定数は使われるべきではありません。
+
+=item xop_peep
+
+=begin original
+
+This member is of type C<Perl_cpeep_t>, which expands to C<void
+(*Perl_cpeep_t)(aTHX_ OP *o, OP *oldop)>. If it is set, this function
+will be called from C<Perl_rpeep> when ops of this type are encountered
+by the peephole optimizer. I<o> is the OP that needs optimizing;
+I<oldop> is the previous OP optimized, whose C<op_next> points to I<o>.
+
+=end original
+
+このメンバは C<Perl_cpeep_t> 型で、
+C<void (*Perl_cpeep_t)(aTHX_ OP *o, OP *oldop)> に展開されます。
+これが設定されていると、この型の op が覗き穴最適化器に遭遇したときに
+この関数が C<Perl_rpeep> から呼び出されます。
+I<o> は最適化が必要な OP です; I<oldop> は最適化された以前の OP で、これの
+C<op_next> は I<o> を指しています。
+
+=back
+
+=begin original
+
+C<B::Generate> directly supports the creation of custom ops by name.
+
+=end original
+
+C<B::Generate> では名前によるカスタム op の作成に直接対応しています。
+
+=head1 AUTHORS
+
+=begin original
+
+Until May 1997, this document was maintained by Jeff Okamoto
+E<lt>okamoto@corp.hp.comE<gt>.  It is now maintained as part of Perl
+itself by the Perl 5 Porters E<lt>perl5-porters@perl.orgE<gt>.
+
+=end original
+
+1997 年 5 月まで、この文書は Jeff Okamoto
+E<lt>okamoto@corp.hp.comE<gt> によって保守されていました。
+今では Perl 自身の一部として
+Perl 5 Porters E<lt>perl5-porters@perl.orgE<gt> によって保守されています。
+
+=begin original
+
+With lots of help and suggestions from Dean Roehrich, Malcolm Beattie,
+Andreas Koenig, Paul Hudson, Ilya Zakharevich, Paul Marquess, Neil
+Bowers, Matthew Green, Tim Bunce, Spider Boardman, Ulrich Pfeifer,
+Stephen McCamant, and Gurusamy Sarathy.
+
+=end original
+
+Dean Roehrich, Malcolm Beattie,
+Andreas Koenig, Paul Hudson, Ilya Zakharevich, Paul Marquess, Neil
+Bowers, Matthew Green, Tim Bunce, Spider Boardman, Ulrich Pfeifer,
+Stephen McCamant, Gurusamy Sarathy から多くの助けと示唆を受けました。
+
+=head1 SEE ALSO
+
+L<perlapi>, L<perlintern>, L<perlxs>, L<perlembed>
+
+=begin meta
+
+Translate: KIMURA Koichi
+Update: Kentaro Shirakata <argrath@ub32.org> (5.10.0-)
+Status: completed
+
+=end meta
+

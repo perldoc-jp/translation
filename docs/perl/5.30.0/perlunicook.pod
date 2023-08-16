@@ -1,0 +1,1460 @@
+
+=encoding utf8
+
+=head1 NAME
+
+=begin original
+
+perlunicook - cookbookish examples of handling Unicode in Perl
+
+=end original
+
+perlunicook - Perl で Unicode を扱うためのクックブック風の例
+
+=head1 DESCRIPTION
+
+=begin original
+
+This manpage contains short recipes demonstrating how to handle common Unicode
+operations in Perl, plus one complete program at the end. Any undeclared
+variables in individual recipes are assumed to have a previous appropriate
+value in them.
+
+=end original
+
+この man ページには、Perl で一般的な Unicode 操作を扱う方法を説明する
+短いレシピと、最後に一つの完全なプログラムが含まれています。
+個々のレシピ内の宣言されていない変数は、それ以前に適切な値が
+設定されていることを仮定しています。
+
+=head1 EXAMPLES
+
+=head2 ℞ 0: Standard preamble
+
+(℞ 0: 標準の前提)
+
+=begin original
+
+Unless otherwise notes, all examples below require this standard preamble
+to work correctly, with the C<#!> adjusted to work on your system:
+
+=end original
+
+特に注記がない限り、以下のすべての例では、この標準の前提が正しく動作し、
+C<#!> がシステム上で動作するように調整されている必要があります。
+
+ #!/usr/bin/env perl
+
+=begin original
+
+ use utf8;      # so literals and identifiers can be in UTF-8
+ use v5.12;     # or later to get "unicode_strings" feature
+ use strict;    # quote strings, declare variables
+ use warnings;  # on by default
+ use warnings  qw(FATAL utf8);    # fatalize encoding glitches
+ use open      qw(:std :encoding(UTF-8)); # undeclared streams in UTF-8
+ use charnames qw(:full :short);  # unneeded in v5.16
+
+=end original
+
+ use utf8;      # 従ってリテラルと識別子で UTF-8 を使える
+ use v5.12;     # またはそれ以降; "unicode_strings" 機能を有効に
+ use strict;    # 文字列をクォート、変数を宣言
+ use warnings;  # デフォルトでオン
+ use warnings  qw(FATAL utf8);    # エンコーディングエラーを致命的エラーに
+ use open      qw(:std :encoding(UTF-8)); # 未宣言ストリームを UTF-8 に
+ use charnames qw(:full :short);  # v5.16 では不要
+
+=begin original
+
+This I<does> make even Unix programmers C<binmode> your binary streams,
+or open them with C<:raw>, but that's the only way to get at them
+portably anyway.
+
+=end original
+
+これは Unix プログラマでさえバイナリストリームを C<binmode> したり、
+C<:raw> で開いたり I<しています> が、それがとにかくこれらを
+移植性のあるものにする唯一の方法です。
+
+=begin original
+
+B<WARNING>: C<use autodie> (pre 2.26) and C<use open> do not get along with each
+other.
+
+=end original
+
+B<警告>: C<use autodie>(2.26 より前)と C<use open> は同時に使えません。
+
+=head2 ℞ 1: Generic Unicode-savvy filter
+
+(℞ 1: 一般的な Unicode が使えるフィルタ)
+
+=begin original
+
+Always decompose on the way in, then recompose on the way out.
+
+=end original
+
+常に、入り口で分解し、出口で再合成します。
+
+ use Unicode::Normalize;
+
+ while (<>) {
+     $_ = NFD($_);   # decompose + reorder canonically
+     ...
+ } continue {
+     print NFC($_);  # recompose (where possible) + reorder canonically
+ }
+
+=head2 ℞ 2: Fine-tuning Unicode warnings
+
+(℞ 2: Unicode 警告の微調整)
+
+=begin original
+
+As of v5.14, Perl distinguishes three subclasses of UTF‑8 warnings.
+
+=end original
+
+v5.14 から、Perl は UTF-8 警告の三つのサブクラスを区別しています。
+
+ use v5.14;                  # subwarnings unavailable any earlier
+ no warnings "nonchar";      # the 66 forbidden non-characters
+ no warnings "surrogate";    # UTF-16/CESU-8 nonsense
+ no warnings "non_unicode";  # for codepoints over 0x10_FFFF
+
+=head2 ℞ 3: Declare source in utf8 for identifiers and literals
+
+(℞ 3: 識別子とリテラルのためにソースが utf8 であると宣言する)
+
+=begin original
+
+Without the all-critical C<use utf8> declaration, putting UTF‑8 in your
+literals and identifiers won’t work right.  If you used the standard
+preamble just given above, this already happened.  If you did, you can
+do things like this:
+
+=end original
+
+最も重要な C<use utf8> 宣言なしの場合、リテラルと識別子に
+UTF-8 を入れると正しく動作しません。
+前述した標準の前提を使った場合、これは既に含まれています。
+その場合、以下のようなことができます:
+
+ use utf8;
+
+ my $measure   = "Ångström";
+ my @μsoft     = qw( cp852 cp1251 cp1252 );
+ my @ὑπέρμεγας = qw( ὑπέρ  μεγας );
+ my @鯉        = qw( koi8-f koi8-u koi8-r );
+ my $motto     = "👪 💗 🐪"; # FAMILY, GROWING HEART, DROMEDARY CAMEL
+
+=begin original
+
+If you forget C<use utf8>, high bytes will be misunderstood as
+separate characters, and nothing will work right.
+
+=end original
+
+C<use utf8> を忘れると、上位バイトは別々の文字として誤解され、
+何も正しく動作しません。
+
+=head2 ℞ 4: Characters and their numbers
+
+(℞ 4: 文字とその番号)
+
+=begin original
+
+The C<ord> and C<chr> functions work transparently on all codepoints,
+not just on ASCII alone — nor in fact, not even just on Unicode alone.
+
+=end original
+
+C<ord> 関数と C<chr> 関数は、すべての符号位置で透過的に動作します;
+ASCII だけではなく、実際には Unicode だけでもありません。
+
+ # ASCII characters
+ ord("A")
+ chr(65)
+
+ # characters from the Basic Multilingual Plane
+ ord("Σ")
+ chr(0x3A3)
+
+ # beyond the BMP
+ ord("𝑛")               # MATHEMATICAL ITALIC SMALL N
+ chr(0x1D45B)
+
+ # beyond Unicode! (up to MAXINT)
+ ord("\x{20_0000}")
+ chr(0x20_0000)
+
+=head2 ℞ 5: Unicode literals by character number
+
+(℞ 5: 文字番号による Unicode リテラル)
+
+=begin original
+
+In an interpolated literal, whether a double-quoted string or a
+regex, you may specify a character by its number using the
+C<\x{I<HHHHHH>}> escape.
+
+=end original
+
+展開リテラルでは、ダブルクォートで囲まれた文字列か正規表現かにかかわらず、
+C<\x{I<HHHHHH>}> エスケープを使用して番号で文字を指定できます。
+
+ String: "\x{3a3}"
+ Regex:  /\x{3a3}/
+
+ String: "\x{1d45b}"
+ Regex:  /\x{1d45b}/
+
+ # even non-BMP ranges in regex work fine
+ /[\x{1D434}-\x{1D467}]/
+
+=head2 ℞ 6: Get character name by number
+
+(℞ 6: 番号で文字名を取得する)
+
+ use charnames ();
+ my $name = charnames::viacode(0x03A3);
+
+=head2 ℞ 7: Get character number by name
+
+(℞ 7: 名前で文字番号を取得する)
+
+ use charnames ();
+ my $number = charnames::vianame("GREEK CAPITAL LETTER SIGMA");
+
+=head2 ℞ 8: Unicode named characters
+
+(℞ 8: Unicode 名による文字)
+
+=begin original
+
+Use the C<< \N{I<charname>} >> notation to get the character
+by that name for use in interpolated literals (double-quoted
+strings and regexes).  In v5.16, there is an implicit
+
+=end original
+
+展開リテラル(ダブルクォートで囲まれた文字列と正規表現)で用いる、
+名前で文字を得るために C<<\N{I<charname>}>> 表記を使います。
+v5.16 では、これは暗黙に指定されます:
+
+ use charnames qw(:full :short);
+
+=begin original
+
+But prior to v5.16, you must be explicit about which set of charnames you
+want.  The C<:full> names are the official Unicode character name, alias, or
+sequence, which all share a namespace.
+
+=end original
+
+しかし、v5.16 より前のバージョンでは、どの charnames の集合を使用するかを
+明示的に指定しなければなりません。
+C<:full> の名前は、Unicode の正式な文字名、別名、または
+並びであり、すべて名前空間を共有します。
+
+ use charnames qw(:full :short latin greek);
+
+ "\N{MATHEMATICAL ITALIC SMALL N}"      # :full
+ "\N{GREEK CAPITAL LETTER SIGMA}"       # :full
+
+=begin original
+
+Anything else is a Perl-specific convenience abbreviation.  Specify one or
+more scripts by names if you want short names that are script-specific.
+
+=end original
+
+それ以外は、Perl 固有の便利な省略形です。
+用字固有の短い名前が必要な場合は、一つ以上の用字を名前で指定します。
+
+ "\N{Greek:Sigma}"                      # :short
+ "\N{ae}"                               #  latin
+ "\N{epsilon}"                          #  greek
+
+=begin original
+
+The v5.16 release also supports a C<:loose> import for loose matching of
+character names, which works just like loose matching of property names:
+that is, it disregards case, whitespace, and underscores:
+
+=end original
+
+v5.16 リリースでは、文字名の緩やかなマッチングのための
+C<:loose> インポートにも対応しています;
+これは特性名の緩やかなマッチングと同じように機能します:
+つまり、大文字小文字、空白、下線は無視されます:
+
+ "\N{euro sign}"                        # :loose (from v5.16)
+
+=head2 ℞ 9: Unicode named sequences
+
+(℞ 9: Unicode 名による並び)
+
+=begin original
+
+These look just like character names but return multiple codepoints.
+Notice the C<%vx> vector-print functionality in C<printf>.
+
+=end original
+
+これらは文字名のように見えますが、複数の符号位置を返します。
+C<printf> の C<%vx> ベクトル表示機能に注目してください。
+
+ use charnames qw(:full);
+ my $seq = "\N{LATIN CAPITAL LETTER A WITH MACRON AND GRAVE}";
+ printf "U+%v04X\n", $seq;
+ U+0100.0300
+
+=head2 ℞ 10: Custom named characters
+
+(℞ 10: カスタム名による文字)
+
+=begin original
+
+Use C<:alias> to give your own lexically scoped nicknames to existing
+characters, or even to give unnamed private-use characters useful names.
+
+=end original
+
+C<:alias> を使用して、既存の文字に対してレキシカルスコープの
+独自のニックネームを付けたり、無名の私用文字に有用な名前を
+付けることができます。
+
+ use charnames ":full", ":alias" => {
+     ecute => "LATIN SMALL LETTER E WITH ACUTE",
+     "APPLE LOGO" => 0xF8FF, # private use character
+ };
+
+ "\N{ecute}"
+ "\N{APPLE LOGO}"
+
+=head2 ℞ 11: Names of CJK codepoints
+
+(℞ 11: CJK 符号位置の名前)
+
+=begin original
+
+Sinograms like “東京” come back with character names of
+C<CJK UNIFIED IDEOGRAPH-6771> and C<CJK UNIFIED IDEOGRAPH-4EAC>,
+because their “names” vary.  The CPAN C<Unicode::Unihan> module
+has a large database for decoding these (and a whole lot more), provided you
+know how to understand its output.
+
+=end original
+
+「東京」のような中国漢字は、「名前」が異なるため、
+C<CJK UNIFIED IDEOGRAPH-6771> と
+C<CJK UNIFIED IDEOGRAPH-4EAC> という文字名で戻ってきます。
+CPAN の C<Unicode::Unihan> モジュールは、その出力を理解する方法を
+知っていれば、これら(およびさらに多くの)文字をデコードするための
+大規模なデータベースを持ちます。
+
+ # cpan -i Unicode::Unihan
+ use Unicode::Unihan;
+ my $str = "東京";
+ my $unhan = Unicode::Unihan->new;
+ for my $lang (qw(Mandarin Cantonese Korean JapaneseOn JapaneseKun)) {
+     printf "CJK $str in %-12s is ", $lang;
+     say $unhan->$lang($str);
+ }
+
+=begin original
+
+prints:
+
+=end original
+
+これは次のものを表示します:
+
+ CJK 東京 in Mandarin     is DONG1JING1
+ CJK 東京 in Cantonese    is dung1ging1
+ CJK 東京 in Korean       is TONGKYENG
+ CJK 東京 in JapaneseOn   is TOUKYOU KEI KIN
+ CJK 東京 in JapaneseKun  is HIGASHI AZUMAMIYAKO
+
+=begin original
+
+If you have a specific romanization scheme in mind,
+use the specific module:
+
+=end original
+
+特定のローマ字化スキームを考えている場合は、特定のモジュールを使います:
+
+ # cpan -i Lingua::JA::Romanize::Japanese
+ use Lingua::JA::Romanize::Japanese;
+ my $k2r = Lingua::JA::Romanize::Japanese->new;
+ my $str = "東京";
+ say "Japanese for $str is ", $k2r->chars($str);
+
+=begin original
+
+prints
+
+=end original
+
+これは次のものを表示します:
+
+ Japanese for 東京 is toukyou
+
+=head2 ℞ 12: Explicit encode/decode
+
+(℞ 12: 明示的なエンコード/デコード)
+
+=begin original
+
+On rare occasion, such as a database read, you may be
+given encoded text you need to decode.
+
+=end original
+
+まれに、データベースの読み取りなど、デコードする必要がある
+エンコードされたテキストを受け取ることがあります。
+
+  use Encode qw(encode decode);
+
+  my $chars = decode("shiftjis", $bytes, 1);
+ # OR
+  my $bytes = encode("MIME-Header-ISO_2022_JP", $chars, 1);
+
+=begin original
+
+For streams all in the same encoding, don't use encode/decode; instead
+set the file encoding when you open the file or immediately after with
+C<binmode> as described later below.
+
+=end original
+
+同じエンコーディングのストリームに対しては、encode/decode を
+使わないでください;
+代わりに、後述するように、ファイルを開くとき、またはその直後に
+C<binmode> でファイルエンコーディングを設定してください。
+
+=head2 ℞ 13: Decode program arguments as utf8
+
+(℞ 13: プログラム引数を utf8 としてデコードする)
+
+     $ perl -CA ...
+ or
+     $ export PERL_UNICODE=A
+ or
+    use Encode qw(decode);
+    @ARGV = map { decode('UTF-8', $_, 1) } @ARGV;
+
+=head2 ℞ 14: Decode program arguments as locale encoding
+
+(℞ 14: プログラム引数をロケールエンコーディングとしてデコードする)
+
+    # cpan -i Encode::Locale
+    use Encode qw(locale);
+    use Encode::Locale;
+
+    # use "locale" as an arg to encode/decode
+    @ARGV = map { decode(locale => $_, 1) } @ARGV;
+
+=head2 ℞ 15: Declare STD{IN,OUT,ERR} to be utf8
+
+(℞ 15: STD{IN,OUT,ERR} を utf8 として宣言する)
+
+=begin original
+
+Use a command-line option, an environment variable, or else
+call C<binmode> explicitly:
+
+=end original
+
+コマンドラインオプションや環境変数を使うか、明示的に
+C<binmode> を呼び出します。
+
+     $ perl -CS ...
+ or
+     $ export PERL_UNICODE=S
+ or
+     use open qw(:std :encoding(UTF-8));
+ or
+     binmode(STDIN,  ":encoding(UTF-8)");
+     binmode(STDOUT, ":utf8");
+     binmode(STDERR, ":utf8");
+
+=head2 ℞ 16: Declare STD{IN,OUT,ERR} to be in locale encoding
+
+(℞ 15: STD{IN,OUT,ERR} をロケールエンコーディングとして宣言する)
+
+    # cpan -i Encode::Locale
+    use Encode;
+    use Encode::Locale;
+
+    # or as a stream for binmode or open
+    binmode STDIN,  ":encoding(console_in)"  if -t STDIN;
+    binmode STDOUT, ":encoding(console_out)" if -t STDOUT;
+    binmode STDERR, ":encoding(console_out)" if -t STDERR;
+
+=head2 ℞ 17: Make file I/O default to utf8
+
+(℞ 17: ファイル I/O のデフォルトを utf8 にする)
+
+=begin original
+
+Files opened without an encoding argument will be in UTF-8:
+
+=end original
+
+encoding 引数なしで開かれたファイルは UTF-8 になります:
+
+     $ perl -CD ...
+ or
+     $ export PERL_UNICODE=D
+ or
+     use open qw(:encoding(UTF-8));
+
+=head2 ℞ 18: Make all I/O and args default to utf8
+
+(℞ 18: 全ての I/O と引数のデフォルトを utf8 にする)
+
+     $ perl -CSDA ...
+ or
+     $ export PERL_UNICODE=SDA
+ or
+     use open qw(:std :encoding(UTF-8));
+     use Encode qw(decode);
+     @ARGV = map { decode('UTF-8', $_, 1) } @ARGV;
+
+=head2 ℞ 19: Open file with specific encoding
+
+(℞ 19: 特定のエンコーディングでファイルを開く)
+
+=begin original
+
+Specify stream encoding.  This is the normal way
+to deal with encoded text, not by calling low-level
+functions.
+
+=end original
+
+ストリームエンコーディングを指定します。
+これは、低レベル関数を呼び出すのではなく、エンコードされたテキストを
+処理する通常の方法です。
+
+ # input file
+     open(my $in_file, "< :encoding(UTF-16)", "wintext");
+ OR
+     open(my $in_file, "<", "wintext");
+     binmode($in_file, ":encoding(UTF-16)");
+ THEN
+     my $line = <$in_file>;
+
+ # output file
+     open($out_file, "> :encoding(cp1252)", "wintext");
+ OR
+     open(my $out_file, ">", "wintext");
+     binmode($out_file, ":encoding(cp1252)");
+ THEN
+     print $out_file "some text\n";
+
+=begin original
+
+More layers than just the encoding can be specified here. For example,
+the incantation C<":raw :encoding(UTF-16LE) :crlf"> includes implicit
+CRLF handling.
+
+=end original
+
+ここで指定できるのは、エンコーディングだけではありません。
+例えば、呪文 C<":raw :encoding(UTF-16LE) :crlf"> には
+暗黙的な CRLF 処理が含まれています。
+
+=head2 ℞ 20: Unicode casing
+
+(℞ 20: Unicode の大文字小文字)
+
+=begin original
+
+Unicode casing is very different from ASCII casing.
+
+=end original
+
+Unicode の大文字小文字は ASCII の大文字小文字とは大きく異なります。
+
+ uc("henry ⅷ")  # "HENRY Ⅷ"
+ uc("tschüß")   # "TSCHÜSS"  notice ß => SS
+
+ # both are true:
+ "tschüß"  =~ /TSCHÜSS/i   # notice ß => SS
+ "Σίσυφος" =~ /ΣΊΣΥΦΟΣ/i   # notice Σ,σ,ς sameness
+
+=head2 ℞ 21: Unicode case-insensitive comparisons
+
+(℞ 21: Unicode の大文字小文字を無視した比較)
+
+=begin original
+
+Also available in the CPAN L<Unicode::CaseFold> module,
+the new C<fc> “foldcase” function from v5.16 grants
+access to the same Unicode casefolding as the C</i>
+pattern modifier has always used:
+
+=end original
+
+CPAN の L<Unicode::CaseFold> モジュールでも利用可能な、v5.16 の新しい
+C<fc> "foldcase" 関数は、C</i> パターン修飾子が常に使ってきたのと同じ
+Unicode 大文字小文字畳み込みへのアクセスを与えます。
+
+ use feature "fc"; # fc() function is from v5.16
+
+ # sort case-insensitively
+ my @sorted = sort { fc($a) cmp fc($b) } @list;
+
+ # both are true:
+ fc("tschüß")  eq fc("TSCHÜSS")
+ fc("Σίσυφος") eq fc("ΣΊΣΥΦΟΣ")
+
+=head2 ℞ 22: Match Unicode linebreak sequence in regex
+
+(℞ 22: 正規表現中の Unicode 改行並びのマッチング)
+
+=begin original
+
+A Unicode linebreak matches the two-character CRLF
+grapheme or any of seven vertical whitespace characters.
+Good for dealing with textfiles coming from different
+operating systems.
+
+=end original
+
+Unicode の改行は、2 文字の CRLF 書記素または七つの垂直空白文字の
+いずれかにマッチングします。
+異なるオペレーティングシステムから送られてくるテキストファイルを
+扱うのに適しています。
+
+ \R
+
+ s/\R/\n/g;  # normalize all linebreaks to \n
+
+=head2 ℞ 23: Get character category
+
+(℞ 23: 文字カテゴリを得る)
+
+=begin original
+
+Find the general category of a numeric codepoint.
+
+=end original
+
+数値符号位置の一般カテゴリを見つけます。
+
+ use Unicode::UCD qw(charinfo);
+ my $cat = charinfo(0x3A3)->{category};  # "Lu"
+
+=head2 ℞ 24: Disabling Unicode-awareness in builtin charclasses
+
+(℞ 24: 組み込み文字クラスで Unicode 判定を無効にする)
+
+=begin original
+
+Disable C<\w>, C<\b>, C<\s>, C<\d>, and the POSIX
+classes from working correctly on Unicode either in this
+scope, or in just one regex.
+
+=end original
+
+このスコープまたは一つの正規表現で、C<\w>、C<\b>、C<\s>、C<\d>、
+および POSIX クラスが Unicode で正しく動作しないようにします。
+
+ use v5.14;
+ use re "/a";
+
+ # OR
+
+ my($num) = $str =~ /(\d+)/a;
+
+=begin original
+
+Or use specific un-Unicode properties, like C<\p{ahex}>
+and C<\p{POSIX_Digit>}.  Properties still work normally
+no matter what charset modifiers (C</d /u /l /a /aa>)
+should be effect.
+
+=end original
+
+または、C<\p{ahex}> や C<\p{POSIX_Digit>} などの特定の非 Unicode 特性を
+使います。
+どの文字集合修飾子 (C</d /u /l /a /aa>) が有効であっても、
+特性は正常に動作します。
+
+=head2 ℞ 25: Match Unicode properties in regex with \p, \P
+
+(℞ 25: 正規表現中に \p, \P を使って Unicode 特性にマッチングする)
+
+=begin original
+
+These all match a single codepoint with the given
+property.  Use C<\P> in place of C<\p> to match
+one codepoint lacking that property.
+
+=end original
+
+これらはすべて、指定された特性を持つ一つの符号位置にマッチングします。
+C<\p> の代わりに C<\P> を使用すると、その特性を持たない一つの符号位置に
+マッチングします。
+
+ \pL, \pN, \pS, \pP, \pM, \pZ, \pC
+ \p{Sk}, \p{Ps}, \p{Lt}
+ \p{alpha}, \p{upper}, \p{lower}
+ \p{Latin}, \p{Greek}
+ \p{script_extensions=Latin}, \p{scx=Greek}
+ \p{East_Asian_Width=Wide}, \p{EA=W}
+ \p{Line_Break=Hyphen}, \p{LB=HY}
+ \p{Numeric_Value=4}, \p{NV=4}
+
+=head2 ℞ 26: Custom character properties
+
+(℞ 26: カスタム文字特性)
+
+=begin original
+
+Define at compile-time your own custom character
+properties for use in regexes.
+
+=end original
+
+正規表現で使用する独自のカスタム文字特性をコンパイル時に定義します。
+
+ # using private-use characters
+ sub In_Tengwar { "E000\tE07F\n" }
+
+ if (/\p{In_Tengwar}/) { ... }
+
+ # blending existing properties
+ sub Is_GraecoRoman_Title {<<'END_OF_SET'}
+ +utf8::IsLatin
+ +utf8::IsGreek
+ &utf8::IsTitle
+ END_OF_SET
+
+ if (/\p{Is_GraecoRoman_Title}/ { ... }
+
+=head2 ℞ 27: Unicode normalization
+
+(℞ 27: Unicode 正規化)
+
+=begin original
+
+Typically render into NFD on input and NFC on output. Using NFKC or NFKD
+functions improves recall on searches, assuming you've already done to the
+same text to be searched. Note that this is about much more than just pre-
+combined compatibility glyphs; it also reorders marks according to their
+canonical combining classes and weeds out singletons.
+
+=end original
+
+通常は、入力では NFD に、出力では NFC にレンダリングされます。
+NFKC または NFKD 関数を使うことで、検索対象の同じテキストに対して
+既に実行していることを前提として、検索時の再呼び出しが改善されます。
+これは単に事前結合された互換グリフ以上のものであることに
+注意してください;
+正準結合クラスに従ってマークを並び替え、シングルトンを削除します。
+
+ use Unicode::Normalize;
+ my $nfd  = NFD($orig);
+ my $nfc  = NFC($orig);
+ my $nfkd = NFKD($orig);
+ my $nfkc = NFKC($orig);
+
+=head2 ℞ 28: Convert non-ASCII Unicode numerics
+
+(℞ 28: 非 ASCII Unicode 数字を変換する)
+
+=begin original
+
+Unless you’ve used C</a> or C</aa>, C<\d> matches more than
+ASCII digits only, but Perl’s implicit string-to-number
+conversion does not current recognize these.  Here’s how to
+convert such strings manually.
+
+=end original
+
+C</a> や C</aa> を使用していない限り、C<\d> は ASCII 数字以上のものに
+マッチングしますが、
+Perl の暗黙的な文字列から数値への変換では、現在のところこれらを
+認識できません。
+このような文字列を手動で変換する方法を以下に示します。
+
+ use v5.14;  # needed for num() function
+ use Unicode::UCD qw(num);
+ my $str = "got Ⅻ and ४५६७ and ⅞ and here";
+ my @nums = ();
+ while ($str =~ /(\d+|\N)/g) {  # not just ASCII!
+    push @nums, num($1);
+ }
+ say "@nums";   #     12      4567      0.875
+
+ use charnames qw(:full);
+ my $nv = num("\N{RUMI DIGIT ONE}\N{RUMI DIGIT TWO}");
+
+=head2 ℞ 29: Match Unicode grapheme cluster in regex
+
+(℞ 29: 正規表現中の Unicode 書記素クラスタにマッチングする)
+
+=begin original
+
+Programmer-visible “characters” are codepoints matched by C</./s>,
+but user-visible “characters” are graphemes matched by C</\X/>.
+
+=end original
+
+プログラマから見える「文字」は、C</./s> がマッチする符号位置ですが、
+ユーザから見える「文字」は、C</\X/> がマッチする書記素です。
+
+ # Find vowel *plus* any combining diacritics,underlining,etc.
+ my $nfd = NFD($orig);
+ $nfd =~ / (?=[aeiou]) \X /xi
+
+=head2 ℞ 30: Extract by grapheme instead of by codepoint (regex)
+
+(℞ 30: 符号位置によってではなく、書記素によって展開する (正規表現))
+
+ # match and grab five first graphemes
+ my($first_five) = $str =~ /^ ( \X{5} ) /x;
+
+=head2 ℞ 31: Extract by grapheme instead of by codepoint (substr)
+
+(℞ 31: 符号位置によってではなく、書記素によって展開する (substr))
+
+ # cpan -i Unicode::GCString
+ use Unicode::GCString;
+ my $gcs = Unicode::GCString->new($str);
+ my $first_five = $gcs->substr(0, 5);
+
+=head2 ℞ 32: Reverse string by grapheme
+
+(℞ 32: 文字列を書記素単位で反転する)
+
+=begin original
+
+Reversing by codepoint messes up diacritics, mistakenly converting
+C<crème brûlée> into C<éel̂urb em̀erc> instead of into C<eélûrb emèrc>;
+so reverse by grapheme instead.  Both these approaches work
+right no matter what normalization the string is in:
+
+=end original
+
+符号位置による反転はダイアクリティカルマークを混乱させ、誤って
+C<crème brülée> を C<eélûrb emèrc> ではなく
+C<éel̂urb em̀erc> に変換します;
+そこで、代わりに書記素による反転を行います。
+これらの手法はどちらも、文字列の正規化がどのようなものであっても
+正しく機能します。
+
+ $str = join("", reverse $str =~ /\X/g);
+
+ # OR: cpan -i Unicode::GCString
+ use Unicode::GCString;
+ $str = reverse Unicode::GCString->new($str);
+
+=head2 ℞ 33: String length in graphemes
+
+(℞ 33: 書記素での文字列長)
+
+=begin original
+
+The string C<brûlée> has six graphemes but up to eight codepoints.
+This counts by grapheme, not by codepoint:
+
+=end original
+
+文字列 C<brülée> は六つの書記素を持ちますが、最大八つの符号位置を持ちます。
+これは、符号位置ではなく、書記素によってカウントされます:
+
+ my $str = "brûlée";
+ my $count = 0;
+ while ($str =~ /\X/g) { $count++ }
+
+  # OR: cpan -i Unicode::GCString
+ use Unicode::GCString;
+ my $gcs = Unicode::GCString->new($str);
+ my $count = $gcs->length;
+
+=head2 ℞ 34: Unicode column-width for printing
+
+(℞ 34: 表示のための Unicode 桁幅)
+
+=begin original
+
+Perl’s C<printf>, C<sprintf>, and C<format> think all
+codepoints take up 1 print column, but many take 0 or 2.
+Here to show that normalization makes no difference,
+we print out both forms:
+
+=end original
+
+Perl の C<printf>、C<sprintf>、C<format> は、すべての符号位置が
+一つの表示桁を占有すると考えていますが、多くの符号位置は 0 から 2 を
+占有します。
+ここでは、正規化に違いがないことを示すために、両方の形式を出力します。
+
+ use Unicode::GCString;
+ use Unicode::Normalize;
+
+ my @words = qw/crème brûlée/;
+ @words = map { NFC($_), NFD($_) } @words;
+
+ for my $str (@words) {
+     my $gcs = Unicode::GCString->new($str);
+     my $cols = $gcs->columns;
+     my $pad = " " x (10 - $cols);
+     say str, $pad, " |";
+ }
+
+=begin original
+
+generates this to show that it pads correctly no matter
+the normalization:
+
+=end original
+
+これは、正規化に関係なく正しくパッディングされていることを示すために
+次のように生成されます。
+
+ crème      |
+ crème      |
+ brûlée     |
+ brûlée     |
+
+=head2 ℞ 35: Unicode collation
+
+(℞ 35: Unicode の照合順序)
+
+=begin original
+
+Text sorted by numeric codepoint follows no reasonable alphabetic order;
+use the UCA for sorting text.
+
+=end original
+
+数値符号位置でソートされたテキストは、合理的なアルファベット順ではありません;
+テキストのソートには UCA を使用してください。
+
+ use Unicode::Collate;
+ my $col = Unicode::Collate->new();
+ my @list = $col->sort(@old_list);
+
+=begin original
+
+See the I<ucsort> program from the L<Unicode::Tussle> CPAN module
+for a convenient command-line interface to this module.
+
+=end original
+
+このモジュールへの便利なコマンドラインインタフェースについては、
+L<Unicode::Tassil> CPAN モジュールの I<ucsort> プログラムを参照してください。
+
+=head2 ℞ 36: Case- I<and> accent-insensitive Unicode sort
+
+(℞ 36: 大文字小文字 I<および> アクセントを無視した Unicode のソート)
+
+=begin original
+
+Specify a collation strength of level 1 to ignore case and
+diacritics, only looking at the basic character.
+
+=end original
+
+照合強度レベル 1 を指定して、大文字小文字とダイアクリティカルマークを
+無視し、基本文字だけを参照するようにします。
+
+ use Unicode::Collate;
+ my $col = Unicode::Collate->new(level => 1);
+ my @list = $col->sort(@old_list);
+
+=head2 ℞ 37: Unicode locale collation
+
+(℞ 37: Unicode ロケールの照合順序)
+
+=begin original
+
+Some locales have special sorting rules.
+
+=end original
+
+一部のロケールには、特別なソート規則があります。
+
+ # either use v5.12, OR: cpan -i Unicode::Collate::Locale
+ use Unicode::Collate::Locale;
+ my $col = Unicode::Collate::Locale->new(locale => "de__phonebook");
+ my @list = $col->sort(@old_list);
+
+=begin original
+
+The I<ucsort> program mentioned above accepts a C<--locale> parameter.
+
+=end original
+
+上記の I<ucsort> プログラムは、C<--locale> パラメータを受け付けます。
+
+=head2 ℞ 38: Making C<cmp> work on text instead of codepoints
+
+(℞ 38: 符号位置ではなくテキストでg C<cmp> が動作するようにする)
+
+=begin original
+
+Instead of this:
+
+=end original
+
+次のようにせずに:
+
+ @srecs = sort {
+     $b->{AGE}   <=>  $a->{AGE}
+                 ||
+     $a->{NAME}  cmp  $b->{NAME}
+ } @recs;
+
+=begin original
+
+Use this:
+
+=end original
+
+次を使います:
+
+ my $coll = Unicode::Collate->new();
+ for my $rec (@recs) {
+     $rec->{NAME_key} = $coll->getSortKey( $rec->{NAME} );
+ }
+ @srecs = sort {
+     $b->{AGE}       <=>  $a->{AGE}
+                     ||
+     $a->{NAME_key}  cmp  $b->{NAME_key}
+ } @recs;
+
+=head2 ℞ 39: Case- I<and> accent-insensitive comparisons
+
+(℞ 39: 大文字小文字 I<および> アクセントを無視した比較)
+
+=begin original
+
+Use a collator object to compare Unicode text by character
+instead of by codepoint.
+
+=end original
+
+照合オブジェクトを使用して、Unicode テキストを符号位置ではなく
+文字で比較します。
+
+ use Unicode::Collate;
+ my $es = Unicode::Collate->new(
+     level => 1,
+     normalization => undef
+ );
+
+  # now both are true:
+ $es->eq("García",  "GARCIA" );
+ $es->eq("Márquez", "MARQUEZ");
+
+=head2 ℞ 40: Case- I<and> accent-insensitive locale comparisons
+
+(℞ 40: 大文字小文字 I<および> アクセントを無視したロケールでの比較)
+
+=begin original
+
+Same, but in a specific locale.
+
+=end original
+
+同じですが、特定のロケールです。
+
+ my $de = Unicode::Collate::Locale->new(
+            locale => "de__phonebook",
+          );
+
+ # now this is true:
+ $de->eq("tschüß", "TSCHUESS");  # notice ü => UE, ß => SS
+
+=head2 ℞ 41: Unicode linebreaking
+
+(℞ 41: Unicode の改行)
+
+=begin original
+
+Break up text into lines according to Unicode rules.
+
+=end original
+
+Unicode 規則に従ってテキストを行に分割します。
+
+ # cpan -i Unicode::LineBreak
+ use Unicode::LineBreak;
+ use charnames qw(:full);
+
+ my $para = "This is a super\N{HYPHEN}long string. " x 20;
+ my $fmt = Unicode::LineBreak->new;
+ print $fmt->break($para), "\n";
+
+=head2 ℞ 42: Unicode text in DBM hashes, the tedious way
+
+(℞ 42: DBM ハッシュの中の Unicode テキスト、退屈な方法)
+
+=begin original
+
+Using a regular Perl string as a key or value for a DBM
+hash will trigger a wide character exception if any codepoints
+won’t fit into a byte.  Here’s how to manually manage the translation:
+
+=end original
+
+DBM ハッシュのキーまたは値として通常の Perl 文字列を使用すると、
+符号位置が 1 バイトに収まらない場合にワイド文字例外が発生します。
+次に、手動で変換を管理する方法を示します:
+
+    use DB_File;
+    use Encode qw(encode decode);
+    tie %dbhash, "DB_File", "pathname";
+
+ # STORE
+
+    # assume $uni_key and $uni_value are abstract Unicode strings
+    my $enc_key   = encode("UTF-8", $uni_key, 1);
+    my $enc_value = encode("UTF-8", $uni_value, 1);
+    $dbhash{$enc_key} = $enc_value;
+
+ # FETCH
+
+    # assume $uni_key holds a normal Perl string (abstract Unicode)
+    my $enc_key   = encode("UTF-8", $uni_key, 1);
+    my $enc_value = $dbhash{$enc_key};
+    my $uni_value = decode("UTF-8", $enc_value, 1);
+
+=head2 ℞ 43: Unicode text in DBM hashes, the easy way
+
+(℞ 43: DBM ハッシュの中の Unicode テキスト、簡単な方法)
+
+=begin original
+
+Here’s how to implicitly manage the translation; all encoding
+and decoding is done automatically, just as with streams that
+have a particular encoding attached to them:
+
+=end original
+
+次に、変換を暗黙的に管理する方法を示します;
+すべてのエンコードとデコードは、特定のエンコーディングが付加された
+ストリームと同じように自動的に行われます:
+
+    use DB_File;
+    use DBM_Filter;
+
+    my $dbobj = tie %dbhash, "DB_File", "pathname";
+    $dbobj->Filter_Value("utf8");  # this is the magic bit
+
+ # STORE
+
+    # assume $uni_key and $uni_value are abstract Unicode strings
+    $dbhash{$uni_key} = $uni_value;
+
+  # FETCH
+
+    # $uni_key holds a normal Perl string (abstract Unicode)
+    my $uni_value = $dbhash{$uni_key};
+
+=head2 ℞ 44: PROGRAM: Demo of Unicode collation and printing
+
+(℞ 44: プログラム: Unicode の照合と表示のデモ)
+
+=begin original
+
+Here’s a full program showing how to make use of locale-sensitive
+sorting, Unicode casing, and managing print widths when some of the
+characters take up zero or two columns, not just one column each time.
+When run, the following program produces this nicely aligned output:
+
+=end original
+
+以下の完全なプログラムでは、ロケールを認識するソート、
+Unicode の大文字小文字、そしていくつかの文字が 1 桁ではなく 0 または 2 桁を
+占める場合の印刷幅の管理をどのように利用するかを示しています。
+次のプログラムを実行すると、次のようなうまく整列した出力が生成されます:
+
+    Crème Brûlée....... €2.00
+    Éclair............. €1.60
+    Fideuà............. €4.20
+    Hamburger.......... €6.00
+    Jamón Serrano...... €4.45
+    Linguiça........... €7.00
+    Pâté............... €4.15
+    Pears.............. €2.00
+    Pêches............. €2.25
+    Smørbrød........... €5.75
+    Spätzle............ €5.50
+    Xoriço............. €3.00
+    Γύρος.............. €6.50
+    막걸리............. €4.00
+    おもち............. €2.65
+    お好み焼き......... €8.00
+    シュークリーム..... €1.85
+    寿司............... €9.99
+    包子............... €7.50
+
+=begin original
+
+Here's that program; tested on v5.14.
+
+=end original
+
+これがプログラムです; v5.14 でテストされています。
+
+ #!/usr/bin/env perl
+ # umenu - demo sorting and printing of Unicode food
+ #
+ # (obligatory and increasingly long preamble)
+ #
+ use utf8;
+ use v5.14;                       # for locale sorting
+ use strict;
+ use warnings;
+ use warnings  qw(FATAL utf8);    # fatalize encoding faults
+ use open      qw(:std :encoding(UTF-8)); # undeclared streams in UTF-8
+ use charnames qw(:full :short);  # unneeded in v5.16
+
+ # std modules
+ use Unicode::Normalize;          # std perl distro as of v5.8
+ use List::Util qw(max);          # std perl distro as of v5.10
+ use Unicode::Collate::Locale;    # std perl distro as of v5.14
+
+ # cpan modules
+ use Unicode::GCString;           # from CPAN
+
+ # forward defs
+ sub pad($$$);
+ sub colwidth(_);
+ sub entitle(_);
+
+ my %price = (
+     "γύρος"             => 6.50, # gyros
+     "pears"             => 2.00, # like um, pears
+     "linguiça"          => 7.00, # spicy sausage, Portuguese
+     "xoriço"            => 3.00, # chorizo sausage, Catalan
+     "hamburger"         => 6.00, # burgermeister meisterburger
+     "éclair"            => 1.60, # dessert, French
+     "smørbrød"          => 5.75, # sandwiches, Norwegian
+     "spätzle"           => 5.50, # Bayerisch noodles, little sparrows
+     "包子"              => 7.50, # bao1 zi5, steamed pork buns, Mandarin
+     "jamón serrano"     => 4.45, # country ham, Spanish
+     "pêches"            => 2.25, # peaches, French
+     "シュークリーム"    => 1.85, # cream-filled pastry like eclair
+     "막걸리"            => 4.00, # makgeolli, Korean rice wine
+     "寿司"              => 9.99, # sushi, Japanese
+     "おもち"            => 2.65, # omochi, rice cakes, Japanese
+     "crème brûlée"      => 2.00, # crema catalana
+     "fideuà"            => 4.20, # more noodles, Valencian
+                                  # (Catalan=fideuada)
+     "pâté"              => 4.15, # gooseliver paste, French
+     "お好み焼き"        => 8.00, # okonomiyaki, Japanese
+ );
+
+ my $width = 5 + max map { colwidth } keys %price;
+
+ # So the Asian stuff comes out in an order that someone
+ # who reads those scripts won't freak out over; the
+ # CJK stuff will be in JIS X 0208 order that way.
+ my $coll  = Unicode::Collate::Locale->new(locale => "ja");
+
+ for my $item ($coll->sort(keys %price)) {
+     print pad(entitle($item), $width, ".");
+     printf " €%.2f\n", $price{$item};
+ }
+
+ sub pad($$$) {
+     my($str, $width, $padchar) = @_;
+     return $str . ($padchar x ($width - colwidth($str)));
+ }
+
+ sub colwidth(_) {
+     my($str) = @_;
+     return Unicode::GCString->new($str)->columns;
+ }
+
+ sub entitle(_) {
+     my($str) = @_;
+     $str =~ s{ (?=\pL)(\S)     (\S*) }
+              { ucfirst($1) . lc($2)  }xge;
+     return $str;
+ }
+
+=head1 SEE ALSO
+
+=begin original
+
+See these manpages, some of which are CPAN modules:
+L<perlunicode>, L<perluniprops>,
+L<perlre>, L<perlrecharclass>,
+L<perluniintro>, L<perlunitut>, L<perlunifaq>,
+L<PerlIO>, L<DB_File>, L<DBM_Filter>, L<DBM_Filter::utf8>,
+L<Encode>, L<Encode::Locale>,
+L<Unicode::UCD>,
+L<Unicode::Normalize>,
+L<Unicode::GCString>, L<Unicode::LineBreak>,
+L<Unicode::Collate>, L<Unicode::Collate::Locale>,
+L<Unicode::Unihan>,
+L<Unicode::CaseFold>,
+L<Unicode::Tussle>,
+L<Lingua::JA::Romanize::Japanese>,
+L<Lingua::ZH::Romanize::Pinyin>,
+L<Lingua::KO::Romanize::Hangul>.
+
+=end original
+
+以下の man ページ; 一部は CPAN モジュールのものです:
+L<perlunicode>, L<perluniprops>,
+L<perlre>, L<perlrecharclass>,
+L<perluniintro>, L<perlunitut>, L<perlunifaq>,
+L<PerlIO>, L<DB_File>, L<DBM_Filter>, L<DBM_Filter::utf8>,
+L<Encode>, L<Encode::Locale>,
+L<Unicode::UCD>,
+L<Unicode::Normalize>,
+L<Unicode::GCString>, L<Unicode::LineBreak>,
+L<Unicode::Collate>, L<Unicode::Collate::Locale>,
+L<Unicode::Unihan>,
+L<Unicode::CaseFold>,
+L<Unicode::Tussle>,
+L<Lingua::JA::Romanize::Japanese>,
+L<Lingua::ZH::Romanize::Pinyin>,
+L<Lingua::KO::Romanize::Hangul>.
+
+=begin original
+
+The L<Unicode::Tussle> CPAN module includes many programs
+to help with working with Unicode, including
+these programs to fully or partly replace standard utilities:
+I<tcgrep> instead of I<egrep>,
+I<uniquote> instead of I<cat -v> or I<hexdump>,
+I<uniwc> instead of I<wc>,
+I<unilook> instead of I<look>,
+I<unifmt> instead of I<fmt>,
+and
+I<ucsort> instead of I<sort>.
+For exploring Unicode character names and character properties,
+see its I<uniprops>, I<unichars>, and I<uninames> programs.
+It also supplies these programs, all of which are general filters that do Unicode-y things:
+I<unititle> and I<unicaps>;
+I<uniwide> and I<uninarrow>;
+I<unisupers> and I<unisubs>;
+I<nfd>, I<nfc>, I<nfkd>, and I<nfkc>;
+and I<uc>, I<lc>, and I<tc>.
+
+=end original
+
+L<Unicode::Tussle> CPAN モジュールには、Unicode を扱うための多くの
+プログラムが含まれています;
+これらのプログラムは、標準ユーティリティを完全にまたは部分的に
+置き換えるためのものです:
+I<egrep> の代わりに I<tcgrep>、
+I<cat -v> または I<hexdump> の代わりに I<uniquote>、
+I<wc> の代わりに I<uniwc>、
+I<look> の代わりに I<unilook>、
+I<fmt> の代わりに I<unifmt>、
+I<sort> の代わりに I<ucsort>。
+Unicode 文字名と文字特性を調べるには、I<uniprops>、I<unichars>、
+I<uninames> プログラムを参照してください。
+また、これらのプログラムも提供しています。
+これらはすべて Unicode 対応の一般的なフィルタです:
+I<unititle> と I<unicaps>、
+I<uniwide> と I<uninarrow>、
+I<unisupers> と I<unisubs>、
+I<nfd>、I<nfc>、I<nfkd>、I<nfkc>;
+I<uc>、I<lc>、I<tc>。
+
+=begin original
+
+Finally, see the published Unicode Standard (page numbers are from version
+6.0.0), including these specific annexes and technical reports:
+
+=end original
+
+最後に、これらの特定の付属文書および技術報告書を含む、公開された
+Unicode 標準(ページ番号はバージョン6.0.0 から) を参照してください。
+
+=over
+
+=item §3.13 Default Case Algorithms, page 113;
+§4.2  Case, pages 120–122;
+Case Mappings, page 166–172, especially Caseless Matching starting on page 170.
+
+=item UAX #44: Unicode Character Database
+
+=item UTS #18: Unicode Regular Expressions
+
+=item UAX #15: Unicode Normalization Forms
+
+=item UTS #10: Unicode Collation Algorithm
+
+=item UAX #29: Unicode Text Segmentation
+
+=item UAX #14: Unicode Line Breaking Algorithm
+
+=item UAX #11: East Asian Width
+
+=back
+
+=head1 AUTHOR
+
+=begin original
+
+Tom Christiansen E<lt>tchrist@perl.comE<gt> wrote this, with occasional
+kibbitzing from Larry Wall and Jeffrey Friedl in the background.
+
+=end original
+
+Tom Christiansen E<lt>tchrist@perl.comE<gt> が、
+時々 Larry Wall と Jeffrey Friedl に後ろから口出しされながら書きました。
+
+=head1 COPYRIGHT AND LICENCE
+
+Copyright © 2012 Tom Christiansen.
+
+This program is free software; you may redistribute it and/or modify it
+under the same terms as Perl itself.
+
+=begin original
+
+Most of these examples taken from the current edition of the “Camel Book”;
+that is, from the 4ᵗʰ Edition of I<Programming Perl>, Copyright © 2012 Tom
+Christiansen <et al.>, 2012-02-13 by O’Reilly Media.  The code itself is
+freely redistributable, and you are encouraged to transplant, fold,
+spindle, and mutilate any of the examples in this manpage however you please
+for inclusion into your own programs without any encumbrance whatsoever.
+Acknowledgement via code comment is polite but not required.
+
+=end original
+
+これらの例のほとんどは、"Camel Book"の現在の版から引用されています:
+すなわち、4ᵗʰ版I<Programming Perl>, Copyright © 2012 Tom
+Christiansen <et al.>, 2012-02-13 by O'Reilly Media。
+コード自体は自由に再配布可能であり、この man ページの例を移植したり、
+折りたたんだり、紡錘形にしたり、切断したりすることが推奨されますが、
+あなた自身のプログラムに含めるためには、何も気にせずに行ってください。
+コードコメントによる謝辞は丁寧ですが、必須ではありません。
+
+=head1 REVISION HISTORY
+
+=begin original
+
+v1.0.0 – first public release, 2012-02-27
+
+=end original
+
+v1.0.0 - 最初の一般公開、2012-02-27
+
+=begin meta
+
+Translate: SHIRAKATA Kentaro <argrath@ub32.org>
+Status: completed
+
+=end meta
+

@@ -1,0 +1,820 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+IO::Socket::SSL -- Nearly transparent SSL encapsulation for IO::Socket::INET.
+
+=end original
+
+IO::Socket::SSL -- IO::Socket::INETのためのほとんど透過的なSSLのカプセル化
+
+=head1 SYNOPSIS
+
+    use IO::Socket::SSL;
+
+    my $client = new IO::Socket::SSL("www.example.com:https");
+
+    if (defined $client) {
+        print $client "GET / HTTP/1.0\r\n\r\n";
+        print <$client>;
+        close $client;
+    } else {
+        warn "I encountered a problem: ",
+          &IO::Socket::SSL::errstr();
+    }
+
+=head1 DESCRIPTION
+
+=begin original
+
+This module is a true drop-in replacement for IO::Socket::INET that uses
+SSL to encrypt data before it is transferred to a remote server or
+client.  IO::Socket::SSL supports all the extra features that one needs
+to write a full-featured SSL client or server application: multiple SSL contexts,
+cipher selection, certificate verification, and SSL version selection.  As an
+extra bonus, it works perfectly with mod_perl.
+
+=end original
+
+このモジュールはリモートのサーバーやクライアントに転送される前にデータを
+暗号化するためにSSLを使う、IO::Socket::INETの代わりになる本当の
+差込式の代替品です。IO::Socket::SSLは完全な機能を持ったSSLクライアントや
+サーバー・アプリケーションを書くために必要な特別な機能を全てサポート
+しています: 複数のSSLコンテキスト、暗号の選択、証明書の検証、そして
+SSLバージョンの選択。さらに特別に、mod_perlでも完全に機能します。
+
+=begin original
+
+If you have never used SSL before, you should read the appendix labelled 'Using SSL'
+before attempting to use this module.
+
+=end original
+
+SSLをこれまで使ったことがなければ、このモジュールを使おうとする前に
+'SSLの使い方'という付録を読むべきです。
+
+=begin original
+
+If you have used this module before, read on, as versions 0.90 and above
+represent a complete rewrite of the IO::Socket::SSL internals.
+
+=end original
+
+このモジュールを以前、使ったことがあるのであれば、読み続けてください。
+というのもバージョン0.90以上はIO::Socket::SSLの内部を完全に
+書き換えたことを示しているからです。
+
+=head1 METHODS
+
+(メソッド)
+
+=begin original
+
+IO::Socket::SSL inherits its methods from IO::Socket::INET, overriding them
+as necessary.  If there is an SSL error, the method (or operation) will return an
+undefined value.  The methods that have changed from the perspective of the user are
+re-documented here:
+
+=end original
+
+IO::Socket::SSLはIO::Socket::INETからメソッドを継承し、必要に応じてそれを
+オーバーライドしています。SSLエラーがあれば、メソッド（あるいは操作）は
+未定義値を返します。利用者の視点から変更されたメソッド、ここでもう一度、
+ドキュメント化されています:
+
+=over 4
+
+=item B<new(...)>
+
+=begin original
+
+Creates a new IO::Socket::SSL object.  You may use all the friendly options
+that came bundled with IO::Socket::INET, plus (optionally) the ones that follow:
+
+=end original
+
+新しいIO::Socket::SSLオブジェクトを作成します。（オプションで）以下のものも
+含めて、IO::Socket::INETについてくる親切なオプションの全てを使うことが出来ます:
+
+=over 2
+
+=item SSL_version
+
+=begin original
+
+Sets the version of the SSL protocol used to transmit data.  The default is SSLv2/3,
+which auto-negotiates between SSLv2 and SSLv3.  You may specify 'SSLv2', 'SSLv3', or
+'TLSv1' (case-insensitive) if you do not want this behavior.
+
+=end original
+
+データを転送するために使われるSSLプロトコルのバージョンを設定します。デフォルトは
+SSLv2/3です。これはSSLv2とSSLv3と自動ネゴシエイトを行います。このように動いて
+欲しくないのであれば、'SSLv2', 'SSLv3',あるいは'TLSv1'（大文字/小文字は区別されません）
+を指定することができます。
+
+=item SSL_cipher_list
+
+=begin original
+
+If you do not care for the default list of ciphers ('ALL:!LOW:!EXP'), then look in
+the OpenSSL documentation (L<http://www.openssl.org/docs/apps/ciphers.html#CIPHER_STRINGS>),
+and specify a different set with this option.
+
+=end original
+
+もしデフォルトの暗号のリスト('ALL:!LOW:!EXP')を好まないのであれば、OpenSSLのドキュメント
+(L<http://www.openssl.org/docs/apps/ciphers.html#CIPHER_STRINGS>)を見て、このオプションで
+違う集合を指定してください。
+
+=item SSL_use_cert
+
+=begin original
+
+If this is set, it forces IO::Socket::SSL to use a certificate and key, even if
+you are setting up an SSL client.  If this is set to 0 (the default), then you will
+only need a certificate and key if you are setting up a server.
+
+=end original
+
+これが設定されると、SSLクライアントをセットアップしているときでさえも
+IO::Socket::SSLに証明書と鍵を使うよう強制させます。これが0（デフォルト）に
+設定されると、サーバーとして設定したときにだけ、証明書と鍵が必要になります。
+
+=item SSL_key_file
+
+=begin original
+
+If your RSA private key is not in default place (F<certs/server-key.pem> for servers,
+F<certs/client-key.pem> for clients), then this is the option that you would use to
+specify a different location.  Keys should be PEM formatted, and if they are
+encrypted, you will be prompted to enter a password before the socket is formed 
+(unless you specified the SSL_passwd_cb option).
+
+=end original
+
+あなたのRSA秘密鍵がデフォルトの場所(サーバー用はF<certs/server-key.pem>、
+クライアイント用はF<certs/client-key.pem>）になければ、これが別の場所を
+指定するために使うオプションがです。（SSL_passwd_cbオプションが指定しない限り）
+鍵はがPEM形式にされ、暗号化されていれば、ソケットが作られる前にパスワードを
+入力するためのプロンプトが表示されます。
+
+=item SSL_cert_file
+
+=begin original
+
+If your SSL certificate is not in the default place (F<certs/server-cert.pem> for servers,
+F<certs/client-cert.pem> for clients), then you should use this option to specify the 
+location of your certificate.  Note that a key and certificate are only required for an
+SSL server, so you do not need to bother with these trifling options should you be 
+setting up an unauthenticated client.
+
+=end original
+
+あなたのSSL証明書がデフォルトの場所(サーバー用はF<certs/server-cert.pem>、
+クライアント用はF<certs/client-cert.pem> )になければ、このオプションを使って
+証明書の場所を指定しなければなりません。鍵と証明書はSSLサーバーのためにだけ
+必須であることに注意してください。そのため認証されないクライアントを設定する
+ときには、これらのオプションを設定することに煩わされる必要はありません。
+
+=item SSL_passwd_cb
+
+=begin original
+
+If your private key is encrypted, you might not want the default password prompt from
+Net::SSLeay.  This option takes a reference to a subroutine that should return the
+password required to decrypt your private key.  Note that Net::SSLeay >= 1.16 is
+required for this to work.
+
+=end original
+
+あなたの秘密鍵が暗号化されているならば、Net::SSLeyからのデフォルトのパスワード・
+プロンプトが望ましくないかもしれません。このオプションは秘密鍵を復号化するために
+必要とされるパスワードを返すサブループンへのリファレンスを取ります。
+この動作のためにはNet::SSLeay >= 1.16が必要であることに注意してください。
+
+=item SSL_ca_file
+
+=begin original
+
+If you want to verify that the peer certificate has been signed by a reputable
+certificate authority, then you should use this option to locate the file
+containing the certificateZ<>(s) of the reputable certificate authorities if it is
+not already in the file F<certs/my-ca.pem>.
+
+=end original
+
+相手の証明書がきちんとした認証局(certificate authority)によって署名されたかを
+確認したければ、F<certs/my-ca.pem>になければ、きちんとした認証局のcertificateZ<>が
+入っているファイルの場所を示すため、このオプションを使わなければなりません。
+
+=item SSL_ca_path
+
+=begin original
+
+If you are unusually friendly with the OpenSSL documentation, you might have set
+yourself up a directory containing several trusted certificates as separate files
+as well as an index of the certificates.  If you want to use that directory for
+validation purposes, and that directory is not F<ca/>, then use this option to
+point IO::Socket::SSL to the right place to look.
+
+=end original
+
+OpenSSLドキュメントに非常に精通してれば、証明書のインデックスと一緒に
+信頼される証明書を別のファイルとして入っているディレクトリを設定させているかも
+しれません。確認のために、そのディレクトリを使いたければ、そしてそのディレクトリが
+F<ca/>でなければ、IO::Socket::SSLに参照するべき場所を示すため、このオプションを
+使ってください。
+
+=item SSL_verify_mode
+
+=begin original
+
+This option sets the verification mode for the peer certificate.  The default
+(0x00) does no authentication.  You may combine 0x01 (verify peer), 0x02 (fail
+verification if no peer certificate exists; ignored for clients), and 0x04 
+(verify client once) to change the default.
+
+=end original
+
+このオプションは相手の証明書のための確認モードを設定します。デフォルト(0x00)は
+何も認証を行いません。デフォルトを変更するため、0x01 (相手を確認), 0x02 (fail
+相手の証明書がなければ確認失敗;クライアントに対しては無視), 0x04 
+(一度、クライアントは確認) を組み合わせることができます。
+
+=item SSL_reuse_ctx
+
+=begin original
+
+If you have already set the above options (SSL_use_cert through SSL_verify_mode;
+this does not include SSL_cipher_list yet) for a previous instance of 
+IO::Socket::SSL, then you can reuse the SSL context of that instance by passing
+it as the value for the SSL_reuse_ctx parameter.  If you pass any context-related options,
+they will be ignored.  Note that contrary to previous versions
+of IO::Socket::SSL, a global SSL context will not be implicitly used.
+
+=end original
+
+上記のオプション(SSL_use_cert から SSL_verify_mode;これはSSL_cipher_listは、まだ
+含まれません）を、IO::Socket::SSLの前のインスタンスのために設定していれば、
+それをSSL_reuse_ctxパラメータの値として渡すことにより、そのインスタンスの
+SSLコンテキストを再利用することができます。コンテキストに関連した
+オプションを渡しても、それらは無視されます。IO::Socket::SSLの前のバージョンとは
+反対に、グローバルなSSLコンテキストは暗黙のうちには使われないことに注意してください。
+
+=back
+
+=item B<close(...)>
+
+=begin original
+
+There are a number of nasty traps that lie in wait if you are not careful about using
+close().  The first of these will bite you if you have been using shutdown() on your
+sockets.  Since the SSL protocol mandates that a SSL "close notify" message be
+sent before the socket is closed, a shutdown() that closes the socket's write channel
+will cause the close call to hang.  For a similar reason, if you try to close a
+copy of a socket (as in a forking server) you will affect the original socket as well.
+To get around these problems, call close with an object-oriented syntax 
+(e.g. $socket->close(SSL_no_shutdown => 1))
+and one or more of the following parameters:
+
+=end original
+
+close()を使うことについて注意しなければ、waitに関連していくつかのやっかいな罠があります。
+まず最初にソケットでshutdown()を使っていると、これにより困ったことになります。
+SSLプロトコルはソケットをクローズ前にSSL"close notify"メッセージが送信されるよう
+権限を与え、ソケットの書込みチャネルをクローズするshutdown()はclose呼び出しを
+ハングさせてしまいます。同じような理由で、（サーバーをforkするとき）ソケットのコピーを
+closeしようとすると、元のソケットにも影響を与えます。これらの問題を回避するため、
+以下のパラメータの1つあるいは複数でオブジェクト指向の書き方
+（例えばsocket->close(SSL_no_shutdown => 1)）でclose()を呼び出してください。
+
+=over 2
+
+=item SSL_no_shutdown
+
+=begin original
+
+If set to a true value, this option will make close() not use the SSL_shutdown() call
+on the socket in question so that the close operation can complete without problems
+if you have used shutdown() or are working on a copy of a socket.
+
+=end original
+
+true値に設定すると、このオプションは、shutdown()やソケットのコピーで動いている
+ならば、close()に、close操作が問題なく完了できるよう、疑わしいソケットに対して
+SSL_shutdown()を使わないようにさせます。
+
+=item SSL_ctx_free
+
+=begin original
+
+If you want to make sure that the SSL context of the socket is destroyed when
+you close it, set this option to a true value.
+
+=end original
+
+それをクローズするとき、そのソケットのSSLコンテキストが破壊されることを
+確実にしたければ、このオプションをtrue値に設定してください。
+
+=back
+
+=item B<peek()>
+
+=begin original
+
+This function has exactly the same syntax as sysread(), and performs nearly the same
+task (reading data from the socket) but will not advance the read position so
+that successive calls to peek() with the same arguments will return the same results.
+This function requires Net::SSLeay v1.19 or higher and OpenSSL 0.9.6a or later to work.
+
+=end original
+
+この関数はsysread()と全く同じ書き方をします。そしてほとんど同じ仕事を行います（
+ソケットからデータを読み込みます）。しかし連続して同じ引数でpeek()を呼び出すと
+同じ結果が返るように、読み込み位置を進めません。
+この関数が機能するためには、Net::SSLeay v1.19以上とOpenSSL 0.9.6a以降が必要です。
+
+=item B<pending()>
+
+=begin original
+
+This function will let you know how many bytes of data are immediately ready for reading
+from the socket.  This is especially handy if you are doing reads on a blocking socket
+or just want to know if new data has been sent over the socket.
+
+=end original
+
+この関数はすぐにソケットから読み込むことが準備ができるデータのバイト数を教えてくれます。
+これは特にブロックしたソケットで読み込みをしているときや、ソケット越しに新しいデータが
+送信されたかを知りたいだけのときには特に使いやすいでしょう。
+
+=item B<get_cipher()>
+
+=begin original
+
+Returns the string form of the cipher that the IO::Socket::SSL object is using.
+
+=end original
+
+IO::Socket::SSLが使っている暗号を文字列の形で返します。
+
+=item B<dump_peer_certificate()>
+
+=begin original
+
+Returns a parsable string with select fields from the peer SSL certificate.  This
+method directly returns the result of the dump_peer_certificate() method of Net::SSLeay.
+
+=end original
+
+相手のSSL証明書から選択フィールドが入った解析可能な文字列を返します。
+このメソッドはNet::SSLeayのdump_peer_certificate()メソッドの結果を直接、返します。
+
+=item B<peer_certificate($field)>
+
+=begin original
+
+If a peer certificate exists, this function can retrieve values from it.  Right now, the
+only fields it can return are "authority" and "owner" (or "issuer" and "subject" if
+you want to use OpenSSL names), corresponding to the certificate authority that signed the
+peer certificate and the owner of the peer certificate.  This function returns a string
+with all the information about the particular field in one parsable line.
+
+=end original
+
+相手の証明書があれば、この関数はそれから値を取り出します。今は、それが返すことができる
+フィールドは"authority"と"owner"だけです(もしOpenSSL名を使いたければ、"issuer"と"subject"
+です）、相手の証明書に署名した認証局と相手の証明書の所有者に対応します。この関数は
+解析可能な行の1つに入っている特定のフィールドについての全ての情報が入った文字列を
+返します。
+
+=item B<errstr()>
+
+=begin original
+
+Returns the last error (in string form) that occurred.  If you do not have a real
+object to perform this method on, call &IO::Socket::SSL::errstr() instead.
+For read and write errors on non-blocking sockets, this method may include the string 
+C<SSL wants a read first!> or C<SSL wants a write first!> meaning that the other side
+is expecting to read from or write to the socket and wants to be satisfied before you
+get to do anything.
+
+=end original
+
+発生した最後のエラーを（文字列形式で）返します。このメソッドを実行するための
+本物のオブジェクトを持っていなければ、代わりに&IO::Socket::SSL::errstr()を
+呼び出してください。
+ブロックしていないソケットの読み込みや書込みに、このメソッドは、
+もう一方の側がソケットからの読み込みや書き込みを待っていて、あなたが何かする前に
+満足させて欲しいと思っていることを意味する、
+C<SSL wants a read first!> あるいは C<SSL wants a write first!>
+を文字列に入れるかもしれません。
+
+=item B<IO::Socket::SSL::socket_to_SSL($socket, ... )>
+
+=begin original
+
+This will convert a glob reference or a socket that you provide to an IO::Socket::SSL
+object.  You may also pass parameters to specify context or connection options as with
+a call to new().  If you are using this function on an accept()ed socket, you must
+set the parameter "SSL_server" to 1, i.e. IO::Socket::SSL::socket_to_SSL($socket, SSL_server => 1).
+
+=end original
+
+これは、あなたが与えたglobリファレンスやソケットをIO::Socket::SSLオブジェクトに
+変換します。コンテキストやnew()を呼び出すときのような接続オプションを指定するため、
+パラメータを渡すこともできます。もしこの関数をaccept()されたソケットに使うのであれば、
+パラメータ"SSL_server"を1に設定しなければなりません。つまり
+IO::Socket::SSL::socket_to_SSL($socket, SSL_server => 1) です。
+
+=back
+
+=begin original
+
+The following methods are unsupported (not to mention futile!) and IO::Socket::SSL
+will emit a large CROAK() if you are silly enough to use them:
+
+=end original
+
+以下のメソッドはサポートされていません(役に立たないといっているわけではありません!)
+そしてあなたがそれらを使うほどのオバカさんであれば、IO::Socket::SSLは巨大な
+CROAK()を吐き出すことになります。
+
+=over 4
+
+=item truncate
+
+=item stat
+
+=item ungetc
+
+=item setbuf
+
+=item setvbuf
+
+=item fdopen
+
+=back
+
+=head1 DEBUGGING
+
+(デバッグ)
+
+=begin original
+
+If you are having problems using IO::Socket::SSL despite the fact that can recite backwards
+the section of this documentation labelled 'Using SSL', you should try enabling debugging.  To
+specify the debug level, pass 'debug#' (where # is a number from 0 to 4) to IO::Socket::SSL
+when calling it:
+
+=end original
+
+'SSLの使い方(=Using SSL)'とラベルがついた、このドキュメントの前のセクションを暗証する
+ことができるにも関わらずIO::Socket::SSLを使っていて問題を持っているのであれば、
+デバッグを有効にしてみるべきです。デバッグ・レベルを指定するためには
+呼び出すとき、'debug#'（#は0から4までの数字）をIO::Socket::SSLに渡してください。
+
+=over 4
+
+=item use IO::Socket::SSL qw(debug0);
+
+=begin original
+
+#No debugging (default).
+
+=end original
+
+#デバッグなし(デフォルト）
+
+=item use IO::Socket::SSL qw(debug1);
+
+=begin original
+
+#Only print out errors.
+
+=end original
+
+#エラーを出力するだけ
+
+=item use IO::Socket::SSL qw(debug2);
+
+=begin original
+
+#Print out errors and cipher negotiation.
+
+=end original
+
+#エラーと暗号ネゴシエイションを出力
+
+=item use IO::Socket::SSL qw(debug3);
+
+=begin original
+
+#Print out progress, ciphers, and errors.
+
+=end original
+
+#進行状況、暗号そしてエラーを出力
+
+=item use IO::Socket::SSL qw(debug4);
+
+=begin original
+
+#Print out everything, including data.
+
+=end original
+
+#データも含めて全てを出力
+
+=back
+
+=begin original
+
+You can also set $IO::Socket::SSL::DEBUG to 0-4, but that's a bit of a mouthful,
+isn't it?
+
+=end original
+
+$IO::Socket::SSL::DEBUGを0から4に設定することもできます。でも説明しなくても
+いいよね、でもない？
+
+=head1 EXAMPLES
+
+=begin original
+
+See the 'example' directory.
+
+=end original
+
+'example'ディレクトリをご覧ください。
+
+=head1 BUGS
+
+=begin original
+
+I have never shipped a module with a known bug, and IO::Socket::SSL is no
+different.  If you feel that you have found a bug in the module and you are
+using the latest version of Net::SSLeay, send an email immediately to 
+behroozi@www.pls.uni.edu with a subject of 'IO::Socket::SSL Bug'.  I am 
+I<not responsible> for problems in your code, so make sure that an example
+actually works before sending it. It is merely acceptable if you send me a bug 
+report, it is better if you send a small chunk of code that points it out,
+and it is best if you send a patch--if the patch is good, you might see a release the 
+next day on CPAN. Otherwise, it could take weeks . . . 
+
+=end original
+
+私は既知のバグがあるモジュールを出したことはありません。そしてIO::Socket::SSLでも
+それは変わりません。このモジュールにバグを見つけたと感じ、Net::SSLeayの
+最新バージョンを使っているのであれば、'IO::Socket::SSL Bug'という件名で
+behroozi@www.pls.uni.eduにすぐにメールを送ってください。
+私はあなたのコードの問題にはI<責任ありません>。そのため送信する前に例が
+実際に動くことを確認してください。これはバグレポートを私に送るのであれば、
+単に受入可能であるに過ぎません。問題を示す小さなコードを送信してくれると
+よりよいことです。パッチを送ってくれるのであれば、それが一番です--パッチが
+よければ、翌日、CPANで次のリリースを見るかもしれません。
+そうでなければ、何週間もかかってしまうかもしれません...
+
+=head1 LIMITATIONS
+
+(制限)
+
+=begin original
+
+IO::Socket::SSL uses Net::SSLeay as the shiny interface to OpenSSL, which is
+the shiny interface to the ugliness of SSL.  As a result, you will need both Net::SSLeay
+(1.20 recommended) and OpenSSL (0.9.6g recommended) on your computer before
+using this module.
+
+=end original
+
+IO::Socket::SSLは、SSLの面倒くさい部分への素晴らしいインターフェースである
+OpenSSLへの素晴らしいインターフェースとしてNet::SSLeayを使っています。
+その結果、このモジュールを使う前にNet::SSLeay(1.20 推奨) と 
+OpenSSL (0.9.6g 推奨)の両方があなたのコンピュータに必要となります。
+
+=head1 DEPRECATIONS
+
+(廃止予定)
+
+=begin original
+
+The following functions are deprecated and are only retained for compatibility:
+
+=end original
+
+以下の関数は廃棄予定(deprecate)になり、互換性のためだけに維持されています:
+
+=over 2
+
+=item context_init() 
+
+=begin original
+
+(use the SSL_reuse_ctx option if you want to re-use a context)
+
+=end original
+
+(コンテキストを再利用したければ、SSL_reuse_ctxオプションを使ってください)
+
+=item socketToSSL() 
+
+=begin original
+
+(renamed to socket_to_SSL())
+
+=end original
+
+(socket_to_SSL()に名前が変わりました)
+
+=item get_peer_certificate()とその仲間
+
+=begin original
+
+(use the peer_certificate() function instead)
+
+=end original
+
+(代わりにpeer_certificate()関数を使ってください)
+
+=item want_read() と want_write()
+
+=begin original
+
+(search for the appropriate string in errstr())
+
+=end original
+
+(適切な文字列をerrstr()で探してください)
+
+=back
+
+=begin original
+
+The following classes have been removed:
+
+=end original
+
+以下のクラスは削除されています:
+
+=over 2
+
+=item SSL_SSL
+
+=begin original
+
+(not that you should have been directly accessing this anyway):
+
+=end original
+
+(いずれにしても、これに直接アクセスするできではありませんでした):
+
+=item X509_Certificate 
+
+=begin original
+
+(but get_peer_certificate() will still Do The Right Thing)
+
+=end original
+
+(しかしそれでも、get_peer_certificate()は正しい事をおこないます(Do The Right Thing))
+
+=back
+
+=head1 SEE ALSO
+
+IO::Socket::INET, Net::SSLeay.
+
+=head1 AUTHORS
+
+Peter Behroozi, behroozi@www.pls.uni.edu。
+
+=begin original
+
+Marko Asplund, aspa@kronodoc.fi, was the original author of IO::Socket::SSL.
+
+=end original
+
+Marko Asplund, aspa@kronodoc.fi, が最初のIO::Socket::SSLの作者でした。
+
+=head1 COPYRIGHT
+
+The rewrite of this module is Copyright (C) 2002 Peter Behroozi.
+
+This module is Copyright (C) 1999-2002 Marko Asplund.
+
+This module is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
+
+=head1 Appendix: Using SSL
+
+(付録: SSL を使う)
+
+=begin original
+
+If you are unfamiliar with the way OpenSSL works, a good reference may be found in
+both the book "Network Security with OpenSSL" (Oreilly & Assoc.) and the web site 
+L<http://www.tldp.org/HOWTO/SSL-Certificates-HOWTO/>.  Read on for a quick overview.
+
+=end original
+
+OpenSSLの動き方をよく知らないのであれば、よく出来たリファレンスが
+"Network Security with OpenSSL" (Oreilly & Assoc.)という本とWebサイト
+L<http://www.tldp.org/HOWTO/SSL-Certificates-HOWTO/>にあります。
+簡単な概要については読み続けてください。
+
+=head2 The Long of It (Detail)
+
+(長いもの (詳細))
+
+=begin original
+
+The usual reason for using SSL is to keep your data safe.  This means that not only
+do you have to encrypt the data while it is being transported over a network, but
+you also have to make sure that the right person gets the data.  To accomplish this
+with SSL, you have to use certificates.  A certificate closely resembles a 
+Government-issued ID (at least in places where you can trust them).  The ID contains some sort of
+identifying information such as a name and address, and is usually stamped with a seal
+of Government Approval.  Theoretically, this means that you may trust the information on
+the card and do business with the owner of the card.  The ideas apply to SSL certificates,
+which have some identifying information and are "stamped" [most people refer to this as
+I<signing> instead] by someone (a Certificate Authority) who you trust will adequately 
+verify the identifying information.  In this case, because of some clever number theory,
+it is extremely difficult to falsify the stamping process.  Another useful consequence
+of number theory is that the certificate is linked to the encryption process, so you may
+encrypt data (using information on the certificate) that only the certificate owner can
+decrypt.
+
+=end original
+
+SSLを使う普通の理由はあなたのデータを安全に保つためです。つまりネットワークを通って
+転送される間、データを暗号化するだけではなく、正しい人がデータを取得することを確実に
+しなければなりません。これをSSLで実現するためには、証明書を使わなければなりません。
+証明書は政府が発行したIDに（少なくとも信用することが出来るというとこで）非常によく
+似ています。IDには名前や住所のような識別するためのいくつかの情報が入っています。
+そして通常は政府の承認(Government Approval)の印が押されています。理論上、
+これは、あなたはそのカードにある情報を信頼し、そのカードの所有者と取引を行ってもいい
+ことを意味します。
+その考えをSSL証明書に当てはめます。それはいくつかの識別情報を持っていて、
+十分に識別情報を確認すると信用することができるだれか(認証局(=Certificate Authority)）
+により、"印が押されています"[ほとんどの人々はこれを、代わりにI<署名する>といいます]。
+この場合、いくつかの賢い数学理論のおかげで、印を押す処理を偽造することは非常に困難です。
+もう一つの数学理論の有用な結果は、データを（証明書にある情報を使って）暗号化し、
+証明書の所有者だけが復号化することができるように、証明書が暗号化処理に結び付けられて
+いることです。
+
+=begin original
+
+What does this mean for you?  It means that at least one person in the party has to
+have an ID to get drinks :-).  Seriously, it means that one of the people communicating
+has to have a certificate to ensure that your data is safe.  For client/server
+interactions, the server must B<always> have a certificate.  If the server wants to
+verify that the client is safe, then the client must also have a personal certificate.
+To verify that a certificate is safe, one compares the stamped "seal" [commonly called
+an I<encrypted digest/hash/signature>] on the certificate with the official "seal" of
+the Certificate Authority to make sure that they are the same.  To do this, you will
+need the [unfortunately named] certificate of the Certificate Authority.  With all these
+in hand, you can set up a SSL connection and be reasonably confident that no-one is
+reading your data.
+
+=end original
+
+これはあなたにとってどのような意味をもつでしょうか。飲み物を得るためには、
+パーティーの中で少なくとも1人はIDを持っている必要があるということです :-)
+まじめな話、あなたのデータが安全であることを確実にするためには、
+コミュニケーションする人々のうちの1人は証明書を持たなければなりません。
+クライアント/サーバーの対話では、サーバーはB<常に>証明書を持っていなければなりません。
+もしサーバーがクライアントが安全であることを確認したければ、クライアントも個人的な
+証明書を持たなければなりません。
+証明書が安全であることを確認するためには、同じであることを確認するため
+証明書に押されている"印"[一般的にI<暗号化ダイジェスト/ハッシュ/署名>と
+呼ばれます]と認証局の公式の"印"を比較します。これをおこなうためには、
+[残念ながら名前がついている]認証局の証明書を必要とします。
+これらの全てが手元にあれば、SSL接続を設定し、だれもあなたのデータを読んでいないと
+合理的に確信することができます。
+
+=head2 The Short of It (Summary)
+
+(短いもの (要約))
+
+=begin original
+
+For servers, you will need to generate a cryptographic private key and a certificate
+request.  You will need to send the certificate request to a Certificate Authority to
+get a real certificate back, after which you can start serving people.  For clients,
+you will not need anything unless the server wants validation, in which case you will
+also need a private key and a real certificate.  For more information about how to
+get these, see L<http://www.modssl.org/docs/2.8/ssl_faq.html#ToC24>.
+
+=end original
+
+サーバーでは、暗号秘密鍵を生成し、証明書要求を生成する必要があります。
+本当の証明書を取得するため証明書要求を認証局に送付しなければなりません。
+証明書を取得した後人々にサービスを提供できるようになります。クライアントでは、
+サーバーが確認を求めない限りは何も必要ありません。その場合にも、秘密鍵と本当の
+証明書が必要となります。これらを取得方法についての更なる詳細は、
+L<http://www.modssl.org/docs/2.8/ssl_faq.html#ToC24>をご覧ください。

@@ -1,0 +1,463 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+Test::Unit::TestCase - ユニットテストフレームワークの基礎となるクラス
+
+=head1 SYNOPSIS
+
+    package FooBar;
+    use base qw(Test::Unit::TestCase);
+
+    sub new {
+        my $self = shift()->SUPER::new(@_);
+        # your state for fixture here
+        # 初期化に必要な手続きをここで記述する
+        return $self;
+    }
+
+    sub set_up {
+        # provide fixture
+        # 準備に必要な記述
+    }
+    sub tear_down {
+        # clean up after test
+        # テスト後に行う後始末
+    }
+    sub test_foo {
+        my $self = shift;
+        my $obj = ClassUnderTest->new(...);
+        $self->assert_not_null($obj);
+        $self->assert_equals('expected result', $obj->foo);
+        $self->assert(qr/pattern/, $obj->foobar);
+    }
+    sub test_bar {
+        # test the bar feature
+        # bar の機能のためのテスト
+    }
+
+=head1 DESCRIPTION
+
+Test::Unit::TestCase is the 'workhorse' of the PerlUnit framework.
+When writing tests, you generally subclass Test::Unit::TestCase, write
+C<set_up> and C<tear_down> functions if you need them, a bunch of
+C<test_*> test methods, then do
+
+Test::Unit::TestCase は PerlUnit の 'workhorse' です。通例、
+Test::Unit::TestCase のサブクラスとして書かれたテストは、
+必要であれば C<set_up> 関数と C<tear_down> 関数、そして
+C<test_*> というテストメソッドを持ちます。その後、次のようにします。
+
+    $ TestRunner.pl My::TestCase::Class
+
+and watch as your tests fail/succeed one after another. Or, if you
+want your tests to work under Test::Harness and the standard perlish
+'make test', you'd write a t/foo.t that looked like:
+
+それから、次々にテストが成功したのか失敗したのかを表示していきます。
+もしくは、Test::Harness と Perl の標準的な 'make test' としてテスト
+したいならば、t/foo.t のように記述します。次のようになります。
+
+    use Test::Unit::HarnessUnit;
+    my $r = Test::Unit::HarnessUnit->new();
+    $r->start('My::TestCase::Class');
+
+=head2 Test::Unit::TestCase の使い方（How To Use Test::Unit::TestCase）
+
+(Taken from the JUnit TestCase class documentation)
+
+（JUnit TestCaseクラスのドキュメントから拝借しました）
+
+A test case defines the "fixture" (resources need for testing) to run
+multiple tests. To define a test case:
+
+テストケースは複数のテストの実行に必要な要素 "Fixture" を定義します。
+(訳注: 備品や設備という意味でテスト用のオブジェクトを "Fixture" と呼びます) 
+テストケースを定義は次のようになります。
+
+=over 4
+
+=item 1
+
+implement a subclass of TestCase
+
+TestCase のサブクラスを実装する
+
+=item 2
+
+define instance variables that store the state of the fixture (I
+suppose if you are using Class::MethodMaker this is possible...)
+
+fixtureの状態を保持するインスタンス変数を定義する
+（Class::MethodMaker を使うこともできると思います…）
+
+=item 3
+
+initialize the fixture state by overriding C<set_up()>
+
+C<set_up()> をオーバーライドして fixture の初期化処理を記述する
+
+=item 4
+
+clean-up after a test by overriding C<tear_down()>.
+
+C<tear_down()> をオーバーライドしてテスト後のクリーンナップ処理を記述する
+
+=back
+
+Implement your tests as methods.  By default, all methods that match
+the regex C</^test/> are taken to be test methods (see
+L</list_tests()> and L</get_matching_methods()>).  Note that, by
+default all the tests defined in the current class and all of its
+parent classes will be run.  To change this behaviour, see L</NOTES>.
+
+テストメソッドを実装します。デフォルトでは、正規表現 C</^test/> に
+マッチするすべてのメソッドがテストメソッドであるという慣例があります。
+（L</list_tests()> と L</get_matching_methods()> を見てください。）
+ここで留意する必要があることは、デフォルトでは現在のクラスとその
+すべての親クラスで定義されているすべてのテストが実行されるということです。
+この動作を変更したいならば L</NOTES> を見てください。
+
+By default, each test runs in its own fixture so there can be no side
+effects among test runs. Here is an example:
+
+デフォルトでは、各テストは他のテストに干渉しないように、
+それぞれ別の fixture 上で動作します。以下にサンプルを示します。
+
+      package MathTest;
+      use base qw(Test::Unit::TestCase);
+
+      sub new {
+          my $self = shift()->SUPER::new(@_);
+	      $self->{value_1} = 0;
+	      $self->{value_2} = 0;
+	      return $self;
+      }
+
+      sub set_up {
+	      my $self = shift;
+	      $self->{value_1} = 2;
+	      $self->{value_2} = 3;
+      }
+
+For each test implement a method which interacts with the fixture.
+Verify the expected results with assertions specified by calling
+C<$self-E<gt>assert()> with a boolean value.
+
+それぞれのテストには、fixture と対話する方法を実装します。
+真偽値と共に C<$self-E<gt>assert()> を呼び出して、
+期待する結果を返すことを確かめます。
+
+      sub test_add {
+	      my $self = shift;
+	      my $result = $self->{value_1} + $self->{value_2};
+	      $self->assert($result == 5);
+      }
+
+Once the methods are defined you can run them. The normal way to do
+this uses reflection to implement C<run_test>. It dynamically finds
+and invokes a method. For this the name of the test case has to
+correspond to the test method to be run. The tests to be run can be
+collected into a TestSuite. The framework provides different test
+runners, which can run a test suite and collect the results. A test
+runner either expects a method C<suite()> as the entry point to get a
+test to run or it will extract the suite automatically.
+
+一度これらのメソッドを定義するとテストを実行できるようになります。
+通常、熟考して C<run_test> を実装します。メソッドは動的に探され、
+呼び出されます。このテストケースの名前は、テストすべきメソッドに
+合致していなければなりません。また、実行すべきテストを TestSuite に
+集約することができます。フレームワークは異なったテストの実行環境を
+提供し、テストスイートを実行してテスト結果を集約することができます。
+テスト実行環境は、実行すべきテストを見つけるための目印である
+C<suite()> メソッドを期待し、それがなければ、自動でスイートを
+作り出します。
+
+=head2 テストメソッドの書き方（Writing Test Methods）
+
+The return value of your test method is completely irrelevant. The
+various test runners assume that a test is executed successfully if no
+exceptions are thrown. Generally, you will not have to deal directly
+with exceptions, but will write tests that look something like:
+
+テストメソッドの返り値は完全に無関係です。様々なテスト実行環境は、
+例外が投げられない場合はテストが成功していると仮定します。
+一般に、例外に直接対処する必要はありませんが、何が起こったかが
+わかるようにテストを書きましょう。
+
+    sub test_something {
+        my $self = shift;
+        # Execute some code which gives some results.
+        ...
+        # Make assertions about those results
+        $self->assert_equals('expected value', $resultA);
+        $self->assert_not_null($result_object);
+        $self->assert(qr/some_pattern/, $resultB);
+    }
+
+The assert methods throw appropriate exceptions when the assertions fail, 
+which will generally stringify nicely to give you sensible error reports.
+
+テストが失敗した場合、assert メソッドは適切な例外を投げます。
+通常は、判り易いエラーレポートを返します。
+
+L<Test::Unit::Assert> has more details on the various different
+C<assert> methods.
+
+L<Test::Unit::Assert> は、C<assert> メソッドとはまた違った更に
+詳しい情報を与えます。
+
+L<Test::Unit::Exception> describes the Exceptions used within the
+C<Test::Unit::*> framework.
+
+L<Test::Unit::Exception> は、C<Test::Unit::*> フレームワーク内で
+用いられる例外について記述されています。
+
+=head2 ヘルパーメソッド（Helper methods）
+
+=over 4
+
+=item make_test_from_coderef (CODEREF, [NAME])
+
+Takes a coderef and an optional name and returns a Test case that
+inherits from the object on which it was called, which has the coderef
+installed as its C<run_test> method. L<Class::Inner> has more details
+on how this is generated.
+
+coderef やオプションの名前を取ったり、そのどちらかから呼ばれ、
+C<run_test> メソッドのように組み込まれた coderef オブジェクトを
+継承したテストケースを返します。L<Class::Inner> は、これが
+どのように生成されるかについてのより多くの詳細を持っています。
+
+=item list_tests
+
+Returns the list of test methods in this class and its parents. You
+can override this in your own classes, but remember to call
+C<SUPER::list_tests> in there too.  Uses C<get_matching_methods>.
+
+このクラスや親クラスのテストメソッドのリストを返します。
+作成したクラスでオーバーライドすることもできますが、
+そのメソッドで C<SUPER::list_tests> を呼び出すことも
+忘れないでください。C<get_matching_methods> も使いましょう。
+
+=item get_matching_methods (REGEXP)
+
+Returns the list of methods in this class matching REGEXP.
+
+クラスがもつメソッドの中で正規表現にマッチするものの
+リストを返します。
+
+=item set_up
+
+=item tear_down
+
+If you don't have any setup or tear down code that needs to be run, we
+provide a couple of null methods. Override them if you need to.
+
+もし、セットアップをしていないか、実行する必要のあるコードを破棄したいならば、
+それを無効にする方法があります。必要であるならば、オーバーライドできます。
+
+=item annotate (MESSAGE)
+
+You can accumulate helpful debugging for each testcase method via this
+method, and it will only be outputted if the test fails or encounters
+an error.
+
+このメソッドを通したテストケースメソッドは、デバッグを助ける情報を蓄積します。
+そして、テストが失敗するかエラーが発生したら出力します。
+
+=back
+
+=head2 How it All Works
+
+The PerlUnit framework is achingly complex. The basic idea is that you
+get to write your tests independently of the manner in which they will
+be run, either via a C<make test> type script, or through one of the
+provided TestRunners, the framework will handle all that for you. And
+it does. So for the purposes of someone writing tests, in the majority
+of cases the answer is 'It just does.'.
+
+PerlUnit フレームワークは複雑になっています。基本的な考え方としては、
+ユーザのテストコードは、それがどのように動作するか、C<make test> のような
+スクリプトや、付属の TestRunner 経由かには依存せず、それらをフレームワー
+クがすべて面倒をみてくれるはずです。そして実際そうなっています。つまり、
+誰かがテストを書くという目的であれば、どのように動作するのかに対しての
+答えは大部分、「ただ動作する」ということになります。
+
+Of course, if you're trying to extend the framework, life gets a
+little more tricky. The core class that you should try and grok is
+probably Test::Unit::Result, which, in tandem with whichever
+TestRunner is being used mediates the process of running tests,
+stashes the results and generally sits at the centre of everything.
+
+もちろん、フレームワークを拡張しようとすると、若干めんどうなことになり
+ます。理解する必要があるコアクラスはおそらく Test::Unit::Result で、こ
+のクラスは、使用される TestRunner と協調して、テストの動作プロセスの仲
+介、結果の格納、それにその他すべての中心になります。
+
+Better docs will be forthcoming.
+
+よりよいドキュメントは準備中です。
+
+=head1 NOTES
+
+Here's a few things to remember when you're writing your test suite:
+
+テストスイートを書くときに忘れてはならないことをいくつか書きます。
+
+Tests are run in 'random' order; the list of tests in your TestCase
+are generated automagically from its symbol table, which is a hash, so
+methods aren't sorted there. 
+
+テストは任意の順番で実行されます。TestCase でのテストのリストは、
+ソートされていないメソッドのハッシュのシンボルテーブルから
+自動的に生成されます。
+
+If you need to specify the test order, you can do one of the
+following:
+
+もし、テストの順番を指定したいならば、次に書くようなことのうち
+いずれかを行わねばなりません。
+
+=over 4
+
+=item * Set @TESTS
+
+  our @TESTS = qw(my_test my_test_2);
+
+This is the simplest, and recommended way.
+
+最も単純で推奨する方法です。
+
+=item * C<list_tests()> をオーバーライドする（Override the C<list_tests()> method）
+
+to return an ordered list of methodnames
+
+メソッド名を並べたリストを返します。
+
+=item * C<suite()> メソッドを提供する（Provide a C<suite()> method）
+
+which returns a Test::Unit::TestSuite.
+
+Test::Unit::TestSuite を返します。
+
+=back
+
+However, even if you do manage to specify the test order, be careful,
+object data will not be retained from one test to another, if you want
+to use persistent data you'll have to use package lexicals or globals.
+(Yes, this is probably a bug).
+
+たとえテストの順番を指定することで注意深く管理したとしても、
+オブジェクトデータは、あるテストから別のテストに維持されることは
+ありません。もし、永続的なデータを使いたいならば、
+レキシカルかグローバルなパッケージを使う必要があります。
+（恐らくはバグと言えるでしょう。）
+
+If you only need to restrict which tests are run, there is a filtering
+mechanism available.  Override the C<filter()> method in your testcase
+class to return a hashref whose keys are filter tokens and whose
+values are arrayrefs of test method names, e.g.
+
+もし、実行されるテストを制限したいだけならば、フィルタリング機能が
+用意されています。テストケースクラス内で、キーがフィルターであり、
+値がテストメソッド名の配列リファレンスであるハッシュリファレンスを返すように
+C<filter()> メソッドをオーバーライドします。例を書きます。
+
+  sub filter {{
+      slow => [ qw(my_slow_test my_really_slow_test) ],
+  }}
+
+Then, set the filter state in your runner before the test run starts:
+
+それから、テストを実行する前にフィルタを指定します。
+
+  # @filter_tokens = ( 'slow', ... );
+  $runner->filter(@filter_tokens);
+  $runner->start(@args);
+
+This interface is public, but currently undocumented (see
+F<doc/TODO>).
+
+このインタフェースはパブリックですが、現在は非公式です。
+（F<doc/TODO> を見てください。）
+
+=head1 BUGS
+
+See note 1 for at least one bug that's got me scratching my head.
+There's bound to be others.
+
+私を悩ますたった１つのバグに関しては、note 1 をみてください。
+他にも厄介なものがあります。
+
+=head1 AUTHOR
+
+Framework JUnit authored by Kent Beck and Erich Gamma.
+
+Ported from Java to Perl by Christian Lemburg.
+
+Copyright (c) 2000 Christian Lemburg, E<lt>lemburg@acm.orgE<gt>.
+
+All rights reserved. This program is free software; you can
+redistribute it and/or modify it under the same terms as Perl itself.
+
+Thanks go to the other PerlUnit framework people: 
+Brian Ewins, Cayte Lindner, J.E. Fritz, Zhon Johansen.
+
+Thanks for patches go to:
+Matthew Astley.
+
+More changes made by Piers Cawley <pdcawley@iterative-software.com>
+
+=head1 SEE ALSO
+
+=over 4
+
+=item *
+
+L<Test::Unit::Assert>
+
+=item *
+
+L<Test::Unit::Exception>
+
+=item *
+
+L<Test::Unit::TestSuite>
+
+=item *
+
+L<Test::Unit::TestRunner>
+
+=item *
+
+L<Test::Unit::TkTestRunner>
+
+=item *
+
+For further examples, take a look at the framework self test
+collection (t::tlib::AllTests).
+
+更なる例は、このフレームワーク自体のテスト（t::tlib::AllTests）を
+見てください。
+
+=back
+
+=head1 翻訳について
+
+翻訳者：IWAI, Masaharu E<lt>iwaim.sub@gmail.comE<gt>
+
+小山浩之氏による過去のバージョンの翻訳から翻訳文の一部を
+利用させていただいたことに感謝します。
+ L<http://perl.infoware.ne.jp/documents/Test-Unit-TestCase.html>
+
+Perlドキュメント日本語訳 Project にて、
+Perlモジュール、ドキュメントの翻訳を行っております。
+
+L<http://sourceforge.jp/projects/perldocjp/>,
+L<http://www.freeml.com/ctrl/html/MLInfoForm/perldocjp@freeml.com>,
+L<http://perldoc.jp/>
+
+=cut
+

@@ -1,0 +1,863 @@
+
+=encoding euc-jp
+
+=pod
+
+=head1 名前
+
+Data::FormValidator - 入力プロファイルに基づいて、ユーザの(ふつうHTMLフォームからの)入力を妥当性の確認
+
+=head1 概要
+
+    use Data::FormValidator;
+
+        # For the common case of a validating a single profile provided through a hash reference,
+        # using 'validate' like this is the simplest solution 
+        my ($valids, $missings, $invalids, $unknowns) 
+                = Data::FormValidator->validate(\%fdat, \%profile);
+
+    # This is an example of using a validation profile defined in a seperate file
+    my $validator = new Data::FormValidator( "/home/user/input_profiles.pl" );
+    my ( $valid, $missing, $invalid, $unknown ) = $validator->validate(  \%fdat, "customer_infos" );
+
+=head1 概要
+
+Data::FormValidator's main aim is to make the tedious coding of input
+validation expressible in a simple format and to let the programmer focus
+on more interesting tasks.
+
+Data::FormValidator の主な目的は、
+入力の妥当性を表現できるような、単純なフォーマットの退屈なコーディングを、
+モジュールにさせて、プログラマにはもっと面白い仕事に集中させることです。
+
+When you are coding a web application one of the most tedious though
+crucial tasks is to validate user's input (usually submitted by way of
+an HTML form). You have to check that each required fields is present
+and that some fields have valid data. (Does the phone input looks like a
+phone number? Is that a plausible email address? Is the YY state
+valid? etc.) For a simple form, this is not really a problem but as
+forms get more complex and you code more of them this task becames
+really boring and tedious.
+
+webアプリケーションをコーディングしているなら、もっとも退屈なものの一つではあるけども、
+重要な仕事は、ユーザの入力の妥当性を確認することです(ふつう、HTMLフォームの形で、サブミットされます)。
+必要とされるフィールドがそれぞれあり、フィールドに妥当なデータがあることを、
+チェックしなければなりません。(電話番号の入力が電話番号のようになっているか?
+もっともらしいemailアドレスか? YY 州は、妥当か?)。単純なフォームでは、
+たいした問題ではありませんが、フォームが複雑になり、それらのほとんどをコードしていると、
+この仕事は、本当に、飽き飽きして、退屈になってきます。
+
+Data::FormValidator lets you define profiles which declare the
+required fields and their format. When you are ready to validate the
+user's input, you tell Data::FormValidator the profile to apply to the
+user data and you get the valid fields, the name of the fields which
+are missing. An array is returned listing which fields are valid,
+missing, invalid and unknown in this profile.
+
+Data::FormValidator は、必須フィールドと、
+そのフォーマットを宣言するプロファイルを定義させます。
+ユーザの入力の妥当性を確認する準備が出来たら、
+Data::FormValidator にプロファイルを教え、
+ユーザのデータに当てはめます。すると、妥当なフィールドと、不足しているフィールドの名前を得ます。
+配列が返されますが、その配列は、そのプロファイルにおいて、
+どのフィールドが妥当であるか、不当であるか、わからないかをリストします。
+
+You are then free to use this information to build a nice display to
+the user telling which fields that he forgot to fill.
+
+それから、この情報を自由に使って、素敵な表示を作って、
+どのフィールドをユーザが埋め忘れたのかを教えます。
+
+=pod
+
+=head1 入力プロファイルの仕様
+
+To create a Data::FormValidator, use the following :
+
+Data::FormValidator を作るには、次のようにします：
+
+    my $validator = new Data::FormValidator( $input_profile );
+
+Where $input_profile may either be an hash reference to an input
+profiles specification or a file that will be evaluated at runtime to
+get a hash reference to an input profiles specification.
+
+$input_profile は、入力プロファイル仕様へのハッシュリファレンスか、ファイルです。
+ファイルは実行時に評価され、入力プロファイル仕様へのハッシュリファレンスを得ます。
+
+The input profiles specification is an hash reference where each key
+is the name of the input profile and each value is another hash
+reference which contains the actual profile elements. If the input
+profile is specified as a file name, the profiles will be reread each
+time that the disk copy is modified.
+
+入力プロファイル仕様はハッシュリファレンスで、ハッシュのそれぞれのキーが、入力プロファイルの名前であり、
+ハッシュのそれぞれの値は、別のハッシュリファレンスであり、実際のプロファイル要素を含みます。
+入力プロファイルがファイル名として、指定されていれば、プロファイルはディスク・コピーが修正されるたびに読まれます。
+
+Here is an example of a valid input profiles specification :
+
+妥当な入力プロファイル仕様の例です :
+
+    {
+        customer_infos => {
+            optional     =>
+                [ qw( company fax country password password_confirmation) ],
+            required     =>
+                [ qw( fullname phone email address) ],
+            required_regexp => '/city|state|zipcode/',
+            optional_regexp => '/_province$/',
+
+                require_some => {
+                        # require any two fields from this group
+                        city_or_state_or_zipcode => [ 2, qw/city state zipcode/ ], 
+                },
+                        
+            constraints  =>
+                {
+                    email       => "email",
+                    fax         => "american_phone",
+                    phone       => "american_phone",
+                    zipcode     => '/^\s*\d{5}(?:[-]\d{4})?\s*$/',
+                    state       => "state",
+                },
+            constraint_regexp_map => {
+                '/_postcode$/'  => 'postcode',
+                '/_province$/'  => 'province,                 
+            },                        
+            dependency_groups  => {
+                password_group => [qw/password password_confirmation/]
+            }
+            defaults => {
+                country => "USA",
+            },
+        },
+        customer_billing_infos => {
+             optional       => [ "cc_no" ],
+             dependencies   => {
+            "cc_no" => [ qw( cc_type cc_exp ) ],
+            "pay_type" => {
+                check => [ qw( check_no ) ],
+             }
+             },
+             constraints => {
+                cc_no      => {  constraint  => "cc_number",
+                                 params      => [ qw( cc_no cc_type ) ],
+                                },
+                cc_type => "cc_type",
+                cc_exp  => "cc_exp",
+              }
+            filters       => [ "trim" ],
+            field_filters => { cc_no => "digit" },
+            field_filter_regexp_map => {
+                        '/_name$/'      => 'ucfirst',
+            },
+        },
+    }
+
+Notice that a number of components take anonymous arrays as their values. In any of
+these places, you can simply use a string if you only need to specify one value. For example,
+instead of
+
+若干のコンポーネントが、それぞれの値として無名配列を取っているのに留意してください。
+これらの場所のいくつかに、もし、一つの値しか指定しないなら、単純に文字列を使うことが出来ます。
+例えば、下の代わりに、
+
+    filters => [ 'trim' ]
+
+you can simply say
+
+次のように簡単に出来ます。
+
+    filters => 'trim'
+
+The following are the valid fields for an input specification :
+
+下記は、入力仕様のための妥当なフィールドです。
+
+=over
+
+=item required
+
+This is an array reference which contains the name of the fields which
+are required. Any fields in this list which are not present in the
+user input will be reported as missing.
+
+これは、配列リファレンスで、中には必須フィールドの名前が入ります。
+ユーザの入力に、このリストにあるフィールドが存在しない場合、ミスであると報告されます。
+
+=item required_regexp
+
+This is a regular expression used to specify additional fieds which are
+required. For example, if you wanted all fields names that begin with I<user_> 
+to be required, you could use the regular expression, /^user_/
+
+これは、正規表現で、必須とされる追加のフィールドを正規表現で指定するのに使われます。
+たとえば、I<user_>ではじまる、全てのフィールド名を必須にしたいなら、
+正規表現、/^user_/ を使うことが出来ます。
+
+=item require_some
+
+This is a reference to a hash which defines groups of fields where 
+1 or more field from the group should be required, but exactly
+which fields doesn't matter. The keys in the hash are the group names. 
+These are returned as "missing" unless the required number of fields
+from the group has been filled in. The values in this hash are
+array references. The first element in this hash should be the 
+number of fields in the group that is required. If the first
+first field in the array is not an a digit, a default of "1" 
+will be used. 
+
+これは、ハッシュへのリファレンスで、フィールドのグループを定義します。
+グループの中の、一つか、それ以上のフィールドが、必須とされます。
+ですが、どのフィールドかは、まったく問題にしません。
+グループの中で、必須とされている数の、フィールドが埋められていなければ、"missing" として返ります。
+このハッシュの値は、配列リファレンスです。
+このハッシュ(訳註：配列の間違い?)の最初の要素は、グループの中の必須フィールドの数です。
+配列の最初の一番目のフィールドが数字でなければ、デフォルトの"1"が使われます。
+
+=item optional
+
+This is an array reference which contains the name of optional fields.
+These are fields which MAY be present and if they are, they will be
+check for valid input. Any fields not in optional or required list
+will be reported as unknown.
+
+これは、配列リファレンスで、配列にはオプショナルなフィールドの名前が入ります。
+これらのフィールドは、あるB<かもしれ>ず、もしあれば、入力の妥当性をチェックします。
+オプショナルか、必須リストにないフィールドは、未知のものとして、報告されます。
+
+=item optional_regexp
+
+This is a regular expression used to specify additional fieds which are
+optional. For example, if you wanted all fields names that begin with I<user_> 
+to be optional, you could use the regular expression, /^user_/
+
+これは、正規表現で、付加的なオプショナルなフィールドを正規表現で指定するのに使われます。
+たとえば、I<user_>ではじまる全てのフィールド名をオプショナルにしたいなら、
+正規表現、/^user_/ を使うことができます。
+
+=item dependencies
+
+This is an hash reference which contains dependencies information.
+This is for the case where one optional fields has other requirements.
+The dependencies can be specified with an array reference.  For example,
+if you enter your credit card number, the field cc_exp and cc_type should
+also be present.  If the dependencies are specified with a hash reference
+then the additional constraint is added that the optional field must equal
+a key for the dependencies to be added. For example, if the pay_type field
+is equal to "check" then the check_no field is required.  Any fields in
+the dependencies list that is missing when the target is present will be
+reported as missing.
+
+これは、ハッシュリファレンスで、依存情報が入ります。
+あるオプショナルなフィールドが、他のフィールドを必要としているような場合のためにあります。
+依存性は、配列リファレンスでも指定できます。
+たとえば、クレジットカード番号を入れるなら、フィールド、cc_exp と、cc_type が、あるべきです。
+依存性が、ハッシュリファレンスで、指定されていたら、付加的な制約が加えられ、
+オプショナルなフィールドは、加えられた依存性のキーと同じでなければなりません。
+たとえば、pay_type フイールドが、"check" なら、check_no フィールドが必要になります。
+チェック対象だが、依存性リストにないフィールドはなんでも未知のものとして、報告されます。
+
+=item dependency_groups
+
+This is a hash reference which contains information about groups of 
+interdependent fields. The keys are arbitrary names that you create and
+the values are references to arrays of the field names in each group. For example,
+perhaps you want both the password and password_confirmation field to be required
+if either one of them is filled in.  
+
+これは、ハッシュリファレンスで、相互依存のフィールドのグループについての情報が入ります。
+キーは、資意的な名前で、値は配列へのリファレンスで、それぞれのグループのフィールド名になります。
+たとえば、password と、password_confirmation フィールドを、どちらか一方が埋めてある場合は、
+両方を必須としたいでしょう。
+
+=item defaults
+
+This is a hash reference which contains defaults which should be
+substituted if the user hasn't filled the fields. Key is field name
+and value is default value which will be returned in the list of valid
+fields.
+
+デフォルトを含むハッシュリファレンスです。
+デフォルトとは、ユーザーがまだ埋めていない場合に、代わりにすべきもののことです。
+キーは、フィールドの名前で、値は、妥当なフィールドのリストで返されるデフォルトの値です。
+
+=item filters
+
+This is a reference to an array of filters that will be applied to ALL
+optional or required fields. This can be the name of a built-in filter
+(trim,digit,etc) or an anonymous subroutine which should take one parameter, 
+the field value and return the (possibly) modified value.
+
+これは、配列へのリファレンスで、全てのオプショナルか、必須のフィールドに適用されるフィルタが入ります。
+内蔵されているフィルタ(trim、digit、など)の名前か、匿名のサブルーチンになります。
+このサブルーチンは、一つのパラメタ、フィールドの値を取り、(可能なら)修正された値を返すべきです。
+
+=item field_filters
+
+This is a reference to an hash which contains reference to array of
+filters which will be applied to specific input fields. The key of the
+hash is the name of the input field and the value is a reference to an
+array of filters, the same way the filters parameter works.
+
+これは、ハッシュへのリファレンスで、特定の入力フィールドに適用されるフィルタの配列へのリファレンスが入ります。
+ハッシュのキーは、入力フィールドの名前で、値はフィルタの配列へのリファレンスです。
+フィルタのパラメーターが働くのと同じ方法です。
+
+=item field_filter_regexp_map
+
+This is a hash reference where the keys are the regular expressions to
+use and the values are references to arrays of filters which will be
+applied to specific input fields. Used to apply filters to fields that
+match a regular expression. For example, you could make the first letter
+uppercase of all fields that end in "_name" by using the key '/_name$/'
+and the value "ucfirst".
+
+これは、ハッシュリファレンスで、キーは使用する正規表現で、値は配列へのリファレンスで、
+特定の入力フィールドに適用されるフィルタが入ります。フィルタを正規行現にマッチする
+フィールドに適用するのに使われます。たとえば、キー'/_name$/'と、値"ucfirst"を使うことで、
+"_name"で終わる全ての文字の、最初の文字を大文字にすることができます。
+
+=item constraints
+
+This is a reference to an hash which contains the constraints that
+will be used to check whether or not the field contains valid data.
+Constraints can be either the name of a builtin constraint function
+(see below), a perl regexp or an anonymous subroutine which will check
+the input and return true or false depending on the input's validity.
+
+これは、ハッシュへのリファレンスで、制約が入ります。
+この制約はフィールドに妥当なデータが入っているかどうかをチェックするのに使われます。
+制約は、組込みの制約関数の名前(下記参照)か、perlの正規表現か、
+入力のチェックをし、入力の妥当性によって、真か偽を返す匿名のサブルーチンです。
+
+The constraint function takes one parameter, the input to be validated
+and returns true or false. It is possible to specify the parameters
+that will be passed to the subroutine. For that, use an hash reference
+which contains in the I<constraint> element, the anonymous subroutine
+or the name of the builtin and in the I<params> element the name of
+the fields to pass a parameter to the function. (Don't forget to
+include the name of the field to check in that list!) For an example,
+look at the I<cc_no> constraint example.
+
+制約関数は、一つのパラメタ、妥当であると確認される入力を取り、真か、偽を返します。
+ありそうなのは、サブルーチンに渡す複数のパラメタを指定することです。
+そのために、次のものを含む、ハッシュリファレンスを使います。
+I<制約>要素、匿名のサブルーチンか、組込みの名前と、I<params>要素、パラメタを関数に渡すためのフィールドの名前。
+(そのリストに、チェックするフィールドの名前を含むのを忘れないように!)
+例として、I<cc_no>制約の例を見てください。
+
+=item constraint_regexp_map
+
+This is a hash reference where the keys are the regular expressions to
+use and the values are the constraints to apply. Used to apply
+constraints to fields that match a regular expression.  For example,
+you could check to see that all fields that end in "_postcode" are
+valid Canadian postal codes by using the key '_postcode$' and the
+value "postcode".
+
+これは、ハッシュリファレンスです。ここでは、キーは使用する正規表現で、
+値は適用する制約です。正規表現にマッチするフィールドに制約を適用するために
+使われます。キーに、"_postcode$"とし、値に、"postcode"とすることで、
+"_postcode" で終わる全てのフィールドが妥当なカナダの郵便番号とわかるチェックができます。
+
+=item missing_optional_valid
+
+This can be set to a true value (such as 1) to cause missing optional
+fields to be included in the valid hash. By default they are not
+included-- this is the historical behavior. 
+
+妥当なハッシュに含まれる、見当たらないオプショナルなフィールドを引き起こすために、
+真の値(1のような)をセットできます。(訳註：なぞ)
+デフォルトでは、これらは、含まれていません。-- 歴史の振舞です。
+
+=back
+
+=pod
+
+=head1 妥当な入力
+
+    my( $valids, $missings, $invalids, $unknowns ) =
+        $validator->validate( \%fdat, "customer_infos" );
+
+To validate input you use the validate() method. This method takes two
+parameters :
+
+妥当な入力のために、validate() メソッドを使います。
+このメソッドは、2つのパラメタをとります。
+
+=over
+
+=item data
+
+Contains an hash which should correspond to the form input as
+submitted by the user. This hash is not modified by the call to validate.
+
+ユーザによってサブミットされたようなフォームの入力に一致すべきハッシュを含みます。
+このハッシュは、妥当であると確認するための呼出しによって、変更されません。
+
+=item profile
+
+Can be either a name which will be used to lookup the corresponding profile
+in the input profiles specification, or it can be an hash reference to the
+input profile which should be used.
+
+profileは、入力プロファイル仕様に一致するプロファイルを探すのに使われる名前でも、
+使われるべき入力仕様へのハッシュリファレンスでもありえます。
+
+=back
+
+This method returns a 4 elements array. 
+
+このメソッドは、4つの要素の配列を返します。
+
+=over
+
+=item valids
+
+This is an hash reference to the valid fields which were submitted in
+the data. The data may have been modified by the various filters specified.
+
+これは、データの中でサブミットされている妥当なフィールドへのハッシュリファレンスです。
+データは、様々なフィルタが指定されることで、変更されているかもしれません。
+
+=item missings
+
+This is a reference to an array which contains the name of the missing
+fields. Those are the fields that the user forget to fill or filled
+with space. These fields may comes from the I<required> list or the
+I<dependencies> list.
+
+これは、見つからないフィールドの名前を含む配列へのリファレンスです。
+これらは、ユーザが埋め忘れたか、スペースで埋めたフィールドです。
+これらのフィールドは、I<required>リストか、I<dependencies>リストから来ているかも知れません。
+
+
+=item invalids
+
+This is a reference to an array which contains the name of the fields
+which failed their constraint check.
+
+これは、制約チェックに失敗したフィールドの名前を含む配列へのリファレンスです。
+
+=item unknowns
+
+This is a list of fields which are unknown to the profile. Whether or
+not this indicates an error in the user input is application
+dependant.
+
+プロファイルでわからないフィールドのリストです。
+これが、ユーザ入力のエラーを示すかどうかは、アプリケーション依存です。
+
+=back
+
+=pod
+
+=head1 入力フィルタ
+
+These are the builtin filters which may be specified as a name in the
+I<filters> and I<field_filters> parameters of the input profile. You may
+also call these functions directly through the procedural interface by 
+either importing them directly or importing the whole I<:filters> group. For
+example, if you want to access the I<trim> function directly, you could either do:
+
+これらは、組込みのフィルタで、入力プロファイルで、
+I<filters>と、I<field_filters>パラメタで、名前として特定されます。
+それらの関数を直接にインポートするか、全てのI<:filters>グループを、をインポートすることで、
+手続きインターフェースで直接に呼ぶことができます。
+例えば、I<trim>関数に直接にアクセスしたければ、
+次のように出来ます:
+
+    use Data::FormValidator (qw/filter_trim/);
+    or
+    use Data::FormValidator (:filters);
+
+    $string = filter_trim($string);
+
+Notice that when you call filters directly, you'll need to prefix the filter name with
+"filter_".
+
+次のことに留意してください。フィルタを直接に呼ぶとき、
+フィルタの名前に、接頭語として、"filter_"を付けなければなりません。
+
+=over
+
+=item trim
+
+Remove white space at the front and end of the fields.
+
+前後のホワイトスペースを除去します。
+
+=pod
+
+=item strip
+
+Runs of white space are replaced by a single space.
+
+ホワイトスペースの続きを、一つのスペースに置換します。
+
+=pod
+
+=item digit
+
+Remove non digits characters from the input.
+
+入力から、数字以外の文字を除きます。
+
+=pod
+
+=item alphanum
+
+Remove non alphanumerical characters from the input.
+
+入力から、アルファベットや数値以外の文字を除きます。
+
+=pod
+
+=item integer
+
+Extract from its input a valid integer number.
+
+入力から、妥当な整数を抽出します。
+
+=pod
+
+=item pos_integer
+
+Extract from its input a valid positive integer number.
+
+入力から、妥当な正の整数を抽出します。
+
+=pod
+
+=item neg_integer
+
+Extract from its input a valid negative integer number.
+
+入力から、妥当な負の整数を抽出します。
+
+=pod
+
+=item decimal
+
+Extract from its input a valid decimal number.
+
+入力から、妥当な小数を抽出します。
+
+=pod
+
+=item pos_decimal
+
+Extract from its input a valid positive decimal number.
+
+入力から、妥当な正の小数を抽出します。
+=pod
+
+=item neg_decimal
+
+Extract from its input a valid negative decimal number.
+
+入力から、妥当な負の小数を抽出します。
+
+=pod
+
+=item dollars
+
+Extract from its input a valid number to express dollars like currency.
+
+入力から、貨幣のようなダラを表現する妥当な数を抽出します。
+
+=pod
+
+=item phone
+
+Filters out characters which aren't valid for an phone number. (Only
+accept digits [0-9], space, comma, minus, parenthesis, period and pound [#].)
+
+電話番号に、妥当でない文字をフィルタリングします。
+(数字[0-9]と、スペース、カンマ、マイナス、()括弧、ピリオド、ポンド[#]のみを受け入れます)
+
+=pod
+
+=item sql_wildcard
+
+Transforms shell glob wildcard (*) to the SQL like wildcard (%).
+
+shell、globのワイルドカード(*)を、SQLライクなワイルドカード(%)に変えます。
+
+=pod
+
+=item quotemeta
+
+Calls the quotemeta (quote non alphanumeric character) builtin on its
+input.
+
+入力に、組込みのquotemeta(アルファベットや数値以外の文字をクォートする)を呼びます。
+
+=pod
+
+=item lc
+
+Calls the lc (convert to lowercase) builtin on its input.
+
+入力に、組込みのlc(小文字に変換)を呼びます。
+
+=pod
+
+=item uc
+
+Calls the uc (convert to uppercase) builtin on its input.
+
+入力に、組込みのuc(大文字に変換)を呼びます。
+
+=pod
+
+=item ucfirst
+
+Calls the ucfirst (Uppercase first letter) builtin on its input.
+
+入力に、組込みの ucfirst(最初の文字を大文字に変換)を呼びます。
+
+=pod
+
+=back
+
+=head1 組込みの妥当性の確認
+
+Those are the builtin constraint that can be specified by name in the
+input profiles. You may
+also call these functions directly through the procedural interface by 
+either importing them directly or importing the whole I<:validators> group. For
+example, if you want to access the I<email> validator directly, you could either do:
+
+これらは、入力プロファイルで、名前によって指定されうる組込みの制約です。
+それらの関数を直接にインポートするか、全てのI<:validators>グループを、をインポートすることで、
+手続きインターフェースで直接に呼ぶことができます。
+例えば、I<email>関数に直接にアクセスしたければ、次のように出来ます:
+
+
+    use Data::FormValidator (qw/valid_email/);
+    or
+    use Data::FormValidator (:validators);
+
+    if (valid_email($email)) {
+      # do something with the email address
+    }
+
+Notice that when you call validators directly, you'll need to prefix the validator name with
+"valid_" 
+
+次のことに留意してください。妥当性チェックを直接に呼ぶとき、
+妥当性チェックの名前に、接頭語として、"valid_"を付けなければなりません。
+
+=over
+
+=item email
+
+Checks if the email LOOKS LIKE an email address. This checks if the
+input contains one @, and a two level domain name. The address portion
+is checked quite liberally. For example, all those probably invalid
+address would pass the test :
+
+emailアドレスにみえるようなemailかどうかをチェックします。
+このチェックは、入力が、一つの@を含んでおり、2レベルのドメネイン名かどうかを、チェックします。
+アドレスの一部分は、非常に大まかにチェックされます。
+例えば、全てのこれらの不当そうなアドレスは、テストにパスします:
+
+    nobody@top.domain
+    %?&/$()@nowhere.net
+    guessme@guess.m
+
+=pod
+
+=item state_or_province
+
+This one checks if the input correspond to an american state or a canadian
+province.
+
+これは、入力がアメリカの州か、カナダの行政区分に一致するかどうかをチェックします。
+
+=pod
+
+=item state
+
+This one checks if the input is a valid two letter abbreviation of an 
+american state.
+
+これは、入力がアメリカの州に一致するかどうかをチェックします。
+
+=pod
+
+=item province
+
+This checks if the input is a two letter canadian province
+abbreviation.
+
+これは、入力がカナダの行政区分に一致するかどうかをチェックします。
+
+=pod
+
+=item zip_or_postcode
+
+This constraints checks if the input is an american zipcode or a
+canadian postal code.
+
+この制約は、入力がアメリカの郵便番号か、かなだの郵便番号かをチェックします。
+
+=pod
+
+=item postcode
+
+This constraints checks if the input is a valid Canadian postal code.
+
+この制約は、入力が妥当なかなだの郵便番号化をチェックします。
+
+=pod
+
+=item zip
+
+This input validator checks if the input is a valid american zipcode :
+5 digits followed by an optional mailbox number.
+
+この入力妥当性チェックは、入力が妥当なアメリカの郵便番号かどうかをチェックします。
+5桁のあとに、オプショナルな、メールボックス番号が続きます。
+
+=pod
+
+=item phone
+
+This one checks if the input looks like a phone number, (if it
+contains at least 6 digits.)
+
+入力が電話番号に見えるかどうかをチェックします(すくなくとも、6桁を含んでいれば)。
+
+=pod
+
+=item american_phone
+
+This constraints checks if the number is a possible North American style
+of phone number : (XXX) XXX-XXXX. It has to contains 7 or more digits.
+
+この制約は番号がありうる北アメリカスタイルの電話番号、(XXX) XXX-XXXX、かどうかをチェックします。
+7か、それ以上の桁を含んでいなければなりません。
+
+=pod
+
+=item cc_number
+
+This is takes two parameters, the credit card number and the credit cart
+type. You should take the hash reference option for using that constraint.
+
+これは2つのパラメタをとる。クレジットカード番号と、
+クレジットカート(訳註：cardのまちがい?)タイプです。
+この制約を使うために、ハッシュリファレンスのオプションを取るべきです。
+
+The number is checked only for plausibility, it checks if the number could
+be valid for a type of card by checking the checksum and looking at the number
+of digits and the number of digits of the number.
+
+番号は、もっともらしさのみチェックされます。番号が、チェックサムによるチェックと、
+番号の桁と、桁数をみることで、番号が妥当かどうかをチェックします。
+
+This functions is only good at weeding typos and such. IT DOESN'T
+CHECK IF THERE IS AN ACCOUNT ASSOCIATED WITH THE NUMBER.
+
+この関数は、タイプミスやそのようなものを除外するのが得意なだけです。
+これらは番号と結び付くアカウントであるかどうかはチェックしません。
+
+=pod
+
+=item cc_exp
+
+This one checks if the input is in the format MM/YY or MM/YYYY and if
+the MM part is a valid month (1-12) and if that date is not in the past.
+
+MM/YY か、MM/YYYY で、入力され、MM部分が、妥当な月(1-12) かどうかと、
+データが過去でないかをチェックします。
+
+=pod
+
+=item cc_type
+
+This one checks if the input field starts by M(asterCard), V(isa),
+A(merican express) or D(iscovery).
+
+MasterCard、Visa、American express、Discovery で入力フィールドが始まっているかどうかをチェックします。
+
+=pod
+
+=item ip_address
+
+This checks if the input is formatted like an IP address (v4)
+
+入力が、IPアドレス(v4)のように、フォーマットされているかのチェック。
+
+=pod
+
+=back
+
+=head1 SEE ALSO
+
+L<Data::FormValidator::Tutorial>, perl(1)
+
+=head1 クレジット
+
+Some of those input validation functions have been taken from MiniVend
+by Michael J. Heins <mike@heins.net>
+
+これらのいくつかの入力の妥当性の関数は、Michael J. Heins(mike@heins.net)の、MiniVend から、とってきています。
+
+The credit card checksum validation was taken from contribution by
+Bruce Albrecht <bruce.albrecht@seag.fingerhut.com> to the MiniVend
+program.
+
+クレジットカードのチェックサムの妥当性は、Bruce Albrecht <bruce.albrecht@seag.fingerhut.com>
+の貢献により、MiniVend プログラムに受け継がれた。
+
+=head1 PUBLIC CVS SERVER
+
+Data::FormValidator now has a publicly accessible CVS server provided by
+SourceForge (www.sourceforge.net).  You can access it by going to
+http://sourceforge.net/cvs/?group_id=6582.  You want the module named 'dfv'. 
+
+Data::FormValidator には、SourceForge(www.sourceforge.net) によって提供される、
+公にアクセスできるCVSサーバがあります。http://sourceforge.net/cvs/?group_id=6582に行くことで、
+CVSサーバにアクセス出来ます。'dvf' という名前のモジュールが欲しいでしょう。
+
+=head1 著者
+
+(原文まま)
+
+Copyright (c) 1999 Francis J. Lacoste and iNsu Innovations Inc.
+All rights reserved.
+
+Parts Copyright 1996-1999 by Michael J. Heins <mike@heins.net>
+Parts Copyright 1996-1999 by Bruce Albrecht  <bruce.albrecht@seag.fingerhut.com>
+Parts Copyright 2001      by Mark Stosberg <mark@summersault.com>
+
+B<Support Mailing List>
+ 
+If you have any questions, comments, bug reports or feature suggestions,
+post them to the support mailing list!  To join the mailing list, visit 
+http://lists.sourceforge.net/lists/listinfo/cascade-dataform
+
+=head1 ライセンス 
+
+(原文まま)
+
+This program is free software; you can redistribute it and/or modify
+it under the terms as perl itself.
+
+
+=head1 翻訳について
+
+翻訳者：加藤敦 (ktat.is@gmail.com)
+
+Perlドキュメント日本語訳 Project にて、
+Perlモジュール、ドキュメントの翻訳を行っております。
+
+ http://sourceforge.jp/projects/perldocjp/
+ http://www.freeml.com/ctrl/html/MLInfoForm/perldocjp@freeml.com
+ http://www.perldoc.jp
+

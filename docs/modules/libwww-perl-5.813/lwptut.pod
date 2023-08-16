@@ -1,0 +1,1566 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+lwptut -- An LWP Tutorial
+
+=end original
+
+lwptut -- LWP のチュートリアル
+
+=head1 DESCRIPTION
+
+=begin original
+
+LWP (short for "Library for WWW in Perl") is a very popular group of
+Perl modules for accessing data on the Web. Like most Perl
+module-distributions, each of LWP's component modules comes with
+documentation that is a complete reference to its interface. However,
+there are so many modules in LWP that it's hard to know where to start
+looking for information on how to do even the simplest most common
+things.
+
+=end original
+
+LWP ("Library for WWW in Perl" の短縮形) は、Web 上のデータに
+アクセスするための非常に有名な Perl モジュール群です。
+ほとんどの Perl モジュール配布と同様、LWP のコンポーネントモジュールの
+それぞれには完全なインターフェースのリファレンス文書が同梱されています。
+しかし、LWP にはたくさんのモジュールがあるので、最も単純で最も一般的な
+ことをするための情報ですら、どこから探せばよいのかがわかりにくいです。
+
+=begin original
+
+Really introducing you to using LWP would require a whole book -- a book
+that just happens to exist, called I<Perl & LWP>. But this article
+should give you a taste of how you can go about some common tasks with
+LWP.
+
+=end original
+
+LWP の使い方を説明するには本 1 冊が必要です -- たまたま I<Perl & LWP> という
+本があります。
+しかし、この記事は LWP でいくつかの一般的な作業をする方法のさわりを
+説明します。
+
+=head2 Getting documents with LWP::Simple
+
+(LWP::Simple を使って文書を取得する)
+
+=begin original
+
+If you just want to get what's at a particular URL, the simplest way
+to do it is LWP::Simple's functions.
+
+=end original
+
+単に特定の URL の内容を取得したいなら、最も簡単な方法は
+LWP::Simple の関数を使うことです。
+
+=begin original
+
+In a Perl program, you can call its C<get($url)> function.  It will try
+getting that URL's content.  If it works, then it'll return the
+content; but if there's some error, it'll return undef.
+
+=end original
+
+Perl プログラム中で、このモジュールの C<get($url)> 関数を呼び出します。
+これは指定された URL の内容を取得しようとします。
+うまく行けば、内容を返します; しかし、もし何かエラーが起これば、
+未定義値を返します。
+
+  my $url = 'http://freshair.npr.org/dayFA.cfm?todayDate=current';
+    # Just an example: the URL for the most recent /Fresh Air/ show
+
+  use LWP::Simple;
+  my $content = get $url;
+  die "Couldn't get $url" unless defined $content;
+
+  # Then go do things with $content, like this:
+
+  if($content =~ m/jazz/i) {
+    print "They're talking about jazz today on Fresh Air!\n";
+  }
+  else {
+    print "Fresh Air is apparently jazzless today.\n";
+  }
+
+=begin original
+
+The handiest variant on C<get> is C<getprint>, which is useful in Perl
+one-liners.  If it can get the page whose URL you provide, it sends it
+to STDOUT; otherwise it complains to STDERR.
+
+=end original
+
+最も便利な C<get> のバリエーションは C<getprint> で、Perl 1行野郎で
+有用です。
+指定した URL からページを取得できれば、内容を STDOUT に出力します;
+さもなければ STDERR にエラーを出力します。
+
+  % perl -MLWP::Simple -e "getprint 'http://cpan.org/RECENT'"
+
+=begin original
+
+That is the URL of a plaintext file that lists new files in CPAN in
+the past two weeks.  You can easily make it part of a tidy little
+shell command, like this one that mails you the list of new
+C<Acme::> modules:
+
+=end original
+
+これは CPAN 内の過去 2 週間の新規ファイルの一覧のプレーンテキストファイルの
+URL です。
+これによってちょっとしたシェルコマンドの一部として使えます;
+例えば 新しい C<Acme::> モジュールの一覧をメールするには:
+
+  % perl -MLWP::Simple -e "getprint 'http://cpan.org/RECENT'"  \
+     | grep "/by-module/Acme" | mail -s "New Acme modules! Joy!" $USER
+
+=begin original
+
+There are other useful functions in LWP::Simple, including one function
+for running a HEAD request on a URL (useful for checking links, or
+getting the last-revised time of a URL), and two functions for
+saving/mirroring a URL to a local file. See L<the LWP::Simple
+documentation|LWP::Simple> for the full details, or chapter 2 of I<Perl
+& LWP> for more examples.
+
+=end original
+
+LWP::Simple にはその他にも便利な関数があります; URL に HEAD リクエストを
+送る関数 (リンクのチェックや、ある URL の最終更新日時の取得に便利です) や、
+URL の内容をローカルファイルに保存/ミラーするための二つの関数などです。
+完全な詳細については L<LWP::Simple の文書|LWP::Simple> 、
+更なる例については I<Perl & LWP> の第 2 章を参照してください。
+
+=for comment
+ ##########################################################################
+
+=head2 The Basics of the LWP Class Model
+
+(LWP クラスモデルの基本)
+
+=begin original
+
+LWP::Simple's functions are handy for simple cases, but its functions
+don't support cookies or authorization, don't support setting header
+lines in the HTTP request, generally don't support reading header lines
+in the HTTP response (notably the full HTTP error message, in case of an
+error). To get at all those features, you'll have to use the full LWP
+class model.
+
+=end original
+
+LWP::Simple の関数は単純な状況では便利ですが、この関数はクッキーや認証に
+対応していませんし、HTTP リクエストのヘッダ行の設定にも対応しませんし、
+一般的には HTTP レスポンスのヘッダ行の読み込み(特に、エラー時の
+完全な HTTP エラーメッセージ)も対応していません。
+これらの機能全てを使うには、完全な LWP クラスモデルを使う必要があります。
+
+=begin original
+
+While LWP consists of dozens of classes, the main two that you have to
+understand are L<LWP::UserAgent> and L<HTTP::Response>. LWP::UserAgent
+is a class for "virtual browsers" which you use for performing requests,
+and L<HTTP::Response> is a class for the responses (or error messages)
+that you get back from those requests.
+
+=end original
+
+LWP は数十のクラスで構成されていますが、理解する必要がある主な二つのものは
+L<LWP::UserAgent> と L<HTTP::Response> です。
+LWP::UserAgent はリクエストを実行するときに使う「仮想ブラウザ」で、
+L<HTTP::Response> はそのリクエストから返されたレスポンス(あるいは
+エラーメッセージ) のためのクラスです。
+
+=begin original
+
+The basic idiom is C<< $response = $browser->get($url) >>, or more fully
+illustrated:
+
+=end original
+
+基本的な慣用法は C<< $response = $browser->get($url) >> で、もう少し
+完全に示すと:
+
+  # Early in your program:
+  
+  use LWP 5.64; # Loads all important LWP classes, and makes
+                #  sure your version is reasonably recent.
+
+  my $browser = LWP::UserAgent->new;
+  
+  ...
+  
+  # Then later, whenever you need to make a get request:
+  my $url = 'http://freshair.npr.org/dayFA.cfm?todayDate=current';
+  
+  my $response = $browser->get( $url );
+  die "Can't get $url -- ", $response->status_line
+   unless $response->is_success;
+
+  die "Hey, I was expecting HTML, not ", $response->content_type
+   unless $response->content_type eq 'text/html';
+     # or whatever content-type you're equipped to deal with
+
+  # Otherwise, process the content somehow:
+  
+  if($response->decoded_content =~ m/jazz/i) {
+    print "They're talking about jazz today on Fresh Air!\n";
+  }
+  else {
+    print "Fresh Air is apparently jazzless today.\n";
+  }
+
+=begin original
+
+There are two objects involved: C<$browser>, which holds an object of
+class LWP::UserAgent, and then the C<$response> object, which is of
+class HTTP::Response. You really need only one browser object per
+program; but every time you make a request, you get back a new
+HTTP::Response object, which will have some interesting attributes:
+
+=end original
+
+二つのオブジェクトが関わっています: C<$browser> は LWP::UserAgent クラスの
+オブジェクトを保持し、C<$response> オブジェクトは HTTP::Response クラスです。
+本当に必要なブラウザオブジェクトは 1 プログラム中に一つだけです;
+しかしリクエストを出す毎に新しい HTTP::Response オブジェクトが返され、
+これにはいくつかの興味深い属性を保持しています:
+
+=over
+
+=item *
+
+=begin original
+
+A status code indicating
+success or failure
+(which you can test with C<< $response->is_success >>).
+
+=end original
+
+成功か失敗かを示しているステータスコード(C<< $response->is_success >> で
+テストできます)。
+
+=item *
+
+=begin original
+
+An HTTP status
+line that is hopefully informative if there's failure (which you can
+see with C<< $response->status_line >>,
+returning something like "404 Not Found").
+
+=end original
+
+失敗したときの情報になるかもしれない HTTP ステータス行
+(C<< $response->status_line >> で見ることができ、"404 Not Found" の
+ようなものが返されます)。
+
+=item *
+
+=begin original
+
+A MIME content-type like "text/html", "image/gif",
+"application/xml", etc., which you can see with 
+C<< $response->content_type >>
+
+=end original
+
+"text/html", "image/gif", "application/xml" のような MIME コンテントタイプ;
+C<< $response->content_type >> で見ることができます。
+
+=item *
+
+=begin original
+
+The actual content of the response, in C<< $response->decoded_content >>.
+If the response is HTML, that's where the HTML source will be; if
+it's a GIF, then C<< $response->decoded_content >> will be the binary
+GIF data.
+
+=end original
+
+C<< $response->decoded_content >> にあるレスポンスの実際の内容。
+レスポンスが HTML の場合、ここが HTML ソースが入っている場所です;
+GIF の場合、C<< $response->decoded_content >> は GIF データバイナリです。
+
+=item *
+
+=begin original
+
+And dozens of other convenient and more specific methods that are
+documented in the docs for L<HTML::Response>, and its superclasses
+L<HTML::Message> and L<HTML::Headers>.
+
+=end original
+
+そしてたくさんのその他の便利でより特有のメソッドは、
+L<HTML::Response> およびそのスーパークラスである
+L<HTML::Message> と L<HTML::Headers> の文書で文書化されています。
+
+=back
+
+=for comment
+ ##########################################################################
+
+=head2 Adding Other HTTP Request Headers
+
+(その他の HTTP リクエストヘッダを追加する)
+
+=begin original
+
+The most commonly used syntax for requests is C<< $response =
+$browser->get($url) >>, but in truth, you can add extra HTTP header
+lines to the request by adding a list of key-value pairs after the URL,
+like so:
+
+=end original
+
+リクエストのための最も一般的な使い方の文法は
+C<< $response = $browser->get($url) >> ですが、実際の所、以下のように、
+URL の後にキー/値の組のリストを追加することで追加の HTTP ヘッダを
+追加できます:
+
+  $response = $browser->get( $url, $key1, $value1, $key2, $value2, ... );
+
+=begin original
+
+For example, here's how to send some more Netscape-like headers, in case
+you're dealing with a site that would otherwise reject your request:
+
+=end original
+
+例えば、Netscape 風のヘッダなしではリクエストを拒否するサイトを扱うために
+そのようなヘッダを追加するには:
+
+  my @ns_headers = (
+   'User-Agent' => 'Mozilla/4.76 [en] (Win98; U)',
+   'Accept' => 'image/gif, image/x-xbitmap, image/jpeg, image/pjpeg, image/png, */*',
+   'Accept-Charset' => 'iso-8859-1,*,utf-8',
+   'Accept-Language' => 'en-US',
+  );
+
+  ...
+  
+  $response = $browser->get($url, @ns_headers);
+
+=begin original
+
+If you weren't reusing that array, you could just go ahead and do this: 
+
+=end original
+
+配列を再利用しないなら、単に以下のようにできます:
+
+  $response = $browser->get($url,
+   'User-Agent' => 'Mozilla/4.76 [en] (Win98; U)',
+   'Accept' => 'image/gif, image/x-xbitmap, image/jpeg, image/pjpeg, image/png, */*',
+   'Accept-Charset' => 'iso-8859-1,*,utf-8',
+   'Accept-Language' => 'en-US',
+  );
+
+=begin original
+
+If you were only ever changing the 'User-Agent' line, you could just change
+the C<$browser> object's default line from "libwww-perl/5.65" (or the like)
+to whatever you like, using the LWP::UserAgent C<agent> method:
+
+=end original
+
+もし 'User-Agent' 行だけを変更するなら、LWP::UserAgent の C<agent> メソッドを
+使って、C<$browser> オブジェクトのデフォルト行である
+"libwww-perl/5.65" (あるいは似たようなもの) から好みのものに変更できます:
+
+   $browser->agent('Mozilla/4.76 [en] (Win98; U)');
+
+=for comment
+ ##########################################################################
+
+=head2 Enabling Cookies
+
+(クッキーを有効にする)
+
+=begin original
+
+A default LWP::UserAgent object acts like a browser with its cookies
+support turned off. There are various ways of turning it on, by setting
+its C<cookie_jar> attribute. A "cookie jar" is an object representing
+a little database of all
+the HTTP cookies that a browser can know about. It can correspond to a
+file on disk (the way Netscape uses its F<cookies.txt> file), or it can
+be just an in-memory object that starts out empty, and whose collection of
+cookies will disappear once the program is finished running.
+
+=end original
+
+デフォルトの LWP::UserAgent オブジェクトは、クッキー対応をオフにした
+ブラウザのように振る舞います。
+C<cookie_jar> 属性を設定することで有効にするいくつかの方法があります。
+「クッキー容器」("cookie jar") は、ブラウザが知っている全ての HTTP
+クッキーのデータベースを表現するオブジェクトです。
+これはディスク上のファイル (Netscape が F<cookies.txt> ファイルで
+使っている方法)か、単に空から開始してプログラム終了時に消えてしまう
+メモリ上のオブジェクトに対応させることができます。
+
+=begin original
+
+To give a browser an in-memory empty cookie jar, you set its C<cookie_jar>
+attribute like so:
+
+=end original
+
+メモリ上に空のクッキー容器をブラウザに設定するには、以下のように
+C<cookie_jar> 属性に設定します:
+
+  $browser->cookie_jar({});
+
+=begin original
+
+To give it a copy that will be read from a file on disk, and will be saved
+to it when the program is finished running, set the C<cookie_jar> attribute
+like this:
+
+=end original
+
+ディスク上のファイルから読み込んだデータを指定して、プログラム終了時に
+保存するためには、C<cookie_jar> 属性を以下のように設定します:
+
+  use HTTP::Cookies;
+  $browser->cookie_jar( HTTP::Cookies->new(
+    'file' => '/some/where/cookies.lwp',
+        # where to read/write cookies
+    'autosave' => 1,
+        # save it to disk when done
+  ));
+
+=begin original
+
+That file will be an LWP-specific format. If you want to be access the
+cookies in your Netscape cookies file, you can use the
+HTTP::Cookies::Netscape class:
+
+=end original
+
+このファイルは LWP 固有の形式です。
+Netscape のクッキーファイルのクッキーをアクセスするようにするには、
+HTTP::Cookies::Netscape クラスを使えます:
+
+  use HTTP::Cookies;
+    # yes, loads HTTP::Cookies::Netscape too
+  
+  $browser->cookie_jar( HTTP::Cookies::Netscape->new(
+    'file' => 'c:/Program Files/Netscape/Users/DIR-NAME-HERE/cookies.txt',
+        # where to read cookies
+  ));
+
+=begin original
+
+You could add an C<< 'autosave' => 1 >> line as further above, but at
+time of writing, it's uncertain whether Netscape might discard some of
+the cookies you could be writing back to disk.
+
+=end original
+
+上述のように C<< 'autosave' => 1 >> 行を追加することもできますが、
+書き込み時に Netscape がディスクに書き戻そうとしたクッキーの一部を
+破棄するかどうかは不確定です。
+
+=for comment
+ ##########################################################################
+
+=head2 Posting Form Data
+
+(フォームデータを投稿する)
+
+=begin original
+
+Many HTML forms send data to their server using an HTTP POST request, which
+you can send with this syntax:
+
+=end original
+
+多くの HTML フォームは HTTP POST リクエストを使ってサーバにデータを
+送りますが、これには以下のような文法を使います:
+
+ $response = $browser->post( $url,
+   [
+     formkey1 => value1, 
+     formkey2 => value2, 
+     ...
+   ],
+ );
+
+=begin original
+
+Or if you need to send HTTP headers:
+
+=end original
+
+あるいは HTTP ヘッダを送る必要がある場合は:
+
+ $response = $browser->post( $url,
+   [
+     formkey1 => value1, 
+     formkey2 => value2, 
+     ...
+   ],
+   headerkey1 => value1, 
+   headerkey2 => value2, 
+ );
+
+=begin original
+
+For example, the following program makes a search request to AltaVista
+(by sending some form data via an HTTP POST request), and extracts from
+the HTML the report of the number of matches:
+
+=end original
+
+例えば、以下のプログラムは AltaVista に (フォームデータを HTTP POST
+リクエスト経由で送信することで) 検索リクエストを送って、HTML から
+マッチングの数の報告を展開します:
+
+  use strict;
+  use warnings;
+  use LWP 5.64;
+  my $browser = LWP::UserAgent->new;
+  
+  my $word = 'tarragon';
+  
+  my $url = 'http://www.altavista.com/sites/search/web';
+  my $response = $browser->post( $url,
+    [ 'q' => $word,  # the Altavista query string
+      'pg' => 'q', 'avkw' => 'tgz', 'kl' => 'XX',
+    ]
+  );
+  die "$url error: ", $response->status_line
+   unless $response->is_success;
+  die "Weird content type at $url -- ", $response->content_type
+   unless $response->content_type eq 'text/html';
+
+  if( $response->decoded_content =~ m{AltaVista found ([0-9,]+) results} ) {
+    # The substring will be like "AltaVista found 2,345 results"
+    print "$word: $1\n";
+  }
+  else {
+    print "Couldn't find the match-string in the response\n";
+  }
+
+=for comment
+ ##########################################################################
+
+=head2 Sending GET Form Data
+
+(GET フォームデータを送信する)
+
+=begin original
+
+Some HTML forms convey their form data not by sending the data
+in an HTTP POST request, but by making a normal GET request with
+the data stuck on the end of the URL.  For example, if you went to
+C<imdb.com> and ran a search on "Blade Runner", the URL you'd see
+in your browser window would be:
+
+=end original
+
+HTML フォームには、フォームデータを送るのに HTTP POST リクエストで
+送るのではなく、URL の末尾にデータを付けて 通常の GET リクエストで
+送るものもあります。
+例えば、C<imdb.com> で "Blade Runner" を検索すると、ブラウザウィンドウに
+表示される URL は:
+
+  http://us.imdb.com/Tsearch?title=Blade%20Runner&restrict=Movies+and+TV
+
+=begin original
+
+To run the same search with LWP, you'd use this idiom, which involves
+the URI class:
+
+=end original
+
+同じ検索を LWP で実行するには、URI を使ったこの定型文を使います:
+
+  use URI;
+  my $url = URI->new( 'http://us.imdb.com/Tsearch' );
+    # makes an object representing the URL
+  
+  $url->query_form(  # And here the form data pairs:
+    'title'    => 'Blade Runner',
+    'restrict' => 'Movies and TV',
+  );
+  
+  my $response = $browser->get($url);
+
+=begin original
+
+See chapter 5 of I<Perl & LWP> for a longer discussion of HTML forms
+and of form data, and chapters 6 through 9 for a longer discussion of
+extracting data from HTML.
+
+=end original
+
+HTML フォームとフォームデータに関するより長い議論についてはI<Perl & LWP> の
+第 5 章を、HTML からのデータの抽出に関するより長い議論については
+第 6 章から第 9 章を参照してください。
+
+=head2 Absolutizing URLs
+
+(URL の絶対化)
+
+=begin original
+
+The URI class that we just mentioned above provides all sorts of methods
+for accessing and modifying parts of URLs (such as asking sort of URL it
+is with C<< $url->scheme >>, and asking what host it refers to with C<<
+$url->host >>, and so on, as described in L<the docs for the URI
+class|URI>.  However, the methods of most immediate interest
+are the C<query_form> method seen above, and now the C<new_abs> method
+for taking a probably-relative URL string (like "../foo.html") and getting
+back an absolute URL (like "http://www.perl.com/stuff/foo.html"), as
+shown here:
+
+=end original
+
+先に触れた URI クラスは、URL の一部にアクセスしたり修正したりする
+あらゆる種類のメソッドを提供しています
+(C<< $url->scheme >> で URL の種類を調べたり、C<< $url->host >> で
+参照しているホストを調べたり、などです; これらは L<URI クラスの文書|URI> に
+記述されています)。
+しかし、もっとも直接重要なメソッドは上述の C<query_form> と、
+以下のように ("../foo.html" のような) おそらく相対の URL を取って
+("http://www.perl.com/stuff/foo.html" のような)絶対 URL を返す
+C<new_abs> メソッドです:
+
+  use URI;
+  $abs = URI->new_abs($maybe_relative, $base);
+
+=begin original
+
+For example, consider this program that matches URLs in the HTML
+list of new modules in CPAN:
+
+=end original
+
+例えば、CPAN の新しいモジュールの HTML リストにある URL にマッチングする
+このプログラムを考えます:
+
+  use strict;
+  use warnings;
+  use LWP;
+  my $browser = LWP::UserAgent->new;
+  
+  my $url = 'http://www.cpan.org/RECENT.html';
+  my $response = $browser->get($url);
+  die "Can't get $url -- ", $response->status_line
+   unless $response->is_success;
+  
+  my $html = $response->decoded_content;
+  while( $html =~ m/<A HREF=\"(.*?)\"/g ) {
+    print "$1\n";
+  }
+
+=begin original
+
+When run, it emits output that starts out something like this:
+
+=end original
+
+実行すると、このようなものを出力します:
+
+  MIRRORING.FROM
+  RECENT
+  RECENT.html
+  authors/00whois.html
+  authors/01mailrc.txt.gz
+  authors/id/A/AA/AASSAD/CHECKSUMS
+  ...
+
+=begin original
+
+However, if you actually want to have those be absolute URLs, you
+can use the URI module's C<new_abs> method, by changing the C<while>
+loop to this:
+
+=end original
+
+しかし、実際には絶対 URL がほしい場合、URI モジュールの
+C<new_abs> メソッドを使って、C<while> ループをこのように変更できます:
+
+  while( $html =~ m/<A HREF=\"(.*?)\"/g ) {
+    print URI->new_abs( $1, $response->base ) ,"\n";
+  }
+
+=begin original
+
+(The C<< $response->base >> method from L<HTTP::Message|HTTP::Message>
+is for returning what URL
+should be used for resolving relative URLs -- it's usually just
+the same as the URL that you requested.)
+
+=end original
+
+(L<HTTP::Message|HTTP::Message> の C<< $response->base >> メソッドは、
+相対 URL を解決するためにどの URL が使われるかを返されます -- これは普通
+要求した URL と同じです。)
+
+=begin original
+
+That program then emits nicely absolute URLs:
+
+=end original
+
+このプログラムはいい感じに絶対 URL を出力します:
+
+  http://www.cpan.org/MIRRORING.FROM
+  http://www.cpan.org/RECENT
+  http://www.cpan.org/RECENT.html
+  http://www.cpan.org/authors/00whois.html
+  http://www.cpan.org/authors/01mailrc.txt.gz
+  http://www.cpan.org/authors/id/A/AA/AASSAD/CHECKSUMS
+  ...
+
+=begin original
+
+See chapter 4 of I<Perl & LWP> for a longer discussion of URI objects.
+
+=end original
+
+URI オブジェクトに関するより長い説明については I<Perl & LWP> の第 4 章を
+参照してください。
+
+=begin original
+
+Of course, using a regexp to match hrefs is a bit simplistic, and for
+more robust programs, you'll probably want to use an HTML-parsing module
+like L<HTML::LinkExtor> or L<HTML::TokeParser> or even maybe
+L<HTML::TreeBuilder>.
+
+=end original
+
+もちろん、href のマッチングに正規表現を使うのは少し単純化しすぎです;
+より堅牢なプログラムのためには、L<HTML::LinkExtor>, L<HTML::TokeParser>,
+L<HTML::TreeBuilder> のような HTML パースモジュールを使いたいでしょう。
+
+=for comment
+ ##########################################################################
+
+=head2 Other Browser Attributes
+
+(その他のブラウザ属性)
+
+=begin original
+
+LWP::UserAgent objects have many attributes for controlling how they
+work.  Here are a few notable ones:
+
+=end original
+
+LWP::UserAgent オブジェクトには、動作を制御するための多くの属性があります。
+注目するべきものをいくつか示します:
+
+=over
+
+=item *
+
+=begin original
+
+C<< $browser->timeout(15); >>
+
+=end original
+
+C<< $browser->timeout(15); >>
+
+=begin original
+
+This sets this browser object to give up on requests that don't answer
+within 15 seconds.
+
+=end original
+
+これは、リクエストに 15 秒以内に返事がないと諦めるように
+ブラウザオブジェクトを設定します。
+
+=item *
+
+=begin original
+
+C<< $browser->protocols_allowed( [ 'http', 'gopher'] ); >>
+
+=end original
+
+C<< $browser->protocols_allowed( [ 'http', 'gopher'] ); >>
+
+=begin original
+
+This sets this browser object to not speak any protocols other than HTTP
+and gopher. If it tries accessing any other kind of URL (like an "ftp:"
+or "mailto:" or "news:" URL), then it won't actually try connecting, but
+instead will immediately return an error code 500, with a message like
+"Access to 'ftp' URIs has been disabled".
+
+=end original
+
+これは、HTTP と gopher 以外のプロトコルを話さないようにオブジェクトに
+設定します。
+("ftp:" や "mailto:" や "news:" URL のような)その他の種類の URL で
+アクセスしようとすると、実際に接続しようとはせず、直ちにエラーコード 500 と
+"Access to 'ftp' URIs has been disabled" のようなメッセージで返ります。
+
+=item *
+
+=begin original
+
+C<< use LWP::ConnCache; $browser->conn_cache(LWP::ConnCache->new()); >>
+
+=end original
+
+C<< use LWP::ConnCache; $browser->conn_cache(LWP::ConnCache->new()); >>
+
+=begin original
+
+This tells the browser object to try using the HTTP/1.1 "Keep-Alive"
+feature, which speeds up requests by reusing the same socket connection
+for multiple requests to the same server.
+
+=end original
+
+これは、同じサーバへの複数のリクエストに対して同じソケット接続を
+再利用することでリクエストを高速化する、HTTP/1.1 "Keep-Alive" 機能を
+使うようにブラウザオブジェクトに設定します。
+
+=item *
+
+=begin original
+
+C<< $browser->agent( 'SomeName/1.23 (more info here maybe)' ) >>
+
+=end original
+
+C<< $browser->agent( 'SomeName/1.23 (more info here maybe)' ) >>
+
+=begin original
+
+This changes how the browser object will identify itself in
+the default "User-Agent" line is its HTTP requests.  By default,
+it'll send "libwww-perl/I<versionnumber>", like
+"libwww-perl/5.65".  You can change that to something more descriptive
+like this:
+
+=end original
+
+これはブラウザオブジェクトが HTTP リクエストのデフォルトの
+"User-Agent" 行で何と名乗るかを変更します。
+デフォルトでは、"libwww-perl/5.65" のように、
+"libwww-perl/I<バージョン番号>" を送ります。
+以下のようなもっと説明的なものに変更できます:
+
+  $browser->agent( 'SomeName/3.14 (contact@robotplexus.int)' );
+
+=begin original
+
+Or if need be, you can go in disguise, like this:
+
+=end original
+
+あるいは、もし必要なら、以下のように偽装することも出来ます:
+
+  $browser->agent( 'Mozilla/4.0 (compatible; MSIE 5.12; Mac_PowerPC)' );
+
+=item *
+
+=begin original
+
+C<< push @{ $ua->requests_redirectable }, 'POST'; >>
+
+=end original
+
+C<< push @{ $ua->requests_redirectable }, 'POST'; >>
+
+=begin original
+
+This tells this browser to obey redirection responses to POST requests
+(like most modern interactive browsers), even though the HTTP RFC says
+that should not normally be done.
+
+=end original
+
+これは、このブラウザは POST リクエストに対するリダイレクト要求を
+(最近のほとんどの対話的ブラウザと同様) 拒否することを示します
+(ただし HTTP の RFC は普通は拒否するべきではないとしています);
+
+=back
+
+=begin original
+
+For more options and information, see L<the full documentation for
+LWP::UserAgent|LWP::UserAgent>.
+
+=end original
+
+さらなるオプションと情報については、L<LWP::UserAgent の完全な
+文書|LWP::UserAgent> を参照してください。
+
+=for comment
+ ##########################################################################
+
+=head2 Writing Polite Robots
+
+(礼儀正しいボットを書く)
+
+=begin original
+
+If you want to make sure that your LWP-based program respects F<robots.txt>
+files and doesn't make too many requests too fast, you can use the LWP::RobotUA
+class instead of the LWP::UserAgent class.
+
+=end original
+
+あなたの LWP ベースのプログラムが F<robots.txt> を尊重して、一度に多くの
+リクエストを送らないようにするには、LWP::UserAgent クラスの代わりに
+LWP::RobotUA クラスが使えます。
+
+=begin original
+
+LWP::RobotUA class is just like LWP::UserAgent, and you can use it like so:
+
+=end original
+
+LWP::RobotUA クラスは LWP::UserAgentのようなもので、以下のようにして
+使えます:
+
+  use LWP::RobotUA;
+  my $browser = LWP::RobotUA->new('YourSuperBot/1.34', 'you@yoursite.com');
+    # Your bot's name and your email address
+
+  my $response = $browser->get($url);
+
+=begin original
+
+But HTTP::RobotUA adds these features:
+
+=end original
+
+しかし、HTTP::RobotUA には以下のような機能が追加されています:
+
+=over
+
+=item *
+
+=begin original
+
+If the F<robots.txt> on C<$url>'s server forbids you from accessing
+C<$url>, then the C<$browser> object (assuming it's of class LWP::RobotUA)
+won't actually request it, but instead will give you back (in C<$response>) a 403 error
+with a message "Forbidden by robots.txt".  That is, if you have this line:
+
+=end original
+
+C<$url> のサーバの F<robots.txt> が C<$url> へのアクセスを禁止しているなら、
+C<$browser> オブジェクト (LWP::RobotUA クラスと仮定しています) は実際に
+リクエストを送ることはせず、代わりに (C<$response> で) 
+"Forbidden by robots.txt" というメッセージ付きで 403 エラーを返します。
+つまり、以下のようにすると:
+
+  die "$url -- ", $response->status_line, "\nAborted"
+   unless $response->is_success;
+
+=begin original
+
+then the program would die with an error message like this:
+
+=end original
+
+このプログラムは以下のようなエラーメッセージを出力して die します:
+
+  http://whatever.site.int/pith/x.html -- 403 Forbidden by robots.txt
+  Aborted at whateverprogram.pl line 1234
+
+=item *
+
+=begin original
+
+If this C<$browser> object sees that the last time it talked to
+C<$url>'s server was too recently, then it will pause (via C<sleep>) to
+avoid making too many requests too often. How long it will pause for, is
+by default one minute -- but you can control it with the C<<
+$browser->delay( I<minutes> ) >> attribute.
+
+=end original
+
+この C<$browser> オブジェクトが、最後に C<$url> のサーバと通信したのが
+最近過ぎる場合、あまり頻繁にリクエストを送りすぎないように、(C<sleep> を
+使って) 一時停止します。
+一時停止する時間は、デフォルトでは 1 分です -- しかし
+C<< $browser->delay( I<minutes> ) >> 属性で制御できます。
+
+=begin original
+
+For example, this code:
+
+=end original
+
+例えば、このコードは:
+
+  $browser->delay( 7/60 );
+
+=begin original
+
+...means that this browser will pause when it needs to avoid talking to
+any given server more than once every 7 seconds.
+
+=end original
+
+このブラウザは、どのサーバに対しても 7 秒に 1 回以上接続しないように
+するために一時停止することを意味します。
+
+=back
+
+=begin original
+
+For more options and information, see L<the full documentation for
+LWP::RobotUA|LWP::RobotUA>.
+
+=end original
+
+さらなるオプションと情報については、L<LWP::RobotUA の完全な
+文書|LWP::RobotUA> を参照してください。
+
+=for comment
+ ##########################################################################
+
+=head2 Using Proxies
+
+(プロキシを使う)
+
+=begin original
+
+In some cases, you will want to (or will have to) use proxies for
+accessing certain sites and/or using certain protocols. This is most
+commonly the case when your LWP program is running (or could be running)
+on a machine that is behind a firewall.
+
+=end original
+
+場合によっては、ある種のサイトへのアクセスやある種のプロトコルの使用のために
+プロキシを使用したい(あるいは使用する必要がある)ことがあります。
+これは、LWP を使ったプログラムがファイアウォールの背後のマシンで実行される
+(あるいは実行されるかもしれない)時にもっとも一般的な状況です。
+
+=begin original
+
+To make a browser object use proxies that are defined in the usual
+environment variables (C<HTTP_PROXY>, etc.), just call the C<env_proxy>
+on a user-agent object before you go making any requests on it.
+Specifically:
+
+=end original
+
+ブラウザオブジェクトが通常の環境変数(C<HTTP_PROXY> など)で定義している
+プロキシを使うようにするには、単にリクエストの前にユーザーエージェント
+オブジェクトの C<env_proxy> を呼び出すだけです。
+具体的には:
+
+  use LWP::UserAgent;
+  my $browser = LWP::UserAgent->new;
+  
+  # And before you go making any requests:
+  $browser->env_proxy;
+
+=begin original
+
+For more information on proxy parameters, see L<the LWP::UserAgent
+documentation|LWP::UserAgent>, specifically the C<proxy>, C<env_proxy>,
+and C<no_proxy> methods.
+
+=end original
+
+プロキシ引数に関するさらなる情報については、L<LWP::UserAgent の
+文書|LWP::UserAgent> の、特に C<proxy>, C<env_proxy>,
+C<no_proxy> メソッドを参照してください。
+
+=for comment
+ ##########################################################################
+
+=head2 HTTP Authentication
+
+(HTTP 認証)
+
+=begin original
+
+Many web sites restrict access to documents by using "HTTP
+Authentication". This isn't just any form of "enter your password"
+restriction, but is a specific mechanism where the HTTP server sends the
+browser an HTTP code that says "That document is part of a protected
+'realm', and you can access it only if you re-request it and add some
+special authorization headers to your request".
+
+=end original
+
+多くのウェブサイトは文書へのアクセスを "HTTP 認証" を使って制限しています。
+これは単なる "パスワードを入力してください" 形式の制限ではなく、
+HTTP サーバがブラウザに「この文書は保護された「レルム」の一部であり、
+リクエストに専用の認証ヘッダを追加して再リクエストした場合にのみ
+アクセスできます」という意味の HTTP コードを返すという、専用の機構です。
+
+=begin original
+
+For example, the Unicode.org admins stop email-harvesting bots from
+harvesting the contents of their mailing list archives, by protecting
+them with HTTP Authentication, and then publicly stating the username
+and password (at C<http://www.unicode.org/mail-arch/>) -- namely
+username "unicode-ml" and password "unicode".  
+
+=end original
+
+例えば、Unicode.org の管理者は、メーリングリストアーカイブを HTTP 認証で
+保護して、このユーザー名とパスワードを
+(C<http://www.unicode.org/mail-arch/> で)公にする
+(ユーザー名 "unicode-ml" パスワード "unicode") ことで、
+電子メールアドレス収集ボットがアーカイブからアドレスを収集するのを
+阻止しています。
+
+=begin original
+
+For example, consider this URL, which is part of the protected
+area of the web site:
+
+=end original
+
+例えば、ウェブサイトのうち保護されたエリアである、この URL について
+考えます:
+
+  http://www.unicode.org/mail-arch/unicode-ml/y2002-m08/0067.html
+
+=begin original
+
+If you access that with a browser, you'll get a prompt
+like 
+"Enter username and password for 'Unicode-MailList-Archives' at server
+'www.unicode.org'".
+
+=end original
+
+ここにブラウザでアクセスすると、
+"Enter username and password for 'Unicode-MailList-Archives' at server
+'www.unicode.org'" のようなプロンプトが出ます。
+
+=begin original
+
+In LWP, if you just request that URL, like this:
+
+=end original
+
+LWP では、もし単にこの URL にリクエストしたいなら、以下のようにします:
+
+  use LWP;
+  my $browser = LWP::UserAgent->new;
+
+  my $url =
+   'http://www.unicode.org/mail-arch/unicode-ml/y2002-m08/0067.html';
+  my $response = $browser->get($url);
+
+  die "Error: ", $response->header('WWW-Authenticate') || 'Error accessing',
+    #  ('WWW-Authenticate' is the realm-name)
+    "\n ", $response->status_line, "\n at $url\n Aborting"
+   unless $response->is_success;
+
+=begin original
+
+Then you'll get this error:
+
+=end original
+
+そうするとこのエラーを受け取ります:
+
+  Error: Basic realm="Unicode-MailList-Archives"
+   401 Authorization Required
+   at http://www.unicode.org/mail-arch/unicode-ml/y2002-m08/0067.html
+   Aborting at auth1.pl line 9.  [or wherever]
+
+=begin original
+
+...because the C<$browser> doesn't know any the username and password
+for that realm ("Unicode-MailList-Archives") at that host
+("www.unicode.org").  The simplest way to let the browser know about this
+is to use the C<credentials> method to let it know about a username and
+password that it can try using for that realm at that host.  The syntax is:
+
+=end original
+
+なぜなら C<$browser> はこのホスト ("www.unicode.org") のこのレルム
+("Unicode-MailList-Archives") のユーザー名とパスワードを知らないからです。
+ブラウザにこれを知らせるもっとも簡単な方法は、このホストのこのレルムに使う
+ユーザーとパスワードを知らせる C<credentials> メソッドを使うことです。
+文法は:
+
+  $browser->credentials(
+    'servername:portnumber',
+    'realm-name',
+   'username' => 'password'
+  );
+
+=begin original
+
+In most cases, the port number is 80, the default TCP/IP port for HTTP; and
+you usually call the C<credentials> method before you make any requests.
+For example:
+
+=end original
+
+ほとんどの場合、ポート番号は HTTP のデフォルト TCP/IP ポートである 80 です;
+そして普通はリクエストの前に C<credentials> メソッドを呼び出します。
+例えば:
+
+  $browser->credentials(
+    'reports.mybazouki.com:80',
+    'web_server_usage_reports',
+    'plinky' => 'banjo123'
+  );
+
+=begin original
+
+So if we add the following to the program above, right after the C<<
+$browser = LWP::UserAgent->new; >> line...
+
+=end original
+
+そして、上述のプログラムに以下のものを加えるなら、C<<
+$browser = LWP::UserAgent->new; >> 行の直後にします…
+
+  $browser->credentials(  # add this to our $browser 's "key ring"
+    'www.unicode.org:80',
+    'Unicode-MailList-Archives',
+    'unicode-ml' => 'unicode'
+  );
+
+=begin original
+
+...then when we run it, the request succeeds, instead of causing the
+C<die> to be called.
+
+=end original
+
+それから実行すると、リクエストは C<die> を引き起こさずに成功します。
+
+=for comment
+ ##########################################################################
+
+=head2 Accessing HTTPS URLs
+
+(HTTPS URL にアクセスする)
+
+=begin original
+
+When you access an HTTPS URL, it'll work for you just like an HTTP URL
+would -- if your LWP installation has HTTPS support (via an appropriate
+Secure Sockets Layer library).  For example:
+
+=end original
+
+HTTPS の URL にアクセスすると、(LWP インストール時に (適切な SSL
+ライブラリを使って) HTTPS 対応しているなら) HTTP の URL と同様に動作します。
+例えば:
+
+  use LWP;
+  my $url = 'https://www.paypal.com/';   # Yes, HTTPS!
+  my $browser = LWP::UserAgent->new;
+  my $response = $browser->get($url);
+  die "Error at $url\n ", $response->status_line, "\n Aborting"
+   unless $response->is_success;
+  print "Whee, it worked!  I got that ",
+   $response->content_type, " document!\n";
+
+=begin original
+
+If your LWP installation doesn't have HTTPS support set up, then the
+response will be unsuccessful, and you'll get this error message:
+
+=end original
+
+HTTPS 対応なしで LWP がインストールされている場合、レスポンスは失敗し、
+以下のようなエラーメッセージが発生します:
+
+  Error at https://www.paypal.com/
+   501 Protocol scheme 'https' is not supported
+   Aborting at paypal.pl line 7.   [or whatever program and line]
+
+=begin original
+
+If your LWP installation I<does> have HTTPS support installed, then the
+response should be successful, and you should be able to consult
+C<$response> just like with any normal HTTP response.
+
+=end original
+
+LWP インストール時に HTTPS 対応されて I<いる> 場合、レスポンスは成功し、
+通常の HTTP レスポンスと同様の C<$response> が使えます。
+
+=begin original
+
+For information about installing HTTPS support for your LWP
+installation, see the helpful F<README.SSL> file that comes in the
+libwww-perl distribution.
+
+=end original
+
+LWP インストール時に HTTPS 対応にするための情報については、libwww-perl 配布に
+同梱されている F<README.SSL> ファイルを参照してください。
+
+=for comment
+ ##########################################################################
+
+=head2 Getting Large Documents
+
+(大きな文書を取得する)
+
+=begin original
+
+When you're requesting a large (or at least potentially large) document,
+a problem with the normal way of using the request methods (like C<<
+$response = $browser->get($url) >>) is that the response object in
+memory will have to hold the whole document -- I<in memory>. If the
+response is a thirty megabyte file, this is likely to be quite an
+imposition on this process's memory usage.
+
+=end original
+
+大きな (または少なくとも大きい可能性がある) 文書をリクエストするとき、
+(C<< $response = $browser->get($url) >> のような) リクエストメソッドを使った
+通常の方法の問題点は、メモリ上のレスポンスオブジェクトが文書全体を保持する
+必要があることです -- I<メモリ上の>。
+もしレスポンスが 30 メガバイトのファイルなら、おそらくプロセスのメモリ消費に
+とって負担となるでしょう。
+
+=begin original
+
+A notable alternative is to have LWP save the content to a file on disk,
+instead of saving it up in memory.  This is the syntax to use:
+
+=end original
+
+注目するべき代替案は、LWP がメモリ上ではなく、ディスク上のファイルに内容を
+保存するようにすることです。
+これが使用するための文法です:
+
+  $response = $ua->get($url,
+                         ':content_file' => $filespec,
+                      );
+
+=begin original
+
+For example,
+
+=end original
+
+例えば、
+
+  $response = $ua->get('http://search.cpan.org/',
+                         ':content_file' => '/tmp/sco.html'
+                      );
+
+=begin original
+
+When you use this C<:content_file> option, the C<$response> will have
+all the normal header lines, but C<< $response->content >> will be
+empty.
+
+=end original
+
+C<:content_file> オプションを使うとき、C<$response> には通常のヘッダ行
+全てが含まれていますが、C<< $response->content >> は空です。
+
+=begin original
+
+Note that this ":content_file" option isn't supported under older
+versions of LWP, so you should consider adding C<use LWP 5.66;> to check
+the LWP version, if you think your program might run on systems with
+older versions.
+
+=end original
+
+この ":content_file" オプションは古いバージョンの LWP では
+対応していないので、もし古いバージョンのシステムでも実行されるかもしれないと
+考えるなら、LWP バージョンをチェックするために C<use LWP 5.66;> を
+追加することを考慮するべきかもしれません。
+
+=begin original
+
+If you need to be compatible with older LWP versions, then use
+this syntax, which does the same thing:
+
+=end original
+
+もし古い LWP バージョンとの互換性が必要なら、同じことをする以下の構文を
+使ってください:
+
+  use HTTP::Request::Common;
+  $response = $ua->request( GET($url), $filespec );
+
+=for comment
+ ##########################################################################
+
+=head1 SEE ALSO
+
+=begin original
+
+Remember, this article is just the most rudimentary introduction to
+LWP -- to learn more about LWP and LWP-related tasks, you really
+must read from the following:
+
+=end original
+
+この記事は LWP の最も初歩的な説明に過ぎないことに注意してください --
+LWP および LWP 関連のタスクについてもっと学ぶためには、本当に以下のものを
+読まなければなりません:
+
+=over
+
+=item *
+
+=begin original
+
+L<LWP::Simple> -- simple functions for getting/heading/mirroring URLs
+
+=end original
+
+L<LWP::Simple> -- URL の取得、ヘッダ取得、ミラーのための単純な関数
+
+=item *
+
+=begin original
+
+L<LWP> -- overview of the libwww-perl modules
+
+=end original
+
+L<LWP> -- libwww-perl モジュールの概説
+
+=item *
+
+=begin original
+
+L<LWP::UserAgent> -- the class for objects that represent "virtual browsers"
+
+=end original
+
+L<LWP::UserAgent> -- 「仮想ブラウザ」を表現するオブジェクトのクラス
+
+=item *
+
+=begin original
+
+L<HTTP::Response> -- the class for objects that represent the response to
+a LWP response, as in C<< $response = $browser->get(...) >>
+
+=end original
+
+L<HTTP::Response> -- C<< $response = $browser->get(...) >> などで
+LWP レスポンスを表現するためのオブジェクトのクラス
+
+=item *
+
+=begin original
+
+L<HTTP::Message> and L<HTTP::Headers> -- classes that provide more methods
+to HTTP::Response.
+
+=end original
+
+L<HTTP::Message> と L<HTTP::Headers> -- HTTP::Response にもっと多くの
+メソッドを提供するクラス
+
+=item *
+
+=begin original
+
+L<URI> -- class for objects that represent absolute or relative URLs
+
+=end original
+
+L<URI> -- 絶対および相対の URL を表現するオブジェクトのクラス
+
+=item *
+
+=begin original
+
+L<URI::Escape> -- functions for URL-escaping and URL-unescaping strings
+(like turning "this & that" to and from "this%20%26%20that").
+
+=end original
+
+L<URI::Escape> -- ("this & that" と "this%20%26%20that" の変換のように)
+URL エスケープと URL アンエスケープのための関数
+
+=item *
+
+=begin original
+
+L<HTML::Entities> -- functions for HTML-escaping and HTML-unescaping strings
+(like turning "C. & E. BrontE<euml>" to and from "C. &amp; E. Bront&euml;")
+
+=end original
+
+L<HTML::Entities> -- ("C. & E. BrontE<euml>" と "C. &amp; E. Bront&euml;" の
+変換のように) HTML エスケープと HTML アンエスケープのための関数
+
+=item *
+
+=begin original
+
+L<HTML::TokeParser> and L<HTML::TreeBuilder> -- classes for parsing HTML
+
+=end original
+
+L<HTML::TokeParser> と L<HTML::TreeBuilder> -- HTML をパースするためのクラス
+
+=item *
+
+=begin original
+
+L<HTML::LinkExtor> -- class for finding links in HTML documents
+
+=end original
+
+L<HTML::LinkExtor> -- HTML 文書中のリンクを探すクラス
+
+=item *
+
+=begin original
+
+The book I<Perl & LWP> by Sean M. Burke.  O'Reilly & Associates, 2002.
+ISBN: 0-596-00178-9.  C<http://www.oreilly.com/catalog/perllwp/>
+
+=end original
+
+Sean M. Burke による書籍 I<Perl & LWP>  O'Reilly & Associates, 2002.
+ISBN: 0-596-00178-9.  C<http://www.oreilly.com/catalog/perllwp/>
+
+=back
+
+=head1 COPYRIGHT
+
+Copyright 2002, Sean M. Burke.  You can redistribute this document and/or
+modify it, but only under the same terms as Perl itself.
+
+=head1 AUTHOR
+
+Sean M. Burke C<sburke@cpan.org>
+
+=for comment
+ ##########################################################################
+
+=begin meta
+
+Translated: SHIRAKATA Kentaro <argrath@ub32.org>
+
+=end meta
+
+=cut
+

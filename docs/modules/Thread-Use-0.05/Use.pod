@@ -1,0 +1,151 @@
+
+=encoding euc-jp
+
+=head1 名前
+
+Thread::Use - スレッドの中でのみモジュールを使う
+
+=head1 概要
+
+    use Thread::Use;
+
+    threads->new( sub {
+     useit Module;
+     useit Module qw(parameters);
+
+     noit Module;
+     noit Module qw(parameters);
+    } );
+
+=head1 説明
+
+                  *** A note of CAUTION ***
+
+ This module only functions on Perl versions 5.8.0 and later.
+ And then only when threads are enabled with -Dusethreads.  It
+ is of no use with any version of Perl before 5.8.0 or without
+ threads enabled.
+
+                  *************************
+
+                  *** 注   意   書   き ***
+
+ このモジュールは、Perlのバージョン5.8.0以降で、かつ、-Dusethreads
+ オプションでスレッドが有効になっている場合にのみ機能する。5.8.0以前、
+ あるいはスレッドが有効になっていない場合は、使うことができない。
+
+                  *************************
+
+When you are programming threaded applications and are interested in saving
+memory by selectively loading modules inside threads only, you will find that
+even if you C<use> a module inside a thread, it is in fact available to B<all>
+threads, including the main thread.
+
+あなたがスレッドアプリケーションをプログラミングしていて、メモリを節約
+しようとスレッドの中でのみモジュールを選択的にロードしようとする。
+スレッド内でモジュールをC<use>したとしても、実際にはメインスレッドも
+含めてB<全>スレッドでモジュールが有効になってしまうことに気づくだろう。
+
+This is caused by the fact that C<use> is executed at compile time.  At which
+time Perl doesn't know anything about threads yet.
+
+これはコンパイル時にC<use>が実行されてしまうという事実による。この時点では、
+Perlはスレッドについてまだ何も知らないのだ。
+
+However, some modules, specifically the ones that are (partly) implemented
+in XS, do not (yet) survive the cloning process that is involved with creating
+threads.  So you can only use these modules inside threads only.  But if you
+C<use> a module, it will be read in at compile time.
+
+ところが、あるモジュール、特に（部分的に）XSで実装されているものは、
+スレッドが生成される際に発生するクロン処理を（まだ）生き残れない。
+そのため、こういったモジュールはスレッド内でしか利用できない。しかし、
+モジュールをC<use>すれば、それはコンパイル時に読み込まれてしまう。
+
+Of course, a C<use> is nothing more than a C<require> followed by a call
+to the "import" class routine (if available).  But that doesn't feel natural
+to do.  So this module allows you to use the C<useit> (for B<use> B<i>n
+B<t>hreads command to indicate that a module should only be used inside
+a thread.
+
+もちろん、C<use>は、C<require>と、（利用可能なら）それに引き続くクラス
+ルーチンを"import"する呼び出しと同じものだ。だがそれを使うのが自然とも
+思えない。そこで、このモジュールを使うと、C<useit>（B<use> B<i>n B<threads>
+の意味）コマンドを使ってスレッド内でのみ利用されるモジュールを指定できる。
+
+For example: suppose you only need the C<PerlIO::gzip> module inside a thread:
+
+例：C<PerlIO::gzip>モジュールをスレッド内部でのみ使いたいとする：
+
+ use Thread::Use;  # プログラム内のどこにでも置ける
+
+ threads->new( \&zipfile,filename,contents ); # スレッドの開始
+
+ sub zipfile {
+   useit PerlIO::gzip;  # このスレッドの中でのみ使う
+   open( my $out,'>:gzip', $_[0] ) or die "$_[0]: $!";
+   print $out $_[1];
+   close( $out );
+ }
+
+For completeness, it is also possible to pass any parameters as you would
+with the C<use> command.  So:
+
+完全を期して、C<use>コマンドで用いるであろうパラメータを渡すことも
+可能だ。そこで：
+
+ sub storable {
+   useit Storable qw(freeze); # スレッドの名前空間に"freeze"をエクスポート
+   my $frozen = freeze( \@_ );
+ }
+
+or to use the opposite C<no> equivalent;
+
+あるいは、反対のC<no>でも同じように；
+
+ sub warnings {
+   useit warnings "all";
+   # special code
+   noit warnings "all";
+ }
+
+=head1 必要なモジュール
+
+ (none)
+
+（なし）
+
+=head1 警告
+
+This modules is still experimental and subject to change.  At the current
+stage it is more a proof of concept than anything else.
+
+このモジュールはまだ実験的であり、変更の対象である。現段階では、
+他のモジュールより概念実証的である。
+
+There is no way to C<useit> a module without having it call the "import"
+class method, as you can do with C<use Module ()>.  However, a simple
+C<require Module> does exactly the same, so if you want to C<useit> a module
+without calling its "import" method, you should just use C<require>.
+
+"import"クラスメソッドを呼び出さずにモジュールをC<useit>することはできない。
+C<use Module ()>とするのは可能だ。しかし、単純なC<require Module>は正確に
+同じ事（importしないこと）をする。そのため、モジュールをC<useit>するのに
+その"import"メソッドを呼び出したくないなら、単にC<require>を使うべきだ。
+
+=head1 作者
+
+Elizabeth Mattijsen, <liz@dijkmat.nl>.
+
+Please report bugs to <perlbugs@dijkmat.nl>.
+
+=head1 著作権
+
+Copyright (c) 2002-2003 Elizabeth Mattijsen <liz@dijkmat.nl>. All rights
+reserved.  This program is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
+
+=head1 参考
+
+L<threads>.
+

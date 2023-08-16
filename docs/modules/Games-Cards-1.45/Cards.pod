@@ -1,0 +1,1021 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+Games::Cards -- Perl module for writing and playing card games
+
+=end original
+
+Games::Cards -- カードゲームを描画し、遊ぶためのPerlモジュール
+
+=head1 概要
+
+    use Games::Cards;
+    my $Rummy = new Games::Cards::Game;
+
+    # ラミーのための正しいデッキを生成
+    my $Deck = new Games::Cards::Deck ($Rummy, "Deck");
+
+    # デッキをシャッフルし、札捨て場を生成
+    $Deck->shuffle;
+    my $Discard = new Games::Cards::Queue "Discard Pile";
+
+    # カードを配る
+    foreach my $i (1 .. 3) {
+	my $hand = new Games::Cards::Hand "Player $i" ;
+	$Deck->give_cards($hand, 7);
+	$hand->sort_by_value;
+	push @Hands, $hand;
+    }
+
+    # 手札の表示 （例： "Player 1: AS  2C  3C  3H 10D  QS  KH"）
+    foreach (@Hands) { print ($_->print("short"), "\n") }
+
+    $Hands[1]->give_a_card ($Discard, "8D"); # ダイヤの8を捨てる
+
+=head1 解説
+
+=begin original
+
+This module creates objects and methods to allow easier programming of card
+games in Perl. It allows you to do things like create decks of cards,
+have piles of cards, hands, and other sets of cards, turn cards face-up
+or face-down, and move cards from one set to another. Which is pretty much
+all you need for most card games.
+
+=end original
+
+このモジュールは、Perlでカードゲームのプログラミングを容易にしてくれる
+オブジェクトとメソッドを生成する。このモジュールを使えば、カード一揃いの生成、
+カードのやま・手札・その他のカードの組を持つこと、カードをめくること、
+一方から他方の組へとカードを移すことなどが可能になる。これは、大概の
+カードゲームであなたが必要とすることだ。
+
+=begin original
+
+Sub-packages include:
+
+=end original
+
+サブパッケージには以下のものが含まれる：
+
+=over 4
+
+=item Games::Cards::Undo
+
+=begin original
+
+This package handles undoing and redoing moves (important for solitaire).
+
+=end original
+
+このパッケージはやり直し操作と繰り返し操作を行う（ソリティアには重要だ）。
+
+=item Games::Cards::Tk
+
+=begin original
+
+This package allows you to write games that use a Tk graphical interface.
+It's designed so that it will be relatively easy to write a game that uses
+i<either> a GUI or a simple text interface, depending on the player's
+circumstances (availability of Tk, suspicious boss, etc.). See
+L<Games::Cards::Tk> for more details on writing Tk games.
+
+=end original
+
+このパッケージを使うとTkインターフェースを利用してゲームを描画することができる。
+プレーヤーの環境（Tkが利用できるか、疑い深い上司がいるか、等々）に応じて、
+GUIあるいは単純なテキストインターフェースのI<どちらかを>使って比較的簡単に
+ゲームを描画できるように設計されている。Tkゲームの描画に関する詳細は
+L<Games::Cards::Tk>を参照して欲しい。
+
+
+=back
+
+=head2 クラスの概観
+
+=begin original
+
+A GC::Game stores information like what cards are in the starting deck,
+plus pointers to the various Cards and CardSets.
+
+=end original
+
+GC::Game(Games::Cards::Game)は開始時のデッキにどんなカードが含まれているのか
+といった情報を保持し、様々なCardとCardSetへのポインタを付け加える。
+
+=begin original
+
+A GC::Card represents one playing card. Every Card must belong to one
+(and only one) CardSet at every point during the game.
+
+=end original
+
+GC::Cardは一枚のプレイ中のカードを表す。全てのCardはゲーム通じて
+一組の（そして唯一の）CardSetに属さねばならない。
+
+=begin original
+
+A GC::CardSet is mostly just a set of GC::Cards. A CardSet has a unique
+name. Many also have short nicknames, which make it easier to write games
+that move cards between the sets. (See Klondike or FreeCell, for example.)
+
+=end original
+
+GC::CardSetはGC::Cardの一組だ。CardSetは一意の名前を持つ。多くは短い
+ニックネームも持っている。カードの組をまたいで移動するゲームをつくる
+のを簡単にしてくれる（例えば、クロンダイクやフリーセルをみよ）。
+
+
+=begin original
+
+There are many sorts of CardSet. The basic differentiation is Piles,
+for which you only access the top or bottom card (or cards) and Hands,
+where you might access any one of the cards in the Hand. Piles are
+broken up into Stacks and Queues, and every game starts with a Deck of
+cards (or more than one).
+
+=end original
+
+たくさんの種類のCardSetがある。基本的な違いは、一番上あるいは下からカードを
+とるための「やま」(Pile)と、任意のカードを一枚引くための「手札」(Hand)だ。
+PilesはStacksとQueuesに分かれる。そしてあらゆるゲームは（一枚以上の）カードの
+一揃い(Deck)から始まる。
+
+=head2 Games::Cards::Game
+
+=begin original
+
+This class represents a certain game, like War, or Solitaire. This is
+necessary to store the various rules for a given game, like the ranking
+of the cards. (Or, for more exotic games, how many cards of what type are
+in the deck.) Methods:
+
+=end original
+
+このクラスは戦争(War)とかソリティア(Solitaire)といった、ある一つのゲームを
+表す。これはゲームのための様々なルールを保持するのに必要である（あるいは、
+よりエキゾチックなゲームの場合には、そのデックの中にどんな種類のカードが
+何枚入っているのかなど）。メソッド：
+
+=over 4
+
+=item current_game
+
+=begin original
+
+Returns the current Game object. In almost every case, you'll only be
+working with one at a time.
+
+=end original
+
+現在のGameオブジェクトを返す。ほとんど全ての場合において、一度に
+ひとつだけ動作させるだろう。
+
+=item set_current_game(GAME)
+
+=begin original
+
+In theory, these subs let you handle multiple Games at once, as long
+as you set_current_game to the right one. Note that Game->new automatically
+sets the current Game to be that game, so in 99% of cases, you won't have to
+call set_current_game.
+
+=end original
+
+理論的には、set_current_gameを正しく使う限り、このサブルーチンは一度に
+複数のGamesを操作できる。だが注意して欲しいのは、Game->newは自動的に
+そのゲームを現在のGameにセットするということだ。
+だから九分九厘、あなたがset_current_gameを呼ぶことはないだろう。
+
+
+=item new(HASHREF)
+
+=begin original
+
+creates a new game. HASHREF is a reference to a hash containing zero or more
+of the keys "suits" and "cards_in_suit". "suits" is a list of the suits in a
+deck, "cards_in_suit" is a reference to a hash whose keys are the names
+of the cards in one suit and whose values are the values (or ranks) of those
+cards. If "suits" is not given, the default suits (Clubs, Diamonds, Hearts,
+Spades) are used. If "cards_in_suit" is not given, the default cards
+(Ace, 2..10, Jack, Queen, King with values 1..13) are used.
+For example, war would require "Ace"=>14.
+
+=end original
+
+新しいゲームを生成。HASHREFは0個以上のキー"suits"と"cards_in_suit"を含んだ
+ハッシュへのリファレンスだ。"suits"はデッキに含まれるスート（種類）のリスト。
+"cards_in_suit"はスートに属するカードの名前がキーとなるハッシュへの
+リファレンスで、ハッシュの値はカードの値（ランク）である。
+もし"suit"が与えられない場合、デフォルトのスート（Clubs、 Diamonds、
+ Hearts、Spades）が利用される。もし"cards_in_suit"が与えられない場合は、
+ デフォルトのカードは（Ace、2..10、Jack、Queen、Kingでその値は1〜13）が
+ 使われる。例えば、戦争というゲームは"Ace"=>14が必要となる。
+
+=item get_cardset_by_name(NAME)
+
+=begin original
+
+Returns the CardSet with name NAME
+
+=end original
+
+NAMEという名前を持ったCardSetを返す。
+
+=item get_cardset_by_nickname(NAME)
+
+=begin original
+
+Returns the CardSet with nickname NAME
+
+=end original
+
+NAMEという名前のnicknameを持ったCardSetを返す。
+
+=item get_card_by_truename(NAME)
+
+=begin original
+
+Returns the Card with truename NAME
+
+=end original
+
+NAMEという真の名前(truename)をもったCardを返す。
+
+=back
+
+=head2 Games::Cards::Deck
+
+=begin original
+
+A deck is a deck of cards. The number of cards and identities of the cards in
+the deck depend on the particular Game for which the deck is used.
+
+=end original
+
+デッキはカードの一揃いのことだ。デッキ中のカードの枚数とカードの特徴は、その
+デッキが利用されるゲームに依存する。
+
+=over 4
+
+=item new (GAME, NAME)
+
+=begin original
+
+creates an I<unshuffled> deck of cards. For each card in the deck it creates
+a name, suit, value, and suit value. GAME is the GC::Game this deck
+belongs to, and it stipulates the number of cards in the deck, etc. NAME is the
+name to give the deck, e.g.  "Deck".
+
+=end original
+
+I<シャッフルされていない>デッキを生成。デッキの中のそれぞれのカードのために、
+名前、スート、値、そしてスートの値が生成される。GAMEはこのデッキが属する
+GC::Gameであり、その中に含まれるカードの番号その他を規定する。NAMEは与えられた
+デッキの名前だ。例えば、"Deck"。
+
+=back
+
+=head2 Games::Cards::Queue
+
+=begin original
+
+A Queue (cf. computer science terminology, or the C++ stdlib) is a first-in
+first-out pile of cards. Cards are removed from the top of the pile, but new
+cards are added to the bottom of the pile.  This might represent, say, a pile
+of face-down cards, like the player's hand in War.
+
+=end original
+
+Queue（cf. コンピュータサイエンス、C++ stdlib）は先入先出型のカードの山だ。
+カードは山の上から取り除かれ、新しいカードは山の下に付け加えられる。これは
+つまり、裏向きのカードの山で、Warでのプレーヤーの手札のようなものだ。
+
+=head2 Class Games::Cards::Stack
+
+=begin original
+
+A stack (cf. computer science terminology, or the C++ stdlib) is a last-in
+first-out pile of cards. Cards are removed from the top of the pile, and new
+cards are also added to the top of the pile. This would usually represent a
+pile of cards with its top card (and perhaps all cards) face up.
+
+=end original
+
+Stack（cf. コンピュータサイエンス、C++ stdlib）は後入先出型のカードの山だ。
+カードは山の上から取り除かれ、新しいカードも山の上に付け加えられる。これは通常、
+一番上のカードが（そしてたぶん全部のカードが）表向きになっている山を表すだろう。
+
+=head2 Games::Cards::Pile
+
+=begin original
+
+A Pile is a pile of cards. That is, it is a CardSet where we will only access
+the beginning or end of the set. (This may include the first N cards in the
+set, but we will never reference the 17'th card.) This is a super class of
+Queue and Stack, and those classes should be used instead, so that we know
+whether the cards in the pile are FIFO or LIFO. Methods:
+
+=end original
+
+Pileはカードの山だ。それはつまり、カードの組の最初と最後にだけアクセスするで
+あろうCardSetということだ（組の最初のN枚のカードも含むかもしれない。だが17番目
+のカード、というような参照はしない）。これはQueueとStackのスーパークラスであり、
+むしろそちらのクラスを使うべきである。だから、山になっているカードが
+FIFO（先入先出）なのかLIFO（後入先出）なのかを知るべきだ。
+
+=over 4
+
+=item give_cards(RECEIVER, NUMBER)
+
+=begin original
+
+Transfers NUMBER cards from the donor (the object on which this method was
+called) to the CardSet RECEIVER.  This method can used for dealing cards from
+a deck, giving cards to another player (Go Fish), putting cards on the table
+(War), or transferring a card or cards between piles in solitaire.
+
+=end original
+
+NUMBER枚のカードを、渡し手（このメソッドを呼び出すオブジェクト）からCardSet
+オブジェクトRECEIVERへ移動する。このメソッドはデッキからカードを配ったり、
+別のプレーヤーにカードを渡したり（魚釣り）、カードをテーブルに置いたり（戦争）、
+あるいはソリティア系で札置き場から札置き場へとカードを移動させたりするのに
+利用できる。
+
+=begin original
+
+If NUMBER is "all", then the donor gives all of its cards.
+
+=end original
+
+もしNUMBERが"all"だったら、渡し手は持っている全てのカードを渡す。
+
+=begin original
+
+Returns 1 usually. If the donor has too few cards, it returns 0 and does not
+transfer any cards.
+
+=end original
+
+通常は1を返す。もし渡し手が十分なカードを持っていない場合は、0を返し、
+カードの移動は行われない。
+
+=item top_card
+
+=begin original
+
+Returns the top Card in the CardSet (or 0 if CardSet is empty)
+
+=end original
+
+CardSetの一番上のCardを返す（CardSetが空のときは0）。
+
+
+=back
+
+=head2 Games::Cards::Hand
+
+=begin original
+
+A Hand represents a player's hand. Most significantly, it's a CardSet which
+is different from a Pile because the Cards in it are unordered. We may
+reference any part of the CardSet, not just the top or bottom.
+Methods:
+
+=end original
+
+Handはプレーヤーの手を表す。最も重要なのはPileとは違うCardSetであるという
+ことだ。なぜなら、この中のCardは順番づけられていないからだ。一番上や一番下だけ
+でなく、CardSetのどの部分でも参照することができる。メソッド：
+
+=over 4
+
+=item give_a_card(RECEIVER, DESCRIPTION)
+
+=begin original
+
+Transfers Card described by DESCRIPTION from the donor (the Hand on which
+this method was called) to the CardSet RECEIVER.  This method can used for
+discarding a card from a hand, e.g.
+
+=end original
+
+DESCRIPTIONで説明されるCardを、渡し手（このメソッドを呼び出すHand）から
+RECEIVERという名のCardSetへ移動する。
+
+=begin original
+
+If DESCRIPTION matches /^-?\d+$/, then it is the index in the cards array of the
+Card to give.  Otherwise, DESCRIPTION is passed to Hand::index.
+
+=end original
+
+DESCRIPTIONが正規表現 /^-?\d+$/ にマッチした時は、与えられたCardの配列の
+インデックスになる。さもなければ、DESCRIPTIONはHand::indexに渡される。
+
+=begin original
+
+Returns 1 usually. If the donor does not have the card, it returns 0 and does
+not transfer anything.
+
+=end original
+
+通常は1を返す。もし渡し手がカードを持っていない場合は0を返し、移動は行われない。
+
+=item move_card(DESCRIPTION, INDEX)
+
+=begin original
+
+Rearrange a Hand by putting Card described by DESCRIPTION at index INDEX.
+
+=end original
+
+DESCRIPTIONで説明されたカードをINDEXという名のインデックスに置いてHandを
+再配置する。
+
+=begin original
+
+If DESCRIPTION matches /^-?\d+$/, then it is the index in the cards array of the
+Card to give.  Otherwise, DESCRIPTION is passed to Hand::index.
+
+=end original
+
+DESCRIPTIONが正規表現 /^-?\d+$/ にマッチした時は、与えられたCardの配列の
+インデックスになる。さもなければ、DESCRIPTIONはHand::indexに渡される。
+
+=begin original
+
+Returns 1 usually. If the donor does not have the card, it returns 0 and does
+not transfer anything.
+
+=end original
+
+通常は1を返す。もし渡し手がカードを持っていない場合は0を返し、移動は行われない。
+
+
+=item index(DESCRIPTION)
+
+=begin original
+
+Given a card description DESCRIPTION return the index of that Card
+in the Hand, or undef if it was not found. DESCRIPTION may be a Card or
+a string (like "8H" or "KC").
+
+=end original
+
+カードの説明DESCRIPTIONを与えるとHandにあるCardのインデックスを返す。カードが
+見つからないときはundefを返す。DESCRIPTIONはCardか、文字（"8H"とか"KC"）。
+
+=back
+
+=head2 Games::Cards::CardSet
+
+=begin original
+
+A CardSet is just an array of cards (stored in the "cards" field). It could be
+a player's hand, a deck, or a discard pile, for instance. This is a super class
+of a number of other classes, and those subclasses should be used instead.
+
+=end original
+
+CardSetは単なるカードの配列だ（"cards"フィールドに収められている）。CardSetは
+例えば、プレーヤーの手札、デッキ、札捨て場などにすることができる。これは、
+他の多くのクラスのスーパークラスであるので、代わりにそれらサブクラスを
+利用するべきだ。
+
+=over 4
+
+=item new(GAME, NAME, NICKNAME)
+
+=begin original
+
+create a new (empty) CardSet. GAME is the Game object that this set belongs
+to. NAME is a unique string that e.g. can be output when you print the CardSet.
+Optionally, NICKNAME is a (unique!) short name that will be used to reference
+the set.
+
+=end original
+
+新規の（空）CardSetを生成。GAMEはこのセットが属すGameオブジェクト。NAMEは一意な
+文字列であり、例えばCardSetをプリントする際のアウトプットになりうる。オプション
+として、NICKNAMEはセットを参照するために用いられる（一意な！）短い名前である。
+
+=item shuffle
+
+=begin original
+
+shuffles the cards in the CardSet. Shuffling is not undoable.
+
+=end original
+
+CardSetのカードを切る。シャッフルはやり直し(undo)できない。
+
+=item sort_by_value
+
+=begin original
+
+Sorts the Set by value. This and other sort routines will probably be used
+mostly on Hands, which are "ordered sets", but you might want to reorder a deck
+or something. Sorting is not undoable.
+
+=end original
+
+CardSetを値でソートする。おそらく、これや他のソートルーチンを順序付け
+られているCardSetであるHandに対して用いることがあるだろう。しかしあなたは
+デッキや何かを再度順序付けたいかもしれない。ソートはやり直しできない。
+
+=item sort_by_suit
+
+=begin original
+
+Sorts the Set by suit, but not by value within the suit.
+
+=end original
+
+CardSetをスートでソートする。スート内の値でではない。
+
+=item sort_by_suit_and_value
+
+=begin original
+
+Sorts the Set by suit, then by value within the suit.
+
+=end original
+
+CardSetをまずスートで、その後にスート内の値でソートする。
+
+=item clone(GAME, NAME, NICKNAME)
+
+=begin original
+
+Create a copy of this CardSet. That is, create an object with the same class
+as arg0. Then make a copy of each Card in the CardSet (true copy, not a
+reference). arg1 is the Game that the set belongs to. arg2 is the name to give
+the new CardSet. arg3 (optional) is the nickname.
+
+=end original
+
+CardSetのコピーを生成する。つまり、arg0[訳補足：暗黙で渡される引数]と同じ
+クラスのオブジェクトを生成する。それからCardSetに含まれる全てのCardのコピーを
+つくる（本当のコピーであって、リファレンスではない）。arg1はセットが属する
+Game。arg2は新しいCardSetに与える名前。arg3（省略可）はニックネーム。
+
+=item face_down
+
+=begin original
+
+Makes a whole CardSet face down
+
+=end original
+
+CardSet全体を裏にする。
+
+=item face_up
+
+=begin original
+
+Makes a whole CardSet face up
+
+=end original
+
+CardSet全体を表にする。
+
+=item print(LENGTH)
+
+=begin original
+
+Returns a string containing a printout of the Cards in the CardSet. Prints
+a long printout if LENGTH is "long", short if "short" (or nothing).
+The CardSet is printed out in reverse order, so that the top card of the set is
+printed first.
+
+=end original
+
+CardSetに含まれるCardの出力情報を含む文字列を返す。もしLENGTHが"long"なら長い
+出力情報で、"short"（あるいは指定無し）なら短い。CardSetは逆順でプリントアウト
+される。つまりCardSetの一番上のカードからプリントされる。
+
+=item name
+
+=begin original
+
+Returns the name of the Set
+
+=end original
+
+CardSetの名前を返す。
+
+=item nickname
+
+=begin original
+
+Returns the nickname of the Set (or undef if there is none)
+
+=end original
+
+CardSetのニックネームを返す（名前がなければundefを返す）。
+
+=item cards
+
+=begin original
+
+Returns a reference to the array of Cards in the set
+
+=end original
+
+CardSet内にあるCardの配列リファレンスを返す。
+
+=item size
+
+=begin original
+
+Tells how many cards are in the set
+
+=end original
+
+CardSetの中に何枚カードがあるかを教える。
+
+=back
+
+=head2 Games::Cards::Card
+
+=begin original
+
+A Card is a playing card. Methods:
+
+=end original
+
+Cardはゲーム中に使われるカードだ。メソッド：
+
+=over 4
+
+=item new(GAME, HASHREF)
+
+=begin original
+
+creates a new card. GAME is the Game this card is being created in. HASHREF
+references a hash with keys "suit" and "name".
+
+=end original
+
+新しいカードを生成。GAMEはこのカードがつくられるGame。HASHREFは"suit"と"name"
+というキーを持ったハッシュを参照する。
+
+=item clone(GAME)
+
+=begin original
+
+makes a copy of the Card (not just a reference to it).
+
+=end original
+
+Cardのコピーを作る（Cardへのリファレンスだけではない）。
+
+=item print(LENGTH)
+
+=begin original
+
+returns a string with the whole card name ("King of Hearts") if LENGTH is
+"long", otherwise a short version ("KH").
+
+=end original
+
+LENGTHが"long"ならカード全体の名前（例えば"King of Hearts"）を持つ文字列を
+返す。それ以外なら短い名前（"KH"）を返す。
+
+=item truename
+
+=begin original
+
+Gives a unique description of this card, i.e., you're guaranteed that no
+other card in the Game will have the same description.
+
+=end original
+
+このカードの一意な説明を与える。つまり、Game内のどのカードも同じ説明を持た
+ないことが保証される。
+
+=item name(LENGTH)
+
+=begin original
+
+prints the name of the card. The full name ("King") if LENGTH is "long";
+otherwise a short version ("K");
+
+=end original
+
+そのカードの名前を出力する。LENGTHが"long"ならフルネーム（"King"）が、
+そうでなければ短縮形（"K"）が出力される。
+
+=item suit(LENGTH)
+
+=begin original
+
+Returns the suit of the card. Returns the long version ("Diamonds") if LENGTH
+is "long", else a short version ("D").
+
+=end original
+
+カードのスートを返す。LENGTHが"long"なら長い形（"Diamonds"）で、それ以外は
+短縮形（"D"）が返される。
+
+=item color
+
+=begin original
+
+Is the card "red" or "black"? Returns the color or undef for unknown color.
+
+=end original
+
+カードは赤か黒か？その色を返す。不明な色はundefが返る。
+
+=item value
+
+=begin original
+
+Calculates the value of a card
+
+=end original
+
+カードの値を計算。
+
+=item suit_value
+
+=begin original
+
+Returns the suit_value of a card (1..number of suits)
+
+=end original
+
+カードのsuit_value（スートの1..number）を返す。
+
+=item is_face_up
+
+=begin original
+
+Returns true if a card is face up
+
+=end original
+
+カードが表向きなら真を返す。
+
+=item is_face_down
+
+=begin original
+
+Returns true if a card is face down
+
+=end original
+
+カードが裏向きなら真を返す。
+
+=item face_up
+
+=begin original
+
+Makes a card face up
+
+=end original
+
+カードを表向きにする。
+
+=item face_down
+
+=begin original
+
+Makes a card face down
+
+=end original
+
+カードを裏向きにする。
+
+=item owning_cardset
+
+=begin original
+
+Returns the CardSet which this Card is a part of
+
+=end original
+
+このCardが含まれるCardSetを返す。
+
+=item set_owning_cardset(SET_OR_NAME)
+
+=begin original
+
+Makes the Card a part of a CardSet. Arg0 is either an actual CardSet ref, or
+the name of a CardSet.
+
+=end original
+
+そのCardをCardSetの一部に含める。arg0は実際のCardSetのリファレンスか、
+CardSetの名前。
+
+=back
+
+=head1 例
+
+=begin original
+
+An implementation of Klondike (aka standard solitaire) demonstrates how to use
+this module in a simple game. Other card game examples are included as well.
+The Games::Cards README should list them all.
+
+=end original
+
+クロンダイク（標準的なソリティアとも呼ばれる）の実装を使って、
+簡単なゲームでどのようにこのモジュールを使うかのデモンストレーションを行う。
+他のカードゲームの例も含まれている。Games::CardsモジュールのREADMEにそれらの
+一覧がある。
+
+[訳補足：CPANモジュールやPPMでインストールした場合、
+Tkを利用する例は含まれていないようです。tarballには含まれています。
+L<http://search.cpan.org/src/AKARGER/Games-Cards-1.45/script/freecell.tk>
+L<http://search.cpan.org/src/AKARGER/Games-Cards-1.45/script/klondike.tk>
+]
+
+=head1 注意
+
+=head2 いかにしてゲームを描画するか
+
+=begin original
+
+So you want to write a card game using Games::Cards (or even
+Games::Cards::Tk)? Great! That's what the module is for.
+Here are some tips about how to write a game.
+
+=end original
+
+さて、Cames::Cards（あるいはGames::Cards::Tk）を使ってカードゲームを
+描写したいって？素晴らしい！これはそのためのモジュールだ。
+どうやってゲームを描画するかについていくつかの小技を示そう。
+
+=over 4
+
+=item コードを盗む
+
+=begin original
+
+Laziness applies in Games::Cards just like in the rest of Perl. It will
+be much easier if you start with an existing game.
+
+=end original
+
+Perlがそうであるように、[訳補足：三大美徳の一つ]怠惰をGames::Cardsにも
+適用しよう。既存のゲームを持っているなら簡単だ。
+
+=item Stack 対 Queue
+
+=begin original
+
+Think carefully about whether the Piles in your game are Stacks (LIFO)
+or Queues (FIFO). As a general rule, piles of cards that are usually face
+down will be Stacks; face up will be Queues. CardSets where you want to
+access specific cards (i.e., not just the first or last) will be Hands.
+
+=end original
+
+あなたのゲームに登場するカードの山(Pile)がスタック(LIFO)なのか
+キュー(FIFO)なのか、慎重に考えてみよう。一般的なルールとして、いつも裏向きに
+なっているカードの山はスタックであるだろう。表向きならキューだ。特定のカード
+（つまり一番最初か最後だけじゃなく）にアクセスするようなCardSetならHandだ。
+
+=item GUIゲーム
+
+=begin original
+
+I've tried to design Games::Cards::Tk and the games that use it so that
+the Tk game is very similar to the text game. This allows the most code
+reuse. GUI games may involve clicking, dragging, and a different way to
+display the game; but the underlying game is still the same. Also note
+that serious timewasters may prefer to use the keyboard to play GUI
+games. See L<Games::Cards::Tk> for more details.
+
+=end original
+
+私はGames::Cards::Tkの設計を試みてきた。そしてこれを使ったTkゲームは
+テキスト版のゲームと非常によく似ている。だからほとんどのコードは再利用が
+できる。GUIゲームはクリックやドラッグ、そしてゲームの表示の違いといったことを
+伴う。だが基礎にあるゲームはまだ同じだ。また、キーボードを使って遊ぶGUIゲーム
+の方が極度のゲーム好きには好まれることにも注意して欲しい。詳細は
+L<Games::Cards::Tk>を参照のこと。
+
+=back
+
+=head2 PublicとPrivate
+
+=begin original
+
+This module contains a bunch of methods. The public methods are documented
+here. That means any method I<not> documented here is probably private, which
+means you shouldn't call it directly.
+
+=end original
+
+このモジュールには一群のメソッドが含まれている。パブリックメソッドについては
+この文書で取り上げた。ということは、ここであげられてI<いない>メソッドは、
+プライベートメソッドであるかもしれないということだ。これはあなたが
+直接呼び出すべきものではない。
+
+=begin original
+
+There are also a bunch of classes. Most private classes are not documented
+here. A couple private classes are mentioned, since they have methods which
+public classes inherit. In that case, the privateness is mentioned.
+
+=end original
+
+クラスも多くある。ほとんどのプライベートクラスはドキュメントに含めていない。
+二つのプライベートクラスには言及している。なぜならそれらのメソッドは
+パブリッククラスから継承しているからだ。そういう場合はプライベートであることに
+言及してある。
+
+=head2 TODO
+
+=begin original
+
+See the TODO file in the distribution
+
+=end original
+
+配布物のTODOファイルを見よ。
+
+=head2 Not TODO
+
+=begin original
+
+Computer AI and GUI display were left as exercises for the reader. Then
+Michael Houghton wrote a Tk card game, so I guess the readers are doing their
+exercises.
+
+=end original
+
+コンピューターAIとGUIディスプレイは読者への課題として残した。Michael Houghtonが
+Tkカードゲームを書いたので、私は読者が課題に取り組むのではないかと思っている。
+
+=head1 バグ
+
+=begin original
+
+You betcha. It's still alpha.
+
+=end original
+
+そりゃもちろん。これはまだアルファ版だし。
+
+=begin original
+
+test.pl doesn't work with MacPerl, because it uses backticks. However,
+(as far as I know) the games released with Games::Cards do work.
+
+=end original
+
+test.plはMacPerlでは動かない。これはバックスラッシュを使っているためだ。
+だが（私の知る限り）Games::Cardsを使ったゲームは動作している。
+
+=head1 AUTHORS
+
+Amir Karger
+
+=begin original
+
+Andy Bach wrote a Free Cell port, and gets points for the first submitted
+game, plus some neat ideas like CardSet::clone.
+
+=end original
+
+Andy Bachはフリーセルの報告を書き、最初に実行されたゲームの得点を得た。
+それからCardSet::cloneのような巧いアイディアを付け加えてくれた。
+
+=begin original
+
+Michael Houghton herveus@Radix.Net wrote the initial Tk Free Cell (two
+days after Andy submitted his Free Cell!)  I changed almost all of the code
+eventually, to fit in with Games::Cards::Tk, but he gave me the initial push
+(and code to steal).
+
+=end original
+
+Michael Houghton herveus@Radix.Net は最初のTk版フリーセルを書いた（二日後に
+Andyが彼のフリーセルを実行した！）。結局、Games::Cards::Tkに合うように私は
+コードのほとんど全てを変更した。だが彼は私に最初の励まし
+（と盗むためのコード）を与えてくれた。
+
+=head1 COPYRIGHT
+
+Copyright (c) 1999-2000 Amir Karger
+
+=head1 LICENSE
+
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
+
+=head1 SEE ALSO
+
+perl(1), Tk(1)
+

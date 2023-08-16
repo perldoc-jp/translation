@@ -1,0 +1,186 @@
+
+=encoding euc-jp
+
+=head1 名前
+
+Devel::Cycle - オブジェクトのメモリ循環を発見する
+
+=head1 概要
+
+  #!/usr/bin/perl
+  use Devel::Cycle;
+  my $test = {fred   => [qw(a b c d e)],
+	    ethel  => [qw(1 2 3 4 5)],
+	    george => {martha => 23,
+		       agnes  => 19}
+	   };
+  $test->{george}{phyllis} = $test;
+  $test->{fred}[3]      = $test->{george};
+  $test->{george}{mary} = $test->{fred};
+  find_cycle($test);
+  exit 0;
+
+  # output:
+
+Cycle (1):
+	                $A->{'george'} => \%B
+	               $B->{'phyllis'} => \%A
+
+Cycle (2):
+	                $A->{'george'} => \%B
+	                  $B->{'mary'} => \@A
+	                       $A->[3] => \%B
+
+Cycle (3):
+	                  $A->{'fred'} => \@A
+	                       $A->[3] => \%B
+	               $B->{'phyllis'} => \%A
+
+Cycle (4):
+	                  $A->{'fred'} => \@A
+	                       $A->[3] => \%B
+	                  $B->{'mary'} => \@A
+
+=head1 説明
+
+This is a simple developer's tool for finding circular references in
+objects and other types of references.  Because of Perl's
+reference-count based memory management, circular references will
+cause memory leaks.
+
+このモジュールは、オブジェクトと他のリファレンス型との中にある
+循環参照を発見するためのシンプルな開発者用ツールである。
+Perlのメモリ管理は参照カウントに基づくため、循環参照は
+メモリリークを引き起こす。
+
+
+=head2 エクスポート
+
+The find_cycle() subroutine is exported by default.
+
+find_cycle()サブルーチンがデフォルトでエクスポートされる。
+
+=over 4
+
+=item find_cycle($object_reference,[$callback])
+
+The find_cycle() function will traverse the object reference and print
+a report to STDOUT identifying any memory cycles it finds.
+
+find_cycle()関数は、オブジェクトのリファレンスを辿り、発見した
+メモリ循環を特定してSTDOUTにレポートする。
+
+If an optional callback code reference is provided, then this callback
+will be invoked on each cycle that is found.  The callback will be
+passed an array reference pointing to a list of lists with the
+following format:
+
+オプションとしてコールバック用のコードリファレンスが与えられると、
+循環が見つかるたびにこのコールバックが発動される。コールバックには
+次に示す形式を持ったリストのリストを指す配列リファレンスが渡される：
+
+ $arg = [ ['REFTYPE',$index,$reference,$reference_value],
+          ['REFTYPE',$index,$reference,$reference_value],
+          ['REFTYPE',$index,$reference,$reference_value],
+           ...
+        ]
+
+Each element in the array reference describes one edge in the memory
+cycle.  'REFTYPE' describes the type of the reference and is one of
+'SCALAR','ARRAY' or 'HASH'.  $index is the index affected by the
+reference, and is undef for a scalar, an integer for an array
+reference, or a hash key for a hash.  $reference is the memory
+reference, and $reference_value is its dereferenced value.  For
+example, if the edge is an ARRAY, then the following relationship
+holds:
+
+配列リファレンスの各要素は、メモリ循環内の一端を表している。
+'REFTYPE'はリファレンスの型を示し、'SCALAR'、'ARRAY'あるいは
+'HASH'のうちの一つである。$indexは、そのリファレンスによって
+影響を受けるインデックスであり、スカラーに対してはundef、
+配列に対しては整数、ハッシュに対してはハッシュキーとなる。
+$referenceはそのメモリリファレンスである。そして$reference_valueは
+デリファレンスされた値である。例えば、一端がARRAYのとき関係は次の
+ようになる：
+
+   $reference->[$index] eq $reference_value
+
+The first element of the array reference is the $object_reference that
+you pased to find_cycle() and may not be directly involved in the
+cycle.
+
+配列リファレンスの最初の要素は、あなたがfind_cycle()に渡す
+$object_referenceであり、直接的にメモリ循環に巻き込まれてはいない
+かもしれない。
+
+If a reference is a weak ref produced using Scalar::Util's weaken()
+function then it won't contribute to cycles.
+
+もしあるリファレンスが、Scalar::Utilのweaken()関数を使って
+つくられた弱いリファレンスであるなら、これは循環の原因とはならない。
+
+=back
+
+The default callback prints out a trace of each cycle it finds.  You
+can control the format of the trace by setting the package variable
+$Devel::Cycle::FORMATTING to one of "raw," "cooked," or "roasted."
+
+デフォルトのコールバックは、モジュールが発見した各循環のトレースを
+出力する。このトレースの形式はパッケージ変数$Devel::Cycle::FORMATTING
+に"raw"、"cooked"、あるいは"roasted"を設定することで制御できる。
+
+The "raw" format prints out anonymous memory references using standard
+Perl memory location nomenclature.  For example, a "Foo::Bar" object
+that points to an ordinary hash will appear in the trace like this:
+
+"raw"形式は、Perlの標準的なメモリロケーションの命名法を用いて無名
+メモリ参照を出力する。例えば、通常のハッシュをを指す"Foo::Bar"
+オブジェクトは、トレースの中で次のように現れるだろう：
+
+	Foo::Bar=HASH(0x8124394)->{'phyllis'} => HASH(0x81b4a90)
+
+The "cooked" format (the default), uses short names for anonymous
+memory locations, beginning with "A" and moving upward with the magic
+++ operator.  This leads to a much more readable display:
+
+"cooked"形式（デフォルト）は、無名メモリロケーションの短縮名を
+使う。これは"A"から始まり、++演算子のマジックによって進んでいく。
+これを使えば、より読みやすい表示となる：
+
+        $Foo::Bar=B->{'phyllis'} => \%A
+
+The "roasted" format is similar to the "cooked" format, except that
+object references are formatted slightly differently:
+
+"roasted"形式は"cooked"形式に似ているが、オブジェクトリファレンスが
+若干異なって整形される点が違う。
+
+	$Foo::Bar::B->{'phyllis'} => \%A
+
+For your convenience, $Devel::Cycle::FORMATTING can be imported:
+
+便宜を図って、$Devel::Cycle::FORMATTINGはインポート可能である：
+
+       use Devel::Cycle qw(:DEFAULT $FORMATTING);
+       $FORMATTING = 'raw';
+
+
+=head1 参考
+
+L<Devel::Leak>
+
+L<Scalar::Util>
+
+=head1 作者
+
+Lincoln Stein, E<lt>lstein@cshl.eduE<gt>
+
+=head1 著作権とライセンス
+
+Copyright (C) 2003 by Lincoln Stein
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself, either Perl version 5.8.2 or,
+at your option, any later version of Perl 5 you may have available.
+
+

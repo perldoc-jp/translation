@@ -1,0 +1,251 @@
+
+=encoding euc-jp
+
+=head1 名前
+
+PAR - Perl Archive Toolkit
+
+=head1 バージョン
+
+This document describes version 0.75 of PAR, released September 21, 2003.
+
+このドキュメントは2003年9月21日にリリースされたPAR 0.75について説明している。
+
+=head1 概要
+
+(If you want to make an executable that contains all module, scripts and
+data files, please consult the bundled L<pp> utility instead.)
+
+（もし全てのモジュール、スクリプト、データファイルを含んだ実行ファイルを作成
+したいなら、代わりに、バンドルされているL<pp>ユーティリティを吟味して欲しい。）
+
+Following examples assume a F<foo.par> file in Zip format; support for
+compressed tar (F<*.tgz>/F<*.tbz2>) format is under consideration.
+
+次の例は、Zip形式のF<foo.par>ファイルを想定している；圧縮された
+tar（F<*.tgz>/F<*.tbz2>）形式のサポートは検討中である。
+
+To use F<Hello.pm> from F<./foo.par>:
+
+F<./foo.par>からF<Hello.pm>を使う：
+
+    % perl -MPAR=./foo.par -MHello
+    % perl -MPAR=./foo -MHello          # .par 部分はオプション
+
+Same thing, but search F<foo.par> in the C<@INC>;
+
+同じことだが、C<@INC>からF<foo.par>を探す；
+
+    % perl -MPAR -Ifoo.par -MHello
+    % perl -MPAR -Ifoo -MHello          # 同上
+
+Following paths inside the PAR file are searched:
+
+PARファイル中で以下のパスがサーチされる：
+
+    /lib/
+    /arch/
+    /i386-freebsd/              # これは $Config{archname}
+    /5.8.0/                     # これは $Config{version}
+    /5.8.0/i386-freebsd/        # 上を両方
+    /
+
+PAR files may also (recursively) contain other PAR files.
+All files under following paths will be considered as PAR
+files and searched as well:
+
+PARファイルは他のPARファイルを（再帰的に）含むこともできる。
+以下のパス下の全ファイルがPARファイルとみなされ、検索される：
+
+    /par/i386-freebsd/          # これは $Config{archname}
+    /par/5.8.0/                 # これは $Config{version}
+    /par/5.8.0/i386-freebsd/    # 上を両方
+    /par/
+
+Run F<script/test.pl> or F<test.pl> from F<foo.par>:
+
+F<foo.par>からF<script/test.pl>かF<test.pl>を実行する：
+
+    % perl -MPAR foo.par test.pl        # only when $0 ends in '.par'
+
+However, if the F<.par> archive contains either F<script/main.pl> or
+F<main.pl>, then it is used instead:
+
+しかし、F<.par>アーカイブがF<script/main.pl>かF<main.pl>のどちからを含んでいる
+なら、そのときは代わりにそれが利用される：
+
+    % perl -MPAR foo.par test.pl        # @ARGとして'test.pl'を伴ってmain.plを実行
+
+Use in a program:
+
+プログラム中で使う：
+
+    use PAR 'foo.par';
+    use Hello; # foo.par内で読み込む
+
+    # PAR::read_file()はロードされたPARファイル内のファイルを返す
+    my $conf = PAR::read_file('data/MyConfig.yaml');
+
+    # PAR::par_handle()はArchive::Zipのハンドルを返す
+    my $zip = PAR::par_handle('foo.par')
+    my $src = $zip->memberNamed('lib/Hello.pm')->contents;
+
+You can also use wildcard characters:
+
+ワイルドカードを使うこともできる：
+
+    use PAR '/home/foo/*.par';  # そのディレクトリ内の全PARファイルをロード
+
+=head1 説明
+
+This module lets you easily bundle a typical F<blib/> tree into a zip
+file, called a Perl Archive, or C<PAR>.
+
+このモジュールを使えば、よくあるF<blib/>ツリーを、簡単にzipファイル
+（Perl Archive、すなわちC<PAR>）にバンドルすることができる。
+
+It supports loading XS modules by overriding B<DynaLoader> bootstrapping
+methods; it writes shared object file to a temporary file at the time it
+is needed.
+
+B<DynaLoader>のブートストラップメソッドをオーバーライドすることにより、
+XSモジュールのロードもサポートしている；これは必要なときに、
+共有オブジェクトを一時ファイルに書き出す。
+
+To generate a F<.par> file, all you have to do is compress the modules
+under F<arch/> and F<lib/>, e.g.:
+
+F<.par>ファイルを生成するには、F<arch/>とF<lib/>下でモジュールをコンプレス
+するだけでよい。例えば：
+
+    % perl Makefile.PL
+    % make
+    % cd blib
+    % zip -r mymodule.par arch/ lib/
+
+Afterward, you can just use F<mymodule.par> anywhere in your C<@INC>,
+use B<PAR>, and it will Just Work.
+
+その後、C<@INC>のパスが通っている場所でF<mymodule.par>を使い、B<PAR>
+を使うだけで、正しく動く。
+
+For convenience, you can set the C<PERL5OPT> environment variable to
+C<-MPAR> to enable C<PAR> processing globally (the overhead is small
+if not used); setting it to C<-MPAR=/path/to/mylib.par> will load a
+specific PAR file.  Alternatively, consider using the F<par.pl> utility
+bundled with this module, or using the self-contained F<parl> utility
+on machines without PAR.pm installed.
+
+便利なことに、C<-MPAR>に対して環境変数C<PERL5OPT>をセットすると、
+C<PAR>がグローバルに処理を行なうことを可能にする（もし使わないなら
+オーバーヘッドは小さい）；C<-MPAR=/path/to/mylib.par>に対して、変数を
+セットすると、指定のPARファイルをロードする。別の方法として、この
+モジュールにバンドルされているF<par.pl>ユーティリティを使うことや、
+PAR.pmがインストールされていないマシン上で自己完結的なユーティリティ
+F<parl>を使うことなどを考慮するとよい。
+
+Note that self-containing scripts and executables created with F<par.pl>
+and F<pp> may also be used as F<.par> archives:
+
+F<par.pl>とF<pp>で作成された自己完結なスクリプトや実行ファイルは、
+F<.par>アーカイブとして使用されることに注意：
+
+    % pp -o packed.exe source.pl        # packed.exeを生成
+    % perl -MPAR=packed.exe other.pl    # これも動作する
+    % perl -MPAR -Ipacked.exe other.pl  # 同上
+
+Please see L</SYNOPSIS> for most typical use cases.
+
+もっとも典型的な使用例については、L</概要>を参照されたし。
+
+=head1 注意
+
+In the next few releases, it is expected that the F<META.yml> packed
+inside the PAR file will control the default behavior of temporary file
+creation, among other things; F<pp> will also provide options to set those
+PAR-specific attributes.
+
+あと数回のリリースで、色々あるが特に、PARファイル内にパックされた
+F<META.yml>が一時ファイル生成についてデフォルトの振る舞いを制御する
+予定だ；F<pp>もこれらPARに特有の属性を設定するオプションを提供するだろう。
+
+Currently, F<pp>-generated PAR files will attach four such PAR-specific
+attributes in F<META.yml>:
+
+現在のところ、F<pp>によって生成されたPARファイルは、F<META.yml>において
+そのようなPAR特有の属性を4つ付け加える：
+
+    par:
+      cleartemp: 0      # PAR_CLEARTEMPのデフォルト値
+      signature: ''     # シグネチャファイルの key ID
+      verbatim: 0       # パックされた必要物のPODファイルは保護されているか？
+      version: x.xx     # このPARファイルを生成したPAR.pmのバージョン
+
+Additional attributes, like C<cipher> and C<decrypt_key>, are being
+discussed on the mailing list.  Join us if you have an idea or two!
+
+追加的な属性として、C<cipher>とC<decrypt_key>のようなものが、
+メーリングリストで議論されている。幾らかのアイディアがあるなら、ぜひ参加を！
+
+=head1 参考
+
+L<http://www.autrijus.org/par-tutorial/>
+
+L<PAR::Intro>
+
+L<par.pl>, L<parl>, L<pp>
+
+L<Archive::Zip>, L<perlfunc/require>
+
+L<ex::lib::zip>, L<Acme::use::strict::with::pride>
+
+=head1 謝辞
+
+Nicholas Clark for pointing out the mad source filter hook within the
+(also mad) coderef C<@INC> hook, as well as (even madder) tricks one
+can play with PerlIO to avoid source filtering.
+
+Nicholas Clarkは、いかれたソースフィルタhookを（これまたいかれた）
+コードリファレンスC<@INC>hook内で指摘してくれた。ソースフィルタリングを
+回避するためにPerlIOをいじくる（さらにいかれた）細工も同様だ。
+
+Ton Hospel for convincing me to ditch the C<Filter::Simple>
+implementation.
+
+Ton Hospelは、私にC<Filter::Simple>の実装を捨てさるよう説得しれくれた。
+
+Uri Guttman for suggesting C<read_file> and C<par_handle> interfaces.
+
+Uri GuttmanはC<read_file>とC<par_handle>のインターフェースを示唆してくれた。
+
+Antti Lankila for making me implement the self-contained executable
+options via C<par.pl -O>.
+
+Antti Lankilaのおかげで、C<par.pl -O>を通じた自己完結な実行ファイル
+オプションの実装ができた。
+
+See the F<AUTHORS> file in the distribution for a list of people who
+have sent helpful patches, ideas or comments.
+
+パッチ、アイディア、コメントで助けてくれた人々のリストが
+配布物のF<AUTHORS>ファイルにあるので参照してほしい。
+
+=head1 作者
+
+Autrijus Tang E<lt>autrijus@autrijus.orgE<gt>
+
+L<http://par.perl.org/> is the official PAR website.  You can write
+to the mailing list at E<lt>par@perl.orgE<gt>, or send an empty mail to
+E<lt>par-subscribe@perl.orgE<gt> to participate in the discussion.
+
+Please submit bug reports to E<lt>bug-par@rt.cpan.orgE<gt>.
+
+=head1 著作権
+
+Copyright 2002, 2003 by Autrijus Tang E<lt>autrijus@autrijus.orgE<gt>.
+
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
+
+See L<http://www.perl.com/perl/misc/Artistic.html>
+

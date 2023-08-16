@@ -1,0 +1,291 @@
+
+=encoding euc-jp
+
+=head1 名前
+
+MLDBM - マルチレベル・ハッシュ構造をシングル・レベルのtieされたハッシュに格納する
+
+=head1 概要
+
+    use MLDBM;              # これはデフォルト SDBMになります
+    #use MLDBM qw(DB_File FreezeThaw);  # シリアライザにFreezeThawを使います
+    #use MLDBM qw(DB_File Storable);    # シリアライザにStorableを使います
+    
+    $dbm = tie %o, 'MLDBM' [..other DBM args..] or die $!;
+
+=head1 説明
+
+このモジュールは、ネストしたリファレンスも含めた任意のPerlデータを格納するために
+要求されるすべてのTIEHASHパッケージへのトランスペアレントなインターフェースを
+提供することができます。つまりこのモジュールを使って、リファレンスやその他の
+任意のデータをDBMデータベースに格納することができます。
+
+ハッシュの中のリファレンスを１つの文字列にシリアル化することにより機能します。
+元になるTIEHASHパッケージ（通常はDBMデータベース）には、この文字列が
+格納されます。再び値が取り出されると、文字列がデシリアル化が行われ、メモリ上に
+データ構造が再構築されます。
+
+歴史的、実際的な理由から、これはB<Data::Dumper>を必要とします。それはCPANサイトの
+どこからでも取得できます。画面上でそれらを見たいと思うのであれば、
+B<Data::Dumper>は本当に見易いデータ構造のダンプを出力します。そしてバージョン
+2.00の前までは唯一のシリアル化エンジンでした。しかしバージョン2.00では、
+上記の概要でも示しているように元になるシリアル化をさせるためにB<Data::Dumper>、
+B<FreezeThaw>あるいはB<Storable>を使うことができます。B<概要>でのヒントとして
+上記に、その概要を示しています。通常、B<Storable>を使うと他の方法を使うよりも
+非常に速くなります。
+
+重要な制約についてはl<バグ>セクションをご覧下さい。
+
+=head2 デフォルトの変更
+
+B<MLDBM>は元になっているTIEHASHの実装（通常はDBMパッケージ）と
+シリアル化パッケージに依存しています。それぞれのデフォルトは
+B<SDBM_File>とB<Data::Dumper>です。これらのデフォルトは両方とも
+変更することができます。 B<SDBM_File>はデフォルトから変更することを
+強くお勧めします。下記のL<警告>もご覧下さい。
+
+現在、3つのシリアル化ラッパーがサポートされています: B<Data::Dumper>
+, B<Storable> そして B<FreezeThaw>です。B<MLDBM::Serializer>に要求される
+インターフェースを実装するラッパーを書くことによりシリアライザを追加する
+ことも可能です。詳しくはサポートされているラッパーとB<MLDBM::Serializer>の
+ソースをご覧下さい。
+
+以下の説明でのI<$OBJ>は、このようにtieされたオブジェクトを表します:
+
+    $obj = tie %o, ....
+    $obj = tied %o;
+
+=over 4
+
+=item $MLDBM::UseDB I<あるいは> I<$OBJ>->UseDB(I<[TIEDOBJECT]>)
+
+より効率的なDBMを持っていたり、あるいは他のTIEHASH実装を使いたいのであれば、
+グローバルのC<$MLDBM::UseDB>をC<SDBM_File>以外のものをデフォルトに設定する
+ことができます。あるいはC<use>での最初の"パラメータ"としてパッケージの名前を
+指定することができます。ネストしたモジュール名は"Foo::Bar"のようにして
+指定することができます。
+
+対応するメソッド呼び出しは、引数なしで呼ばれると元になる
+TIEHASHオブジェクトを返します。その値を設定するため、Perlの
+TIEHASHインターフェースを実装しているオブジェクトと一緒に
+呼ぶこともできます。
+
+=item $MLDBM::Serializer  I<または> I<$OBJ>->Serializer(I<[SZROBJECT]>)
+
+使用するシリアル化パッケージの名前をグローバルのC<$MLDBM::Serializer>に
+設定することができます。現在はC<Data::Dumper>、C<Storable>あるいはC<FreezeThaw>の
+いずれか1つに設定することができます。デフォルトはC<Data::Dumper>です。
+代りにuseの2番目の"パラメータ"として、C<use>でシリアライザ・パッケージの
+名前を指定することができます。
+
+対応するメソッド呼び出しは、引数なしで呼ばれると元になる
+MLDBMシリアライザ・オブジェクトを返します。その値を設定するため、
+MLDBMシリアライザ・インタフェースを実装しているオブジェクトと一緒に
+呼ぶこともできます。
+
+=back
+
+=head2 シリアライザのプロパティを制御する
+
+これらのメソッドは隠れているシリアライザのプロパティへのインターフェースを
+提供することを意図しています。影響の全てを理解することなく、呼び出したり
+設定しB<ない>で下さい。デフォルトは通常、大文字/小文字を区別します。
+
+与えられたすべてのシリアライザに、必ずしもこれらのすべてが適用できる
+わけではありません。そのため適用するときには、それを示しています。
+それらを尊重しないと通常は例外を発生します。
+
+=over 4
+
+=item $MLDBM::DumpMeth  I<or>  I<$OBJ>->DumpMeth(I<[METHNAME]>)
+
+シリアライザが他のシリアル化メソッドを提供していれば、それを使うよう、
+これで設定することができます。
+
+B<Data::Dumper>（これはピュアPerlとXSのバージョンでシリアル化ルーチンを
+提供しています）では、もしあなたのインストレーションでサポートされていれば、
+デフォルトでC<Dumpxs>に設定されます。そうでなければデフォルトは、
+より遅いC<Dump>メソッドに設定されます。
+
+B<Storable>ではC<portable>はアーキテクチャに中立であることを要求します。つまり
+デシリアライゼーションを、後から他のプラットフォームで行うことができます。
+もちろんあなたのデータベースファイルがアーキテクチャに中立である場合にのみ
+意味があります。B<Storable>のデフォルトでは、より速いためネイティブな
+フォーマットが使われます。B<Data::Dumper>とB<FreezeThaw>は常にアークテクチャに
+中立です。
+
+B<FreezeThaw>には、この属性を使えません。
+
+=item $MLDBM::Key  I<or>  I<$OBJ>->Key(I<[KEYSTRING]>)
+
+シリアライザがデータの一部だけを扱うのであれば（おそらくはTIEHASHオブジェクトが
+ネイティブにいくつかのデータ型を格納できるからでしょう）、それが処理する
+データを認識するためにユニークな鍵文字列を必要とするかもしれません。これは、
+その文字列にすることができます。一番よいのは、そのままにしておくことです。 
+　 
+デフォルトはMLDBMデータを理解するために使われるマジック文字列です。それは長さ6文字で、
+ユニークな文字列です。何をしているのか分かっているのでなければ、そのままにしておく
+のが一番です。
+
+B<Storable>とB<FreezeThaw>には、この属性を使えません。
+
+=item $MLDBM::RemoveTaint  I<or>  I<$OBJ>->RemoveTaint(I<[BOOL]>)
+
+シリアライザがオプションとして取り出したデータの全てをPerlの汚染チェックを
+行うことにより汚れを落とすことができるのであれば、これによってその機能を
+要求することができます。（ディスクファイルのような）外部ソースから来たデータは
+常に注意して見なければなりません。そこで問題ではないとあなたが確信しているときだけ、
+これを使ってください。
+
+B<Data::Dumper>はデシリアライズするためにeval() を使います。このため汚染チェックの
+対象です。trueにすると、B<Data::Dumper>シリアライザは取り出したデータの汚れを
+落とします。デフォルトでは有効ではありません。注意して使ってください。
+
+B<Storable>とB<FreezeThaw>には、この属性を使えません。
+
+=back
+
+=head1 使用例
+
+以下に簡単な例を示します。元になっているシリアラズ化パッケージに依存していないこと
+--　実際の場合には通常、そうではありません　--　に注意してください。
+
+    use MLDBM;              # これはSDBMとData::Dumperを取得します
+    #use MLDBM qw(SDBM_File Storable);  # SDBM と Storable
+    use Fcntl;              # 'em 定数を取得するため
+     
+    $dbm = tie %o, 'MLDBM', 'testmldbm', O_CREAT|O_RDWR, 0640 or die $!;
+    
+    $c = [\ 'c'];
+    $b = {};
+    $a = [1, $b, $c];
+    $b->{a} = $a;
+    $b->{b} = $a->[1];
+    $b->{c} = $a->[2];
+    @o{qw(a b c)} = ($a, $b, $c);
+    
+    #
+    # 何が格納されているかを見ます
+    #
+    use Data::Dumper;
+    print Data::Dumper->Dump([@o{qw(a b c)}], [qw(a b c)]);
+    
+    #
+    # サブストラクチャの中のデータを変更します
+    #
+    $tmp = $o{a};
+    $tmp->[0] = 'foo';
+    $o{a} = $tmp;
+    
+    #
+    # 元になっているDBMメソッドをトランスペアレントにアクセスできます
+    #
+    #print $dbm->fd, "\n";      # DB_Fileメソッド
+
+もう１つ別の例です。Storableを移植可能なフォーマットで使っています：
+
+    use MLDBM qw(DB_File Storable); # DB_File と Storable
+    
+    tie %o, 'MLDBM', 'testmldbm', O_CREAT|O_RDWR, 0640 or die $!;
+    
+    (tied %o)->DumpMeth('portable');    # 移植可能なバイナリであるように依頼
+    $o{'ENV'} = \%ENV;          # 環境変数全体を格納
+    
+
+=head1 バグ
+
+=over 4
+
+=item 1.
+
+ハッシュの値にサブストラクチャを追加したり変更することは、現在のPerlでは完全には
+トランスペアレントでありません。もしリファレンスを格納したり、DBMのなかに既にある
+リファレンスを変更したいのであれば、まず取り出し、後からの変更のために一時的な変数に
+格納しなければなりません。特に以下のようにするとうまく機能しません：
+
+    $mldb{key}{subkey}[3] = 'stuff';    # 動きません
+
+代りにこのように書きます:
+
+    $tmp = $mldb{key};          # 値の取り出し
+    $tmp->{subkey}[3] = 'stuff';
+    $mldb{key} = $tmp;          # 値の格納
+
+この制約は、現在、TIEHASHインターフェースが多次元のtieをサポートしていないために
+存在します。
+
+=item 2.
+
+B<Data::Dumper>シリアライザはeval()を使います。B<Storable>シリアライザを使って
+みてください。通常、最も効果的です。 
+
+=back
+
+=head1 警告
+
+=over 4
+
+=item 1.
+
+多くのDBM実装は格納できるレコードの大きさにある制限をもっています。
+例えばSDBMと多くのODBMまたはNDBM実装はレコードの大きさに1024バイトの
+デフォルトの制限を持っています。大きなデータ構造体を格納するとMLDBMは
+簡単にこれらの制限を越えてしまい、不思議な障害を起こします。MLDBMが
+デフォルトでSDBM_Fileを使っていますが、大きなデータ構造体を格納する
+のであれば、それはよい選択ではありません。Berkeley DB と GDBMは
+両方ともこれらの制限を持っていません。そのため代りとして、これらを
+使うことをお勧めします。 
+
+=item 2.
+
+MLDBMは深すぎず広ぎないデータ構造体でうまく機能します。またあなたの
+プログラムが最終的に何回C<FETECH>を行うかについても注意する必要があります。
+つまり、必要な限り長く最も高いレベルの値を保持することにより、C<FETCH>の
+効率をなるべく高くするべきです。tieされたハッシュのトップレベルへの
+アクセス、例えばC<$mdb{foo}>は、MLDBMのC<FETCH()>呼び出しに変換される
+ことを忘れないで下さい。
+
+あまりにも多くの人々が以下のように書いてしまいます:
+
+        tie %h, 'MLDBM', ...;
+        for my $k (keys %{$h{something}}) {
+            print $h{something}{$k}[0]{foo}{bar};  # 毎回 FETCH !
+        }
+
+効率のためには以下のように書かれるべきです:
+
+        tie %h, 'MLDBM', ...;
+        my $root = $h{something};                  # 一度だけFETCH
+        for my $k (keys %$root) {
+            print $k->[0]{foo}{bar};
+        }
+
+
+=back
+
+=head1 作者
+
+Gurusamy Sarathy <F<gsar@umich.edu>>.
+
+Support for multiple serializing packages by
+Raphael Manfredi <F<Raphael_Manfredi@grenoble.hp.com>>.
+
+Test suite fixes for perl 5.8.0 done by Josh Chamas.
+
+Copyright (c) 1995-98 Gurusamy Sarathy.  All rights reserved.
+
+Copyright (c) 1998 Raphael Manfredi.
+
+Copyright (c) 2002 Josh Chamas, Chamas Enterprises Inc.
+
+This program is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
+
+=head1 バージョン
+
+Version 2.01    07 July 2002
+
+=head1 参考資料
+
+perl(1), perltie(1), perlfunc(1), Data::Dumper(3), FreezeThaw(3), Storable(3).
+

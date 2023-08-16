@@ -1,0 +1,781 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+MIDI::Event - MIDI events
+
+=end original
+
+MIDI::Event - MIDIイベント
+
+=head1 概要
+
+  # MIDIファイル中のテキストイベントをダンプする
+  die "No filename" unless @ARGV;
+  use MIDI;  # MIDI::Event を use している
+  MIDI::Opus->new( {
+     "from_file" => $ARGV[0],
+     "exclusive_event_callback" => sub{print "$_[2]\n"},
+     "include" => \@MIDI::Event::Text_events
+   } ); # これらのオプションは MIDI::Event::decode に渡される
+  exit;
+
+=head1 説明
+
+=begin original
+
+Functions and lists to do with with MIDI events and MIDI event structures.
+
+=end original
+
+MIDIイベントを扱う関数とリスト、及びMIDIイベントの構造。
+
+=begin original
+
+An event is a list, like:
+
+=end original
+
+一つのイベントはこのようなリストである：
+
+  ( 'note_on', 141, 4, 50, 64 )
+
+=begin original
+
+where the first element is the event name, the second is the
+delta-time, and the remainder are further parameters, per the
+event-format specifications below.
+
+=end original
+
+最初の要素はイベント名。二番目はデルタタイム。そして残りは追加パラメータで、
+この後に出てくるイベント形式の仕様別パラメータである。
+
+=begin original
+
+An I<event structure> is a list of references to such events -- a
+"LoL".  If you don't know how to deal with LoLs, you I<must> read
+L<perllol>.
+
+=end original
+
+一つのI<イベント構造体>は、このような諸イベントへのリファレンスのリスト、
+すなわちリストのリスト(LoL)である。
+もしLoLの扱いがわからないなら、L<perllpl>を読まなければI<ならない>。
+
+=head1 小物
+
+=begin original
+
+For your use in code (as in the code in the Synopsis), this module
+provides a few lists:
+
+=end original
+
+（概要に例示しているような）プログラム中で使うために、このモジュールは
+ほんの少しであるがリストを提供している。
+
+=over
+
+=item @MIDI_events
+
+=begin original
+
+a list of all "MIDI events" AKA voice events -- e.g., 'note_on'
+
+=end original
+
+ボイスメッセージ(voice events)と呼ばれる全MIDIイベントのリスト。例：'note_on'
+
+=item @Text_events
+
+=begin original
+
+a list of all text meta-events -- e.g., 'track_name'
+
+=end original
+
+テキスト型のメタイベント。例：'track_name'
+
+=item @Nontext_meta_events
+
+=begin original
+
+all other meta-events (plus 'raw_data' and F-series events like
+'tune_request').
+
+=end original
+
+非テキスト型メタイベント（さらに'raw_data'や、'tune_request'のような
+F系列のイベントも加わる）
+
+=item @Meta_events
+
+=begin original
+
+the combination of Text_events and Nontext_meta_events.
+
+=end original
+
+テキスト型イベントと非テキスト型メタイベントの組み合わせ。
+
+=item @All_events
+
+=begin original
+
+the combination of all the above lists.
+
+=end original
+
+以上あげた全てのリストの組み合わせ。
+
+=back
+
+=head1 関数
+
+=begin original
+
+This module provides three functions of interest, which all act upon
+event structures.  As an end user, you probably don't need to use any
+of these directly, but note that options you specify for
+MIDI::Opus->new with a from_file or from_handle options will percolate
+down to these functions; so you should understand the options for the
+first two of the below functions.  (The casual user should merely skim
+this section.)
+
+=end original
+
+このモジュールはイベント構造体に作用する三つの興味深い関数を提供する。
+あなたがエンドユーザーなら、これらの関数を直接利用する必要はないだろう。
+だが、from_fileやfrom_handleオプションとともに使うMIDI::Opus->newに指定する
+オプションは、これらの関数へと送られることに注意すること。だから、これから
+あげる関数の２番目までについては、そのオプションを理解しておくべきだろう。
+
+=over
+
+=item MIDI::Event::decode( \$data, { ...options... } )
+
+=begin original
+
+This takes a I<reference> to binary MIDI data and decodes it into a
+new event structure (a LoL), a I<reference> to which is returned.
+Options are:
+
+=end original
+
+この関数はバイナリ形式のMIDIデータへのI<リファレンス>を引数に取り、
+新しいイベント構造体（LoL）にデコードする。関数の戻り値はこの構造体への
+リファレンスである。オプションは次の通り：
+
+
+=over 16
+
+=item 'include' => LISTREF
+
+=begin original
+
+I<If specified>, listref is interpreted as a reference to a list of
+event names (e.g., 'cue_point' or 'note_off') such that only these
+events will be parsed from the binary data provided.  Events whose
+names are NOT in this list will be ignored -- i.e., they won't end up
+in the event structure, and they won't be each passed to any callbacks
+you may have specified.
+
+=end original
+
+このオプションをI<指定すると>、リストリファレンスはイベント名
+（例：'cue_point'や'note_off'）リストへのリファレンスとして解釈される。
+このリストにあるイベント名だけが、与えられたバイナリデータからパースされる。
+このリストに"ない"イベント名は無視される。つまり、それらはイベント構造体には
+ならない。また、指定したいかなるコールバック関数にもデータは渡されない。
+
+=item 'exclude' => LISTREF
+
+=begin original
+
+I<If specified>, listref is interpreted as a reference to a list of
+event names (e.g., 'cue_point' or 'note_off') that will NOT be parsed
+from the binary stream; they'll be ignored -- i.e., they won't end up
+in the event structure, and they won't be passed to any callbacks you
+may have specified.  Don't specify both an include and an exclude
+list.  And if you specify I<neither>, all events will be decoded --
+this is what you probably want most of the time.  I've created this
+include/exclude functionality mainly so you can scan a file rather
+efficiently for just a few specific event types, e.g., just text
+events, or just sysexes.
+
+=end original
+
+このオプションをI<指定すると>、リストリファレンスはイベント名
+（例：'cue_point'や'note_off'）リストへのリファレンスとして解釈される。
+このリストにあるイベント名はバイナリストリームから"パースされない"。
+それらは無視される。つまり、それらはイベント構造体にはならない。また、
+指定したいかなるコールバック関数にもデータは渡されない。
+includeオプションとexcludeオプションのリストを両方指定してはならない。
+また、両方のオプションをI<指定しない>場合、全てのイベントがデコードされる。
+これをすると、パースにかなり時間が必要になるかもしれない。
+私がこのinclude/exclude機能を作ったのは、ほんの少しの特殊なイベントタイプ
+（例えば単なるテキストイベントやシステムエクスクルーシブメッセージ）に対し
+効率的にファイルを走査するためである。
+
+=item 'no_eot_magic' => 0 or 1
+
+=begin original
+
+See the description of C<'end_track'>, in "EVENTS", below.
+
+=end original
+
+後に出てくる"イベント"のC<'end_track'>の説明を参照。
+
+=item 'event_callback' => CODEREF
+
+=begin original
+
+If defined, the code referred to (whether as C<\&wanted> or as
+C<sub { BLOCK }>) is called on every event after it's been parsed into
+an event list (and any EOT magic performed), but before it's added to
+the event structure.  So if you want to alter the event stream on the
+way to the event structure (which counts as deep voodoo), define
+'event_callback' and have it modify its C<@_>.
+
+=end original
+
+サブルーチンへのリファレンス（C<\&wanted>でもC<sub { BLOCK }>でもよい）を定義
+すると、データがイベントリストへとパースされた後、イベント毎にそのコードが
+呼び出される（そして何らかのEOTマジックが実行される）。
+ただし、コードはイベントがイベント構造体に追加される前に呼び出される。
+つまり、イベント構造体へ付け加える過程でイベントストリームに変更を加えたいなら、
+'event_callback'を定義して、そのルーチンのC<@_>を修正するということだ。
+
+=item 'exclusive_event_callback' => CODEREF
+
+=begin original
+
+Just like 'event_callback'; but if you specify this, the callback is
+called I<instead> of adding the events to the event structure.  (So
+the event structure returned by decode() at the end will always be
+empty.)  Good for cases like the text dumper in the Synopsis, above.
+
+=end original
+
+'event_callback'と同じだ。ただしこのオプションを指定すると、イベントを
+イベント構造体に付け加える代わりにコールバックが呼び出される（それゆえ、
+最後にdecode()で返されるイベント構造体は常に空となる）。
+先に概要のところでみたように、テキストダンプのようなケースで使うとよい。
+
+=back
+
+=item MIDI::Event::encode( \@events, {...options...})
+
+=begin original
+
+This takes a I<reference> to an event structure (a LoL) and encodes it
+as binary data, which it returns a I<reference> to.  Options:
+
+=end original
+
+この関数はイベント構造体（LoL）へのI<リファレンス>を引数に取り、
+バイナリデータとしてエンコードする。関数の戻り値はこのデータへのリファレンス
+である。オプションは次の通り：
+
+
+=over 16
+
+=item 'unknown_callback' => CODEREF
+
+=begin original
+
+If this is specified, it's interpreted as a reference to a subroutine
+to be called when an unknown event name (say, 'macro_10' or
+something), is seen by encode().  The function is fed all of the event
+(its name, delta-time, and whatever parameters); the return value of
+this function is added to the encoded data stream -- so if you don't
+want to add anything, be sure to return ''.
+
+=end original
+
+このオプションに指定したサブルーチンへのリファレンスは、encode()が未知の
+イベント名（例えば'macro_10'とか何か）に出くわしたときに呼び出される。
+この関数にはイベントの要素全て（イベント名前、デルタタイム、その他の
+パラメーター）が与えられ、戻り値はエンコードされたデータストリームに
+追加される。だから、何も追加したくないなら必ず''（空文字）を返すようにすること。
+
+=begin original
+
+If no 'unknown_callback' is specified, encode() will C<warn> (well,
+C<carp>) of the unknown event.  To merely block that, just set
+'unknown_callback' to C<sub{return('')}>
+
+=end original
+
+'unknown_callbackを指定しないと、encode()は未知のイベントに対しC<warn>
+（あるいはC<carp>）を発生させる。これをさせないためには、'unknown_callback'
+オプションにC<sub{return('')}>をセットすればよい。
+
+=item 'no_eot_magic' => 0 or 1
+
+=begin original
+
+Determines whether a track-final 0-length text event is encoded as
+a end-track event -- since a track-final 0-length text event probably
+started life as an end-track event read in by decode(), above.
+
+=end original
+
+トラック終端の0長サイズのテキストイベントを、エンドオブトラックとしてエンコード
+するかどうか決定する。というのも、トラック終端の0長サイズのテキストイベントは、
+decode()が読み込むと、エンドオブトラックとして生成されるからだ。
+
+=item 'never_add_eot' => 0 or 1
+
+=begin original
+
+If 1, C<encode()> never ever I<adds> an end-track (EOT) event to the
+encoded data generated unless it's I<explicitly> there as an
+'end_track' in the given event structure.  You probably don't ever
+need this unless you're encoding for I<straight> writing to a MIDI
+port, instead of to a file.
+
+=end original
+
+1にすると、C<encode()>は自ら生成するエンコードデータにエンドオブトラック(EOT)を
+加えなくなる。ただしイベント構造内に明示的に'end_track'がある場合は別だ。
+あなたがファイルではなくてMIDIポートにI<直接>書き込もうとしない限り、
+このオプションは必要ないだろう。
+
+=item 'no_running_status' => 0 or 1
+
+=begin original
+
+If 1, disables MIDI's "running status" compression.  Probably never
+necessary unless you need to feed your MIDI data to a strange old
+sequencer that doesn't understand running status.
+
+=end original
+
+1にするとランニングステータスが利用できなくなる。ランニングステータスを
+理解しない古びて珍奇なシーケンサでも使わない限り、たぶんこのオプションは
+必要ないだろう。
+
+=back
+
+=begin original
+
+Note: If you're encoding just a single event at a time or less than a
+whole trackful in any case, then you probably want something like:
+
+=end original
+
+注意：一度に一つのイベントだけをエンコードする場合、あるいはとにかく一度に
+全トラックをエンコードしない場合、このようにするだろう：
+
+
+          $data_r = MIDI::Event::encode(
+            [
+              [ 'note_on', 141, 4, 50, 64 ]
+            ],
+            { 'never_add_eot' => 1} );
+
+=begin original
+
+which just encodes that one event I<as> an event structure of one
+event -- i.e., an LoL that's just a list of one list.
+
+=end original
+
+これは、一つのイベントからなるイベント構造体I<として>一つのイベントを
+エンコードしている。つまり、一つのLoLはまさに一つのリストのリストである。
+
+=begin original
+
+But note that running status will not always apply when you're
+encoding less than a whole trackful at a time, since running status
+works only within a LoL encoded all at once.  This'll result in
+non-optimally compressed, but still effective, encoding.
+
+=end original
+
+しかし注意したいのは、一度に全トラックをエンコードしないなら、
+ランニングステータスは必ずしも適用されるとは限らないということだ。なぜなら
+ランニングステータスは一度に全部エンコードされたLoLの中でのみ機能するからだ。
+これは非最適圧縮型（だが依然効率的な）エンコードの結果である。
+
+=item MIDI::Event::copy_structure()
+
+=begin original
+
+This takes a I<reference> to an event structure, and returns a
+I<reference> to a copy of it.  If you're thinking about using this, you
+probably should want to use the more straightforward
+
+=end original
+
+この関数はイベント構造体へのリファレンスを引数に取り、コピーしたリファレンスを
+返す。もしこの関数を使うことについて思案しているなら、もっと素直な使い方を
+望むべきだろう。
+
+          $track2 = $track->copy
+
+=begin original
+
+instead.  But it's here if you happen to need it.
+
+=end original
+
+これが代わりになる。
+
+=back
+
+=head1 イベントとイベントデータのタイプ
+
+=head2 データタイプ
+
+=begin original
+
+Events use these data types:
+
+=end original
+
+イベントはこれらのデータタイプを使用する：
+
+=over
+
+=item channel = 0〜15の値
+
+=item note = 0〜127の値
+
+=item dtime = 0〜268,435,455 (0x0FFFFFFF)の値
+
+=item velocity = 0〜127の値
+
+=item patch = 0〜127の値
+
+=item sequence = 0-65,535 (0xFFFF)の値
+
+=item text = 0byte以上のASCII文字列
+
+=item raw = 0byte以上のバイナリデータの文字列
+
+=item pitch_wheel = -8192〜8191 (0x1FFF)の値
+
+=item song_pos = 0〜16,383 (0x3FFF)の値
+
+=item song_number = 0〜127の値
+
+=item tempo = マイクロ秒, 0〜16,777,215 (0x00FFFFFF)の値
+
+=back
+
+=begin original
+
+For data types not defined above, (e.g., I<sf> and I<mi> for
+C<'key_signature'>), consult L<MIDI::Filespec> and/or the source for
+C<MIDI::Event.pm>.  And if you don't see it documented, it's probably
+because I don't understand it, so you'll have to consult a real MIDI
+reference.
+
+=end original
+
+上で定義していないデータタイプ（例：C<'key_signature'>用のI<sf>やI<mi>）
+については、 L<MIDI::Filespec>やC<MIDI::Event.pm>のソースで調べて欲しい。
+そのドキュメントにも書いていなければ、たぶん私の理解していないタイプなので、
+実際のMIDIリファレンスを調べるべきだろう。
+
+=head2 イベント
+
+=begin original
+
+And these are the events:
+
+=end original
+
+イベント：
+
+=over
+
+=item ('note_off', I<dtime>, I<channel>, I<note>, I<velocity>)
+
+=item ('note_on', I<dtime>, I<channel>, I<note>, I<velocity>)
+
+=item ('key_after_touch', I<dtime>, I<channel>, I<note>, I<velocity>)
+
+=item ('control_change', I<dtime>, I<channel>, I<controller(0-127)>, I<value(0-127)>)
+
+=item ('patch_change', I<dtime>, I<channel>, I<patch>)
+
+=item ('channel_after_touch', I<dtime>, I<channel>, I<velocity>)
+
+=item ('pitch_wheel_change', I<dtime>, I<channel>, I<pitch_wheel>)
+
+=item ('set_sequence_number', I<dtime>, I<sequence>)
+
+=item ('text_event', I<dtime>, I<text>)
+
+=item ('copyright_text_event', I<dtime>, I<text>)
+
+=item ('track_name', I<dtime>, I<text>)
+
+=item ('instrument_name', I<dtime>, I<text>)
+
+=item ('lyric', I<dtime>, I<text>)
+
+=item ('marker', I<dtime>, I<text>)
+
+=item ('cue_point', I<dtime>, I<text>)
+
+=item ('text_event_08', I<dtime>, I<text>)
+
+=item ('text_event_09', I<dtime>, I<text>)
+
+=item ('text_event_0a', I<dtime>, I<text>)
+
+=item ('text_event_0b', I<dtime>, I<text>)
+
+=item ('text_event_0c', I<dtime>, I<text>)
+
+=item ('text_event_0d', I<dtime>, I<text>)
+
+=item ('text_event_0e', I<dtime>, I<text>)
+
+=item ('text_event_0f', I<dtime>, I<text>)
+
+=item ('end_track', I<dtime>)
+
+=item ('set_tempo', I<dtime>, I<tempo>)
+
+=item ('smpte_offset', I<dtime>, I<hr>, I<mn>, I<se>, I<fr>, I<ff>)
+
+=item ('time_signature', I<dtime>, I<nn>, I<dd>, I<cc>, I<bb>)
+
+=item ('key_signature', I<dtime>, I<sf>, I<mi>)
+
+=item ('sequencer_specific', I<dtime>, I<raw>)
+
+=item ('raw_meta_event', I<dtime>, I<command>(0-255), I<raw>)
+
+=item ('sysex_f0', I<dtime>, I<raw>)
+
+=item ('sysex_f7', I<dtime>, I<raw>)
+
+=item ('song_position', I<dtime>)
+
+=item ('song_select', I<dtime>, I<song_number>)
+
+=item ('tune_request', I<dtime>)
+
+=item ('raw_data', I<dtime>, I<raw>)
+
+=back
+
+=begin original
+
+Three of the above events are represented a bit oddly from the point
+of view of the file spec:
+
+=end original
+
+上のイベントのうち三つは、標準MIDIファイルの仕様からすると少し変である。
+
+=begin original
+
+The parameter I<pitch_wheel> for C<'pitch_wheel_change'> is a value
+-8192 to 8191, although the actual encoding of this is as a value 0 to
+16,383, as per the spec.
+
+=end original
+
+C<'pitch_wheel_change'>用のI<pitch_wheel>は-8192から8191の値をとる。
+しかし実際には、仕様書通り0から16,383としてエンコードされる。
+
+=begin original
+
+Sysex events are represented as either C<'sysex_f0'> or C<'sysex_f7'>,
+depending on the status byte they are encoded with.
+
+=end original
+
+システムエクスクルーシブイベントはC<'sysex_f0'>かC<'sysex_f7'>として表される。
+これは一緒にエンコードされたステータスバイトに依存している。
+
+=begin original
+
+C<'end_track'> is a bit stranger, in that it is almost never actually
+found, or needed.  When the MIDI decoder sees an EOT (i.e., an
+end-track status: FF 2F 00) with a delta time of 0, it is I<ignored>!
+If in the unlikely event that it has a nonzero delta-time, it's
+decoded as a C<'text_event'> with whatever that delta-time is, and a
+zero-length text parameter.  (This happens before the
+C<'event_callback'> or C<'exclusive_event_callback'> callbacks are
+given a crack at it.)  On the encoding side, an EOT is added to the
+end of the track as a normal part of the encapsulation of track data.
+
+=end original
+
+C<'end_track'>は奇妙な代物だ。実際、ほとんど見かけることも、必要とされることも
+ない。MIDIデコーダーはEOT（エンドトラックステータス：FF 2F 00）を0のデルタタイム
+とセットで見つけると無視してしまう！もしも0のデルタタイムでない珍しいイベント内
+だったら、それはデルタタイムの値が何であれ、C<'text_event'>としてデコードされる。
+そしてこれは0長サイズのテキストパラメーターになる（これはC<'event_callback'>や
+C<'exclusive_event_callback'>が実行される前に発生する）。エンコードする側から
+すると、EOTはトラックデータを包む通常パートとしてトラックの最後に追加される。
+
+=begin original
+
+I chose to add this special behavior so that you could add events to
+the end of a track without having to work around any track-final
+C<'end_track'> event.
+
+=end original
+
+私がこの特殊な振る舞いを付け加えることを選択したのは、トラック終端の
+C<'end_track'>を避けなくても、トラックの後ろにイベントを付け加えることが
+できるようにするためである。
+
+=begin original
+
+However, if you set C<no_eot_magic> as a decoding parameter, none of
+this magic happens on the decoding side -- C<'end_track'> is decoded
+just as it is.
+
+=end original
+
+しかし、もしデコードのパラメータにC<no_eot_magic>をセットしたら、デコードする
+側ではこの魔法は起きない。C<'end_track'>はそのままデコードされるのだ。
+
+=begin original
+
+And if you set C<no_eot_magic> as an encoding parameter, then a
+track-final 0-length C<'text_event'> with non-0 delta-times is left as
+is.  Normally, such an event would be converted from a C<'text_event'>
+to an C<'end_track'> event with thath delta-time.
+
+=end original
+
+そしてエンコードのパラメータにC<no_eot_magic>をセットしたなら、0でない
+デルタタイムを伴う0長サイズのC<'text_event'>は、そのまま残される。
+通常そのようなイベントは、C<'text_event'>からそのデルタタイムを伴った
+C<'end_track'>に変換される。
+
+=begin original
+
+Normally, no user needs to use the C<no_eot_magic> option either in
+encoding or decoding.  But it is provided in case you need your event
+LoL to be an absolutely literal representation of the binary data,
+and/or vice versa.
+
+=end original
+
+通常、エンコード・デコードのいずれでも、C<no_eot_magic>オプションを使いたがる
+人はいない。だが、あなたがイベントLoLをバイナリデータとして絶対的に文字通りの
+表現にしたい場合には、そして・あるいは、その逆の場合には、このオプションを
+与えることになる。
+
+
+=head1 MIDI BNF
+
+=begin original
+
+For your reference (if you can make any sense of it), here is a copy
+of the MIDI BNF, as I found it in a text file that's been floating
+around the Net since the late 1980s.
+
+=end original
+
+（あなたが理解できるとして）参考のために、MIDI BNFの写しを載せておく。
+私はこれを1980年代後半以来ネットに出回っていたテキストファイルの中から
+見つけだした。
+
+=begin original
+
+Note that this seems to describe MIDI events as they can occur in
+MIDI-on-the-wire.  I I<think> that realtime data insertion (i.e., the
+ability to have E<lt>realtime byteE<gt>s popping up in the I<middle>
+of messages) is something that can't happen in MIDI files.
+
+=end original
+
+これはMIDI通信で使われるものとして記述されていることに注意。リアルタイムデータ
+挿入（リアルタイムのデータがメッセージの途中に飛び込んでくる）は、
+MIDIファイルで生じうるようなものではないとI<思う>。
+
+=begin original
+
+In fact, this library, as written, I<can't> correctly parse MIDI data
+that has such realtime bytes inserted in messages.  Nor does it
+support representing such insertion in a MIDI event structure that's
+encodable for writing to a file.  (Although you could theoretically
+represent events with embedded E<lt>realtime byteE<gt>s as just
+C<raw_data> events; but then, you can always stow anything
+at all in a C<raw_data> event.)
+
+=end original
+
+実際、このライブラリは、これまで書いてきたように、データがメッセージに
+リアルタイムに挿入されるようなMIDIデータを正しくパースすることはI<できない>。
+MIDIイベント構造において、ファイルに書き込みをするためにエンコード可能な
+データ挿入を表現することもサポートしていない。（理論的には
+E<lt>リアルタイムデータE<gt>の埋め込まれたイベントをC<raw_data>イベントとして
+表現することは可能だろう。しかしそれだと、どんなデータも常にC<raw_data>
+イベントとして詰め込めることになる。）
+
+ 1.  <MIDI Stream> ::=           <MIDI msg> < MIDI Stream>
+ 2.  <MIDI msg> ::=              <sys msg> | <chan msg>
+ 3.  <chan msg> ::=              <chan 1byte msg> |
+                                 | <chan 2byte msg>
+ 4.  <chan 1byte msg> ::=        <chan stat1 byte> <data singlet>
+                                   <running singlets>
+ 5.  <chan 2byte msg> ::=        <chan stat2 byte> <data pair>
+                                   <running pairs>
+ 6.  <chan stat1 byte> ::=       <chan voice stat1 nibble>
+                                   <hex nibble>
+ 7.  <chan stat2 byte> ::=       <chan voice stat2 nibble>
+                                   <hex nibble>
+ 8.  <chan voice stat1 nyble>::= C | D
+ 9.  <chan voice stat2 nyble>::= 8 | 9 | A | B | E
+ 10. <hex nyble> ::=             0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+                                 | 8 | 9 | A | B | C | D | E | F
+ 11. <data pair> ::=             <data singlet> <data singlet>
+ 12. <data singlet> ::=          <realtime byte> <data singlet> |
+                                 | <data byte>
+ 13. <running pairs> ::=         <empty> | <data pair> <running pairs>
+ 14. <running singlets> ::=      <empty> |
+                                 | <data singlet> <running singlets>
+ 15. <data byte> ::=             <data MSD> <hex nyble>
+ 16. <data MSD> ::=              0 | 1 | 2 | 3 | 4 | 5 | 6 | 7
+ 17. <realtime byte> ::=         F8 | FA | FB | FC | FE | FF
+ 18. <sys msg> ::=               <sys common msg> |
+                                 | <sysex msg> |
+                                 | <sys realtime msg>
+ 19. <sys realtime msg> ::=      <realtime byte>
+ 20. <sysex msg> ::=             <sysex data byte>
+                                   <data singlet> <running singlets>
+                                   <eox byte>
+ 21. <sysex stat byte> ::=       F0
+ 22. <eox byte> ::=              F7
+ 23. <sys common msg> ::=        <song position msg> |
+                                 | <song select msg> |
+                                 | <tune request>
+ 24. <tune request> ::=          F6
+ 25. <song position msg> ::=     <song position stat byte>
+                                   <data pair>
+ 26. <song select msg> ::=       <song select stat byte>
+                                   <data singlet>
+ 27. <song position stat byte>::=F2
+ 28. <song select stat byte> ::= F3
+
+=head1 著作権
+
+Copyright (c) 1998-2002 Sean M. Burke. All rights reserved.
+
+This library is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
+
+=head1 作者
+
+Sean M. Burke C<sburke@cpan.org>  (Except the BNF --
+who knows who's behind that.)
+

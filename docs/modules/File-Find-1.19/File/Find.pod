@@ -1,0 +1,747 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+File::Find - Traverse a directory tree.
+
+=end original
+
+File::Find - ディレクトリツリーを辿る
+
+=head1 SYNOPSIS
+
+    use File::Find;
+    find(\&wanted, @directories_to_search);
+    sub wanted { ... }
+
+    use File::Find;
+    finddepth(\&wanted, @directories_to_search);
+    sub wanted { ... }
+
+    use File::Find;
+    find({ wanted => \&process, follow => 1 }, '.');
+
+=head1 DESCRIPTION
+
+=begin original
+
+These are functions for searching through directory trees doing work
+on each file found similar to the Unix I<find> command.  File::Find
+exports two functions, C<find> and C<finddepth>.  They work similarly
+but have subtle differences.
+
+=end original
+
+これらは、Unix の I<find> と同様、ディレクトリツリーを検索して
+見つかったそれぞれのファイルに対して作業を行うためのものです。
+File::Find は二つの関数 C<find> と C<finddepth> をエクスポートします。
+これらは似たような動作をしますがわずかな違いがあります。
+
+=over 4
+
+=item B<find>
+
+  find(\&wanted,  @directories);
+  find(\%options, @directories);
+
+=begin original
+
+C<find()> does a depth-first search over the given C<@directories> in
+the order they are given.  For each file or directory found, it calls
+the C<&wanted> subroutine.  (See below for details on how to use the
+C<&wanted> function).  Additionally, for each directory found, it will
+C<chdir()> into that directory and continue the search, invoking the
+C<&wanted> function on each file or subdirectory in the directory.
+
+=end original
+
+C<find()> は、C<@directories> で指定されたディレクトリを、
+指定された順序で、深さ優先探索を実行します。
+発見されたファイルやディレクトリ毎に、C<&wanted> サブルーチンを呼び出します。
+(C<&wanted> 関数の使い方に関する詳細については後述します)。
+さらに、それぞれのディレクトリを発見すると、
+そのディレクトリに C<chdir()> して検索を続行し、
+そのディレクトリのそれぞれのファイルやサブディレクトリに対して
+C<&wanted> 関数を起動します。
+
+=item B<finddepth>
+
+  finddepth(\&wanted,  @directories);
+  finddepth(\%options, @directories);
+
+=begin original
+
+C<finddepth()> works just like C<find()> except that it invokes the
+C<&wanted> function for a directory I<after> invoking it for the
+directory's contents.  It does a postorder traversal instead of a
+preorder traversal, working from the bottom of the directory tree up
+where C<find()> works from the top of the tree down.
+
+=end original
+
+C<finddepth()> は C<find()> と同様に動作しますが、
+あるディレクトリの内容について C<&wanted> 関数を起動した I<後に>
+ディレクトリに対して起動します。
+これは、前順走査ではなく後順走査を行います;
+C<find()> がディレクトリツリーの上から下に動作するのに対して、
+これは下から上に動作します。
+
+=back
+
+=head2 %options
+
+=begin original
+
+The first argument to C<find()> is either a code reference to your
+C<&wanted> function, or a hash reference describing the operations
+to be performed for each file.  The
+code reference is described in L<The wanted function> below.
+
+=end original
+
+C<find()> の最初の引数は、C<&wanted> 関数へのコードリファレンスか、
+それぞれのファイルに対して行われる操作を記述したハッシュリファレンスです。
+コードリファレンスは後述する L<The wanted function> に記述されています。
+
+=begin original
+
+Here are the possible keys for the hash:
+
+=end original
+
+ハッシュで可能なキーは以下のものです:
+
+=over 3
+
+=item C<wanted>
+
+=begin original
+
+The value should be a code reference.  This code reference is
+described in L<The wanted function> below. The C<&wanted> subroutine is
+mandatory.
+
+=end original
+
+値はコードリファレンスである必要があります。
+このコードリファレンスは後述する
+L<The wanted function> に記述されています。
+C<&wanted> サブルーチンは必須です。
+
+=item C<bydepth>
+
+=begin original
+
+Reports the name of a directory only AFTER all its entries
+have been reported.  Entry point C<finddepth()> is a shortcut for
+specifying C<< { bydepth => 1 } >> in the first argument of C<find()>.
+
+=end original
+
+ディレクトリ名を、その全てのエントリが報告された「後」に報告します。
+エントリポイント C<finddepth()> は C<find()> の最初の引数に
+C<< { bydepth => 1 } >> を指定したもののショートカットです。
+
+=item C<preprocess>
+
+=begin original
+
+The value should be a code reference. This code reference is used to
+preprocess the current directory. The name of the currently processed
+directory is in C<$File::Find::dir>. Your preprocessing function is
+called after C<readdir()>, but before the loop that calls the C<wanted()>
+function. It is called with a list of strings (actually file/directory
+names) and is expected to return a list of strings. The code can be
+used to sort the file/directory names alphabetically, numerically,
+or to filter out directory entries based on their name alone. When
+I<follow> or I<follow_fast> are in effect, C<preprocess> is a no-op.
+
+=end original
+
+値はコードリファレンスである必要があります。
+このコードリファレンスは現在のディレクトリを前処理にするために使われます。
+現在処理しているディレクトリの名前は C<$File::Find::dir> にあります。
+この前処理関数は C<readdir()> を呼び出した後、
+C<wanted()> 関数を呼び出すループの前に呼び出されます。
+これは文字列のリスト (内容はファイル/ディレクトリの名前) で呼び出され、
+文字列のリストを返すことを想定されます。
+コードは、ファイル/ディレクトリ名をアルファベット順や数値順にソートしたり、
+ディレクトリエントリを名前だめを基にしてフィルタリングしたりするために
+使われます。
+I<follow> か I<follow_fast> が有効の場合、C<preprocess> は何もしません。
+
+=item C<postprocess>
+
+=begin original
+
+The value should be a code reference. It is invoked just before leaving
+the currently processed directory. It is called in void context with no
+arguments. The name of the current directory is in C<$File::Find::dir>. This
+hook is handy for summarizing a directory, such as calculating its disk
+usage. When I<follow> or I<follow_fast> are in effect, C<postprocess> is a
+no-op.
+
+=end original
+
+値はコードリファレンスである必要があります。
+これは現在処理しているディレクトリを離れる直前に起動されます。
+これは引数なしで無効コンテキストで呼び出されます。
+現在のディレクトリの名前は C<$File::Find::dir> にあります。
+このフックは、ディスク使用量を計算するような、ディレクトリを要約するのに
+便利です。
+I<follow> か I<follow_fast> が有効の場合、C<postprocess> は何もしません。
+
+=item C<follow>
+
+=begin original
+
+Causes symbolic links to be followed. Since directory trees with symbolic
+links (followed) may contain files more than once and may even have
+cycles, a hash has to be built up with an entry for each file.
+This might be expensive both in space and time for a large
+directory tree. See I<follow_fast> and I<follow_skip> below.
+If either I<follow> or I<follow_fast> is in effect:
+
+=end original
+
+Causes symbolic links to be followed. 
+シンボリックリンクを持つ(辿る)ディレクトリツリーは複数回
+ファイルを含むことがあり、循環している可能性もあるので、
+それぞれのファイルのためのエントリで組み立てられたハッシュが必要です。
+これは大きなディレクトリツリーに対しては容量と時間を消費します。
+後述する I<follow_fast> と I<follow_skip> を参照してください。
+I<follow> か I<follow_fast> が有効の場合:
+
+=over 6
+
+=item *
+
+=begin original
+
+It is guaranteed that an I<lstat> has been called before the user's
+C<wanted()> function is called. This enables fast file checks involving S<_>.
+Note that this guarantee no longer holds if I<follow> or I<follow_fast>
+are not set.
+
+=end original
+
+ユーザーの C<wanted()> 関数が呼び出される前に
+I<lstat> が呼び出されることが保証されています。
+これは S<_> に関する高速なファイルチェックを有効にします。
+この保証は I<follow> や I<follow_fast> が設定されていない場合は
+もはや有効ではないことに注意してください。
+
+=item *
+
+=begin original
+
+There is a variable C<$File::Find::fullname> which holds the absolute
+pathname of the file with all symbolic links resolved.  If the link is
+a dangling symbolic link, then fullname will be set to C<undef>.
+
+=end original
+
+全てのシンボリックリンクが解決されたファイルの完全パス名を保持する
+C<$File::Find::fullname> 変数があります。
+リンクが壊れたシンボリックリンクの場合、fullname は
+C<undef> に設定されます。
+
+=back
+
+=begin original
+
+This is a no-op on Win32.
+
+=end original
+
+これは Win32 では何もしません。
+
+=item C<follow_fast>
+
+=begin original
+
+This is similar to I<follow> except that it may report some files more
+than once.  It does detect cycles, however.  Since only symbolic links
+have to be hashed, this is much cheaper both in space and time.  If
+processing a file more than once (by the user's C<wanted()> function)
+is worse than just taking time, the option I<follow> should be used.
+
+=end original
+
+これは I<follow> に似ていますが、これはあるファイルを複数回
+報告することがあります。
+しかしこれは循環を検出します。
+シンボリックリンクのみをハッシュする必要があるので、これは空間と時間に
+関してより安価です。
+(ユーザーの C<wanted()> 関数によって) ファイルを複数回処理することが
+単に時間が掛かるよりも悪い場合、I<follow> オプションが使われるべきです。
+
+=begin original
+
+This is also a no-op on Win32.
+
+=end original
+
+これも Win32 では何もしません。
+
+=item C<follow_skip>
+
+=begin original
+
+C<follow_skip==1>, which is the default, causes all files which are
+neither directories nor symbolic links to be ignored if they are about
+to be processed a second time. If a directory or a symbolic link
+are about to be processed a second time, File::Find dies.
+
+=end original
+
+デフォルトである C<follow_skip==1> なら、
+ディレクトリでもシンボリックリンクでもない、
+2 回目に処理されようとされている全てのファイルは無視されます。
+ディレクトリやシンボリックリンクが
+2 回目に処理されようとしている場合、File::Find は die します。
+
+=begin original
+
+C<follow_skip==0> causes File::Find to die if any file is about to be
+processed a second time.
+
+=end original
+
+C<follow_skip==0> なら、2 回目に処理されようとしている場合、
+どんなファイルでも File::Find は die します。
+
+=begin original
+
+C<follow_skip==2> causes File::Find to ignore any duplicate files and
+directories but to proceed normally otherwise.
+
+=end original
+
+C<follow_skip==2> なら、File::Find はファイルやディレクトリの
+重複を無視して、さもなければ通常通り処理します。
+
+=item C<dangling_symlinks>
+
+=begin original
+
+If true and a code reference, will be called with the symbolic link
+name and the directory it lives in as arguments.  Otherwise, if true
+and warnings are on, warning "symbolic_link_name is a dangling
+symbolic link\n" will be issued.  If false, the dangling symbolic link
+will be silently ignored.
+
+=end original
+
+真でコードリファレンスなら、シンボリックリンク名とそれがあるディレクトリを
+引数として呼び出されます。
+それ以外の真なら、警告 "symbolic_link_name is a dangling
+symbolic link\n" が出力されます。
+偽なら、壊れているシンボリックリンクは暗黙に無視されます。
+
+=item C<no_chdir>
+
+=begin original
+
+Does not C<chdir()> to each directory as it recurses. The C<wanted()>
+function will need to be aware of this, of course. In this case,
+C<$_> will be the same as C<$File::Find::name>.
+
+=end original
+
+再帰するときにそれぞれのディレクトリに対して C<chdir()> しません。
+もちろん C<wanted()> 関数はこれに対応する必要があります。
+この場合、C<$_> は C<$File::Find::name> と同じになります。
+
+=item C<untaint>
+
+=begin original
+
+If find is used in taint-mode (-T command line switch or if EUID != UID
+or if EGID != GID) then internally directory names have to be untainted
+before they can be chdir'ed to. Therefore they are checked against a regular
+expression I<untaint_pattern>.  Note that all names passed to the user's
+I<wanted()> function are still tainted. If this option is used while
+not in taint-mode, C<untaint> is a no-op.
+
+=end original
+
+find が (-T コマンドラインオプションか EUID != UID
+または EGID != GID で) 汚染チェックモードで使われると、
+内部でディレクトリ名は chdir される前に汚染解除される必要があります。
+従ってこれらは正規表現 I<untaint_pattern> でチェックされます。
+ユーザーの I<wanted()> 関数に渡される全ての名前は
+汚染されたままであることに注意してください。
+汚染チェックモードでないときにこのオプションが使われると、
+C<untaint> は何もしません。
+
+=item C<untaint_pattern>
+
+=begin original
+
+See above. This should be set using the C<qr> quoting operator.
+The default is set to  C<qr|^([-+@\w./]+)$|>.
+Note that the parentheses are vital.
+
+=end original
+
+前述の通りです。
+これは C<qr> クォート演算子を使って設定されるべきです。
+デフォルトは C<qr|^([-+@\w./]+)$|> に設定されています。
+かっこは不可欠であることに注意してください。
+
+=item C<untaint_skip>
+
+=begin original
+
+If set, a directory which fails the I<untaint_pattern> is skipped,
+including all its sub-directories. The default is to 'die' in such a case.
+
+=end original
+
+設定されると、
+I<untaint_pattern> に失敗したディレクトリは、そのサブディレクトリと共に
+読み飛ばされます。
+デフォルトでは、このような場合は 'die' します。
+
+=back
+
+=head2 The wanted function
+
+(wanted 関数)
+
+=begin original
+
+The C<wanted()> function does whatever verifications you want on
+each file and directory.  Note that despite its name, the C<wanted()>
+function is a generic callback function, and does B<not> tell
+File::Find if a file is "wanted" or not.  In fact, its return value
+is ignored.
+
+=end original
+
+C<wanted()> はそれぞれのファイルとディレクトリに対して
+あなたがしたい何らかの検証を行います。
+その名前にも関わらず、C<wanted()> は一般的なコールバック関数で、
+ファイルが「求められている」("wanted") かどうかを
+File::Find に伝えるもの B<ではありません> 。
+実際、その返り値は無視されます。
+
+=begin original
+
+The wanted function takes no arguments but rather does its work
+through a collection of variables.
+
+=end original
+
+wanted 関数は引数を取りませんが、代わりにいくつかの変数を通して
+処理を行います。
+
+=over 4
+
+=item C<$File::Find::dir> is the current directory name,
+
+(C<$File::Find::dir> は現在のディレクトリ名)
+
+=item C<$_> is the current filename within that directory
+
+(C<$_> はそのディレクトリの中の現在のファイル名)
+
+=item C<$File::Find::name> is the complete pathname to the file.
+
+(C<$File::Find::name> はファイルの完全なパス名)
+
+=back
+
+=begin original
+
+The above variables have all been localized and may be changed without
+affecting data outside of the wanted function.
+
+=end original
+
+前述の変数は全てローカル化されていて、wanted 関数の外側の
+データに影響を与えることなく変更できます。
+
+=begin original
+
+For example, when examining the file F</some/path/foo.ext> you will have:
+
+=end original
+
+例えば、F</some/path/foo.ext> を調べるときは、次のようになります:
+
+    $File::Find::dir  = /some/path/
+    $_                = foo.ext
+    $File::Find::name = /some/path/foo.ext
+
+=begin original
+
+You are chdir()'d to C<$File::Find::dir> when the function is called,
+unless C<no_chdir> was specified. Note that when changing to
+directories is in effect the root directory (F</>) is a somewhat
+special case inasmuch as the concatenation of C<$File::Find::dir>,
+C<'/'> and C<$_> is not literally equal to C<$File::Find::name>. The
+table below summarizes all variants:
+
+=end original
+
+C<no_chdir> が指定されていない限り、この関数が呼び出されるときに、
+C<$File::Find::dir> に chdir() されています。
+ディレクトリの変更が有効の場合、
+ルートディレクトリ (F</>) は
+C<$File::Find::dir>, C<'/'>, C<$_> を連結したものが
+C<$File::Find::name> と文字通り同じではないので、
+特別な場合であることに注意してください。
+次の表は全てのパターンをまとめています:
+
+              $File::Find::name  $File::Find::dir  $_
+ default      /                  /                 .
+ no_chdir=>0  /etc               /                 etc
+              /etc/x             /etc              x
+
+ no_chdir=>1  /                  /                 /
+              /etc               /                 /etc
+              /etc/x             /etc              /etc/x
+
+=begin original
+
+When C<follow> or C<follow_fast> are in effect, there is
+also a C<$File::Find::fullname>.  The function may set
+C<$File::Find::prune> to prune the tree unless C<bydepth> was
+specified.  Unless C<follow> or C<follow_fast> is specified, for
+compatibility reasons (find.pl, find2perl) there are in addition the
+following globals available: C<$File::Find::topdir>,
+C<$File::Find::topdev>, C<$File::Find::topino>,
+C<$File::Find::topmode> and C<$File::Find::topnlink>.
+
+=end original
+
+C<follow> や C<follow_fast> が有効なら、C<$File::Find::fullname> もあります。
+C<bydepth> が指定されていない限り、
+この関数はツリーを削るための C<$File::Find::prune> を設定します。
+C<follow> や C<follow_fast> が指定されていない限り、
+互換性 (find.pl, find2perl) のために、
+追加で以下のグローバル変数も利用可能です:
+C<$File::Find::topdir>,
+C<$File::Find::topdev>, C<$File::Find::topino>,
+C<$File::Find::topmode>, C<$File::Find::topnlink>
+
+=begin original
+
+This library is useful for the C<find2perl> tool, which when fed,
+
+=end original
+
+このライブラリは C<find2perl> ツールに有用です; これは次のようにすると:
+
+    find2perl / -name .nfs\* -mtime +7 \
+        -exec rm -f {} \; -o -fstype nfs -prune
+
+=begin original
+
+produces something like:
+
+=end original
+
+以下のようなものを出力します:
+
+    sub wanted {
+        /^\.nfs.*\z/s &&
+        (($dev, $ino, $mode, $nlink, $uid, $gid) = lstat($_)) &&
+        int(-M _) > 7 &&
+        unlink($_)
+        ||
+        ($nlink || (($dev, $ino, $mode, $nlink, $uid, $gid) = lstat($_))) &&
+        $dev < 0 &&
+        ($File::Find::prune = 1);
+    }
+
+=begin original
+
+Notice the C<_> in the above C<int(-M _)>: the C<_> is a magical
+filehandle that caches the information from the preceding
+C<stat()>, C<lstat()>, or filetest.
+
+=end original
+
+前述の C<int(-M _)> の中の C<_> に関する注意:
+C<_> は、直前の C<stat()>, C<lstat()> またはファイルテストからの
+情報をキャッシュするマジカルなファイルハンドルです。
+
+=begin original
+
+Here's another interesting wanted function.  It will find all symbolic
+links that don't resolve:
+
+=end original
+
+次はもう一つの興味深い wanted 関数です。
+これは全ての解決できないシンボリックリンクを見つけます:
+
+    sub wanted {
+         -l && !-e && print "bogus link: $File::Find::name\n";
+    }
+
+=begin original
+
+See also the script C<pfind> on CPAN for a nice application of this
+module.
+
+=end original
+
+このモジュールのよいアプリケーションについては CPAN にある
+C<pfind> スクリプトも参照してください。
+
+=head1 WARNINGS
+
+(警告)
+
+=begin original
+
+If you run your program with the C<-w> switch, or if you use the
+C<warnings> pragma, File::Find will report warnings for several weird
+situations. You can disable these warnings by putting the statement
+
+=end original
+
+プログラムを C<-w> オプション付きで実行したり、
+C<warnings> プラグマを使っている場合、
+File::Find はいくつかのおかしな状況について警告を出力します。
+これらの警告を無効にするには次の文を
+
+    no warnings 'File::Find';
+
+=begin original
+
+in the appropriate scope. See L<perllexwarn> for more info about lexical
+warnings.
+
+=end original
+
+適切なスコープで指定してください。
+レキシカルな警告のさらなる情報については L<perllexwarn> を
+参照してください。
+
+=head1 CAVEAT
+
+(注意点)
+
+=over 2
+
+=item $dont_use_nlink
+
+=begin original
+
+You can set the variable C<$File::Find::dont_use_nlink> to 1, if you want to
+force File::Find to always stat directories. This was used for file systems
+that do not have an C<nlink> count matching the number of sub-directories.
+Examples are ISO-9660 (CD-ROM), AFS, HPFS (OS/2 file system), FAT (DOS file
+system) and a couple of others.
+
+=end original
+
+File::Find が常にディレクトリを stat することを強制したい場合、
+C<$File::Find::dont_use_nlink> 変数を 1 に設定できます。
+これはサブディレクトリの数に一致する C<nlink> カウントを持っていない
+ファイルシステムに使われます。
+例えば ISO-9660 (CD-ROM), AFS, HPFS (OS/2 ファイルシステム), FAT (DOS
+ファイルシステム) およびその他にいくつかあります。
+
+=begin original
+
+You shouldn't need to set this variable, since File::Find should now detect
+such file systems on-the-fly and switch itself to using stat. This works even
+for parts of your file system, like a mounted CD-ROM.
+
+=end original
+
+あなたがこの変数を設定する必要はないはずです; なぜなら
+File::Find はこのようなファイルシステムをその場で検出して、
+stat を使うように自分自身で切り替えるはずだからです。
+これは、マウントされた CD-ROM のように、ファイルシステムの一部分であっても
+動作します。
+
+=begin original
+
+If you do set C<$File::Find::dont_use_nlink> to 1, you will notice slow-downs.
+
+=end original
+
+C<$File::Find::dont_use_nlink> を 1 に設定すると、
+速度低下に気付くでしょう。
+
+=item symlinks
+
+(シンボリックリンク)
+
+=begin original
+
+Be aware that the option to follow symbolic links can be dangerous.
+Depending on the structure of the directory tree (including symbolic
+links to directories) you might traverse a given (physical) directory
+more than once (only if C<follow_fast> is in effect).
+Furthermore, deleting or changing files in a symbolically linked directory
+might cause very unpleasant surprises, since you delete or change files
+in an unknown directory.
+
+=end original
+
+シンボリックリンクを辿るオプションは危険かも知れないことに注意してください。
+(ディレクトリへのシンボリックリンクを含む)ディレクトリツリーの構造に
+依存して、(C<follow_fast> が有効の場合にのみ) 与えられた (物理的な)
+ディレクトリを複数回辿るかもしれません。
+さらに、シンボリックにリンクされたディレクトリ内のファイルを削除したり
+変更したりすると、とても嬉しくない驚きを引き起こすかも知れません;
+知らないディレクトリにあるファイルを削除や変更することになるからです。
+
+=back
+
+=head1 BUGS AND CAVEATS
+
+(バグと注意点)
+
+=begin original
+
+Despite the name of the C<finddepth()> function, both C<find()> and
+C<finddepth()> perform a depth-first search of the directory
+hierarchy.
+
+=end original
+
+C<finddepth()> 関数という名前にもかかわらず、
+C<find()> と C<finddepth()> はどちらもディレクトリ階層を
+深さ優先探索します。
+
+=head1 HISTORY
+
+(歴史)
+
+=begin original
+
+File::Find used to produce incorrect results if called recursively.
+During the development of perl 5.8 this bug was fixed.
+The first fixed version of File::Find was 1.01.
+
+=end original
+
+File::Find は、再帰的に呼び出されると正しくない結果を出力していました。
+perl 5.8 の開発中にこのバグは修正されました。
+修正された最初のバージョンの File::Find は 1.01 です。
+
+=head1 SEE ALSO
+
+find, find2perl.
+
+=begin meta
+
+Translate: SHIRAKATA Kentaro <argrath@ub32.org>
+Status: completed
+
+=end meta
+
+=cut
+

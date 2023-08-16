@@ -1,0 +1,416 @@
+
+=encoding euc-jp
+
+
+=head1 NAME
+
+Win32::OLE::Variant - OLE バリアント変数の作成と変更
+
+=head1 SYNOPSIS
+
+	use Win32::OLE::Variant;
+	my $var = Variant(VT_DATE, 'Jan 1,1970');
+	$OleObject->{value} = $var;
+	$OleObject->Method($var);
+
+
+=head1 DESCRIPTION
+
+Perl OLEモジュールによって使われるIDispatch インターフェースはバリアント(VARIANT)と呼ばれる汎用的な引数型を使います。  これは基本的にデータ型と実際のデータ値をもったオブジェクトです。  データ型はVT_xxx定数により指定されます。
+
+=head2 Functions
+
+=over 8
+
+=item nothing()
+
+nothing() 関数は空のVT_DISPATCH変数を返します。  プロパティに格納されたオブジェクト参照をクリアするために使うことができます。
+
+	use Win32::OLE::Variant qw(:DEFAULT nothing);
+	# ...
+	$object->{Property} = nothing;
+
+これは以下のVisual Basic ステートメントと同じ効果を持ちます。
+
+	Set object.Property = Nothing
+
+nothing() はデフォルトではエクスポートB<されません>。
+
+=item nullstring()
+
+nullstring() 関数は NULL 文字列ポインタの VT_BSTR バリアントを返します。  これは空文字列 "" の VT_BSTR バリアントと同じではB<ありません>。  nullstring() の値は Visual Basic での vbNullString
+ 定数と同じです。
+
+The nullstring() 関数はデフォルトではエクスポートB<されません>。
+
+=item Variant(TYPE, DATA)
+
+これは C<Win32::OLE::Variant->new()> メソッドの単なる別名関数です(下記を参照してください)。  この関数はデフォルトでエクスポートされます。
+
+=back
+
+=head2 Methods
+
+=over 8
+
+=item new(TYPE, DATA)
+
+このメソッドは指定された TYPE の与えられた DATA をもった Win32::OLE::Variant オブジェクトを返します。  Win32::OLE::Variant オブジェクトは IV, NV または PV（これらは透過的にサポートされています）以外のデータ型を指定するために使うことができます。  詳細については下記の L<Variants> をご覧ください。
+
+VT_EMPTY と VT_NULL バリアントについては、 DATA 引数を省略することができます。
+VT_ARRAY ではないすべてのバリアントについては、DATA を初期値を指定します。
+
+SAFEARRAY バリアントを作るためには、配列要素の基本型に加えて VT_ARRAY フラグを指定しなければなりません。  この場合、DATA は配列を次元を指定するリストでなければなりません。  各要素は要素数（0 から指定数 -1 を示します）またはこの次元での上限下限を示す配列リファレンスのどちらかにすることができます：
+
+	my $Array = Win32::OLE::Variant->new(VT_ARRAY|VT_R8, [1,2], 2);
+
+これは double で 4 つの要素：((1,0), (1,1), (2,0), (2,1) をもった 2 次元の SAFEARRAY を作成します。
+
+特別な場合は、文字列 DATA 引数をもった 1 次元のVT_UI1 配列の作成です:
+
+	my $String = Variant(VT_ARRAY|VT_UI1, "String");
+
+これは"String"で初期化された 6 要素の文字配列を作成します。  後方互換性のため、文字列初期値をもった VT_UI1 は自動的に VT_ARRAY が暗黙のうちに設定されます。  次の行は前の例と等価です:
+
+	my $String = Variant(VT_UI1, "String");
+
+本当に 1 文字 VT_Ul1 バリアントが必要なのであれば、数値の初期値を使って作らなければなりません:
+
+	my $Char = Variant(VT_UI1, ord('A'));
+
+=item As(TYPE)
+
+C<As> は VARIANT を Perl の値に変換される前に新しい型に変換します。  これは現在の LCID 設定も勘案します。  例えばある文字列には小数点文字として','が入っているかもしれません。
+C<$variant->As(VT_R8)> を使うと浮動小数点値を返します。
+
+元になるバリアントは、このメソッドによって変更されません。
+
+=item ChangeType(TYPE)
+
+このメソッドは入っているバリアントの型をその場で変更します。  変換された値ではなく、オブジェクトそれ自身を返します。
+
+=item Copy([DIM])
+
+このメソッドはオブジェクトのコピーを作成します。  元のバリアントの VT_BYREF ビットが設定されていれば、新しいオブジェクトは同じ古いデータのリファレンスではなく参照されているデータのコピーを持ちます。  新しいオブジェクトでは VT_BYREF ビットは設定されていません。
+
+	my $Var = Variant(VT_I4|VT_ARRAY|VT_BYREF, [1,5], 3);
+	my $Copy = $Var->Copy;
+
+C<$Copy> の型は今や VT_I4|VT_ARRAY であり、値は他のSAFEARRAY のコピーです。  C<$Var> の要素を変更しても C<$Copy>には反映されませんし、その逆でも同じです。
+
+C<Copy>メソッドはVT_ARRAY | VT_VARIANT オブジェクトの 1 つの要素を取り出すために使うこともできます。  この場合、配列のインデックスはリスト DIM で指定されなければなりません:
+
+	my $Int = $Var->Copy(1, 2);
+
+C<$Int> は今や要素 (1,2) の値をもった VT_I4 バリアント・オブジェクトです。
+
+=item Currency([FORMAT[, LCID]])
+
+このメソッドはバリアントの値を書式設定された通貨文字列に変換します。  FORMAT は整数定数またはハッシュ・リファレンスのどちらかにすることができます。  適切な定数は 0 と LOCALE_NOUSEROVERRIDE です。  Win32::OLE::NLS モジュールから LOCALE_NOUSEROVERRIDE の値を取得することができます:
+
+	use Win32::OLE::NLS qw(:LOCALE);
+
+LOCALE_NOUSEROVERRIDE は、コントロール・パネル・アプリケーションを通して行われた変更をすべて無視して、指定されたロケールのためのシステム・デフォルト通貨フォーマットを使うように指示します。
+
+ハッシュ・リファレンスには以下のキーを入れることができます:
+
+	NumDigits   小数の桁数
+	LeadingZero 数値フィールドで前に0をつけるかどうか
+	Grouping    数字区切りの各グループの桁数
+	DecimalSep  小数点文字列
+	ThousandSep 桁区切り文字
+	NegativeOrder   L<Win32::OLE::NLS/LOCALE_ICURRENCY> を参照
+	PositiveOrder   L<Win32::OLE::NLS/LOCALE_INEGCURR> を参照
+	CurrencySymbol  通貨記号
+
+例えば:
+
+	use Win32::OLE::Variant;
+	use Win32::OLE::NLS qw(:DEFAULT :LANG :SUBLANG :DATE :TIME);
+	my $lcidGerman = MAKELCID(MAKELANGID(LANG_GERMAN, SUBLANG_NEUTRAL));
+	my $v = Variant(VT_CY, "-922337203685477.5808");
+	print $v->Currency({CurrencySymbol => "Tuits"}, $lcidGerman), "\n";
+
+以下のようになります:
+
+	-922.337.203.685.477,58 Tuits
+
+=item Date([FORMAT[, LCID]])
+
+バリアントを書式設定された日付文字列に変換します。  FORMAT は以下の整数定数か書式設定文字列のどちらかにすることができます:
+
+	LOCALE_NOUSEROVERRIDE   このロケールでのシステム・デフォルト日付書式を使う
+	DATE_SHORTDATE      短い日付書式を使う（デフォルト）
+	DATE_LONGDATE       長い日付書式を使う
+	DATE_YEARMONTH      年/月 書式を使う
+	DATE_USE_ALT_CALENDAR   もしあれば代替 カレンダーを使う
+	DATE_LTRREADING     左から右 読込順レイアウト
+	 DATE_RTLREADING     右から左 読込順レイアウト
+
+Win32::OLE::NLS モジュールから定数を利用することができます:
+
+	use Win32::OLE::NLS qw(:LOCALE :DATE);
+
+以下の要素を日付書式設定文字列を構成するために使うことができます。
+文字は正確に以下で示される通りに指定されなければなりません（例えば"dd"は"DD"ではB<ありません>）。
+書式コードの間のどこにでも空白を入れることができますが、その他の、逐語的なテキストはシングル・クォートに含まれなければなりません。
+
+	d   日
+	dd  日。１桁であれば前に0がつく
+	ddd 曜日 : 3文字の省略名 (LOCALE_SABBREVDAYNAME)
+	dddd    曜日 : フルネーム (LOCALE_SDAYNAME)
+	M   月
+	MM  月。１桁であれば前に0がつく
+	MMM 月: 3文字の省略名 (LOCALE_SABBREVMONTHNAME)
+	MMMM    月: フルネーム (LOCALE_SMONTHNAME)
+	y   年 最後の2桁
+	yy  年 最後の二桁。10よりも小さければ前に0がつく。
+	yyyy    年 4桁により表される
+	gg  時代/年号 文字列
+
+例えば:
+
+	my $v = Variant(VT_DATE, "April 1 99");
+	print $v->Date(DATE_LONGDATE), "\n";
+	print $v->Date("ddd',' MMM dd yy"), "\n";
+
+以下のようになります:
+
+	Thursday, April 01, 1999
+	Thu, Apr 01 99
+
+=item Dim()
+
+VT_ARRAY バリアントのための配列範囲を返します。  リストにはバリアントの SAFEARRAY の各次元の配列リファレンスが入ります。  このリファレンスはこの次元のための下限と上限が入った配列を示します。  例えば:
+
+	my @Dim = $Var->Dim;
+
+すると C<@Dim> には以下のリストが入ります: C<([1,5], [0,2])>。
+
+=item Get(DIM)
+
+通常のバリアントでは C<Get>は C<Value> メソッドとまったく同じようにバリアントの値を返します。  VT_ARRAY バリアントでは C<Get> は１つの配列要素の値を取り出します。  この場合、C<DIM> は配列インデックスのリストでなければなりません。  例えば:
+
+	my $Val = $Var->Get(2,0);
+
+1 次元の VT_UI1|VT_ARRAY バリアントの特別な場合、引数のない C<Get> メソッドは Perl 文字列として文字配列を返します:
+
+	print $String->Get, "\n";
+
+=item IsNothing()
+
+オブジェクトが空の VT_DISPATCH バリアントかどうかをテストします。  nothing() も参照してください。
+
+=item IsNullString()
+
+オブジェクトが空の VT_BSTR バリアントかどうかをテストします。  nullstring() も参照してください。
+
+=item LastError()
+
+C<Win32::OLE::Variant->LastError()> メソッドを使うことは非推奨です。
+代わりに C<Win32::OLE->LastError()> クラスメソッドを使ってください。
+
+=item Number([FORMAT[, LCID]])
+
+このメソッドはバリアント値を書式化れた数字文字列に変換します。  FORMAT は整数定数またはハッシュ・リファレンスのどちらかにすることができます。  適切な定数は 0 と LOCALE_NOUSEROVERRIDE です。  Win32::OLE::NLS モジュールから LOCALE_NOUSEROVERRIDE の値を取得することができます:
+
+	use Win32::OLE::NLS qw(:LOCALE);
+
+LOCALE_NOUSEROVERRIDE はメソッドにコントロール・パネル・アプリケーションを通してなされたかもしれない変更をすべて無視して、指定されたロケールのためのシステム・デフォルト数値書式を使うように指示します。
+
+ハッシュ・リファレンスには以下のキーを入れることができます:
+
+	NumDigits   小数の桁数
+	LeadingZero 数値フィールドで前に0をつけるかどうか
+	Grouping    数字区切りの各グループの桁数
+	DecimalSep  小数点文字列
+	ThousandSep 桁区切り文字
+	NegativeOrder   L<Win32::OLE::NLS/LOCALE_INEGNUMBER> を参照
+
+=item Put(DIM, VALUE)
+
+C<Put> メソッドはバリアントに新しい値を代入するために使われます。  値はバリアントの現在の型に強制されます。  例:
+
+	my $Var = Variant(VT_I4, 42);
+	$Var->Put(3.1415);
+
+型がVT_I4なので、これはバリアントの値を C<3> に変更します。
+
+VT_ARRAY 型バリアントでは、SAFEARRAY に含まれている各次元のためのインデックスが新しい値の前に指定されなければなりません：
+
+	$Array->Put(1, 1, 2.7);
+
+一度の Put() メソッド呼出しを使って SAFEARRAY の*各*要素に値を代入することも可能です:
+
+	$Array->Put([[1,2], [3,4]]);
+
+この場合、Put() への引数は配列リファレンスで、Perl のリストのリストの次元はSAFEARRAYの次元と厳密にあっていなければなりません。
+
+1 次元の VT_Ul1 配列のためにはいくつか特別な場合があります: VALUEは数値の代わりに文字列として指定することができます。  これは選択された文字をその文字列の最初の文字に設定し、または文字列が空であれば '\0' にします：
+
+	my $String = Variant(VT_UI1|VT_ARRAY, "ABCDE");
+	$String->Put(1, "123");
+	$String->Put(3, ord('Z'));
+	$String->Put(4, '');
+
+これは C<$String> の値を C<"A1CZ\0"> に設定します。  もしインデックスが省略されると、文字列は完全に値へコピーされます。  もしVT_Ul1配列の大きさよりも長ければ、その文字列は切り捨てられます。  もし短ければ'\0'で埋められます。
+
+	$String->Put("String");
+
+C<$String> には値 "Strin" が入ります。
+
+C<Put> は Variant オブジェクトそのものを返すので、C<Put> 呼出しをつなげておこなうことができます:
+
+	$Array->Put(0,0,$First_value)->Put(0,1,$Another_value);
+
+=item Time([FORMAT[, LCID]])
+
+バリアントを書式化された時刻文字列に変換します。  FORMAT は以下の整数定数か書式設定文字列のどちらかにすることができます:
+
+	LOCALE_NOUSEROVERRIDE   このロケールでのシステム・デフォルト時刻書式
+	TIME_NOMINUTESORSECONDS 分または秒を使わない
+	TIME_NOSECONDS      秒を使わない
+	TIME_NOTIMEMARKER   時刻マーカーを使わない
+	TIME_FORCE24HOURFORMAT  つねに 24 時間制の時刻フォーマットを使う
+
+Win32::OLE::NLS モジュールから定数を利用することができます:
+
+	use Win32::OLE::NLS qw(:LOCALE :TIME);
+
+以下の要素を日付書式設定文字列を構成するために使うことができます。
+文字は正確に以下で示される通りに指定されなければなりません（例えば"dd"は"DD"ではB<ありません>）。
+書式コードの間のどこにでも空白を入れることができますが、その他の、逐語的なテキストはシングル・クォートに含まれなければなりません。
+
+	h   時; 12時間制
+	hh  時 1桁であれば前に0がつく；12時間制
+	h   時; 12時間制
+	hh  時 1桁であれば前に0がつく；12時間制
+	m   分
+	mm  分 1桁であれば前に0がつく
+	s   秒
+	ss  秒 1桁であれば前に0がつく
+	t   A や Pのような１字時刻マーカー文字列
+	tt  AMまたはPMのような複数文字時刻マーカー文字列
+
+例えば:
+
+	my $v = Variant(VT_DATE, "April 1 99 2:23 pm");
+	print $v->Time, "\n";
+	print $v->Time(TIME_FORCE24HOURFORMAT|TIME_NOTIMEMARKER), "\n";
+	print $v->Time("hh.mm.ss tt"), "\n";
+
+以下のようになります:
+
+	2:23:00 PM
+	14:23:00
+	02.23.00 PM
+
+=item Type()
+
+C<Type> メソッドは入っているバリアントのバリアント型を返します。
+
+=item Unicode()
+
+C<Unicode> メソッドは C<Unicode::String> オブジェクトを返します。  これはネットワーク･バイト順でのバリアントの BSTR 値が入ります。  もしバリアントが現在は VT_BSTR フォーマットでなければ、VT_BSTR へのコピーが先に作成されます。
+
+=item Value()
+
+C<Value> メソッドはバリアントの値を Perl の値として返します。  すべての Win32::OLE メソッドの値が変換されるのと同じ方法で変換されます。
+
+=back
+
+=head2 Overloading
+
+Win32::OLE::Variant パッケージは文字列と数値書式の変換がオーバーロードされています。  このため Variant オブジェクトは C<Value> メソッドを先に適用することなしに、算術と文字列操作で使うことができます。
+
+=head2 Class Variables
+
+Win32::OLE::Variant クラスはC<$CP>, C<$LCID>, C<$Warn> といった独自のクラス変数の集合をもつようにしてきました。  Win32::OLE モジュールのバージョン 0.1003 以降では、これらの変数は削除されています。  今では Win32::OLE の設定が Win32::OLE::Variant モジュールでも使われます。  C<Win32::OLE-&gt;Option> クラス・メソッドのドキュメントをお読みください。
+
+
+=head2 Constants
+
+デフォルトで以下の定数がエクスポートされます:
+
+	VT_EMPTY
+	VT_NULL
+	VT_I2
+	VT_I4
+	VT_R4
+	VT_R8
+	VT_CY
+	VT_DATE
+	VT_BSTR
+	VT_DISPATCH
+	VT_ERROR
+	VT_BOOL
+	VT_VARIANT
+	VT_UNKNOWN
+	VT_DECIMAL
+	VT_UI1
+
+	VT_ARRAY
+	VT_BYREF
+
+VT_DECIMAL は許可される OLE オートメーション・データ型の公式リストにはありません。  しかし Microsoft ADO でさえ、レコードセット・フィールドの値を VT_DECIMAL 形式で返しているようです。
+
+=head2 Variants
+
+バリアント (Variant) は OLE 接続の間でデータを渡すために使われるデータ型です。
+
+デフォルトの動きは各 perl スカラ変数を内部の perl 表現に合わせて OLE バリアントに変換します。
+以下の型対応が取られます:
+
+        C type          Perl type       OLE type
+        ------          ---------       --------
+          int              IV            VT_I4
+        double             NV            VT_R8
+        char *             PV            VT_BSTR
+        void *           ref to AV       VT_ARRAY
+           ?              undef          VT_ERROR
+           ?        Win32::OLE object    VT_DISPATCH
+
+VT_BSTR が全角文字または Unicode 文字列であることに注意してください。  これはパラメータとしてバイナリ・データを渡そうとすると、データのすべてのバイトの間に 0x00 が挿入されるという問題を起こします。  C<Variant()> メソッドはこれを解決する方法を提供します。  Variant を使うことで、スクリプトの作者はそのパラメータが変換されるべき OLE バリアント型を指定することができます。  現在は以下の型がサポートされています:
+
+        VT_UI1     unsigned char
+        VT_I2      signed int (2 bytes)
+        VT_I4      signed int (4 bytes)
+        VT_R4      float      (4 bytes)
+        VT_R8      float      (8 bytes)
+        VT_DATE    OLE Date
+        VT_BSTR    OLE String
+        VT_CY      OLE Currency
+        VT_BOOL    OLE Boolean
+
+VT_DATE と VT_CY オブジェクトが作成されると、入力パラメータは Perl 文字列型として扱われ、VT_BSTR に変換され、最後にC<VariantChangeType> OLE API 関数を使って VT_CY または VT_DATE に変換されます。
+これらがどのように使うことができるかについては、 L<Win32::OLE/EXAMPLES> を参照してください。
+
+=head2 Variant arrays
+
+バリアントは 1 つの値を持つだけでなく、値の多次元配列ももつ事ができます(SAFEARRAY と呼ばれます)。  この場合、VT_ARRAY フラグが基本バリアント型に付与されなければなりません; 例えば整数の配列は C<VT_I4|VT_ARRAY> です。  VT_EMPTY と VT_NULL型は SAFEARRAY には不正です。  バリアントの配列を作成することも可能です: VT_VARIANT | VT_ARRAY。  この場合、配列の各要素を (VT_EMPTY, VT_NULL も含めて)異なる型にすることができます。  VT_VARIANT SAFEARRAY の要素は VT_ARRAY または VT_BYREF のどちらのフラグも設定することはできません。
+
+各次元の上限、下限は個別に指定することができます。
+(Perl の配列とは違って)すべてが同じ下限をもつ必要はありません。
+
+=head2 Variants by reference
+
+いくつかの OLE サーバーは、メソッド呼出しの中で変更できるように、リファレンスによってパラメータが渡されることを期待します。  これはメソッドに複数の値を戻すことを簡単にします。  Win32::OLE::Variant モジュールでこれの予備的なサポートがされています:
+
+	my $x = Variant(VT_I4|VT_BYREF, 0);
+	my $y = Variant(VT_I4|VT_BYREF, 0);
+	$Corel->GetSize($x, $y);
+	print "Size is $x by $y\n";
+
+C<GetSize> メソッド呼出しの後、C<$x> と C<$y> は対応する大きさに設定されます。  これらはまだバリアントです。  print 文では、オーバーロードによってそれらを自動的に文字列表現に変換します。
+
+VT_BYREF は今や(SAFEARRAY も含めて)すべてのバリアント型でサポートされています。
+これは OLE オブジェクトをリファレンスで渡すためにも使われます:
+
+	my $Results = $App->CreateResultsObject;
+	$Object->Method(Variant(VT_DISPATCH|VT_BYREF, $Results));
+
+=head1 AUTHORS/COPYRIGHT
+
+このモジュールは Win32::OLE ディストリビューションの一部です。
+
+=cut

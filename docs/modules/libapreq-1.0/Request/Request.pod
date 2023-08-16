@@ -1,0 +1,303 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+Apache::Request - クライアントからのリクエストを扱う
+
+=head1 SYNOPSIS
+
+    use Apache::Request ();
+    my $apr = Apache::Request->new($r);
+
+=head1 DESCRIPTION
+
+I<Apache::Request> は I<Apache> クラスのサブクラスであり、I<Content-type>
+が I<application/x-www-form-urlencoded> もしくは I<multipart/form-data> の 
+GET リクエスト、 POST リクエストをパースします。
+詳細は libapreq(3) を参照して下さい。
+
+=head1 Apache::Request METHODS
+
+インターフェースは CGI.pm のパラメーター解析ルーチンを模倣してデザイン
+されています。
+主な違いとしては
+
+=over 4
+
+=item * C<Apache::Request::new> は Apache オブジェクトを(二番目の)引数としてとります。
+
+
+=item * クエリーパラメータは Apache::Table オブジェクトとして保持され、大文字小文字を区別しないキーを使用してパースされます。
+
+=item * C<-attr =E<gt> $val> スタイルの引数はサポートされてません。
+
+
+=item * たとえ POST リクエストであってもクエリーストリングは常にパースされます。
+
+=back
+
+=head2 new
+
+新しい I<Apache::Request> オブジェクトを I<Apache> request_rec オブジェクトより生成します。
+
+    my $apr = Apache::Request->new($r);
+
+I<Apache> クラスの全てのメソッドは継承されます。
+
+以下の引数がオプションとして使用出来ます。
+
+=over 4
+
+=item POST_MAX
+
+POST データのサイズを制限します(バイト単位です)。
+制限に達した場合 I<Apache::Request::parse> メソッドはエラーコードを返します。
+
+ my $apr = Apache::Request->new($r, POST_MAX => 1024);
+ my $status = $apr->parse;
+
+ if ($status) {
+     my $errmsg = $apr->notes("error-notes");
+     ...
+     return $status;
+ }
+
+=item DISABLE_UPLOADS
+
+ファイルアップロードを禁止します。
+ファイルアップロードが行なわれようとした場合 I<Apache::Request::parse>
+メソッドはエラーコードを返します。
+
+ my $apr = Apache::Request->new($r, DISABLE_UPLOADS => 1);
+ my $status = $apr->parse;
+
+ if ($status) {
+     my $errmsg = $apr->notes("error-notes");
+     ...
+     return $status;
+ }
+
+=item TEMP_DIR
+
+アップロードされたファイルがスプールされるディレクトリを設定します。
+*nix 系の link(2) システムコールをサポートした OS においては TEMP_DIR
+は最終的に保存するファイルと同じファイルシステム上に無ければいけません。
+
+ my $apr = Apache::Request->new($r, TEMP_DIR => "/home/httpd/tmp");
+ my $upload = $apr->upload('file');
+ $upload->link("/home/user/myfile") || warn "link failed: $!";
+
+=item HOOK_DATA
+
+付加的な設定情報をアップロードフックに渡します。
+次に記された I<UPLOAD_HOOK> の説明を見て下さい。
+
+=item UPLOAD_HOOK
+
+ファイルアップロードされたデータが読まれる際に常に走るコールバックを設定します。
+このコールバックはアップロードの進行状況メーターを提供するのに使用出来ます。
+Apache はフックの終了後も自動的に $upload->fh にデータを書き込み続けます。
+
+ my $transparent_hook = sub {
+   my ($upload, $buf, $len, $hook_data) = @_;
+   warn "$hook_data: got $len bytes for " . $upload->name;
+ };
+
+ my $apr = Apache::Request->new($r, 
+                                HOOK_DATA => "Note",
+                                UPLOAD_HOOK => $transparent_hook,
+                               );
+ $apr->parse;
+
+=back
+
+=head2 instance
+
+instance() クラスメソッドにより Apache::Request をシングルトン化する事が出来ます。
+つまり、Apache::Request->instance() を一回のリクエスト中で呼び出す限り、
+常に同じインスタンスを取得する事が出来ます。
+これにより、同じリクエスト中で Apache::Request オブジェクトを二回生成
+する際の問題を解決します。
+問題の症状として、二つ目の Apache::Request オブジェクトでは既にパラメータが読みこみ、解析されているためパラメータを含まないでしょう。
+
+  my $apr = Apache::Request->instance($r, DISABLE_UPLOADS => 1);
+
+C<instance()> は C<new()> と同じ引数を受けとって呼びだされますが、一つの
+リクエスト中で最初に呼ばれたときのみ、引数は意味を持つという事を気にと
+めておいて下さい。
+任意の引数は同じリクエスト中において、後で C<instance()> が呼びだされた際には無視されます。
+
+サブリクエストは instance() メソッドが呼ばれた場合、新しい Apache::Request
+オブジェクトを受けとります。親リクエストの Apache::Request オブジェクトは
+サブリクエストにコピーされません。
+
+また、C<instance()> メソッドを使用しているときに C<parse()> メソッドを使
+うのは得策ではありません。なぜなら結局二度呼んでしまうかもしれませんし、
+何も無かったといってエラーを検知するかもしれません。
+
+=head2 parse
+
+I<parse> メソッドは実際のリクエストの解析を行ないます。
+このメソッドはアクセサメソッドによって呼ばれるため必須ではありませんが
+エラーが発生した際によりユーザーフレンドリーなメッセージを提供する事に
+有用です。
+ 
+    my $r = shift;
+    my $apr = Apache::Request->new($r); 
+ 
+    my $status = $apr->parse; 
+    unless ($status == OK) { 
+	$apr->custom_response($status, $apr->notes("error-notes")); 
+	return $status; 
+    } 
+
+=head2 param
+
+リクエストのパラメータを C<CGI::param> のオブジェクト指向的インターフェースに
+似た方法で取得もしくは設定します。(大文字小文字を区別しないキーを使用します)
+CGI.pm と違い Apache::Request の param メソッドはとても早く、mod_perl 組み込み
+の Apache->args メソッドよりも高速です。
+しかし, CGI.pm の C<-attr =E<gt> $val> スタイルの引数はサポートしていません。
+
+    # CGI.pm と同じです。
+
+    my $value = $apr->param('foo');
+    my @values = $apr->param('foo');
+    my @params = $apr->param;
+
+    # 下記は CGI.pm と少し違います。
+
+    # foo に複数の値を設定する。
+    $apr->param('foo' => [qw(one two three)]);
+
+    # Apache::Teable オブジェクトへの参照を返します。
+    my $table = $apr->param; # $apr->parms と同じです。- 下記参照
+
+=head2 parms
+
+Apache::Requet オブジェクトの基本のパラメータテーブルを 取得もしくは設定します。
+引数無しで呼びだされた場合、C<parms> は Apache::Request オブジェクトのパラメータテーブルに結びつけられた I<Apache::Table> オブジェクトを返します。
+Apache::Table の参照を引数として呼ばれた場合、Apache::Request オブジェクトのパラメータテーブルは引数として渡されたテーブルで置きかえられます。
+
+   # $apache_table は Apache::Table オブジェクトを参照しています。
+   $apr->parms($apache_table); # $apr のパラメータテーブルを設定
+
+   # $apache_table によって提供された Apache::Table オジェクトの参照を返す。
+   my $table = $apr->parms;
+
+=head2 upload
+
+スカラーコンテキストの際は一つの、リストコンテキストの際は全ての
+I<Apache::Upload> オブジェクトを返します。
+
+    my $upload = $apr->upload;
+    my $fh = $upload->fh;
+    my $lines = 0; 
+    while(<$fh>) { 
+        ++$lines; 
+        ...
+    } 
+
+付加的な name パラメータを渡して、その名前に関連づいたI<Apache::Upload> オブジェクトのみを取得出来ます。
+
+    my $upload = $apr->upload($name);
+
+=head1 Apache::Upload METHODS
+
+=head2 name
+
+filefield のパラメータ名:
+
+    my $name = $upload->name;
+
+=head2 filename
+
+アップロードされたファイルのファイル名:
+
+    my $filename = $upload->filename;
+
+=head2 fh
+
+アップロードされたファイルを差すファイルハンドル:
+
+    my $fh = $upload->fh;
+    while (<$fh>) {
+	...
+    }
+
+=head2 size
+
+ファイルサイズをバイトで表わす:
+
+    my $size = $upload->size;
+
+=head2 info
+
+アップロードされたファイルの付加的なヘッダ情報
+I<Apache::Table> クラスに結びつけられたハッシュリファレンスを返します。
+任意の I<key> 引数により、ハッシュリファレンスでは無く、値が返されます。
+
+例:
+
+    my $info = $upload->info;
+    while (my($key, $val) = each %$info) {
+	...
+    }
+
+    my $val = $upload->info("Content-type");
+
+=head2 type
+
+I<Apache::Upload> オブジェクトの I<Content-Type> を返します。
+
+    my $type = $upload->type;
+    #same as
+    my $type = $upload->info("Content-Type");
+
+=head2 next
+
+Upload オブジェクトは libapreq では linked list として実装されています。
+next メソッドは I<Apache::Request> I<upload> メソッドをリストコンテキ
+ストで使用する方法の代替となります。
+
+    for (my $upload = $apr->upload; $upload; $upload = $upload->next) {
+	...
+    }
+
+    # 機能としては以下と同じです。
+
+    for my $upload ($apr->upload) {
+	...
+    }
+
+=head2 tempname
+
+スプールファイルの名前を提供します。
+このメソッドはデバッグ用に実装されており、将来のバージョンの Apache::Request
+では変更される可能性があります。
+
+=head2 link
+
+*nix 系のシステムにおいて、スプールファイルの再コピーを避けるために
+ハードリンクを作成します。
+
+  my $upload = $apr->upload('file');
+  $upload->link("/path/to/newfile") or
+      die sprintf "link from '%s' failed: $!", $upload->tempname;
+
+一般に新しい名前のファイルはスプールファイルと同じファイルシステム
+上にある必要があります。
+詳細についてはあなたのシステムの link(2) を参照して下さい。
+
+=head1 SEE ALSO
+
+libapreq(3), Apache::Table(3)
+
+=head1 CREDITS
+
+インターフェースは Lincoln Stein による pure Perl バージョンを基にしている。
+
+=head1 AUTHOR
+
+Doug MacEachern, updated for v1.0 by Joe Schaefer

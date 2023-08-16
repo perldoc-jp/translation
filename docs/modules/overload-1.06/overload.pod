@@ -1,0 +1,2896 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+overload - Package for overloading Perl operations
+
+=end original
+
+overload - Perl の演算子のオーバーロードを行うパッケージ
+
+=head1 SYNOPSIS
+
+    package SomeThing;
+
+    use overload
+	'+' => \&myadd,
+	'-' => \&mysub;
+	# etc
+    ...
+
+    package main;
+    $a = new SomeThing 57;
+    $b=5+$a;
+    ...
+    if (overload::Overloaded $b) {...}
+    ...
+    $strval = overload::StrVal $b;
+
+=head1 DESCRIPTION
+
+=head2 Declaration of overloaded functions
+
+(オーバーロード関数の宣言)
+
+=begin original
+
+The compilation directive
+
+=end original
+
+コンパイル指示子
+
+    package Number;
+    use overload
+	"+" => \&add,
+	"*=" => "muas";
+
+=begin original
+
+declares function Number::add() for addition, and method muas() in
+the "class" C<Number> (or one of its base classes)
+for the assignment form C<*=> of multiplication.
+
+=end original
+
+では、加法の関数 Number::add() と「クラス」C<Number> (あるいは、
+その基底クラスの 1 つ) の中の乗法の代入形式 C<*=> のメソッド muas() を
+宣言しています。
+
+=begin original
+
+Arguments of this directive come in (key, value) pairs.  Legal values
+are values legal inside a C<&{ ... }> call, so the name of a
+subroutine, a reference to a subroutine, or an anonymous subroutine
+will all work.  Note that values specified as strings are
+interpreted as methods, not subroutines.  Legal keys are listed below.
+
+=end original
+
+この指示子の引数は (key, value) のペアです。
+この value としては、C<&{ ... }> の中で使用できるものが
+すべてを指定できますから、サブルーチン名、
+サブルーチンへのリファレンス、無名のサブルーチンといったものが
+すべて使えます。
+文字列として指定された値はサブルーチンではなく、
+メソッドとして解釈されることに注意してください。
+key として有効な値は以下に述べます。
+
+=begin original
+
+The subroutine C<add> will be called to execute C<$a+$b> if $a
+is a reference to an object blessed into the package C<Number>, or if $a is
+not an object from a package with defined mathemagic addition, but $b is a
+reference to a C<Number>.  It can also be called in other situations, like
+C<$a+=7>, or C<$a++>.  See L<MAGIC AUTOGENERATION>.  (Mathemagical
+methods refer to methods triggered by an overloaded mathematical
+operator.)
+
+=end original
+
+C<$a+$b> を実行するときに、$a がパッケージ C<Number> 内に
+bless されたオブジェクトへのリファレンスである場合か、
+$a がそのようなマスマジカルな加法を用意しているパッケージの
+オブジェクトでなくても、$b が Number へのリファレンスである場合に、
+サブルーチン C<add> が呼び出されます。
+これは、C<$a+=7> とか C<$a++> といった、シチュエーションでも呼ばれます。
+L<MAGIC AUTOGENERATION> の節を参照してください。
+(「マスマジカル」という言葉は、オーバーロードされた
+算術演算子によって起動されるメソッドを指しています。)
+
+=begin original
+
+Since overloading respects inheritance via the @ISA hierarchy, the
+above declaration would also trigger overloading of C<+> and C<*=> in
+all the packages which inherit from C<Number>.
+
+=end original
+
+オーバーロードは @ISA 階層による継承を遵守するので、上述の宣言は
+C<Number> から継承される全てのパッケージの C<+> と C<*=> のオーバーロードも
+引き起こすことになります。
+
+=head2 Calling Conventions for Binary Operations
+
+(二項演算子の呼び出し規約)
+
+=begin original
+
+The functions specified in the C<use overload ...> directive are called
+with three (in one particular case with four, see L<Last Resort>)
+arguments.  If the corresponding operation is binary, then the first
+two arguments are the two arguments of the operation.  However, due to
+general object calling conventions, the first argument should always be
+an object in the package, so in the situation of C<7+$a>, the
+order of the arguments is interchanged.  It probably does not matter
+when implementing the addition method, but whether the arguments
+are reversed is vital to the subtraction method.  The method can
+query this information by examining the third argument, which can take
+three different values:
+
+=end original
+
+C<use overload ...> 指示子で指定される関数は、
+3 つ (唯一特別な場合があって、
+その時は 4 つ (L<Last Resort>の節を参照) ) の引数で呼び出されます。
+対応する演算子が、二項演算子であれば、最初の 2 つの引数は、
+その演算子の 2 つの引数です。
+しかしながら、通常のオブジェクトメソッドの呼び出し規約によって、
+最初の引数は、常にそのパッケージのオブジェクトでなければなりませんので、
+C<7+$a> のような場合には、引数の順序の入れ替えが行なわれます。
+これは、加法のメソッドを実装する時には、
+おそらく問題にはならないものですが、減法のメソッドにとっては、
+引数を入替えるか否かは、非常に重大な問題です。
+メソッド側では、この引数の入れ替えについての情報を 3 つめの引数を
+調べることで、確かめることができます。
+この引数は、3 種類の値をとります:
+
+=over 7
+
+=item FALSE
+
+(偽)
+
+=begin original
+
+the order of arguments is as in the current operation.
+
+=end original
+
+引数の順序は、現在の演算子でのものと同じです。
+
+=item TRUE
+
+(真)
+
+=begin original
+
+the arguments are reversed.
+
+=end original
+
+引数は、逆になっています。
+
+=item C<undef>
+
+=begin original
+
+the current operation is an assignment variant (as in
+C<$a+=7>), but the usual function is called instead.  This additional
+information can be used to generate some optimizations.  Compare
+L<Calling Conventions for Mutators>.
+
+=end original
+
+現在の演算子は、(C<$a+=7> のような) 代入形式のものですが、
+代わりに普通の関数が呼ばれます。
+この付加的な情報は、何らかの最適化を行なうときに
+使用できます。
+L<Calling Conventions for Mutators> と比較してください。
+
+=back
+
+=head2 Calling Conventions for Unary Operations
+
+(単項演算子の呼び出し規約)
+
+=begin original
+
+Unary operation are considered binary operations with the second
+argument being C<undef>.  Thus the functions that overloads C<{"++"}>
+is called with arguments C<($a,undef,'')> when $a++ is executed.
+
+=end original
+
+単項演算子は、2 番目の引数が C<undef> の二項演算子であると
+考えられます。
+つまり、C<{"++"}> をオーバーロードする関数は、
+$a++ が実行されるときに、C<($a, undef, '')> という引数で呼び出されます。
+
+=head2 Calling Conventions for Mutators
+
+(ミューテータの呼び出し規約)
+
+=begin original
+
+Two types of mutators have different calling conventions:
+
+=end original
+
+2 種類のミューテータは異なった呼び出し規約を持ちます:
+
+=over
+
+=item C<++> and C<-->
+
+(C<++> と C<-->)
+
+=begin original
+
+The routines which implement these operators are expected to actually
+I<mutate> their arguments.  So, assuming that $obj is a reference to a
+number,
+
+=end original
+
+これらの演算子を実装するルーチンは、実際はこれらの引数を
+I<変更(mutate)> することを想定しています。
+それで、$obj が数値へのリファレンスと仮定すると、
+
+  sub incr { my $n = $ {$_[0]}; ++$n; $_[0] = bless \$n}
+
+=begin original
+
+is an appropriate implementation of overloaded C<++>.  Note that
+
+=end original
+
+はオーバーロードした C<++> の適切な実装です。以下のものは
+
+  sub incr { ++$ {$_[0]} ; shift }
+
+=begin original
+
+is OK if used with preincrement and with postincrement. (In the case
+of postincrement a copying will be performed, see L<Copy Constructor>.)
+
+=end original
+
+事前インクリメントと事後インクリメントの場合は OK であることに
+注意してください。
+事後インクリメントの場合、コピーが実行されます。
+L<Copy Constructor> を参照してください。)
+
+=item C<x=> and other assignment versions
+
+(C<x=> とその他の代入演算子)
+
+=begin original
+
+There is nothing special about these methods.  They may change the
+value of their arguments, and may leave it as is.  The result is going
+to be assigned to the value in the left-hand-side if different from
+this value.
+
+=end original
+
+これらのメソッドについて何も特別なものはありません。
+引数の値を変更するかもしれませんし、そのままかもしれません。
+結果は、もしこの値と違うなら左側の値に代入されることになります。
+
+=begin original
+
+This allows for the same method to be used as overloaded C<+=> and
+C<+>.  Note that this is I<allowed>, but not recommended, since by the
+semantic of L<"Fallback"> Perl will call the method for C<+> anyway,
+if C<+=> is not overloaded.
+
+=end original
+
+これは、オーバーロードした C<+=> と C<+> として同じメソッドを使うことを
+許します。
+これは I<許されます> が、推奨されません; なぜなら L<"Fallback"> の
+意味論によって Perl はもし C<+=> がオーバーロードされていなければ
+とにかく C<+> を呼び出すからです。
+
+=back
+
+=begin original
+
+B<Warning.>  Due to the presence of assignment versions of operations,
+routines which may be called in assignment context may create
+self-referential structures.  Currently Perl will not free self-referential
+structures until cycles are C<explicitly> broken.  You may get problems
+when traversing your structures too.
+
+=end original
+
+B<警告:> 演算の代入版の存在によって、代入コンテキストで呼び出される
+ルーチンは自己参照構造を作るかもしれません。
+現在のところ、Perl は循環が C<明示的に> 破壊されるまで自己参照構造を
+解放しません。
+構造をたどっていくときにも問題になるかもしれません。
+
+=begin original
+
+Say,
+
+=end original
+
+以下のようにすると、
+
+  use overload '+' => sub { bless [ \$_[0], \$_[1] ] };
+
+=begin original
+
+is asking for trouble, since for code C<$obj += $foo> the subroutine
+is called as C<$obj = add($obj, $foo, undef)>, or C<$obj = [\$obj,
+\$foo]>.  If using such a subroutine is an important optimization, one
+can overload C<+=> explicitly by a non-"optimized" version, or switch
+to non-optimized version if C<not defined $_[2]> (see
+L<Calling Conventions for Binary Operations>).
+
+=end original
+
+は自ら災いを招くことになります; なぜなら C<$obj += $foo> というコードでは
+サブルーチンは C<$obj = add($obj, $foo, undef)> あるいは C<$obj = [\$obj,
+\$foo]> として呼び出されるからです。
+もしこのようなサブルーチンを使うことが重要な最適化なら、
+非「最適化」版で明示的に C<+=> をオーバーロードするか、
+もし C<not defined $_[2]> なら非最適化版に切り替えることができます
+(L<Calling Conventions for Binary Operations> を参照してください)。
+
+=begin original
+
+Even if no I<explicit> assignment-variants of operators are present in
+the script, they may be generated by the optimizer.  Say, C<",$obj,"> or
+C<',' . $obj . ','> may be both optimized to
+
+=end original
+
+たとえスクリプトで I<明示的に> 代入系の演算子を使っていなくても、
+オプティマイザによって生成されるかもしれません。
+例えば、C<",$obj,"> や C<',' . $obj . ','> は両方とも以下のように
+最適化されるかもしれません
+
+  my $tmp = ',' . $obj;    $tmp .= ',';
+
+=head2 Overloadable Operations
+
+(オーバーロードできる操作)
+
+=begin original
+
+The following symbols can be specified in C<use overload> directive:
+
+=end original
+
+以下のシンボルが C<use overload> 指示子で指定できます:
+
+=over 5
+
+=item * I<Arithmetic operations>
+
+(I<算術演算子>)
+
+    "+", "+=", "-", "-=", "*", "*=", "/", "/=", "%", "%=",
+    "**", "**=", "<<", "<<=", ">>", ">>=", "x", "x=", ".", ".=",
+
+=begin original
+
+For these operations a substituted non-assignment variant can be called if
+the assignment variant is not available.  Methods for operations C<+>,
+C<->, C<+=>, and C<-=> can be called to automatically generate
+increment and decrement methods.  The operation C<-> can be used to
+autogenerate missing methods for unary minus or C<abs>.
+
+=end original
+
+これらの演算子について、代入形式のものが存在しないときには、代わりに
+非代入形式のものが呼ばれます。
+演算子 C<+>, C<->, C<+=>, C<-=> に対するメソッドは、
+インクリメント演算子やデクリメント演算子を自動生成するために
+呼ばれることがあります。
+演算子 C<-> は、単項のマイナスや C<abs> のメソッドがないときに
+自動生成するために使われます。
+
+=begin original
+
+See L<"MAGIC AUTOGENERATION">, L<"Calling Conventions for Mutators"> and
+L<"Calling Conventions for Binary Operations">) for details of these
+substitutions.
+
+=end original
+
+これらの置換に関する詳細については L<"MAGIC AUTOGENERATION">,
+L<"Calling Conventions for Mutators">,
+L<"Calling Conventions for Binary Operations"> を参照して下さい。
+
+=item * I<Comparison operations>
+
+(I<比較演算子>)
+
+    "<",  "<=", ">",  ">=", "==", "!=", "<=>",
+    "lt", "le", "gt", "ge", "eq", "ne", "cmp",
+
+=begin original
+
+If the corresponding "spaceship" variant is available, it can be
+used to substitute for the missing operation.  During C<sort>ing
+arrays, C<cmp> is used to compare values subject to C<use overload>.
+
+=end original
+
+ある演算子が無い場合にも、対応する「スペースシップ」形式が使えるならば、
+代わりに使うことができます。
+配列のソートのときには、C<use overload> のもとの C<cmp> を使って値を
+比較します。
+
+=item * I<Bit operations>
+
+(I<ビット演算子>)
+
+    "&", "&=", "^", "^=", "|", "|=", "neg", "!", "~",
+
+=begin original
+
+C<neg> stands for unary minus.  If the method for C<neg> is not
+specified, it can be autogenerated using the method for
+subtraction. If the method for C<!> is not specified, it can be
+autogenerated using the methods for C<bool>, or C<"">, or C<0+>.
+
+=end original
+
+C<neg> は、単項のマイナスを表わします。
+C<neg> のメソッドが指定されていないときには、
+引き算のメソッドを使って、自動生成されます。
+C<!> のメソッドが指定されていないときには、
+C<bool>, C<\"\">, C<0+> のいずれかのメソッドを使って
+自動生成されます。
+
+=begin original
+
+The same remarks in L<"Arithmetic operations"> about
+assignment-variants and autogeneration apply for
+bit operations C<"&">, C<"^">, and C<"|"> as well.
+
+=end original
+
+L<"Arithmetic operations"> での様々な代入と自動生成に関する意見は
+ビット操作 C<"&">, C<"^">, C<"|"> にも適用されます。
+
+=item * I<Increment and decrement>
+
+(I<インクリメントとデクリメント>)
+
+    "++", "--",
+
+=begin original
+
+If undefined, addition and subtraction methods can be
+used instead.  These operations are called both in prefix and
+postfix form.
+
+=end original
+
+未定義であれば、足し算と引き算のメソッドが代わりに使われます。
+これらの演算子は、前置としても後置としても使われます。
+
+=item * I<Transcendental functions>
+
+(I<超越関数>)
+
+    "atan2", "cos", "sin", "exp", "abs", "log", "sqrt", "int"
+
+=begin original
+
+If C<abs> is unavailable, it can be autogenerated using methods
+for "E<lt>" or "E<lt>=E<gt>" combined with either unary minus or subtraction.
+
+=end original
+
+C<abs> がないときには、"E<lt>" か "E<lt>=<E<gt>" のメソッドを、
+単項のマイナスか引き算のメソッドと組み合わせて、
+自動生成されます。
+
+=begin original
+
+Note that traditionally the Perl function L<int> rounds to 0, thus for
+floating-point-like types one should follow the same semantic.  If
+C<int> is unavailable, it can be autogenerated using the overloading of
+C<0+>.
+
+=end original
+
+伝統的に Perl 関数 L<int> は 0 に丸めるので、浮動小数点風の型は同じ
+意味論に従うべきです。
+もし C<int> が利用不可能なら、C<0+> のオーバーロードを使って
+自動生成されます。
+
+=item * I<Boolean, string and numeric conversion>
+
+(I<ブール変換、文字列変換、数値変換>)
+
+    'bool', '""', '0+',
+
+=begin original
+
+If one or two of these operations are not overloaded, the remaining ones can
+be used instead.  C<bool> is used in the flow control operators
+(like C<while>) and for the ternary C<?:> operation.  These functions can
+return any arbitrary Perl value.  If the corresponding operation for this value
+is overloaded too, that operation will be called again with this value.
+
+=end original
+
+これらの中でオーバーロードしていないものがあっても、残りが一つで
+も定義してあれば、それを代わりに使うことができます。
+C<bool> は、(C<while> のような) フロー制御演算子や、
+三項演算子 C<?:> で使われます。
+これらの関数は、任意の Perl 値を返すことができます。
+この値に対応する演算子もオーバーロードされている場合には、
+その演算子がその時の値を使って、再度呼び出されることになります。
+
+=begin original
+
+As a special case if the overload returns the object itself then it will
+be used directly. An overloaded conversion returning the object is
+probably a bug, because you're likely to get something that looks like
+C<YourPackage=HASH(0x8172b34)>.
+
+=end original
+
+特別な場合として、オーバーロードがオブジェクト自身を返した場合、
+これが直接使われます。
+オブジェクトを返すオーバーロードされた変換はおそらくバグです; なぜなら
+おそらく C<YourPackage=HASH(0x8172b34)> のようなものを受け取るからです。
+
+=item * I<Iteration>
+
+(I<反復子>)
+
+    "<>"
+
+=begin original
+
+If not overloaded, the argument will be converted to a filehandle or
+glob (which may require a stringification).  The same overloading
+happens both for the I<read-filehandle> syntax C<E<lt>$varE<gt>> and
+I<globbing> syntax C<E<lt>${var}E<gt>>.
+
+=end original
+
+オーバーロードされないと、引数はファイルハンドルかグロブに変換されます
+(文字列化が必要かもしれません)。
+同じオーバーロードは I<ファイルハンドル読み込み> 構文 C<E<lt>$varE<gt>> と
+I<グロブ> 構文 C<E<lt>${var}E<gt>> の両方でも起こります。
+
+=begin original
+
+B<BUGS> Even in list context, the iterator is currently called only
+once and with scalar context.
+
+=end original
+
+B<バグ> たとえリストコンテキストでも、現在のところ反復子は
+スカラコンテキストで 1 度だけしか呼び出されない。
+
+=item * I<Dereferencing>
+
+(I<デリファレンス>)
+
+    '${}', '@{}', '%{}', '&{}', '*{}'.
+
+=begin original
+
+If not overloaded, the argument will be dereferenced I<as is>, thus
+should be of correct type.  These functions should return a reference
+of correct type, or another object with overloaded dereferencing.
+
+=end original
+
+オーバーロードされないと、引数は I<そのままで> デリファレンスされ、
+正しい型になるべきです。
+これらの関数は正しい型のリファレンスか、オーバーロードされた
+デリファレンスと共に他のオブジェクトが返されるべきです。
+
+=begin original
+
+As a special case if the overload returns the object itself then it
+will be used directly (provided it is the correct type).
+
+=end original
+
+特別な場合として、オーバーロードがオブジェクト自身を返した場合、
+(正しい型なら)これが直接使われます。
+
+=begin original
+
+The dereference operators must be specified explicitly they will not be passed to
+"nomethod".
+
+=end original
+
+デリファレンス演算子は "nomethod" を渡されないように明示的に
+指定されなければなりません。
+
+=item * I<Special>
+
+(I<特殊 key>)
+
+    "nomethod", "fallback", "=", "~~",
+
+=begin original
+
+see L<SPECIAL SYMBOLS FOR C<use overload>>.
+
+=end original
+
+L<SPECIAL SYMBOLS FOR C<use overload>> を参照してください。
+
+=back
+
+=begin original
+
+See L<"Fallback"> for an explanation of when a missing method can be
+autogenerated.
+
+=end original
+
+存在しないメソッドの自動生成についての説明は L<"Fallback"> を参照して下さい。
+
+=begin original
+
+A computer-readable form of the above table is available in the hash
+%overload::ops, with values being space-separated lists of names:
+
+=end original
+
+上述のテーブルのコンピュータ可読形式は、ハッシュ %overload::ops で
+利用可能です; 値は空白で区切られた名前のリストです:
+
+ with_assign	  => '+ - * / % ** << >> x .',
+ assign		  => '+= -= *= /= %= **= <<= >>= x= .=',
+ num_comparison	  => '< <= > >= == !=',
+ '3way_comparison'=> '<=> cmp',
+ str_comparison	  => 'lt le gt ge eq ne',
+ binary		  => '& &= | |= ^ ^=',
+ unary		  => 'neg ! ~',
+ mutators	  => '++ --',
+ func		  => 'atan2 cos sin exp abs log sqrt',
+ conversion	  => 'bool "" 0+',
+ iterators	  => '<>',
+ dereferencing	  => '${} @{} %{} &{} *{}',
+ special	  => 'nomethod fallback ='
+
+=head2 Inheritance and overloading
+
+(継承とオーバーロード)
+
+=begin original
+
+Inheritance interacts with overloading in two ways.
+
+=end original
+
+継承はオーバーロードに二つの方法で関わります。
+
+=over
+
+=item Strings as values of C<use overload> directive
+
+(C<use overload> 指示子の値としての文字列)
+
+=begin original
+
+If C<value> in
+
+=end original
+
+もし以下での C<value> が
+
+  use overload key => value;
+
+=begin original
+
+is a string, it is interpreted as a method name.
+
+=end original
+
+文字列の場合、メソッド名として解釈されます。
+
+=item Overloading of an operation is inherited by derived classes
+
+(操作のオーバーロードは派生クラスによって継承される)
+
+=begin original
+
+Any class derived from an overloaded class is also overloaded.  The
+set of overloaded methods is the union of overloaded methods of all
+the ancestors. If some method is overloaded in several ancestor, then
+which description will be used is decided by the usual inheritance
+rules:
+
+=end original
+
+オーバーロードされたクラスから派生したクラスもオーバーロードされます。
+オーバーロードされたメソッドの集合は全ての祖先のオーバーロードされた
+メソッドの結合です。
+もしあるメソッドが複数の祖先によってオーバーロードされているなら、
+どれが使われるかは通常の継承ルールによって決定されます:
+
+=begin original
+
+If C<A> inherits from C<B> and C<C> (in this order), C<B> overloads
+C<+> with C<\&D::plus_sub>, and C<C> overloads C<+> by C<"plus_meth">,
+then the subroutine C<D::plus_sub> will be called to implement
+operation C<+> for an object in package C<A>.
+
+=end original
+
+もし C<A> が C<B> を C<C> を (この順序で) 継承していて、C<B> が C<+> を
+C<\&D::plus_sub> でオーバーロードし、C<C> が C<+> を C<"plus_meth"> で
+オーバーロードしている場合、パッケージ C<A> でオブジェクトのために
+演算 C<+> を実装するために、サブルーチン C<D::plus_sub> が呼び出されます。
+
+=back
+
+=begin original
+
+Note that since the value of the C<fallback> key is not a subroutine,
+its inheritance is not governed by the above rules.  In the current
+implementation, the value of C<fallback> in the first overloaded
+ancestor is used, but this is accidental and subject to change.
+
+=end original
+
+C<fallback> キーの値はサブルーチンではないので、この継承は上述のルールには
+従いません。
+現在の実装では、最初にオーバーロードした祖先の C<fallback> の値が
+使われますが、これは偶然で、変更される予定です。
+
+=head1 SPECIAL SYMBOLS FOR C<use overload>
+
+(C<use overload> の特殊シンボル)
+
+=begin original
+
+Three keys are recognized by Perl that are not covered by the above
+description.
+
+=end original
+
+ここまでに説明してきたものの他に、3 つの key が Perl に認識されます。
+
+=head2 Last Resort
+
+(最後の手段)
+
+=begin original
+
+C<"nomethod"> should be followed by a reference to a function of four
+parameters.  If defined, it is called when the overloading mechanism
+cannot find a method for some operation.  The first three arguments of
+this function coincide with the arguments for the corresponding method if
+it were found, the fourth argument is the symbol
+corresponding to the missing method.  If several methods are tried,
+the last one is used.  Say, C<1-$a> can be equivalent to
+
+=end original
+
+C<"nomethod"> は、4 つのパラメータを持つ関数へのリファレンスが引き続きます。
+これが定義されていれば、オーバーロードの仕組みで、
+何らかの演算子に対するメソッドを見つけることができなかったときに、
+呼び出されます。
+この関数の最初の 3 つの引数は、本来、
+呼ばれるはずだったメソッドに対する引数と一致し、4 番目の引数は、
+見つからなかったメソッドに対応するシンボルとなります。
+いくつかのメソッドが試されている場合には、最後のものが使われます。
+たとえば、C<1-$a> であれば、
+C<"nomethod" =E<gt> "nomethodMethod"> の組が C<use overload> 指示子で
+指定されていれば:
+
+	&nomethodMethod($a,1,1,"-")
+
+=begin original
+
+if the pair C<"nomethod" =E<gt> "nomethodMethod"> was specified in the
+C<use overload> directive.
+
+=end original
+
+と同様です。
+
+=begin original
+
+The C<"nomethod"> mechanism is I<not> used for the dereference operators
+( ${} @{} %{} &{} *{} ).
+
+=end original
+
+C<"nomethod"> の機構は デリファレンス演算子 ( ${} @{} %{} &{} *{} ) では
+I<使用されません>。
+
+=begin original
+
+If some operation cannot be resolved, and there is no function
+assigned to C<"nomethod">, then an exception will be raised via die()--
+unless C<"fallback"> was specified as a key in C<use overload> directive.
+
+=end original
+
+何らかの演算子が見つからず、C<"nomethod"> に結び付けられた関数もない
+場合には、(C<"fallback"> が C<use overload> 指示子のキーとして
+指定されていない限り) die() による例外が発生します。
+
+=head2 Fallback
+
+(フォールバック)
+
+=begin original
+
+The key C<"fallback"> governs what to do if a method for a particular
+operation is not found.  Three different cases are possible depending on
+the value of C<"fallback">:
+
+=end original
+
+C<"fallback"> は、特定の演算子に対するメソッドが見つからない場合の
+動作を規定します。
+C<"fallback"> の value によって、3 つの場合があります:
+
+=over 16
+
+=item * C<undef>
+
+=begin original
+
+Perl tries to use a
+substituted method (see L<MAGIC AUTOGENERATION>).  If this fails, it
+then tries to calls C<"nomethod"> value; if missing, an exception
+will be raised.
+
+=end original
+
+Perl は、代替のメソッドを使うことを試みます
+(L<MAGIC AUTOGENERATION> の節を参照してください)。
+それもダメならば、C<"nomethod"> を呼び出そうとします。
+これも無い場合には、例外が発生することになります。
+
+=item * TRUE
+
+(真)
+
+=begin original
+
+The same as for the C<undef> value, but no exception is raised.  Instead,
+it silently reverts to what it would have done were there no C<use overload>
+present.
+
+=end original
+
+C<undef> の場合と同じですが、例外を発生させません。
+この場合、黙って、もし C<use overload> がなかったときに、
+行なってであろう動作に戻されることになります。
+
+=item * defined, but FALSE
+
+(定義済みだが「偽」)
+
+=begin original
+
+No autogeneration is tried.  Perl tries to call
+C<"nomethod"> value, and if this is missing, raises an exception.
+
+=end original
+
+マジック自動生成は行ないません。
+Perl は、まず C<"nomethod"> の実行を試みて、
+これがなければ、例外を発生させます。
+
+=back
+
+=begin original
+
+B<Note.> C<"fallback"> inheritance via @ISA is not carved in stone
+yet, see L<"Inheritance and overloading">.
+
+=end original
+
+B<注意>: @ISA 経由の C<"fallback"> 継承はまだ行われません。
+L<"Inheritance and overloading"> を参照して下さい。
+
+=head2 Smart Match
+
+(スマートマッチング)
+
+=begin original
+
+The key C<"~~"> allows you to override the smart matching used by
+the switch construct. See L<feature>.
+
+=end original
+
+キー C<"~~"> は switch 構文で使われるスマートマッチングを
+オーバーロードすることを可能にします。
+L<feature> を参照してください。
+
+=head2 Copy Constructor
+
+(コピーコンストラクタ)
+
+=begin original
+
+The value for C<"="> is a reference to a function with three
+arguments, i.e., it looks like the other values in C<use
+overload>. However, it does not overload the Perl assignment
+operator. This would go against Camel hair.
+
+=end original
+
+C<"="> の値は、3 引数の関数へのリファレンスです。
+つまり、C<use overload> の他の値と似ているように見えます。
+しかし、これは Perl の代入演算子をオーバーロードしません。
+これは「ラクダの毛(Camel hair)」に対抗しています。
+
+=begin original
+
+This operation is called in the situations when a mutator is applied
+to a reference that shares its object with some other reference, such
+as
+
+=end original
+
+この演算は、以下のような、他のリファレンスとオブジェクトを共有する
+リファレンスに対して、ミューテータを使うときに呼び出されます。
+
+	$a=$b;
+	++$a;
+
+=begin original
+
+To make this change $a and not change $b, a copy of C<$$a> is made,
+and $a is assigned a reference to this new object.  This operation is
+done during execution of the C<++$a>, and not during the assignment,
+(so before the increment C<$$a> coincides with C<$$b>).  This is only
+done if C<++> is expressed via a method for C<'++'> or C<'+='> (or
+C<nomethod>).  Note that if this operation is expressed via C<'+'>
+a nonmutator, i.e., as in
+
+=end original
+
+これを、$a を変更し、$b を変更しないようにするために、C<$$a> のコピーを作り、
+この新しいオブジェクトへのリファレンスが $a に代入されます。
+この操作は、C<++$a> の実行中に (すなわち、その前に
+C<$$a> が C<$$b> に一致します)、行われます。
+これはC<++> が C<'++'> か C<'+='> (か C<nomethod>) のメソッドを通じて
+表現されているときにだけ行なわれます。　
+この演算子が、非ミューテータ C<"+"> を使って記述されている場合、
+
+	$a=$b;
+	$a=$a+1;
+
+=begin original
+
+then C<$a> does not reference a new copy of C<$$a>, since $$a does not
+appear as lvalue when the above code is executed.
+
+=end original
+
+C<$a> は C<$$a> の新しいコピーのリファレンスではありません。
+上記のコードが実行されたときに $$a は左辺値としては現れていないからです。
+
+=begin original
+
+If the copy constructor is required during the execution of some mutator,
+but a method for C<'='> was not specified, it can be autogenerated as a
+string copy if the object is a plain scalar.
+
+=end original
+
+コピーコンストラクタが、いくつかのミューテータの実行中に必要となって、
+C<'='> が指定されていないときには、そのオブジェクトが
+単なるスカラであれば、文字列コピーとして自動生成されます。
+
+=over 5
+
+=item B<Example>
+
+(B<例>)
+
+=begin original
+
+The actually executed code for
+
+=end original
+
+以下の記述で
+
+	$a=$b;
+        Something else which does not modify $a or $b....
+	++$a;
+
+=begin original
+
+may be
+
+=end original
+
+実際に実行されるコードは以下のようになります
+
+	$a=$b;
+        Something else which does not modify $a or $b....
+	$a = $a->clone(undef,"");
+        $a->incr(undef,"");
+
+=begin original
+
+if $b was mathemagical, and C<'++'> was overloaded with C<\&incr>,
+C<'='> was overloaded with C<\&clone>.
+
+=end original
+
+(もし $b がマスマジカルで、C<'++'> が C<\&incr> でオーバーロードされていて、
+C<'='> が C<\&clone> でオーバーロードされていれば。)
+
+=back
+
+=begin original
+
+Same behaviour is triggered by C<$b = $a++>, which is consider a synonym for
+C<$b = $a; ++$a>.
+
+=end original
+
+同じ振る舞いは C<$b = $a++> で引き起こされます; これは
+C<$b = $a; ++$a> と同義として扱われます。
+
+=head1 MAGIC AUTOGENERATION
+
+(マジック自動生成)
+
+=begin original
+
+If a method for an operation is not found, and the value for  C<"fallback"> is
+TRUE or undefined, Perl tries to autogenerate a substitute method for
+the missing operation based on the defined operations.  Autogenerated method
+substitutions are possible for the following operations:
+
+=end original
+
+演算子に対するメソッドが見つからず、C<"fallback"> が
+「真」か「未定義」であれば、Perl は、定義されている演算子を
+もとに、見つからなかった演算子の代わりのメソッドを自動生成しようと試みます。
+以下の演算子に対して、自動生成代替メソッドが行なえます:
+
+=over 16
+
+=item I<Assignment forms of arithmetic operations>
+
+(I<算術演算子の代入形式>)
+
+=begin original
+
+C<$a+=$b> can use the method for C<"+"> if the method for C<"+=">
+is not defined.
+
+=end original
+
+C<"+="> メソッドが定義されていないとき、
+C<$a+=$b> は、C<"+"> メソッドを使うことができます。
+
+=item I<Conversion operations>
+
+(I<変換演算子>)
+
+=begin original
+
+String, numeric, and boolean conversion are calculated in terms of one
+another if not all of them are defined.
+
+=end original
+
+文字列、数値、ブール値変換は、すべてが定義されてはいないとき、
+互いに別のもので計算されます。
+
+=item I<Increment and decrement>
+
+(I<インクリメントとデクリメント>)
+
+=begin original
+
+The C<++$a> operation can be expressed in terms of C<$a+=1> or C<$a+1>,
+and C<$a--> in terms of C<$a-=1> and C<$a-1>.
+
+=end original
+
+演算 C<++$a> は、C<$a+=1> か C<$a+1> で、演算 C<$a--> は、
+C<$a-=1> か C<$a-1> で表現することができます。
+
+=item C<abs($a)>
+
+=begin original
+
+can be expressed in terms of C<$aE<lt>0> and C<-$a> (or C<0-$a>).
+
+=end original
+
+abs($a) は、C<$aE<lt>0> と C<-$a> (または C<0-$a>) で表現できます。
+
+=item I<Unary minus>
+
+(I<単項のマイナス>)
+
+=begin original
+
+can be expressed in terms of subtraction.
+
+=end original
+
+単項のマイナスは、引き算を使って表現できます。
+
+=item I<Negation>
+
+(I<否定>)
+
+=begin original
+
+C<!> and C<not> can be expressed in terms of boolean conversion, or
+string or numerical conversion.
+
+=end original
+
+C<!> と C<not> はブール値変換、文字列変換、数値変換を使って
+表現できます。
+
+=item I<Concatenation>
+
+(I<連結>)
+
+=begin original
+
+can be expressed in terms of string conversion.
+
+=end original
+
+連結は、文字列変換を使って表現できます。
+
+=item I<Comparison operations>
+
+(I<比較演算子>)
+
+=begin original
+
+can be expressed in terms of its "spaceship" counterpart: either
+C<E<lt>=E<gt>> or C<cmp>:
+
+=end original
+
+比較演算は、それぞれに対応する「スペースシップ」演算
+(C<E<lt>=<E<gt>> か C<cmp>) を用いて表現することができます:
+
+    <, >, <=, >=, ==, != 	in terms of <=>
+    lt, gt, le, ge, eq, ne 	in terms of cmp
+
+=item I<Iterator>
+
+(I<反復子>)
+
+    <>				in terms of builtin operations
+
+=item I<Dereferencing>
+
+(I<デリファレンス>)
+
+    ${} @{} %{} &{} *{}		in terms of builtin operations
+
+=item I<Copy operator>
+
+(I<コピー演算子>)
+
+=begin original
+
+can be expressed in terms of an assignment to the dereferenced value, if this
+value is a scalar and not a reference.
+
+=end original
+
+コピー演算は被参照した値が、リファレンスではないスカラであれば、
+その値への代入という形で表現できます。
+
+=back
+
+=head1 Minimal set of overloaded operations
+
+(オーバーロードされた演算の最小セット)
+
+=begin original
+
+Since some operations can be automatically generated from others, there is
+a minimal set of operations that need to be overloaded in order to have
+the complete set of overloaded operations at one's disposal.
+Of course, the autogenerated operations may not do exactly what the user
+expects. See L<MAGIC AUTOGENERATION> above. The minimal set is:
+
+=end original
+
+演算の一部は他の演算から自動的に生成できるので、オーバーロードされた操作の
+完全セットを作るためにオーバーロードする必要がある、演算の
+最小セットというものが存在します。
+もちろん、自動生成された演算はユーザーが想定したものと正確に
+同じではないかもしれません。
+上述の L<MAGIC AUTOGENERATION> を参照してください。
+最小セットは:
+
+    + - * / % ** << >> x
+    <=> cmp
+    & | ^ ~
+    atan2 cos sin exp log sqrt int
+
+=begin original
+
+Additionally, you need to define at least one of string, boolean or
+numeric conversions because any one can be used to emulate the others.
+The string conversion can also be used to emulate concatenation.
+
+=end original
+
+さらに、文字列、真偽値、数値変換のうち少なくとも 1 つを定義する必要が
+あります; なぜならどれでも他のものをエミュレートできるからです。
+文字列変換は連結をエミュレートするためにも使われます。
+
+=head1 Losing overloading
+
+(オーバーロードが失われるとき)
+
+=begin original
+
+The restriction for the comparison operation is that even if, for example,
+`C<cmp>' should return a blessed reference, the autogenerated `C<lt>'
+function will produce only a standard logical value based on the
+numerical value of the result of `C<cmp>'.  In particular, a working
+numeric conversion is needed in this case (possibly expressed in terms of
+other conversions).
+
+=end original
+
+比較演算子に対する制限は、たとえば、`C<cmp>' が bless された
+リファレンスを返さなければならないとしても、自動生成された関数
+`C<lt>' は、`C<cmp>' の結果の数値に基づく標準の論理値だけを
+作り出します。
+特に、この場合には、(ときには別の変換で表わされた)
+数値変換が使えないといけません。
+
+=begin original
+
+Similarly, C<.=>  and C<x=> operators lose their mathemagical properties
+if the string conversion substitution is applied.
+
+=end original
+
+同様に、C<.=> 演算子や C<x=> 演算子も、文字列変換による代替が起これば、
+マスマジカルな性質がなくなります。
+
+=begin original
+
+When you chop() a mathemagical object it is promoted to a string and its
+mathemagical properties are lost.  The same can happen with other
+operations as well.
+
+=end original
+
+マスマジカルなオブジェクトを chop() すると、文字列になり、
+マスマジカルな性質はなくなります。
+同じことは、他の演算でも起こります。
+
+=head1 Run-time Overloading
+
+(実行時オーバーロード)
+
+=begin original
+
+Since all C<use> directives are executed at compile-time, the only way to
+change overloading during run-time is to
+
+=end original
+
+全ての C<use> 指示子はコンパイル時に実行されるので、実行時にオーバーロードを
+変更する唯一の方法は以下のものです
+
+    eval 'use overload "+" => \&addmethod';
+
+=begin original
+
+You can also use
+
+=end original
+
+また、以下のようにもできます
+
+    eval 'no overload "+", "--", "<="';
+
+=begin original
+
+though the use of these constructs during run-time is questionable.
+
+=end original
+
+しかし実行時にこのような構文を使うのは問題が多いです。
+
+=head1 Public functions
+
+(パブリック関数)
+
+=begin original
+
+Package C<overload.pm> provides the following public functions:
+
+=end original
+
+パッケージ C<overload.pm> は以下のパブリック関数を提供します:
+
+=over 5
+
+=item overload::StrVal(arg)
+
+=begin original
+
+Gives string value of C<arg> as in absence of stringify overloading. If you
+are using this to get the address of a reference (useful for checking if two
+references point to the same thing) then you may be better off using
+C<Scalar::Util::refaddr()>, which is faster.
+
+=end original
+
+文字列化のオーバーロードがないものとしたときの C<arg> の文字列値を
+与えます。
+もしリファレンスのアドレスを得るためにこれを使っている
+(2 つのリファレンスが同じものを指しているかをチェックするのに便利です)なら、
+より速い C<Scalar::Util::refaddr()> を使った方が良いでしょう。
+
+=item overload::Overloaded(arg)
+
+=begin original
+
+Returns true if C<arg> is subject to overloading of some operations.
+
+=end original
+
+C<arg> が何らかの操作のオーバーロードの影響下にあるなら真を返します。
+
+=item overload::Method(obj,op)
+
+=begin original
+
+Returns C<undef> or a reference to the method that implements C<op>.
+
+=end original
+
+C<op> を実装しているメソッドへのリファレンス、あるいは C<undef> を
+返します。
+
+=back
+
+=head1 Overloading constants
+
+(定数のオーバーロード)
+
+=begin original
+
+For some applications, the Perl parser mangles constants too much.
+It is possible to hook into this process via C<overload::constant()>
+and C<overload::remove_constant()> functions.
+
+=end original
+
+アプリケーションによっては Perl パーザが定数をいじりすぎる場合があります。
+この処理を C<overload::constant()> 関数と
+C<overload::remove_constant()> 関数を使ってフックできます。
+
+=begin original
+
+These functions take a hash as an argument.  The recognized keys of this hash
+are:
+
+=end original
+
+これらの関数は引数としてハッシュを取ります。
+ハッシュのキーとして認識されるのは以下のものです。
+
+=over 8
+
+=item integer
+
+=begin original
+
+to overload integer constants,
+
+=end original
+
+整数定数をオーバーロードします。
+
+=item float
+
+=begin original
+
+to overload floating point constants,
+
+=end original
+
+浮動小数点数定数をオーバーロードします。
+
+=item binary
+
+=begin original
+
+to overload octal and hexadecimal constants,
+
+=end original
+
+8 進および 16 進定数をオーバーロードします。
+
+=item q
+
+=begin original
+
+to overload C<q>-quoted strings, constant pieces of C<qq>- and C<qx>-quoted
+strings and here-documents,
+
+=end original
+
+C<q>-クォートされた文字列、C<qq>- および C<qx>-クォートされた文字列の
+定数片、ヒヤドキュメントをオーバーロードします。
+
+=item qr
+
+=begin original
+
+to overload constant pieces of regular expressions.
+
+=end original
+
+正規表現の定数片をオーバーロードします。
+
+=back
+
+=begin original
+
+The corresponding values are references to functions which take three arguments:
+the first one is the I<initial> string form of the constant, the second one
+is how Perl interprets this constant, the third one is how the constant is used.
+Note that the initial string form does not
+contain string delimiters, and has backslashes in backslash-delimiter
+combinations stripped (thus the value of delimiter is not relevant for
+processing of this string).  The return value of this function is how this
+constant is going to be interpreted by Perl.  The third argument is undefined
+unless for overloaded C<q>- and C<qr>- constants, it is C<q> in single-quote
+context (comes from strings, regular expressions, and single-quote HERE
+documents), it is C<tr> for arguments of C<tr>/C<y> operators,
+it is C<s> for right-hand side of C<s>-operator, and it is C<qq> otherwise.
+
+=end original
+
+対応する値は 3 つの引数を取る関数へのリファレンスへのリファレンスです:
+最初のものは定数の I<初期> 文字列形式、2 番目は Perl がこの定数を
+どのように解釈するか、3 番目は定数をどのように使うかです。
+初期文字列形式は文字列デリミタを含んでおらず、バックスラッシュ-デリミタの
+組み合わせでのバックスラッシュは削除されている(従ってデリミタの値は
+この文字列を処理するには適切ではない)ことに注意してください。
+この関数の返り値はこの定数が Perl によってどのように解釈されるかです。
+3 番目の引数は、オーバーロードされた C<q>- か C<qr>- 定数以外では未定義値、
+(文字列、正規表現、シングルクォートヒヤドキュメントによる)
+シングルクォートコンテキストの場合は C<q>、C<tr>/C<y> 演算子の引数の
+場合は C<tr>、C<s> 演算子の右側の場合は C<s>、その他では C<qq> になります。
+
+=begin original
+
+Since an expression C<"ab$cd,,"> is just a shortcut for C<'ab' . $cd . ',,'>,
+it is expected that overloaded constant strings are equipped with reasonable
+overloaded catenation operator, otherwise absurd results will result.
+Similarly, negative numbers are considered as negations of positive constants.
+
+=end original
+
+式 C<"ab$cd,,"> は単に C<'ab' . $cd . ',,'> のショートカットなので、
+オーバーロード定数文字列は妥当なオーバーロードされた結合演算子を
+装備していると想定していて、さもなければ不合理な結果となります。
+同様に、負数は正数の否定として扱われます。
+
+=begin original
+
+Note that it is probably meaningless to call the functions overload::constant()
+and overload::remove_constant() from anywhere but import() and unimport() methods.
+From these methods they may be called as
+
+=end original
+
+import() と unimport() メソッド以外から overload::constant() や
+overload::remove_constant() を呼び出すのはおそらく無意味であることに
+注意してください。
+これらのメソッドからは、以下のようにして呼び出されます
+
+	sub import {
+	  shift;
+	  return unless @_;
+	  die "unknown import: @_" unless @_ == 1 and $_[0] eq ':constant';
+	  overload::constant integer => sub {Math::BigInt->new(shift)};
+	}
+
+=head1 IMPLEMENTATION
+
+(実装)
+
+=begin original
+
+What follows is subject to change RSN.
+
+=end original
+
+以下はすぐに変更される可能性があります。
+
+=begin original
+
+The table of methods for all operations is cached in magic for the
+symbol table hash for the package.  The cache is invalidated during
+processing of C<use overload>, C<no overload>, new function
+definitions, and changes in @ISA. However, this invalidation remains
+unprocessed until the next C<bless>ing into the package. Hence if you
+want to change overloading structure dynamically, you'll need an
+additional (fake) C<bless>ing to update the table.
+
+=end original
+
+すべての演算のためのメソッドのテーブルは、該当パッケージの
+シンボルテーブルに対するマジックとしてキャッシュされます。
+このキャッシュは C<use overload>, C<no overload>, 新しい関数定義、
+@ISA の変更のいずれかの処理の間に無効化されます。
+しかし、この無効化はパッケージに対する次の C<bless> までは
+実行されずに残されます。
+つまり、オーバーロード構造を動的に変更したいならば、テーブルを
+更新するために、(意味の無い) C<bless> を行なう必要があります。
+
+=begin original
+
+(Every SVish thing has a magic queue, and magic is an entry in that
+queue.  This is how a single variable may participate in multiple
+forms of magic simultaneously.  For instance, environment variables
+regularly have two forms at once: their %ENV magic and their taint
+magic. However, the magic which implements overloading is applied to
+the stashes, which are rarely used directly, thus should not slow down
+Perl.)
+
+=end original
+
+(すべての SV 風のものは、マジックキューを持っており、マジックが
+キューのエントリになっています。
+これによって、1 つの変数が、同時に複数のマジックの形式に
+関ることができるのです。
+たとえば、環境変数は普段、%ENV マジックと「汚染」マジックの
+2 つの形式を一度に持っています。
+しかし、オーバーロードを実装しているマジックは隠してあるものに
+適用され、これはめったに直接使うことはないため、
+Perl の速度を低下させないはずです。)
+
+=begin original
+
+If an object belongs to a package using overload, it carries a special
+flag.  Thus the only speed penalty during arithmetic operations without
+overloading is the checking of this flag.
+
+=end original
+
+オブジェクトがオーバーロードを使うパッケージに属するならば、
+そのオブジェクトには、特別なフラグが用意されます。
+つまり、オーバーロードされていない算術演算を行なうときの、
+スピードに対する影響は、このフラグのチェックのみです。
+
+=begin original
+
+In fact, if C<use overload> is not present, there is almost no overhead
+for overloadable operations, so most programs should not suffer
+measurable performance penalties.  A considerable effort was made to
+minimize the overhead when overload is used in some package, but the
+arguments in question do not belong to packages using overload.  When
+in doubt, test your speed with C<use overload> and without it.  So far
+there have been no reports of substantial speed degradation if Perl is
+compiled with optimization turned on.
+
+=end original
+
+実際、C<use overload> が存在しなければ、オーバーロード可能な演算に
+対するオーバヘッドはほとんど無く、ほとんどのプログラムで、
+認識できるようなパフォーマスの低下はないはずです。
+あるパッケージでオーバーロードが使われても、
+対象の引数がオーバーロードを使ったパッケージに属していない場合には、
+オーバヘッドの最小限にする最大限の努力が為されました。
+疑わしいときには、C<use overload> がある場合と無い場合で、
+スピードのテストをしてください。　これまでのところ、Perl が
+最適化を指定してコンパイル場合には、顕著なスピードの低下の報告は
+あがっていません。
+
+=begin original
+
+There is no size penalty for data if overload is not used. The only
+size penalty if overload is used in some package is that I<all> the
+packages acquire a magic during the next C<bless>ing into the
+package. This magic is three-words-long for packages without
+overloading, and carries the cache table if the package is overloaded.
+
+=end original
+
+オーバーロードが使われないときには、データの大きさには影響しません。
+あるパッケージでオーバーロードを使うときの唯一のサイズペナルティは、
+I<全ての>パッケージが次のパッケージへの C<bless> 時に
+マジックを求めることです。
+このマジックはオーバーロードを使わないパッケージの場合は 3 ワード長で、
+オーバーロードを使うパッケージの場合はキャッシュテーブルを運びます。
+
+=begin original
+
+Copying (C<$a=$b>) is shallow; however, a one-level-deep copying is
+carried out before any operation that can imply an assignment to the
+object $a (or $b) refers to, like C<$a++>.  You can override this
+behavior by defining your own copy constructor (see L<"Copy Constructor">).
+
+=end original
+
+C<$a=$b> のようなコピーは、表層的なものです。
+しかし、C<$a++> のように、$b (または、$a) が参照するオブジェクトへの
+代入を意味する演算の前に、1 層深度のコピーが行なわれます。
+この動作は、
+自分でコピーコンストラクタを定義することによって変更することが
+できます (L<"Copy Constructor">の項を参照してください)。
+
+=begin original
+
+It is expected that arguments to methods that are not explicitly supposed
+to be changed are constant (but this is not enforced).
+
+=end original
+
+明示的にサポートされていないメソッドに対する引数は、
+定数であることが期待されます (が、強制はされません)。
+
+=head1 Metaphor clash
+
+(比喩の衝突)
+
+=begin original
+
+One may wonder why the semantic of overloaded C<=> is so counter intuitive.
+If it I<looks> counter intuitive to you, you are subject to a metaphor
+clash.
+
+=end original
+
+なぜオーバーロードされた C<=> の意味論がこんなに直感的でないかを
+不思議に思う人がいるかもしれません。
+もし直感的でない I<ように見える> なら、比喩の衝突に影響されています。
+
+=begin original
+
+Here is a Perl object metaphor:
+
+=end original
+
+Perl のオブジェクトの比喩はこれです:
+
+=begin original
+
+I<  object is a reference to blessed data>
+
+=end original
+
+I<  オブジェクトは bless されたデータへのリファレンス>
+
+=begin original
+
+and an arithmetic metaphor:
+
+=end original
+
+そして算術の比喩はこれです:
+
+=begin original
+
+I<  object is a thing by itself>.
+
+=end original
+
+I<  オブジェクトはそれ自体が一つのもの>。
+
+=begin original
+
+The I<main> problem of overloading C<=> is the fact that these metaphors
+imply different actions on the assignment C<$a = $b> if $a and $b are
+objects.  Perl-think implies that $a becomes a reference to whatever
+$b was referencing.  Arithmetic-think implies that the value of "object"
+$a is changed to become the value of the object $b, preserving the fact
+that $a and $b are separate entities.
+
+=end original
+
+C<=> をオーバーロードする I<主な> 問題は、$a と $b がオブジェクトのとき、
+C<$a = $b> という代入はこれらの比喩からは異なった動作を暗示するという
+事実です。
+Perl 的な考え方は、$a は $b がリファレンスしている何かへのリファレンスに
+なることを暗示します。
+算術的な考え方は、$a と $b が別々の実体であることは維持したまま、
+「オブジェクト」$a の値は、オブジェクト $b の値になることを暗示します。
+
+=begin original
+
+The difference is not relevant in the absence of mutators.  After
+a Perl-way assignment an operation which mutates the data referenced by $a
+would change the data referenced by $b too.  Effectively, after
+C<$a = $b> values of $a and $b become I<indistinguishable>.
+
+=end original
+
+ミューテータがないなら、これは違いはありません。
+Perl 式の代入の後、$a でリファレンスされているデータを変更する演算は
+$b でリファレンスされているデータも変更します。
+事実上、C<$a = $b> の後では $a と $b の値は I<区別ができない> ものに
+なります。
+
+=begin original
+
+On the other hand, anyone who has used algebraic notation knows the
+expressive power of the arithmetic metaphor.  Overloading works hard
+to enable this metaphor while preserving the Perlian way as far as
+possible.  Since it is not possible to freely mix two contradicting
+metaphors, overloading allows the arithmetic way to write things I<as
+far as all the mutators are called via overloaded access only>.  The
+way it is done is described in L<Copy Constructor>.
+
+=end original
+
+一方、算術記法を使っている人は誰でも、算術の比喩の表現力を知っています。
+オーバーロードはこの比喩を有効にするのは難しい一方、Perl 的な方法を
+出来るだけ保存した形で動作します。
+2 つの矛盾する比喩を自由に混ぜることは不可能なので、
+オーバーロードは I<全てのミューテータがオーバーロードされた
+アクセス経由でのみ呼び出される限りにおいて> 算術的な方法で
+書くことができます。
+これを行う方法は L<Copy Constructor> に記述されています。
+
+=begin original
+
+If some mutator methods are directly applied to the overloaded values,
+one may need to I<explicitly unlink> other values which references the
+same value:
+
+=end original
+
+あるミューテータメソッドがオーバーロードされた値に直接適用される場合、
+同じ値をリファレンスしているほかの値と I<明示的にリンクを切る> 必要が
+あるかもしれません:
+
+    $a = new Data 23;
+    ...
+    $b = $a;		# $b is "linked" to $a
+    ...
+    $a = $a->clone;	# Unlink $b from $a
+    $a->increment_by(4);
+
+=begin original
+
+Note that overloaded access makes this transparent:
+
+=end original
+
+オーバーロードされたアクセスはこれを透過的にすることに注意してください:
+
+    $a = new Data 23;
+    $b = $a;		# $b is "linked" to $a
+    $a += 4;		# would unlink $b automagically
+
+=begin original
+
+However, it would not make
+
+=end original
+
+しかし、以下のようにしても、
+
+    $a = new Data 23;
+    $a = 4;		# Now $a is a plain 4, not 'Data'
+
+=begin original
+
+preserve "objectness" of $a.  But Perl I<has> a way to make assignments
+to an object do whatever you want.  It is just not the overload, but
+tie()ing interface (see L<perlfunc/tie>).  Adding a FETCH() method
+which returns the object itself, and STORE() method which changes the
+value of the object, one can reproduce the arithmetic metaphor in its
+completeness, at least for variables which were tie()d from the start.
+
+=end original
+
+$a の「オブジェクト性」は保存されません。
+しかし、Perl にはオブジェクトへの代入を望み通りのやり方にする方法が
+I<あります>。
+これは単にオーバーロードではなく、tie() するインターフェースです
+(L<perlfunc/tie> を参照してください)。
+オブジェクト自身を返す FETCH() メソッドと、オブジェクトの値を変更する
+STORE() メソッドを追加することで、少なくとも最初から tie() されている
+変数に対しては、完全性に対して算術の比喩を再現できます。
+
+=begin original
+
+(Note that a workaround for a bug may be needed, see L<"BUGS">.)
+
+=end original
+
+(このバグの回避策が必要かもしれないことに注意してください; L<"BUGS"> を
+参照してください。)
+
+=head1 Cookbook
+
+(レシピ集)
+
+=begin original
+
+Please add examples to what follows!
+
+=end original
+
+どうかこれに引き続く例を追加してください!
+
+=head2 Two-face scalars
+
+(2 面スカラ)
+
+=begin original
+
+Put this in F<two_face.pm> in your Perl library directory:
+
+=end original
+
+これを F<two_face.pm> として Perl ライブラリディレクトリに置きます:
+
+  package two_face;		# Scalars with separate string and
+                                # numeric values.
+  sub new { my $p = shift; bless [@_], $p }
+  use overload '""' => \&str, '0+' => \&num, fallback => 1;
+  sub num {shift->[1]}
+  sub str {shift->[0]}
+
+=begin original
+
+Use it as follows:
+
+=end original
+
+以下のようにして使います:
+
+  require two_face;
+  my $seven = new two_face ("vii", 7);
+  printf "seven=$seven, seven=%d, eight=%d\n", $seven, $seven+1;
+  print "seven contains `i'\n" if $seven =~ /i/;
+
+=begin original
+
+(The second line creates a scalar which has both a string value, and a
+numeric value.)  This prints:
+
+=end original
+
+(2 行目は文字列値と数値の両方を持つスカラを作ります。)
+これは以下を出力します:
+
+  seven=vii, seven=7, eight=8
+  seven contains `i'
+
+=head2 Two-face references
+
+(2 面リファレンス)
+
+=begin original
+
+Suppose you want to create an object which is accessible as both an
+array reference and a hash reference.
+
+=end original
+
+配列リファレンスとハッシュリファレンスの両方としてアクセス可能な
+オブジェクトを作りたいとします。
+
+  package two_refs;
+  use overload '%{}' => \&gethash, '@{}' => sub { $ {shift()} };
+  sub new {
+    my $p = shift;
+    bless \ [@_], $p;
+  }
+  sub gethash {
+    my %h;
+    my $self = shift;
+    tie %h, ref $self, $self;
+    \%h;
+  }
+
+  sub TIEHASH { my $p = shift; bless \ shift, $p }
+  my %fields;
+  my $i = 0;
+  $fields{$_} = $i++ foreach qw{zero one two three};
+  sub STORE {
+    my $self = ${shift()};
+    my $key = $fields{shift()};
+    defined $key or die "Out of band access";
+    $$self->[$key] = shift;
+  }
+  sub FETCH {
+    my $self = ${shift()};
+    my $key = $fields{shift()};
+    defined $key or die "Out of band access";
+    $$self->[$key];
+  }
+
+=begin original
+
+Now one can access an object using both the array and hash syntax:
+
+=end original
+
+これで配列とハッシュの両方の文法を使ってオブジェクトにアクセスできます:
+
+  my $bar = new two_refs 3,4,5,6;
+  $bar->[2] = 11;
+  $bar->{two} == 11 or die 'bad hash fetch';
+
+=begin original
+
+Note several important features of this example.  First of all, the
+I<actual> type of $bar is a scalar reference, and we do not overload
+the scalar dereference.  Thus we can get the I<actual> non-overloaded
+contents of $bar by just using C<$$bar> (what we do in functions which
+overload dereference).  Similarly, the object returned by the
+TIEHASH() method is a scalar reference.
+
+=end original
+
+この例のいくつかの重要な機能に注意してください。
+まず、$bar の I<実際の> 型はスカラリファレンスで、スカラデリファレンスは
+オーバーロードしていません。
+従って、単に(関数の中でオーバーロードデリファレンスをしている方法である)
+C<$$bar> とすることで、I<実際の> $bar のオーバーロードされていない中身を
+得ることができます。
+同様に、TIEHASH() メソッドで返されるオブジェクトはスカラリファレンスです。
+
+=begin original
+
+Second, we create a new tied hash each time the hash syntax is used.
+This allows us not to worry about a possibility of a reference loop,
+which would lead to a memory leak.
+
+=end original
+
+2 番目に、ハッシュ文法が使われるたびに新しい tie されたハッシュを作ります。
+これにより、メモリリークを引き起こすことになるリファレンスループの
+可能性について心配しなくても良くなります。
+
+=begin original
+
+Both these problems can be cured.  Say, if we want to overload hash
+dereference on a reference to an object which is I<implemented> as a
+hash itself, the only problem one has to circumvent is how to access
+this I<actual> hash (as opposed to the I<virtual> hash exhibited by the
+overloaded dereference operator).  Here is one possible fetching routine:
+
+=end original
+
+これらの問題の両方は修正できます。
+例えば、ハッシュ自身として I<実装されている> オブジェクトへの
+リファレンスに対するハッシュのデリファレンスをオーバーロードしたい場合、
+回避する必要がある唯一の問題は、(オーバーロードされた
+デリファレンス演算子によって提供される I<仮想> ハッシュではなく)
+この I<実際の> ハッシュにどうやってアクセスするかです。
+これは可能なフェッチルーチンの一つです:
+
+  sub access_hash {
+    my ($self, $key) = (shift, shift);
+    my $class = ref $self;
+    bless $self, 'overload::dummy'; # Disable overloading of %{}
+    my $out = $self->{$key};
+    bless $self, $class;	# Restore overloading
+    $out;
+  }
+
+=begin original
+
+To remove creation of the tied hash on each access, one may an extra
+level of indirection which allows a non-circular structure of references:
+
+=end original
+
+アクセス毎に tie されたハッシュの生成をしないようにするには、
+リファレンスの非円形の構造を許すための追加のレベルの間接化を行います:
+
+  package two_refs1;
+  use overload '%{}' => sub { ${shift()}->[1] },
+               '@{}' => sub { ${shift()}->[0] };
+  sub new {
+    my $p = shift;
+    my $a = [@_];
+    my %h;
+    tie %h, $p, $a;
+    bless \ [$a, \%h], $p;
+  }
+  sub gethash {
+    my %h;
+    my $self = shift;
+    tie %h, ref $self, $self;
+    \%h;
+  }
+
+  sub TIEHASH { my $p = shift; bless \ shift, $p }
+  my %fields;
+  my $i = 0;
+  $fields{$_} = $i++ foreach qw{zero one two three};
+  sub STORE {
+    my $a = ${shift()};
+    my $key = $fields{shift()};
+    defined $key or die "Out of band access";
+    $a->[$key] = shift;
+  }
+  sub FETCH {
+    my $a = ${shift()};
+    my $key = $fields{shift()};
+    defined $key or die "Out of band access";
+    $a->[$key];
+  }
+
+=begin original
+
+Now if $baz is overloaded like this, then C<$baz> is a reference to a
+reference to the intermediate array, which keeps a reference to an
+actual array, and the access hash.  The tie()ing object for the access
+hash is a reference to a reference to the actual array, so
+
+=end original
+
+ここでもし $bar がこのようにオーバーロードされると、C<$baz> は
+実際の配列とアクセスハッシュへのリファレンスを保持している中間の配列への
+リファレンスへのリファレンスです。
+アクセスハッシュへの tie() したオブジェクトは 実際の配列への
+リファレンスへのリファレンスなので、
+
+=over
+
+=item *
+
+=begin original
+
+There are no loops of references.
+
+=end original
+
+リファレンスのループはありません。
+
+=item *
+
+=begin original
+
+Both "objects" which are blessed into the class C<two_refs1> are
+references to a reference to an array, thus references to a I<scalar>.
+Thus the accessor expression C<$$foo-E<gt>[$ind]> involves no
+overloaded operations.
+
+=end original
+
+C<two_refs1> クラスに bless された両方の「オブジェクト」は配列への
+リファレンスへのリファレンスなので、I<スカラ> へのリファレンスです。
+従って、アクセサ式 C<$$foo-E<gt>[$ind]> はオーバーロードされた演算を
+伴いません。
+
+=back
+
+=head2 Symbolic calculator
+
+(シンボリック計算機)
+
+=begin original
+
+Put this in F<symbolic.pm> in your Perl library directory:
+
+=end original
+
+この F<symbolic.pm> をあなたの Perl ライブラリディレクトリに入れてください:
+
+  package symbolic;		# Primitive symbolic calculator
+  use overload nomethod => \&wrap;
+
+  sub new { shift; bless ['n', @_] }
+  sub wrap {
+    my ($obj, $other, $inv, $meth) = @_;
+    ($obj, $other) = ($other, $obj) if $inv;
+    bless [$meth, $obj, $other];
+  }
+
+=begin original
+
+This module is very unusual as overloaded modules go: it does not
+provide any usual overloaded operators, instead it provides the L<Last
+Resort> operator C<nomethod>.  In this example the corresponding
+subroutine returns an object which encapsulates operations done over
+the objects: C<new symbolic 3> contains C<['n', 3]>, C<2 + new
+symbolic 3> contains C<['+', 2, ['n', 3]]>.
+
+=end original
+
+このモジュールは、オーバーロードするモジュールとしてはかなり変わっています:
+通常のオーバーロード演算子は何も提供せず、その代わりに
+L<Last Resort> 演算子 C<nomethod> を提供します。
+この例で、対応するサブルーチンはオブジェクトに対して行われた演算を
+カプセル化したオブジェクトを返します:
+C<new symbolic 3> は C<['n', 3]> を含み、C<2 + new symbolic 3> は
+C<['+', 2, ['n', 3]]> を含みます。
+
+=begin original
+
+Here is an example of the script which "calculates" the side of
+circumscribed octagon using the above package:
+
+=end original
+
+以下は、上述のパッケージを使って外接 8 角形の辺を「計算する」スクリプトの
+例です:
+
+  require symbolic;
+  my $iter = 1;			# 2**($iter+2) = 8
+  my $side = new symbolic 1;
+  my $cnt = $iter;
+
+  while ($cnt--) {
+    $side = (sqrt(1 + $side**2) - 1)/$side;
+  }
+  print "OK\n";
+
+=begin original
+
+The value of $side is
+
+=end original
+
+$side の値は
+
+  ['/', ['-', ['sqrt', ['+', 1, ['**', ['n', 1], 2]],
+	               undef], 1], ['n', 1]]
+
+=begin original
+
+Note that while we obtained this value using a nice little script,
+there is no simple way to I<use> this value.  In fact this value may
+be inspected in debugger (see L<perldebug>), but only if
+C<bareStringify> B<O>ption is set, and not via C<p> command.
+
+=end original
+
+素晴らしい小さいスクリプトを使ってこの値を得ることは出来ましたが、
+この値を I<使う> 単純な方法はないことに注意してください。
+実際この値はデバッガ (L<perldebug> を参照してください) で検査できますが、
+C<bareStringify> オプションがセットされていて、C<p> コマンド
+経由でないときのみです。
+
+=begin original
+
+If one attempts to print this value, then the overloaded operator
+C<""> will be called, which will call C<nomethod> operator.  The
+result of this operator will be stringified again, but this result is
+again of type C<symbolic>, which will lead to an infinite loop.
+
+=end original
+
+もしこの値を表示しようとすると、オーバーロードされた演算子
+C<""> が呼び出され、これは C<nomethod> 演算子を呼び出します。
+この演算子の結果として再び文字列化が行われますが、この結果は再び
+C<symbolic> 型なので、無限ループを引き起こします。
+
+=begin original
+
+Add a pretty-printer method to the module F<symbolic.pm>:
+
+=end original
+
+F<symbolic.pm> モジュールに整形表示メソッドを追加します:
+
+  sub pretty {
+    my ($meth, $a, $b) = @{+shift};
+    $a = 'u' unless defined $a;
+    $b = 'u' unless defined $b;
+    $a = $a->pretty if ref $a;
+    $b = $b->pretty if ref $b;
+    "[$meth $a $b]";
+  }
+
+=begin original
+
+Now one can finish the script by
+
+=end original
+
+これでスクリプトの末尾に以下のように書けます
+
+  print "side = ", $side->pretty, "\n";
+
+=begin original
+
+The method C<pretty> is doing object-to-string conversion, so it
+is natural to overload the operator C<""> using this method.  However,
+inside such a method it is not necessary to pretty-print the
+I<components> $a and $b of an object.  In the above subroutine
+C<"[$meth $a $b]"> is a catenation of some strings and components $a
+and $b.  If these components use overloading, the catenation operator
+will look for an overloaded operator C<.>; if not present, it will
+look for an overloaded operator C<"">.  Thus it is enough to use
+
+=end original
+
+メソッド C<pretty> はオブジェクト-文字列変換を行うので、
+このメソッドを使って演算子 C<""> をオーバーロードするのが自然です。
+しかし、このようなメソッドの内部では
+オブジェクトの I<要素> である $a や $b を整形表示する必要はありません。
+上述のサブルーチンで、C<"[$meth $a $b]"> は、なんらかの文字列と要素 $a および
+$b の連結です。
+もしこれらの要素がオーバーロードを使っていると、連結演算子は
+オーバーロードされた演算子 C<.> を探します; もし存在しなければ、
+オーバーロードされた演算子 C<""> を探します。
+従って以下を使えば十分です
+
+  use overload nomethod => \&wrap, '""' => \&str;
+  sub str {
+    my ($meth, $a, $b) = @{+shift};
+    $a = 'u' unless defined $a;
+    $b = 'u' unless defined $b;
+    "[$meth $a $b]";
+  }
+
+=begin original
+
+Now one can change the last line of the script to
+
+=end original
+
+これでスクリプトの末尾を以下のように書き換えられます
+
+  print "side = $side\n";
+
+=begin original
+
+which outputs
+
+=end original
+
+以下のように出力されます
+
+  side = [/ [- [sqrt [+ 1 [** [n 1 u] 2]] u] 1] [n 1 u]]
+
+=begin original
+
+and one can inspect the value in debugger using all the possible
+methods.
+
+=end original
+
+そして全ての可能なメソッドを使ってデバッガで値を検査できます。
+
+=begin original
+
+Something is still amiss: consider the loop variable $cnt of the
+script.  It was a number, not an object.  We cannot make this value of
+type C<symbolic>, since then the loop will not terminate.
+
+=end original
+
+まだ何かがおかしいです: スクリプトのループ変数 $cnt を考えてみます。
+これは数値であり、オブジェクトではありません。
+この値の型を C<symbolic> にはできません; なぜならそうするとループが
+終了しないからです。
+
+=begin original
+
+Indeed, to terminate the cycle, the $cnt should become false.
+However, the operator C<bool> for checking falsity is overloaded (this
+time via overloaded C<"">), and returns a long string, thus any object
+of type C<symbolic> is true.  To overcome this, we need a way to
+compare an object to 0.  In fact, it is easier to write a numeric
+conversion routine.
+
+=end original
+
+確かに、循環を終了させるために、$cnt は偽になる必要があります。
+しかし、偽かどうかをチェックする演算子 C<bool> が
+(今回はオーバーロードされた C<""> 経由で) オーバーロードされていて、
+長い文字列を返すので、型 C<symbolic> のあらゆるオブジェクトは真です。
+これを乗り越えるために、オブジェクトを 0 と比較する方法が必要です。
+実際、これは数値変換ルーチンを書くより簡単です。
+
+=begin original
+
+Here is the text of F<symbolic.pm> with such a routine added (and
+slightly modified str()):
+
+=end original
+
+以下はそのようなルーチンを追加した (そして str() を少し修正した)
+F<symbolic.pm> の内容です:
+
+  package symbolic;		# Primitive symbolic calculator
+  use overload
+    nomethod => \&wrap, '""' => \&str, '0+' => \&num;
+
+  sub new { shift; bless ['n', @_] }
+  sub wrap {
+    my ($obj, $other, $inv, $meth) = @_;
+    ($obj, $other) = ($other, $obj) if $inv;
+    bless [$meth, $obj, $other];
+  }
+  sub str {
+    my ($meth, $a, $b) = @{+shift};
+    $a = 'u' unless defined $a;
+    if (defined $b) {
+      "[$meth $a $b]";
+    } else {
+      "[$meth $a]";
+    }
+  }
+  my %subr = ( n => sub {$_[0]},
+	       sqrt => sub {sqrt $_[0]},
+	       '-' => sub {shift() - shift()},
+	       '+' => sub {shift() + shift()},
+	       '/' => sub {shift() / shift()},
+	       '*' => sub {shift() * shift()},
+	       '**' => sub {shift() ** shift()},
+	     );
+  sub num {
+    my ($meth, $a, $b) = @{+shift};
+    my $subr = $subr{$meth}
+      or die "Do not know how to ($meth) in symbolic";
+    $a = $a->num if ref $a eq __PACKAGE__;
+    $b = $b->num if ref $b eq __PACKAGE__;
+    $subr->($a,$b);
+  }
+
+=begin original
+
+All the work of numeric conversion is done in %subr and num().  Of
+course, %subr is not complete, it contains only operators used in the
+example below.  Here is the extra-credit question: why do we need an
+explicit recursion in num()?  (Answer is at the end of this section.)
+
+=end original
+
+全ての数値変換の作業は %subr と num() で行われます。
+もちろん、%subr は不完全で、以下の例で使われる演算子のみを含んでいます。
+これは追加点の質問です: なぜ num() で明示的な再帰が必要なのでしょう?
+(答えはこの章の最後にあります。)
+
+=begin original
+
+Use this module like this:
+
+=end original
+
+このモジュールは以下のようにして使います:
+
+  require symbolic;
+  my $iter = new symbolic 2;	# 16-gon
+  my $side = new symbolic 1;
+  my $cnt = $iter;
+
+  while ($cnt) {
+    $cnt = $cnt - 1;		# Mutator `--' not implemented
+    $side = (sqrt(1 + $side**2) - 1)/$side;
+  }
+  printf "%s=%f\n", $side, $side;
+  printf "pi=%f\n", $side*(2**($iter+2));
+
+=begin original
+
+It prints (without so many line breaks)
+
+=end original
+
+これは(たくさんの改行を除くと)以下のものを表示します
+
+  [/ [- [sqrt [+ 1 [** [/ [- [sqrt [+ 1 [** [n 1] 2]]] 1]
+			  [n 1]] 2]]] 1]
+     [/ [- [sqrt [+ 1 [** [n 1] 2]]] 1] [n 1]]]=0.198912
+  pi=3.182598
+
+=begin original
+
+The above module is very primitive.  It does not implement
+mutator methods (C<++>, C<-=> and so on), does not do deep copying
+(not required without mutators!), and implements only those arithmetic
+operations which are used in the example.
+
+=end original
+
+上述のモジュールはとても原始的なものです。
+ミューテータメソッド (C<++>, C<-=> and so on) を実装していませんし、
+ディープコピー(ミューテータがなければ不要です!)もできませんし、
+例で使う算術演算しか実装していません。
+
+=begin original
+
+To implement most arithmetic operations is easy; one should just use
+the tables of operations, and change the code which fills %subr to
+
+=end original
+
+ほとんどの算術演算の実装は簡単です; 単に演算のテーブルを使って、
+%subr を埋めているコードを以下のように変更するだけです
+
+  my %subr = ( 'n' => sub {$_[0]} );
+  foreach my $op (split " ", $overload::ops{with_assign}) {
+    $subr{$op} = $subr{"$op="} = eval "sub {shift() $op shift()}";
+  }
+  my @bins = qw(binary 3way_comparison num_comparison str_comparison);
+  foreach my $op (split " ", "@overload::ops{ @bins }") {
+    $subr{$op} = eval "sub {shift() $op shift()}";
+  }
+  foreach my $op (split " ", "@overload::ops{qw(unary func)}") {
+    print "defining `$op'\n";
+    $subr{$op} = eval "sub {$op shift()}";
+  }
+
+=begin original
+
+Due to L<Calling Conventions for Mutators>, we do not need anything
+special to make C<+=> and friends work, except filling C<+=> entry of
+%subr, and defining a copy constructor (needed since Perl has no
+way to know that the implementation of C<'+='> does not mutate
+the argument, compare L<Copy Constructor>).
+
+=end original
+
+L<Calling Conventions for Mutators> によって、%subr の C<+=> エントリを
+埋めることと、コピーコンストラクタを定義すること (これは C<'+='> の実装が
+引数を変更しないことを Perl が知る方法はないために必要です;
+L<Copy Constructor> と比較してください) のほかに、C<+=> とその親類が
+動作するために必要なことは何もありません。
+
+=begin original
+
+To implement a copy constructor, add C<< '=' => \&cpy >> to C<use overload>
+line, and code (this code assumes that mutators change things one level
+deep only, so recursive copying is not needed):
+
+=end original
+
+コピーコンストラクタを実行するには、C<use overload> の行に
+C<< '=' => \&cpy >> を追加して、以下のコードを書きます
+(このコードは、ミューテータは 1 レベルの深さのみの変更を行うので、
+再帰的コピーは不要であることを仮定しています):
+
+  sub cpy {
+    my $self = shift;
+    bless [@$self], ref $self;
+  }
+
+=begin original
+
+To make C<++> and C<--> work, we need to implement actual mutators,
+either directly, or in C<nomethod>.  We continue to do things inside
+C<nomethod>, thus add
+
+=end original
+
+C<++> と C<--> が動作するようにするには、実際のミューテータを、
+直接あるいは C<nomethod> で実装する必要があります。
+私達は物事を C<nomethod> で続けると決めたので、以下を
+
+    if ($meth eq '++' or $meth eq '--') {
+      @$obj = ($meth, (bless [@$obj]), 1); # Avoid circular referencen
+      return $obj;
+    }
+
+=begin original
+
+after the first line of wrap().  This is not a most effective
+implementation, one may consider
+
+=end original
+
+wrap() の最初の行の後に追加します。
+これは最も効果的な実装というわけではないので、代わりに
+
+  sub inc { $_[0] = bless ['++', shift, 1]; }
+
+=begin original
+
+instead.
+
+=end original
+
+とすることを考えるかもしれません。
+
+=begin original
+
+As a final remark, note that one can fill %subr by
+
+=end original
+
+最後の意見として、以下のようなもので %subr を埋めることができることに
+注意してください
+
+  my %subr = ( 'n' => sub {$_[0]} );
+  foreach my $op (split " ", $overload::ops{with_assign}) {
+    $subr{$op} = $subr{"$op="} = eval "sub {shift() $op shift()}";
+  }
+  my @bins = qw(binary 3way_comparison num_comparison str_comparison);
+  foreach my $op (split " ", "@overload::ops{ @bins }") {
+    $subr{$op} = eval "sub {shift() $op shift()}";
+  }
+  foreach my $op (split " ", "@overload::ops{qw(unary func)}") {
+    $subr{$op} = eval "sub {$op shift()}";
+  }
+  $subr{'++'} = $subr{'+'};
+  $subr{'--'} = $subr{'-'};
+
+=begin original
+
+This finishes implementation of a primitive symbolic calculator in
+50 lines of Perl code.  Since the numeric values of subexpressions
+are not cached, the calculator is very slow.
+
+=end original
+
+これは、原始的なシンボリック計算機を 50 行の Perl コードで実装完了します。
+部分式の数値はキャッシュされないので、計算機はとても遅いです。
+
+=begin original
+
+Here is the answer for the exercise: In the case of str(), we need no
+explicit recursion since the overloaded C<.>-operator will fall back
+to an existing overloaded operator C<"">.  Overloaded arithmetic
+operators I<do not> fall back to numeric conversion if C<fallback> is
+not explicitly requested.  Thus without an explicit recursion num()
+would convert C<['+', $a, $b]> to C<$a + $b>, which would just rebuild
+the argument of num().
+
+=end original
+
+これが課題の答えです: str() の場合、オーバーロードした C<.> 演算子は
+すでに存在するオーバーロードした演算子 C<""> にフォールバックするので、
+明示的な再帰をする必要はありません。
+オーバーロードした算術演算子は、明示的に C<fallback> が要求されない限り
+フォールバック I<しません> 。
+従って、明示的な再帰なしでは num() は C<['+', $a, $b]> を C<$a + $b> に
+変換し、これは単に num() の引数を再ビルドします。
+
+=begin original
+
+If you wonder why defaults for conversion are different for str() and
+num(), note how easy it was to write the symbolic calculator.  This
+simplicity is due to an appropriate choice of defaults.  One extra
+note: due to the explicit recursion num() is more fragile than sym():
+we need to explicitly check for the type of $a and $b.  If components
+$a and $b happen to be of some related type, this may lead to problems.
+
+=end original
+
+もしなぜ str() と num() で変換のデフォルトが異なるかが不思議なら、
+シンボリック計算機を書くのがどれだけ簡単だったかに注意してください。
+この簡単さは適切なデフォルトの選択によるものです。
+もう一つ追加の注意: 明示的な再帰によって、num() は sym() より壊れやすいです:
+$a と $b の型を明示的にチェックする必要があります。
+もし $a と $b がたまたま関係のある型の場合、これは問題を引き起こすかも
+しれません。
+
+=head2 I<Really> symbolic calculator
+
+(I<本当に> シンボリックな計算機)
+
+=begin original
+
+One may wonder why we call the above calculator symbolic.  The reason
+is that the actual calculation of the value of expression is postponed
+until the value is I<used>.
+
+=end original
+
+なぜ私達が上述の計算機をシンボリックと呼ぶのかを疑問に思う人も
+いるかもしれません。
+その理由は、式の値の実際の計算はその値が I<使われる> まで延期されます。
+
+=begin original
+
+To see it in action, add a method
+
+=end original
+
+実行中に見るために、以下のメソッドを
+
+  sub STORE {
+    my $obj = shift;
+    $#$obj = 1;
+    @$obj->[0,1] = ('=', shift);
+  }
+
+=begin original
+
+to the package C<symbolic>.  After this change one can do
+
+=end original
+
+パッケージ C<symbolic> に追加します。
+この変更の後、以下のように出来て
+
+  my $a = new symbolic 3;
+  my $b = new symbolic 4;
+  my $c = sqrt($a**2 + $b**2);
+
+=begin original
+
+and the numeric value of $c becomes 5.  However, after calling
+
+=end original
+
+$c の数値は 5 になります。
+しかし、以下の呼出し後、
+
+  $a->STORE(12);  $b->STORE(5);
+
+=begin original
+
+the numeric value of $c becomes 13.  There is no doubt now that the module
+symbolic provides a I<symbolic> calculator indeed.
+
+=end original
+
+$c の数値は 13 になります。
+これでモジュール symbolic はまさに I<シンボリック> 計算機を提供します。
+
+=begin original
+
+To hide the rough edges under the hood, provide a tie()d interface to the
+package C<symbolic> (compare with L<Metaphor clash>).  Add methods
+
+=end original
+
+フードの中の荒いエッジを隠すために、パッケージ C<symbolic> へ
+tie() したインターフェースを提供します
+(L<Metaphor clash> と比較してください)。
+メソッドを追加します
+
+  sub TIESCALAR { my $pack = shift; $pack->new(@_) }
+  sub FETCH { shift }
+  sub nop {  }		# Around a bug
+
+=begin original
+
+(the bug is described in L<"BUGS">).  One can use this new interface as
+
+=end original
+
+(このバグは L<"BUGS"> に記述されています)。
+この新しいインタフェースは以下のようにして使えます
+
+  tie $a, 'symbolic', 3;
+  tie $b, 'symbolic', 4;
+  $a->nop;  $b->nop;	# Around a bug
+
+  my $c = sqrt($a**2 + $b**2);
+
+=begin original
+
+Now numeric value of $c is 5.  After C<$a = 12; $b = 5> the numeric value
+of $c becomes 13.  To insulate the user of the module add a method
+
+=end original
+
+ここで $c の数値は 5 です。
+C<$a = 12; $b = 5> の後、$c の数値は 13 になります。
+モジュールのユーザーを分離す津ために、メソッドを追加します
+
+  sub vars { my $p = shift; tie($_, $p), $_->nop foreach @_; }
+
+=begin original
+
+Now
+
+=end original
+
+ここで
+
+  my ($a, $b);
+  symbolic->vars($a, $b);
+  my $c = sqrt($a**2 + $b**2);
+
+  $a = 3; $b = 4;
+  printf "c5  %s=%f\n", $c, $c;
+
+  $a = 12; $b = 5;
+  printf "c13  %s=%f\n", $c, $c;
+
+=begin original
+
+shows that the numeric value of $c follows changes to the values of $a
+and $b.
+
+=end original
+
+とすると、$c の数値は $a と $b の値の変更に従います。
+
+=head1 AUTHOR
+
+Ilya Zakharevich E<lt>F<ilya@math.mps.ohio-state.edu>E<gt>.
+
+=head1 DIAGNOSTICS
+
+=begin original
+
+When Perl is run with the B<-Do> switch or its equivalent, overloading
+induces diagnostic messages.
+
+=end original
+
+Perl を B<-Do> スイッチか同等のものを使って起動すると、
+オーバーロードによって診断メッセージを引き起こします。
+
+=begin original
+
+Using the C<m> command of Perl debugger (see L<perldebug>) one can
+deduce which operations are overloaded (and which ancestor triggers
+this overloading). Say, if C<eq> is overloaded, then the method C<(eq>
+is shown by debugger. The method C<()> corresponds to the C<fallback>
+key (in fact a presence of this method shows that this package has
+overloading enabled, and it is what is used by the C<Overloaded>
+function of module C<overload>).
+
+=end original
+
+Perl デバッガの C<m> コマンド (L<perldebug> を参照してください) を
+使うことで、どの演算がオーバーロードされているか (そしてどの祖先が
+このオーバーロードを引き起こしているか) を推論することができます。
+例えば、C<eq> がオーバーロードされていると、メソッド C<(eq> が
+デバッガによって表示されます。
+メソッド C<()> は C<fallback> キーに対応します
+(実際このメソッドの存在は、このパッケージはオーバーロードが有効になっていて、
+C<overload> モジュールの C<Overloaded> 関数で使われていることを
+示しています)。
+
+=begin original
+
+The module might issue the following warnings:
+
+=end original
+
+このモジュールは以下の警告を出すことがあります:
+
+=over 4
+
+=item Odd number of arguments for overload::constant
+
+=begin original
+
+(W) The call to overload::constant contained an odd number of arguments.
+The arguments should come in pairs.
+
+=end original
+
+(W) 奇数の数の引数で overload::constant を呼び出しました。
+引数はペアになっている必要があります。
+
+=item `%s' is not an overloadable type
+
+=begin original
+
+(W) You tried to overload a constant type the overload package is unaware of.
+
+=end original
+
+(W) オーバーロードパッケージが知らない定数型をオーバーロードしようとしました。
+
+=item `%s' is not a code reference
+
+=begin original
+
+(W) The second (fourth, sixth, ...) argument of overload::constant needs
+to be a code reference. Either an anonymous subroutine, or a reference
+to a subroutine.
+
+=end original
+
+(W) overload::constant の 2 番目 (4 番目、6 番目, ...) の引数はコード
+リファレンスである必要があります。
+無名サブルーチンか、サブルーチンへのリファレンスです。
+
+=back
+
+=head1 BUGS
+
+=begin original
+
+Because it is used for overloading, the per-package hash %OVERLOAD now
+has a special meaning in Perl. The symbol table is filled with names
+looking like line-noise.
+
+=end original
+
+オーバーロードに使用されるため、Perl では、ハッシュ %OVERLOAD は、
+パッケージごとに特別な意味を持つことになります。
+シンボルテーブルはごみのように見える名前で埋められます。
+
+=begin original
+
+For the purpose of inheritance every overloaded package behaves as if
+C<fallback> is present (possibly undefined). This may create
+interesting effects if some package is not overloaded, but inherits
+from two overloaded packages.
+
+=end original
+
+継承の目的のために、全てのオーバーロードされたパッケージは
+(未定義かもしれない) C<fallback> が存在するかのように振る舞います。
+これは、あるパッケージがオーバーロードしていないけれども、
+2 つのオーバーロードしたパッケージを継承しているという場合に、
+興味深い効果を作り出します。
+
+=begin original
+
+Relation between overloading and tie()ing is broken.  Overloading is
+triggered or not basing on the I<previous> class of tie()d value.
+
+=end original
+
+オーバーロードと tie() の関係は壊れています。
+オーバーロードは tie() された値の I<以前の> クラスによって
+引き起こされるかどうかが決まります。
+
+=begin original
+
+This happens because the presence of overloading is checked too early,
+before any tie()d access is attempted.  If the FETCH()ed class of the
+tie()d value does not change, a simple workaround is to access the value
+immediately after tie()ing, so that after this call the I<previous> class
+coincides with the current one.
+
+=end original
+
+これは、オーバーロードの存在のチェックが早すぎて、tie() したアクセスを
+試みる前に行われるために起こります。
+もし tie() された値の FETCH() されたクラスが変更していないなら、簡単な
+回避法は tie() した直後に値にアクセスすることで、この呼び出しの後
+I<以前の> クラスは現在のものと同期します。
+
+=begin original
+
+B<Needed:> a way to fix this without a speed penalty.
+
+=end original
+
+B<必要:> 速度に影響を与えることなくこれを修正する方法。
+
+=begin original
+
+Barewords are not covered by overloaded string constants.
+
+=end original
+
+裸の単語はオーバーロードされた文字列定数の対象となりません。
+
+=begin original
+
+This document is confusing.  There are grammos and misleading language
+used in places.  It would seem a total rewrite is needed.
+
+=end original
+
+このドキュメントは混乱しています。
+あちこちに誤解しやすい文章があります。
+完全な書き直しが必要です。
+
+=begin meta
+
+Translate: 吉村 寿人 <JAE00534@niftyserve.or.jp> (5.000)
+Update: Kentaro Shirakata <argrath@ub32.org> (5.6.1, 1.06-)
+
+=end meta
+
+=cut

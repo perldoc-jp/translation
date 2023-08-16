@@ -1,0 +1,817 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+perlfaq6 - Regexes ($Revision$, $Date$)
+
+=end original
+
+perlfaq6 - 正規表現 ($Revision$, $Date$)
+
+=head1 DESCRIPTION
+
+この章は驚くほど小さくなっています。なぜならFAQの残りの部分は
+正規表現を伴った回答と一緒にあちこちに散在しているからです。
+たとえばURLをデコードするとかあるものが数値かどうか確認することは
+正規表現を使って処理されますが、この回答はこの資料のあらゆる所で
+見つけることができます(正確には L<perlfaq9>: ``How do I decode or create those %-encodings 
++on the web'' と L<perfaq4>: ``How do I determine whether a scalar is
++a number/whole/integer/float'')。
+
+=head2 How can I hope to use regular expressions without creating illegible and unmaintainable code?
+
+(どうすれば正規表現を判読し難い、保守できないようなものにすることなく
+使うことができるでしょうか?)
+
+正規表現を保守可能なものにし、理解できるようにするための
+三つの技法があります。
+
+=over 4
+
+=item 正規表現の外側にコメントを付ける
+
+通常のPerlのコメントを使って、
+あなたが何を、どのようにしているかを説明します。
+
+    # 行を、その最初の単語、コロン、行の残りの文字数に
+    # 変換します
+    s/^(\w+)(.*)/ lc($1) . ":" . length($2) /mge;
+
+=item 正規表現の内側にコメントを付ける
+
+<CODE>/x</CODE> 修飾子は、正規表現中にある空白を無視するようにし、
+(キャラクタクラスの中にあるものを除く)、通常のコメントが使えるように
+します。あなたの想像できるように、空白とコメントは非常に助けに
+なります。
+
+C</x>によって
+
+    s{<(?:[^>'"]*|".*?"|'.*?')+>}{}gs;
+
+この正規表現を以下の様に記述できます:
+
+    s{ <                    # 開きのangle bracket
+        (?:                 # 後方参照なしのグルーピング
+             [^>'"] *       # > でも ' でも "でもないものの0回以上の繰り返し
+                |           #    あるいは
+             ".*?"          # 二重引用符に囲まれたセクション (stingy match)
+                |           #    あるいは
+             '.*?'          # 引用符に囲まれたセクション (stingy match)
+        ) +                 #   それらの一回以上の繰り返し
+       >                    # 閉じのangle bracket
+    }{}gsx;                 # 空に置き換え、つまり削除
+
+訳注: stingy けちな、しみったれた; 少ない、不十分な
+
+これでもまだ散文(prose)程には明確にはなっていませんが、
+パターンの各部分の意味を説明するには非常に便利なものです。
+
+=item 異なった区切り
+
+私たちは通常、C</>で区切られたものをパターンであると考えています
+が、パターンはほとんどすべてのキャラクタを使って区切ることが可能
+です。L<perlre>はこれを説明しています。たとえば、先に挙げたC<s///>
+では、区切りとしてカーリーブレースを使っています。スラッシュ以外
+の区切りを選択することによって、パターンの中に存在する区切り記号
+と同じものをクォートする手間を省くことができます。
+
+    s/\/usr\/local/\/usr\/share/g;      # 良くない区切りの選択
+    s#/usr/local#/usr/share#g;          # これは良い
+
+=back
+
+=head2 I'm having trouble matching over more than one line.  What's wrong?
+
+(二行以上に対するマッチングでトラブルがありました。何が悪いのでしょう?)
+
+=begin original
+
+Either you don't have more than one line in the string you're looking at
+(probably), or else you aren't using the correct modifier(s) on your
+pattern (possibly).
+
+=end original
+
+マッチングの対象となっている文字列が実際には二行以上になっていないか、
+パターンで正しい修飾子 (modifier)を使っていないかのいずれかでしょう
+(多分)。
+
+複数行のデータを一つの文字列にする方法はたくさんあります。
+これを、入力を読み込んでいる間自動で行なわせたいというのであれば、
+一度に二行以上読ませるために $/を(パラグラフ単位で読み込みたいなら ''を、
+ファイル全体を読み込みたいなら C<undef>を)設定したくなるでしょう。
+
+あなたが使いたいのは C</s>かC</m>のいずれなのか(あるいはこれら両方なのか)を
+決めるのを助けるために、L<perlre>を読んでください:
+C</s>はドットが改行を含むようにしますし、C</m>はキャレットとドル記号が
+文字列の両端だけでなく改行の前後でマッチするようにします。
+そして、複数行に渡る文字列を取得するようにさせる必要があります。
+
+たとえば、以下に挙げるプログラムは重複した単語を、たとえそれが行を
+またがっていても(ただしパラグラフはまたがっていない)探し出すものです。
+この例では、C</s>の必要はありません。なぜなら、この行をまたがらせたい正規表現で
+ドットを使っていないからです。
+C</m>を使う必要もありません。
+それは、キャレットやドル記号をレコードの中にある改行の前後でマッチさせることは
+望んでいないからです。
+しかし、$/をデフォルト以外のものに設定することは避けられませんし、
+そうしなければ複数行レコードを読み込むことはできないのです。
+
+    $/ = '';  		#一行ずつではなく、パラグラフ全体を読み込む
+    while ( <> ) {
+	while ( /\b([\w'-]+)(\s+\1)+\b/gi ) {  	# word starts alpha
+	    print "Duplicate $1 at paragraph $.\n";
+	}
+    }
+
+以下の例は、“From ”で始まるセンテンス(多くのメイラーによって
+変形されるであろうもの)を検索するものです。
+
+    $/ = '';  		#一行ずつではなく、パラグラフ全体を読み込む
+    while ( <> ) {
+	while ( /^From /gm ) { # /m によって ^ が \nの直後にマッチするようになる
+	    print "leading from in paragraph $.\n";
+	}
+    }
+
+次の例は、パラグラフ中のSTARTとENDに挟まれた部分を検索するものです:
+
+    undef $/;  		# 一行とか一パラグラフではなくファイル全体を読み込む
+    while ( <> ) {
+	while ( /START(.*?)END/sm ) { # /s は . が行境界をまたぐようにします
+	    print "$1\n";
+	}
+    }
+
+=head2 How can I pull out lines between two patterns that are themselves on different lines?
+
+(異なる行にある二つのパターンに挟まれている行を取り出すのはどうやればできますか?)
+
+Perlの C<..>演算子を使えます(L<perlop>に説明があります)。
+
+    perl -ne 'print if /START/ .. /END/' file1 file2 ...
+
+行ではなく、テキストが必要なら次のようにします
+
+    perl -0777 -ne 'print "$1\n" while /START(.*?)END/gs' file1 file2 ...
+
+しかし、C<START>とC<END>が現れるのを入れ子にさせたいというのであれば、
+このセクションにある質問で説明されている問題に直面することになります。
+
+C<..>を使った別の例です:
+
+    while (<>) {
+        $in_header =   1  .. /^$/;
+        $in_body   = /^$/ .. eof();
+	# now choose between them
+    } continue {
+	reset if eof();		# fix $.
+    } 
+
+=head2 I put a regular expression into $/ but it didn't work. What's wrong?
+
+(正規表現を$/に設定したけど、駄目でした。何が悪かったのですか?)
+
+$/は正規表現ではなく、文字列でなければなりません。
+この点に関してはawkの方が良いですね :-)
+
+実際のには、ファイル全体をメモリーへ読み込んでしまうことを気にしないのであれば
+お望みのことを行うことができます。
+
+    undef $/;
+    @records = split /your_pattern/, <FH>;
+
+Net::Telnet モジュール(CPANで入手可能)は、入力ストリームであるパターンを
+待ったり、それが特定の時間内に現れなかったときにはタイムアウトする機能を
+持っています。
+
+    ## 三行からなるファイルを作成します。
+    open FH, ">file";
+    print FH "The first line\nThe second line\nThe third line\n";
+    close FH;
+
+    ## それに対するread/writeファイルハンドルを取得します。
+    $fh = new FileHandle "+<file";
+
+    ## それを“ストリーム”オブジェクトにアタッチします。
+    use Net::Telnet;
+    $file = new Net::Telnet (-fhopen => $fh);
+
+    ## 二番目の行を探し、三番目の行を出力します。
+    $file->waitfor('/second line\n/');
+    print $file->getline;
+
+=head2 How do I substitute case insensitively on the LHS while preserving case on the RHS?
+
+(演算子の左辺では大小文字を無視して、演算子の右辺では元の大小文字を保存しておくような
+置換はどうやるの?)
+
+=begin original
+
+Here's a lovely Perlish solution by Larry Rosler.  It exploits
+properties of bitwise xor on ASCII strings.
+
+=end original
+
+以下に Larry Rosler によるとっても Perl ぽい解法があります。
+これは ASCII 文字列に対するビット xor の動作を悪用します。
+
+    $_= "this is a TEsT case";
+
+    $old = 'test';
+    $new = 'success';
+
+    s{(\Q$old\E)}
+     { uc $new | (uc $1 ^ $1) .
+	(uc(substr $1, -1) ^ substr $1, -1) x
+	    (length($new) - length $1)
+     }egi;
+
+    print;
+
+=begin original
+
+And here it is as a subroutine, modelled after the above:
+
+=end original
+
+以下はサブルーチンにしたものです。上記と同じ手法です:
+
+    sub preserve_case($$) {
+	my ($old, $new) = @_;
+	my $mask = uc $old ^ $old;
+
+	uc $new | $mask .
+	    substr($mask, -1) x (length($new) - length($old))        
+    }
+
+    $a = "this is a TEsT case";
+    $a =~ s/(test)/preserve_case($1, "success")/egi;
+    print "$a\n";
+
+This prints:
+
+    this is a SUcCESS case
+
+=begin original
+
+Just to show that C programmers can write C in any programming language,
+if you prefer a more C-like solution, the following script makes the
+substitution have the same case, letter by letter, as the original.
+(It also happens to run about 240% slower than the Perlish solution runs.)
+If the substitution has more characters than the string being substituted,
+the case of the last character is used for the rest of the substitution.
+
+=end original
+
+もしもっと C っぽい解決法が好みなら、
+以下に挙げるスクリプトは、大小文字の違いを保ったまま、
+文字毎に置換を行ないます。
+(そしてこれは Perl っぽい解法より 240% 遅いです。)
+置換対象の文字列より
+も多くのキャラクターが置換後の文字列にあるのであれば、最後のキャラクターの
+大小文字の種別が置換後の文字列の残りの部分のキャラクターに対して使われます。
+
+    # Original by Nathan Torkington, massaged by Jeffrey Friedl
+    #
+    sub preserve_case($$)
+    {
+        my ($old, $new) = @_;
+        my ($state) = 0; # 0 = no change; 1 = lc; 2 = uc
+        my ($i, $oldlen, $newlen, $c) = (0, length($old), length($new));
+        my ($len) = $oldlen < $newlen ? $oldlen : $newlen;
+
+        for ($i = 0; $i < $len; $i++) {
+            if ($c = substr($old, $i, 1), $c =~ /[\W\d_]/) {
+                $state = 0;
+            } elsif (lc $c eq $c) {
+                substr($new, $i, 1) = lc(substr($new, $i, 1));
+                $state = 1;
+            } else {
+                substr($new, $i, 1) = uc(substr($new, $i, 1));
+                $state = 2;
+            }
+        }
+        # 新しい文字列の残りの部分を仕上げる (newがoldより長い場合)
+        if ($newlen > $oldlen) {
+            if ($state == 1) {
+                substr($new, $oldlen) = lc(substr($new, $oldlen));
+            } elsif ($state == 2) {
+                substr($new, $oldlen) = uc(substr($new, $oldlen));
+            }
+        }
+        return $new;
+    }
+
+=head2 How can I make C<\w> match national character sets?
+
+(C<\w> がnational characterにマッチするように
+するにはどうすれば良いですか?)
+
+L<perllocale>を参照してください。
+
+=head2 How can I match a locale-smart version of C</[a-zA-Z]/>?
+
+(C</[a-zA-Z]/>の locae-smartなバージョンでマッチさせるには?)
+
+あなたの置かれているロカールに関りなく、alphabetic キャラクターは
+C</[^\W\d_]/>となります。非 alphabeticキャラクターは C</[\W\d_]/>です
+(あなたがアンダースコアを文字と考えないと仮定しています)。
+
+=head2 How can I quote a variable to use in a regex?
+
+(正規表現の中で使う変数をクォートするには?)
+
+Perlの構文解析器(parser)は、区切りがシングルクォーテーションでない限り、
+正規表現の中にある $variableや@variableといったものを展開します。
+C<s///> による置換の右側にあるものはダブルクォーテーションで
+括られた文字列とみなされるということを忘れないでください。
+また、すべての正規表現演算子はその前に \Qを置いておかないと、
+正規表現演算子として振る舞うということも忘れないでください。
+以下に例を挙げます。
+
+    $string = "to die?";
+    $lhs = "die?";
+    $rhs = "sleep, no more";
+
+    $string =~ s/\Q$lhs/$rhs/;
+    #ここで$stringは"to sleep no more"となる
+
+\Qがないと、この正規表現は“di”にマッチします。
+
+=head2 What is C</o> really for?
+
+(C</o>は実際なんのためのものなのですか?)
+
+正規表現マッチングで変数を使うと、正規表現に出会う度に再評価(と
+おそらくは再コンパイル)が強制的に発生します。
+C</o>修飾子は正規表現を最初に使ったものにロックします。
+これは常に正規表現定数 (constant regular expression)に起きるもので、実際、
+パターンはプログラム全体がコンパイルされたときと同時に
+内部表現にコンパイルされます。
+
+C</o>の使用は、変数展開(variable interpolation)がパターンの中で
+使われていなければ的外れなものになります。
+もし変数展開があると、正規表現エンジンはパターンが
+B<非常に早い段階で>評価された後で変数が変更されたことを知ることもないし、
+気にかけることもありません。
+
+C</o>は、変数の変更がないことがわかっていたり(なぜならあなた自身が
+変数を変更しないことを知っているから)、変更されたことを正規表現に
+通知したくないような場合に余計な評価を行なわないことによって
+効率を上げるために良く使われます。
+
+以下に挙げるのは “paragrep”プログラムです:
+
+    $/ = '';  # パラグラフモード
+    $pat = shift;
+    while (<>) {
+        print if /$pat/o;
+    }
+
+=head2 How do I use a regular expression to strip C style comments from a file?
+
+(ファイルから、C形式のコメントを剥ぎ取る(strip)するには
+どのように正規表現を使えば良いのでしょうか?)
+
+実際これは可能なのですが、あなたが考えているよりも非常に難しいものです。
+たとえば次の一行野郎 (one-liner)はほとんどの場合にうまく行きますが、
+すべての場合ではありません。
+
+    perl -0777 -pe 's{/\*.*?\*/}{}gs' foo.c
+
+そう、これはCのプログラムを簡単に考えすぎているのです。
+特に、クォートされた文字列にコメントが出現するということを考慮していません。
+このため、Jeffrey Friedl が作成し,
+後に Fred Curtis によって修正された次の例のようなことが必要になります。
+
+    $/ = undef;
+    $_ = <>;
+    s#/\*[^*]*\*+([^/*][^*]*\*+)*/|("(\\.|[^"\\])*"|'(\\.|[^'\\])*'|.[^/"'\\]*)#$2#gs
+    print;
+
+もちろんこれは、C</x>修飾子を使って空白やコメントを付加することで、
+より読みやすくすることが可能です。
+以下は Fred Curtis の提供による拡張版です。
+
+    s{
+       /\*         ##  Start of /* ... */ comment
+       [^*]*\*+    ##  Non-* followed by 1-or-more *'s
+       (
+         [^/*][^*]*\*+
+       )*          ##  0-or-more things which don't start with /
+                   ##    but do end with '*'
+       /           ##  End of /* ... */ comment
+
+     |         ##     OR  various things which aren't comments:
+
+       (
+         "           ##  Start of " ... " string
+         (
+           \\.           ##  Escaped char
+         |               ##    OR
+           [^"\\]        ##  Non "\
+         )*
+         "           ##  End of " ... " string
+
+       |         ##     OR
+
+         '           ##  Start of ' ... ' string
+         (
+           \\.           ##  Escaped char
+         |               ##    OR
+           [^'\\]        ##  Non '\
+         )*
+         '           ##  End of ' ... ' string
+
+       |         ##     OR
+
+         .           ##  Anything other char
+         [^/"'\\]*   ##  Chars which doesn't start a comment, string or escape
+       )
+     }{$2}gxs;
+
+A slight modification also removes C++ comments:
+
+    s#/\*[^*]*\*+([^/*][^*]*\*+)*/|//[^\n]*|("(\\.|[^"\\])*"|'(\\.|[^'\\])*'|.[^/"'\\]*)#$2#gs;
+
+=head2 Can I use Perl regular expressions to match balanced text?
+
+(Perlの正規表現をテキストのバランスが取れているかを
+検査するために使えますか?)
+
+Perlの正規表現は、後方参照(C<\1>など)のような便利な機能があることで
+“数学的” (mathematical)な正規表現よりも強力であるにもかかわらず、
+この問題に対処するには能力が足りません。
+たとえば括弧やブレースに挟まれているテキストのようなもののバランスが
+取れているかを解析するための、
+正規表現を使わないテクニックを使う必要があります。
+
+ネストする可能性のある C<`> と C<'>, C<{> と C<}>, C<(> と C<)> のような
+単一キャラクタのバランスを検査するための精巧なサブルーチンが、
+http://www.perl.com/CPAN/authors/id/TOMC/scripts/pull_quotes.gz
+にあります(7-bit ASCII専用)。
+
+CPANにある C::Scanモジュールはこのようなサブルーチンを内部的に
+使っているのですが、ドキュメントには載っていません。
+
+=head2 What does it mean that regexps are greedy?  How can I get around it?
+
+(正規表現が欲張り(greedy)であるとはどういうことですか?)
+
+ほとんどの人が、欲張り正規表現(greedy regexps)は可能な限りマッチすると
+考えています。
+技術的には、量指定子(C<?>, C<*>, C<+>, C<{}>) はパターン全体よりも貪欲です。
+Perlは local greedであることを好み、
+全体の要求を即座に満足させます。同じ量指定子のnon-greedyバージョンを得るには、
+C<??>, C<*?>, C<+?>, C<{}?>を使います。
+
+例:
+
+        $s1 = $s2 = "I am very very cold";
+        $s1 =~ s/ve.*y //;      # I am cold
+        $s2 =~ s/ve.*?y //;     # I am very cold
+
+二番目の置換が、“y ”を見つけてすぐにマッチングを中断していることに
+注目してください。量指定子 C<*?>は正規表現エンジンに対して、
+あなたが熱いジャガイモを扱っているときのように、可能な限り早く
+マッチするものを見つけて制御を次の行に渡すように効果的に指示します。
+
+=head2  How do I process each word on each line?
+
+(各行の、各単語毎に処理をするにはどうすれば良いですか?)
+
+split関数を使います。
+
+    while (<>) {
+	foreach $word ( split ) { 
+            # $word に対する処理をここで行う
+	} 
+    }
+
+これは実際には英語でいうところの語ではないことに注意してください。
+これは、単なる連続した空白でないキャラクターの塊です。
+
+アルファベットもしくは数字の並びのみを対象とするには以下のようにしてできます。
+
+    while (<>) {
+	foreach $word (m/(\w+)/g) {
+            # ここで$wordに対する処理をする
+	}
+    }
+
+=head2 How can I print out a word-frequency or line-frequency summary?
+
+(語の出現頻度や行の出現頻度のまとめをどうやれば出力できますか?)
+
+これを行うためには、入力ストリームにある単語のそれぞれについて解析する
+必要があります。
+私たちはここで、一つ前の質問と同様に、非空白キャラクターの塊を語とするのではなく
+アルファベット、ハイフン、アポストロフィ、の塊を語とします:
+
+    while (<>) {
+	while ( /(\b[^\W_\d][\w'-]+\b)/g ) {   # misses "`sheep'"
+	    $seen{$1}++;
+	}
+    }
+    while ( ($word, $count) = each %seen ) {
+	print "$count $word\n";
+    }
+
+同じことを行に対して行いたいのであれば、正規表現は必要ないでしょう。
+
+    while (<>) { 
+	$seen{$_}++;
+    }
+    while ( ($line, $count) = each %seen ) {
+	print "$count $line";
+    }
+
+ソートされた順序で出力したいのなら、ハッシュのセクションを参照してください。
+
+=head2 How can I do approximate matching?
+
+(曖昧なマッチング (approximate matching)はどうやればできますか?)
+
+CPANで入手できる String::Approx モジュールを参照してください。
+
+=head2 How do I efficiently match many regular expressions at once?
+
+(たくさんの正規表現を一度に効率良くマッチングするには?)
+
+次のようなやり方は非常に効率が悪いものです:
+
+    # slow but obvious way
+    @popstates = qw(CO ON MI WI MN);
+    while (defined($line = <>)) {
+	for $state (@popstates) {
+	    if ($line =~ /\b$state\b/i) {  
+		print $line;
+		last;
+    }
+
+なぜなら、Perlがそのようなパターンをファイルの各行毎に
+再コンパイルしなければならないからです。
+5.005では、より良いやり方があり、
+その一つは新たなC<qr//>演算子を使うというものです。
+
+    # use spiffy new qr// operator, with /i flag even
+    use 5.005;
+    @popstates = qw(CO ON MI WI MN);
+    @poppats   = map { qr/\b$_\b/i } @popstates;
+    while (defined($line = <>)) {
+	for $patobj (@poppats) {
+	    print $line if $line =~ /$patobj/;
+    }
+
+=head2 Why don't word-boundary searches with C<\b> work for me?
+
+(なぜC<\b>を使った語境界の検索がうまく行かないのでしょうか?)
+
+二つの良くある勘違いとは、C<\b>をC<\s>と同じと考えてしまうということと、
+C<\b>が空白キャラクターと非空白キャラクターの間にあるものと
+考えてしまうことです。これは両方とも間違いです。
+C<\b>はC<\w>のキャラクターと、C<\W>のキャラクターとの間にマッチします
+(つまり、C<\b>は“語”の境界なのです)。
+これはC<^>、C<$>などのアンカーと同じく幅がありません。
+ですから、これは何のキャラクターも消費しません。
+L<perlre>では、すべての正規表現メタキャラクターの振る舞いを
+解説しています。
+
+以下の例は、C<\b>の間違った使い方と、それを直したものです。
+
+    "two words" =~ /(\w+)\b(\w+)/;	    # *間違い*
+    "two words" =~ /(\w+)\s+(\w+)/;	    # 正しい
+
+    " =matchless= text" =~ /\b=(\w+)=\b/;   # *間違い*
+    " =matchless= text" =~ /=(\w+)=/;       # 正しい
+
+これらの演算子はあなたが思ったようには動作しないかもしれませんが、
+それでも C<\b>とC<\B>は実に便利に使えるのです。C<\b>の正しい使い方の例は、
+複数行に渡る重複単語のマッチングの例を見てください。
+
+C<\B>を使った例は、C<\Bis\B>というものです。これは“this”や
+“island”ではなく、“thistle”のように単語の中に収まっている“is”という
+並びだけを見つけ出します。
+
+=head2 Why does using $&, $`, or $' slow my program down?
+
+(なぜ $&, $`, $' を使うとプログラムが遅くなるのでしょうか?)
+
+プログラムのどこかでそういった変数が使われているのを見つけてしまうと、
+Perlはすべてのパターンマッチに対してそれに対処することを
+やらなければなりません。
+同様のからくりが、$1、$2などを使ったときにも行なわれます。
+このためすべての正規表現において、部分正規表現を捕捉するために
+同じコストがかかることになります。
+しかし、スクリプト中で $&などを全く使っていないのであれば、
+正規表現は部分正規表現を捕捉して不利になるようなことはしません。
+ですから、可能であれば $&や$'、$`を使わないようにすべきなのですが、
+それができないのであれば(一部のアルゴリズムはこれを使うのが便利なのです)、
+一度これらの変数を使ってしまったら好きなように使いましょう。
+なぜなら、罰金はすでに払ってしまったのですから。
+アルゴリズムの中にはこういった変数を使うことが適切であるものが
+あるということに注意してください。
+リリース5.005では、$&はもはや“高価な”ものではありません。
+
+=head2 What good is C<\G> in a regular expression?
+
+(正規表現の中でC<\G> を使うと何が良いのですか?)
+
+C<\G>記法は、最後にマッチしていた場所(つまり pos()の場所)がどこなのかを
+示すために正規表現につける目印で、C</g>修飾子と組み合わせて
+マッチングや置換で使われます。C</c>修飾子が指定されていない限り、
+失敗したマッチングはC<\G>の位置をリセットします。
+
+例として、標準的なメールやusenetのやり方で引用されているテキスト
+(つまり、先頭に C<E<gt>>がある)があって、先頭で連続している C<E<gt>>
+を同じ数の C<:>に変換したいという状況を考えてみましょう。
+これは以下のようにして実現できます。
+
+     s/^(>+)/':' x length($1)/gem;
+
+これを、C<\G>を使ってより単純(かつ)高速にできます:
+
+    s/\G>/:/g;
+
+より精巧な使い方は tokenizerに関連したものでしょう。以下に挙げたlexに似た例は、
+Jeffrey Friedlの好意によるものです。
+これは 処理系のバグのために 5.003では動作しませんが、
+5.004以降では動作します
+(C</g>を使ったマッチングが失敗して検索位置が文字列の先頭にリセットされることを
+防ぐために、C</c>を使っていることに注意すること)。
+
+    while (<>) {
+      chomp;
+      PARSER: {
+           m/ \G( \d+\b    )/gcx    && do { print "number: $1\n";  redo; };
+           m/ \G( \w+      )/gcx    && do { print "word:   $1\n";  redo; };
+           m/ \G( \s+      )/gcx    && do { print "space:  $1\n";  redo; };
+           m/ \G( [^\w\d]+ )/gcx    && do { print "other:  $1\n";  redo; };
+      }
+    }
+
+もちろん、以下のように書くこともできます
+
+    while (<>) {
+      chomp;
+      PARSER: {
+	   if ( /\G( \d+\b    )/gcx  {
+		print "number: $1\n";
+		redo PARSER;
+	   }
+	   if ( /\G( \w+      )/gcx  {
+		print "word: $1\n";
+		redo PARSER;
+	   }
+	   if ( /\G( \s+      )/gcx  {
+		print "space: $1\n";
+		redo PARSER;
+	   }
+	   if ( /\G( [^\w\d]+ )/gcx  {
+		print "other: $1\n";
+		redo PARSER;
+	   }
+      }
+    }
+
+しかし、これでは正規表現の垂直方向の揃えがなくなってしまいます。
+
+=head2 Are Perl regexps DFAs or NFAs?  Are they POSIX compliant?
+
+(Perlの正規表現ルーチンはDFAですかNFAですか?
+また、それはPOSIXに従ってますか?)
+
+Perlの正規表現はegrep(1)のDFA (deterministic finite automata, 
+決定性有限オートマトン)と似たものではあるのですが、
+実際のところはバックトラックや後方参照 (backreferencing)のために
+NFAとして実装されています。
+そして、Perlの正規表現は POSIX形式のものでもありません。
+なぜなら、それはすべてのケースにおいて最悪の振る舞いを行うからです
+(一部の人は、それが遅さをもたらすにもかからわず、一貫性をもたらすという点を
+好んでいるようです)。
+上記のことなどに関しての詳細はJeffrery Friedlによる O'Reillyから出版されている 
+"Mastering Regular Expressions" という本を参照してください。
+
+=head2 What's wrong with using grep or map in a void context?
+
+(voidコンテキストでgrepやmapを使うことのどこが間違っているのでしょうか?)
+
+=begin original
+
+Both grep and map build a return list, regardless of their context.
+This means you're making Perl go to the trouble of building up a
+return list that you then just ignore.  That's no way to treat a
+programming language, you insensitive scoundrel!
+
+=end original
+
+grepとmapの両方とも、そのコンテキストには関係なくリストを返します。
+これはつまり、Perlにあなたが無視してしまうための戻り値のリストを
+作らせるということです。プログラミング言語を扱う方法はなく、
+あなたは鈍感な無法者です!
+
+=head2 How can I match strings with multibyte characters?
+
+(複数バイトキャラクタを使った文字列のマッチングは
+どうすればできますか?)
+
+これは難しく、そしていい方法がありません。Perlはワイド文字を
+直接はサポートしておらず、一バイトと一キャラクター
+とが同一であることを要求しています。以下に、The Perl Journalの
+第五号でこの問題についてより詳しい記事を書いたJeffery Friedlにより
+提案されたアプローチの幾つかを挙げます。
+
+さて、ここでASCIIの大文字二文字で火星語の符号化をしていると仮定しましょう
+(たとえば、 "CV", "SG", "VS", "XX"などといった二バイトの並びが
+火星語の一文字を表わすということです)。
+
+ですから、火星語の符号化をしている 12バイトの "I am CVSGXX!" 文字列は、
+'I', ' ', 'a', 'm', ' ', 'CV', 'SG', 'XX', '!' という九文字で構成されます。
+
+ここで、C</GX/>という一文字検索をしたいと考えてみましょう。
+Perlは火星語については何も知りませんから、"I am CVSGXX!" という文字列にある
+"GX"二バイトを見つけ出してしまうでしょうが、これは文字として
+そこにあるものではありません。
+つまり、"SG"に続けて"XX"があるのでそう見えるだけであって、
+本当に"GX"があるわけではないのです。これは大きな問題です。
+
+この問題に対処する方法が、うんざりするようなものですが、幾つかあります:
+
+   $martian =~ s/([A-Z][A-Z])/ $1 /g; #“火星語”のバイト並びが隣接しないよう
+                                      # にする
+   print "found GX!\n" if $martian =~ /GX/;
+
+あるいは:
+
+   @chars = $martian =~ m/([A-Z][A-Z]|[^A-Z])/g;
+   # 上の行は次のものと考えは同じ:         @chars = $text =~ m/(.)/g;
+   #
+   foreach $char (@chars) {
+       print "found GX!\n", last if $char eq 'GX';
+   }
+
+あるいは:
+
+   while ($martian =~ m/\G([A-Z][A-Z]|.)/gs) {  # \Gは多分不要
+       print "found GX!\n", last if $1 eq 'GX';
+   }
+
+あるいは:
+
+   die "sorry, Perl doesn't (yet) have Martian support )-:\n";
+
+(申し訳ない。Perlは(まだ)火星語をサポートしてません )-:)
+
+今日一般的に使われている多くのダブルバイト(とマルチバイト)エンコーディングが
+あります。
+
+=head2 How do I match a pattern that is supplied by the user?
+
+(ユーザーによって与えられたパターンのマッチングはどうやるのですか?)
+
+あー、もしそれが本当にパターンであるのなら、単純に以下のようにできます。
+
+    chomp($pattern = <STDIN>);
+    if ($line =~ /$pattern/) { }
+
+ユーザーが正しい正規表現を必ず入力するという保証がないのであれば、
+以下のようにして例外を補足します。
+
+    if (eval { $line =~ /$pattern/ }) { }
+
+もしパターンではなく文字列を検索したいというのであれば、
+index()を使うとよいでしょう。
+これは文字列の検索のために作られたものです。
+あるいは、パターンでないものにパターンのようなものが入り込むのを
+防げないのであれば、L<perlre>で説明されているC<\Q>...C<\E>を使いましょう。
+
+   $pattern = <STDIN>;
+
+   open (FILE, $input) or die "Couldn't open input $input: $!; aborting";
+   while (<FILE>) {
+	print if /\Q$pattern\E/;
+    }
+    close FILE;
+
+
+=head1 AUTHOR AND COPYRIGHT
+
+Copyright (c) 1997-1999 Tom Christiansen and Nathan Torkington.
+All rights reserved.
+ 
+When included as part of the Standard Version of Perl, or as part of
+its complete documentation whether printed or otherwise, this work
+may be distributed only under the terms of Perl's Artistic License.
+Any distribution of this file or derivatives thereof I<outside>
+of that package require that special arrangements be made with
+copyright holder.
+
+Irrespective of its distribution, all code examples in this file
+are hereby placed into the public domain.  You are permitted and
+encouraged to use this code in your own programs for fun
+or for profit as you see fit.  A simple comment in the code giving
+credit would be courteous but is not required.

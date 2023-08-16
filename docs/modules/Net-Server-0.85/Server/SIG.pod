@@ -1,0 +1,179 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+Net::Server::SIG - adpf - Safer signal handling
+
+=end original
+
+Net::Server::SIG - adpf - 安全なシグナル処理
+
+=head1 概要
+
+  use Net::Server::SIG qw(register_sig check_sigs);
+  use IO::Select ();
+  use POSIX qw(WNOHANG);
+
+  my $select = IO::Select->new();
+
+  register_sig(PIPE => 'IGNORE',
+               HUP  => 'DEFAULT',
+               USR1 => sub { print "I got a SIG $_[0]\n"; },
+               USR2 => sub { print "I got a SIG $_[0]\n"; },
+               CHLD => sub { 1 while (waitpid(-1, WNOHANG) > 0); },
+               );
+
+  ### add some handles to the select
+  $select->add(\*STDIN);
+
+  ### loop forever trying to stay alive
+  while ( 1 ){
+
+    ### do a timeout to see if any signals got passed us
+    ### while we were processing another signal
+    my @fh = $select->can_read(10);
+
+    my $key;
+    my $val;
+
+    ### this is the handler for safe (fine under unsafe also)
+    if( &check_sigs() ){
+      # or my @sigs = &check_sigs();
+      next unless @fh;
+    }
+
+    my $handle = $fh[@fh];
+
+    ### do something with the handle
+
+  }
+
+=head1 説明
+
+=begin original
+
+Signals in Perl 5 are unsafe.  Some future releases may be
+able to fix some of this (ie Perl 5.8 or 6.0), but it would
+be nice to have some safe, portable signal handling now.
+Clarification - much of the time, signals are safe enough.
+However, if the program employs forking or becomes a daemon
+which can receive many simultaneous signals, then the 
+signal handling of Perl is normally not sufficient for the
+task.
+
+=end original
+
+Perl5のシグナルは安全ではない。将来のバージョン（Perl5.8や6.0）
+ではいくつかの問題は修正されているだろう。しかし今の段階で、
+ある程度安全で使いやすいシグナル処理を行うのが良いだろう。
+大概の場合、シグナルは十分安全だ。だが、もしプログラムが
+forkを使ったり、同時に多数のシグナルを受け取りうるデーモンに
+なるなら、Perl5のシグナル処理はそのような仕事を行うに通常、
+十分ではない。
+
+=begin original
+
+Using a property of the select() function, Net::Server::SIG
+attempts to fix the unsafe problem.  If a process is blocking on
+select() any signal will short circuit the select.  Using
+this concept, Net::Server::SIG does the least work possible (changing
+one bit from 0 to 1).  And depends upon the actual processing
+of the signals to take place immediately after the the select
+call via the "check_sigs" function.  See the example shown
+above and also see the sigtest.pl script located in the examples
+directory of this distribution.
+
+=end original
+
+select()関数のプロパティを使ってNet::Server::SIGは、この問題の
+修正を試みる。もし、あるプロセスがselect()によってブロック
+されると、いかなるシグナルもselectを迂回する。この考え方を
+利用して、Net::Server::SIGはできうる最も少ない仕事（0-1の
+1bitを変化させる）を行う。そしてNet::Server::SIGは、
+"check_sigs"関数を通じてselectの呼び出し後に直ちに実際の
+シグナル処理に依存する。先に示した例と、この配布物の中にある
+examplesディレクトリのsigtest.plを参照のこと。
+
+
+=head1 関数
+
+=over 4
+
+=item C<register_sig($SIG =E<gt> \&code_ref)>
+
+=begin original
+
+Takes key/value pairs where the key is the signal name, and the 
+argument is either a code ref, or the words 'DEFAULT' or
+'IGNORE'.  The function register_sig must be used in
+conjuction with check_sigs, and with a blocking select() function
+call -- otherwise, you will observe the registered signal
+mysteriously vanish.
+
+=end original
+
+キーと値の組を引数に取る。キーはシグナルの名前。また、この
+引数はサブルーチンのリファレンスか、"DEFAULT"という単語か、
+"IGNORE"のいずれかになる。register_sig関数はcheck_sigs、
+そしてブロックするselect()呼び出しと一緒に使わなければならない。
+さもなければ、登録したシグナルは不可思議にもどこかへ消えて
+しまうだろう。
+
+=item C<unregister_sig($SIG)>
+
+=begin original
+
+Takes the name of a signal as an argument.  Calls register_sig
+with a this signal name and 'DEFAULT' as arguments (same as
+register_sig(SIG,'DEFAULT')
+
+=end original
+
+引数としてシグナル名を取る。引数としてこのシグナル名と、
+"DEFAULT"を使ってregister_sigを呼ぶこと
+（ register_sig(SIG,'DEFAULT') ）。
+
+
+=item C<check_sigs()>
+
+=begin original
+
+Checks to see if any registered signals have occured.  If so, it
+will play the registered code ref for that signal.  Return value
+is array containing any SIGNAL names that had occured.
+
+=end original
+
+登録したシグナルが発生したかどうかをチェックする。もしそうなら、
+そのシグナル用に登録されたサブルーチンのリファレンスが実行される。
+戻り値は発生したシグナル名を含む配列である。
+
+=back
+
+=head1 作者
+
+Paul T Seamons (paul@seamons.com)
+
+Rob B Brown (rob@roobik.com) - Provided a sounding board and feedback
+in creating Net::Server::SIG and sigtest.pl.
+
+Rob B Brown (rob@roobik.com) - Net::Server::SIGとsigtest.plを
+つくるにあたり、意見やフィードバックをくれた。
+
+
+=head1 著作権
+
+  Copyright (C) 2001, Paul T Seamons
+                      paul@seamons.com
+                      http://seamons.com/
+
+  This package may be distributed under the terms of either the
+  GNU General Public License 
+    or the
+  Perl Artistic License
+
+  All rights reserved.
+

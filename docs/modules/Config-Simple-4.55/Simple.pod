@@ -1,0 +1,927 @@
+
+=encoding euc-jp
+
+=pod
+
+=head1 名前
+
+Config::Simple - 簡単な設定ファイルクラス
+
+=head1 概要
+
+  use Config::Simple;
+
+  # --- 簡単な使い方。設定ファイルをハッシュに読み込みます:
+  Config::Simple->import_from('app.ini', \%Config);
+  
+  # --- オブジェクト指向インターフェース:
+  $cfg = new Config::Simple('app.ini');
+
+  # 値へアクセスする:
+  $user = $cfg->param('User');
+
+  # 値をハッシュとして得る:
+  %Config = $cfg->vars();
+
+  # 文字列で値を更新する:
+  $cfg->param('User', 'sherzodR');
+
+  # 配列で値を更新する:
+  $cfg->param('Users', ['sherzodR', 'geek', 'merlyn']);
+
+  # iniファイルに新しいブロックを加える:
+  $cfg->param(-block=>'last-access', -values=>{'time'=>time()});
+  
+  # iniファイルのブロックにアクセスする:
+  $mysql = $cfg->param(-block=>'mysql');
+
+  # ファイルに変更を戻します:
+  $cfg->save();
+
+  # --- tie() インターフェース:
+  tie %Config, "Config::Simple", 'app.ini';
+
+=head1 理論
+
+Reading and writing configuration files is one of the most frequent
+tasks of any software design. Config::Simple is the library that helps
+you with it.
+
+設定ファイルを読み書きすることは、どんなソフトウェア設計でも、とても頻繁にある仕事です。
+Config::Simple は設定ファイルの読み書きに使うのに役に立つライブラリです。
+
+Config::Simple is a class representing configuration file object. 
+It supports several configuration file syntax and tries to identify the 
+file syntax automatically. Library supports parsing, updating and creating 
+configuration files.
+
+Config::Simple は、設定ファイルオブジェクトを、代表するクラスです。
+複数の設定ファイルのシンタックスをサポートし、ファイルのシンタックスを
+自動的に特定します。ライブラリは、設定ファイルの解析、更新、
+生成をサポートします。
+
+=head1 設定ファイルについて
+
+Keeping configurable variables in your program source code is ugly, really.
+And for people without much of a programming experience, configuring
+your programs is like performing black magic. Besides, if you need to
+access these values from within multiple files, want your programs
+to be able to update configuration files or want to provide a friendlier
+user interface for your configuration files, you just have to store them in 
+an external file. That's where Config::Simple comes into play, making it
+very easy to read and write configuration files.
+
+設定可能な変数をプログラムのソースコードにおいておくのは、本当に、醜いことです。
+プログラミングの経験が多くない人にとっては、人のプログラムを設定することは
+黒魔術をするようなことです。加えて、複数のファイルから、
+それらの値にアクセスする必要があるなら、
+設定ファイルを更新できるプログラムにしたいか、
+設定ファイルのために、よりやさしいユーザーインターフェースを提供したい。
+または、ただ、外部のファイルにそれらの値を置きさえすればいいかもしれない。
+Config::Simple が役に立ちます。Config::Simpleを使うと、
+設定ファイルの読み書きが、とても楽になります。
+
+If you have never used configuration files before, here is a brief
+overview of various syntax to choose from. Otherwise you can jump to
+L</PROGRAMMING STYLE>.
+
+これまでに、設定ファイルを使ったことがなければ、
+次に、各種シンタックスの、簡単な概観を示しますので、そこから選んでください。
+これまでに設定ファイルを使ったことがあるのなら、
+L</プログラミングスタイル>まで読み飛ばしてもいいでしょう。
+
+=head2 単純な設定ファイル
+
+Simple syntax is what you need for most of your projects. These
+are, as the name asserts, the simplest. File consists of key/value
+pairs, delimited by nothing but white space. Keys (variables) should
+be strictly alpha-numeric with possible dashes (-). Values can hold
+any arbitrary text. Here is an example of such a configuration file:
+
+単純なシンタックスは、ほとんどのプロジェクトにとって必要なものです。
+それらは、その名が示すように 、最も単純です。
+ファイルはキー/値のペアから成ります。ただの空白のみで区切られます。
+キー(変数)は厳密に英数字とダッシュ(-)です。
+値にはどんな任意のテキストでも持てます。このような設定ファイルの例です：
+
+  Alias     /exec
+  TempFile  /usr/tmp
+
+Comments start with a pound ('#') sign and cannot share the same
+line with other configuration data.
+
+コメントはポンド('#')記号で始まり、コメントと同じ行に
+他の設定データは割り当てられません。
+
+=head2 HTTPライクなシンタックス
+
+This format of separating key/value pairs is used by HTTP messages.
+Each key/value is separated by semi-colon (:). Keys are alphanumeric
+strings with possible '-'. Values can be any arbitrary text:
+
+このキー/値のペアを分割するフォーマットはHTTPメッセージで使われています。
+キー/値はそれぞれコロン(:)で分割されます。キーは英数字とダッシュ(-)からなる文字列です。
+値にはどのような任意のテキストでも持てます:
+
+例:
+
+  Alias: /exec
+  TempFile: /usr/tmp
+
+It is OK to have spaces around ':'. Comments start with '#' and cannot
+share the same line with other configuration data.
+
+':' の周りにスペースがあってもかまいません。
+コメントは'#'で始まり、コメントと同じ行に他の設定データは割り当てられません。
+
+
+=head2 INIファイル
+
+These configuration files are more native to Win32 systems. Data
+is organized in blocks. Each key/value pair is delimited with an
+equal (=) sign. Blocks are declared on their own lines enclosed in
+'[' and ']':
+
+これらの設定ファイルは、Win32システムでより自然です。
+データはブロックで組織されます。それぞれの キー/値のペアは
+イコール(=)記号で区切られます。ブロックは'['と']'で囲まれた行で宣言されます。
+
+  [BLOCK1]
+  KEY1=VALUE1
+  KEY2=VALUE2
+
+
+  [BLOCK2]
+  KEY1=VALUE1
+  KEY2=VALUE2
+
+Your Winamp 2.x play list is an example of such a configuration file.
+
+Winamp 2.x のプレイリストはこの設定ファイルの例です。
+
+This is the perfect choice if you need to organize your configuration
+file into categories:
+
+カテゴリで設定ファイルを組織したければ、これは完璧な選択です：
+
+  [site]
+  url="http://www.handalak.com"
+  title="Web site of a \"Geek\""
+  author=sherzodr
+
+  [mysql]  
+  dsn="dbi:mysql:db_name;host=handalak.com"
+  user=sherzodr
+  password=marley01
+
+=head2 簡易的INIファイル
+
+These files are pretty much similar to traditional ini-files, except they don't
+have any block declarations. This style is handy if you do not want any categorization
+in your configuration file, but still want to use '=' delimited key/value pairs. 
+While working with such files, Config::Simple assigns them to a default block, 
+called 'default' by default :-).
+
+ブロックの宣言を持たないことを除けば、これらのファイルは伝統的なiniファイルに似ています。
+設定ファイルに全然カテゴリが欲しくないけれど、'='をキー/値のペアに区切りに使いたいなら、
+このスタイルは手軽です。このようなファイルで仕事していながら、Config::Simple は、
+デフォルトで'default'と呼ばれるデフォルトのブロックにキー/値のペアを割り当てます :-)
+
+  url = "http://www.handalak.com"
+
+Comments can begin with either pound ('#') or semi-colon (';'). Each comment
+should reside on its own line
+
+コメントはポンド('#')か、セミコロン(';')ではじめられます。
+それぞれのコメントはその行になければなりません。
+
+=head1 プログラミングスタイル
+
+Most of the programs simply need to be able to read settings from a configuration
+file and assign them to a hash. If that's all you need, you can simply use
+its import_from() - class method with the name of the configuration file
+and a reference to an existing (possibly empty) hash:
+
+ほとんどのプログラムは、設定ファイルから設定を読み、
+それらをハッシュに割り当てることが簡単にできなければなりません。
+必要なことがこれだけなら、単純に、import_from()
+ - 設定ファイルの名前と既存の(なるべく空の)ハッシュリファレンスを引数にとるクラスメソッド - 
+を使うことができます。
+
+  Config::Simple->import_from('myconf.cfg', \%Config);
+  
+Now your hash %Config holds all the configuration file's key/value pairs.
+Keys of a hash are variable names inside your configuration file, and values
+are their respective values. If "myconf.cfg" was a traditional ini-file, 
+keys of the hash consist of block name and variable delimited with a dot, such
+as "block.var".
+
+これで、ハッシュ %Config は全ての設定ファイルのキー/値のペアを持つことができます。
+ハッシュのキーは、設定ファイル内の変数名です。値はそれらのキーの、それぞれの値です。
+もし、"myconf.cfg" が伝統的な iniファイルなら、ハッシュのキーは、
+ドットで区切られたブロックの名前と変数、"block.var"のようになります。
+
+If that's all you need, you can stop right here. Otherwise, read on. There is
+much more Config::Simple offers.
+
+これだけが必要なら、ここで読むのを止めるのが正解です。
+そうでないなら、読み続けてください。もっと多くの Config::Simple が提供するものがあります。
+
+=head2 設定ファイルを読む
+
+To be able to use more features of the library, you will need to use its object
+interface:
+
+このライブラリの機能をもっと使うためには、
+オブジェクトインターフェースを使う必要があります:
+
+  $cfg = new Config::Simple('app.cfg');
+
+The above line reads and parses the configuration file accordingly.
+It tries to guess which syntax is used by passing the file to guess_syntax() method.
+Alternatively, you can create an empty object, and only then read the configuration file in:
+
+上の行は設定ファイルを読み、それ相応に解釈します。
+guess_syntax() メソッドにファイルを渡すことで、どのシンタックスが使われているかを推測しようとします。
+その代わりに、空のオブジェクトを作成し、それから、設定ファイルを読むことができます。
+
+  $cfg = new Config::Simple();
+  $cfg->read('app.cfg');
+
+As in the first example, read() also calls guess_syntax() method on the file.
+
+最初の例のように、read() も、そのファイルで、 guess_syntax()メソッドを呼びます。
+
+If, for any reason, it fails to guess the syntax correctly (which is less likely),
+you can try to debug by using its guess_syntax() method. It expects
+file handle for a  configuration file and returns the name of a syntax. Return
+value is one of "ini", "simple" or "http".
+
+何らかの理由で、シンタックスを正確に推測するのに失敗すると(あまりありそうにはないことですが)、
+guess_syntax()メソッドを使うことでデバッグを試みることができます。
+設定ファイルのファイルハンドルを(訳註:引数に)期待し、シンタックスの名前を返します。
+返り値は、"ini"か"simple"か"http"のどれかです。
+
+  open(FH, "app.cfg");
+  printf("This file uses '%s' syntax\n", $cfg->guess_syntax(\*FH));
+
+=head2 値にアクセスする
+
+After you read the configuration file in successfully, you can use param() 
+method to access the configuration values. For example:
+
+設定ファイルを、うまく読めると、param()メソッドを使って、
+設定値にアクセスできます。たとえば:
+
+  $user = $cfg->param("User");
+
+will return the value of "User" from either simple configuration file, or
+http-styled configuration as well as simplified ini-files. To access the
+value from a traditional ini-file, consider the following syntax:
+
+これは、"User"の値を返します。 単純な設定ファイル、httpスタイルの設定ファイル、
+簡易的iniファイルも、もちろん。伝統的なiniファイルから値にアクセスするためには、
+下のようなシンタックスに注意してください:
+
+  $user = $cfg->param("mysql.user");
+
+The above returns the value of "user" from within "[mysql]" block. Notice the
+use of dot "." to delimit block and key names.
+
+これは、"[mysql]"ブロックの"user"の値を返します。
+ブロックとキーの名前の区切りにドット"."を使うのに気をつけてください。
+
+Config::Simple also supports vars() method, which, depending on the context
+used, returns all the values either as hashref or hash:
+
+Config::Simple は、vars()メソッドもサポートします。
+これは、使われるコンテキストに依存して、ハッシュリファレンスかハッシュで、
+すべての値を返します:
+
+  my %Config = $cfg->vars();
+  print "Username: $Config{User}";
+
+  # 伝統的なiniファイルの場合:
+  print "Username: $Config{'mysql.user'}";
+
+If you call vars() in scalar context, you will end up with a reference to a hash:
+
+スカラコンテキストで、vars()を呼ぶと、ハッシュへのリファレンスで終ります:
+
+  my $Config = $cfg->vars();
+  print "Username: $Config->{User}";
+
+If you know what you're doing, you can also have an option of importing all the
+names from the configuration file into your current name space as global variables.
+All the block/key names will be uppercased and will be converted to Perl's valid
+variable names; that is, all the dots (block-key separator) and other '\W' characters will be 
+substituted with underscore '_':
+
+何をしているか分かっているのなら、設定ファイルから現在の名前空間にグローバル変数として、
+全ての名前をインポートするオプションがあります。
+全てのブロック/キーの名前は、大文字にされ、Perlの妥当な変数名になります;
+つまり、全てのドット(ブロック-キーのセパレータ)と、他の'\W'キャラクタが、
+アンダースコア'_'で置換されます:
+
+  $cfg = new Config::Simple('app.cfg');
+  $cfg->import_names();
+
+  # または、一行で:
+  Config::Simple->new('app.cfg')->import_names();
+  
+  print STDERR "Debugging mode is on" if $DEBUG_MODE;
+
+In the above example, if there was a variable 'mode' under '[debug]' block,
+it will be now accessible via $DEBUG_MODE, as opposed to $cfg->param('debug.mode');
+
+上の例では、'[debug]'ブロックに、変数'mode'がある場合、
+$DEBUG_MODEを通して、アクセス可能になります。
+$cfg->param('debug.mode') と対照的です。
+
+C<import_names()> by default imports the values to its caller's name space. 
+Optionally, you can specify where to import the values by passing the name of the 
+name space as the first argument. It also prevents potential name collisions:
+
+デフォルトでは、C<import_names()> は、呼び出しもとの名前空間に値をインポートします。
+オプションで、第一引数に名前空間の名前を渡すことで、値を特定の場所にインポートできます。
+潜在的な名前の衝突を未然に防げます:
+
+  Config::Simple->new('app.cfg')->import_names('CFG');
+  print STDERR "Debugging mode is on" if $CFG::DEBUG_MODE;
+
+If all you want is to import values from a configuration file, the above syntax may still
+seem longer than necessary. That's why Config::Simple supports import_from() - class method,
+which is called with the name of the configuration file. It will call import_names() for you:
+
+設定ファイルから値をインポートするのをやりたいだけなら、
+上のシンタックスは必要なものよりも、まだ、長いかもしれません。
+そんなわけで、Config::Simple は import_from()をサポートします。
+これはクラスメソッドで、設定ファイルの名前を引数に呼ばれます。
+import_from()は、import_names を呼びます:
+
+  Config::Simple->import_from('app.cfg');
+
+The above line imports all the variables into the caller's name space. It's similar to
+calling import_names() on an object. If you pass a string as the second argument,
+it will treat it as the alternative name space to import the names into. As we 
+already showed in the very first example, you can also pass a reference to an existing
+hash as the second argument. In this case, that hash will be modified with the values
+of the configuration file.
+
+上の行は全ての変数を呼び出し元の名前空間にインポートします。
+オブジェクトで、import_names() を呼ぶのに似ています。2番目の引数として、
+文字列を渡すと、その文字列を代わりの名前空間として扱い、名前をその名前空間にインポートします。
+一番最初の例ですでに見せたように、2番目の引数として、既存のハッシュへのリファレンスを渡すこともできます。
+その場合、そのハッシュは設定ファイルの値で変更されます。
+
+  # $CFG名前空間にインポートします:
+  Config::Simple->import_from('app.cfg', 'CFG');
+
+  # %Configハッシュにインポートします:
+  Config::Simple->import_from('app.cfg', \%Config);
+
+The above line imports all the values to 'CFG' name space. import_from() returns
+underlying Config::Simple object (which you may not even need anymore):
+
+上の行では、'CFG'名前空間に全ての値をインポートします。import_from() は、
+基礎となる、Config::Simple オブジェクトを返します(もはや、必要でないかもしれませんが):
+
+  $cfg = Config::Simple->import_from('app.cfg', \my %Config);
+  $cfg->write('app.cfg.bak');
+
+=head2 値を更新する
+
+Configuration values, once read into Config::Simple, can be updated from within
+your program by using the same param() method used for accessing them. For example:
+
+Config::Simple に一度読まれると、プログラムで値にアクセスするのと同じ
+param() メソッドを使って、設定値を更新することができます。たとえば:
+
+  $cfg->param("User", "sherzodR");
+
+The above line changes the value of "User" to "sherzodR". Similar syntax is applicable
+for ini-files as well:
+
+上の行は、"User"の値を"sherzodR"に変更します。類似のシンタックスは
+iniファイルでも同様に当てはまります:
+
+  $cfg->param("mysql.user", "sherzodR");
+
+If the key you're trying to update does not exist, it will be created. For example,
+to add a new "[session]" block to your ini-file, assuming this block doesn't already
+exist:
+
+更新しようとするキーが存在しなければ、作成されます。たとえば、次のようにすると
+iniファイルに"[session]"ブロックがなければ、新しい"[session]"ブロックが追加されます。
+
+  $cfg->param("session.life", "+1M");
+
+You can also delete values calling delete() method with the name of the variable:
+
+変数の名前を引数に、delete()メソッドを呼ぶことで、値を消すこともできます:
+
+  $cfg->delete('mysql.user'); # [mysql]ブロックの下の、'user'を削除する
+
+=head2 設定ファイルを保存/書込する
+
+The above updates to the configuration values are in-memory operations. They
+do not reflect in the file itself. To modify the files accordingly, you need to
+call either "write()" or "save()" methods on the object:
+
+上のような設定値の更新は、メモリ内の操作です。
+ファイル自身には、反映されません。したがって、ファイルを変更するためには、
+オブジェクトで、"write()"メソッドか"save()"メソッドを呼ぶ必要があります:
+
+  $cfg->write();
+
+The above line writes the modifications to the configuration file. Alternatively,
+you can pass a name to either write() or save() to indicate the name of the
+file to create instead of modifying existing configuration file:
+
+上の行では、設定ファイルへの変更を書き込みます。
+既存の設定ファイルを変更する代わりに、write() か save() に、生成するファイルの名前を渡すことができます:
+
+  $cfg->write("app.cfg.bak");
+
+If you want the changes saved at all times, you can turn C<autosave> mode on
+by passing true value to $cfg->autosave(). It will make sure before your program
+is terminated, all the configuration values are written back to its file:
+
+いつでも変更を保存したいなら、$cfg->autosave() に真の値を渡すことで、
+C<autosave>モードを有効にできます。プログラムが終わる前に、確実に、
+全ての設定値がそのファイルに書き出されます:
+
+  $cfg = new Config::Simple('aff.cfg');
+  $cfg->autosave(1);
+
+=head2 設定ファイルを生成する
+
+Occasionally, your programs may want to create their own configuration files
+on the fly, possibly from a user input. To create a configuration file from
+scratch using Config::Simple, simply create an empty configuration file object
+and define your syntax. You can do it by either passing "syntax" option to new(),
+or by calling syntax() method. Then play with param() method as you normally would.
+When you're done, call write() method with the name of the configuration file:
+
+たまには、プログラムが自分自身の設定ファイルをユーザの入力からオンザフライに
+生成したいこともあるでしょう。
+Config::Simple を使って、スクラッチから設定ファイルを作るためには、
+単純に、空の設定ファイルオブジェクトを作り、シンタックスを定義します。
+new()に、"syntax"オプションを渡すか、syntax() を呼ぶことで、それができます。
+それから、普通にするように、param() メソッドを使えます。
+parma()メソッドを使ってから、設定ファイルの名前で、write()メソッドを呼びます:
+
+  $cfg = new Config::Simple(syntax=>'ini');
+  # または、次のようにもできます:
+  # $cfg->autosave('ini')
+
+  $cfg->param("mysql.dsn", "DBI:mysql:db;host=handalak.com");
+  $cfg->param("mysql.user", "sherzodr");
+  $cfg->param("mysql.pass", 'marley01');
+  $cfg->param("site.title", 'sherzodR "The Geek"');
+  $cfg->write("new.cfg");
+
+This creates a file "new.cfg" with the following content:
+
+上のコードは、下の内容で、"new.cfg" ファイルを作成します:
+
+  ; Config::Simple 4.43
+  ; Sat Mar  8 00:32:49 2003
+
+  [site]
+  title=sherzodR "The Geek"
+
+  [mysql]
+  pass=marley01
+  dsn=DBI:mysql:db;host=handalak.com
+  user=sherzodr
+
+Neat, huh? Supported syntax keywords are "ini", "simple" or "http". Currently
+there is no support for creating simplified ini-files.
+
+良いでしょ？ シンタックスのキーワードは、"ini", "simple", "http" をサポートします。
+現在、簡易的iniファイルの生成はサポートしていません(訳註：サポートされているように思います)。
+
+=head2 複数の値
+
+Ever wanted to define array of values in your single configuration variable? I have!
+That's why Config::Simple supports this fancy feature as well. Simply separate your values
+with a comma:
+
+一つの設定変数に、配列の値を定義したいでしょうか？ ありますよね！
+Config::Simple は今までと同じように、この素敵な特徴をサポートします。
+単純に、値をカンマで区切ればいいだけです。
+
+  Files hp.cgi, template.html, styles.css
+
+Now param() method returns an array of values:
+
+このとき、param()メソッドは、配列の値を返します:
+
+  @files = $cfg->param("Files");
+  unlink $_ for @files;
+
+If you want a comma as part of a value, enclose the value(s) in double quotes:
+
+値の一部にカンマを使いたければ、 ダブルクォートで値を囲んでください:
+
+  CVSFiles "hp.cgi,v", "template.html,v", "styles.css,v"
+
+In case you want either of the values to hold literal quote ("), you can
+escape it with a backlash:
+
+リテラルのクォート(")を値に持ちたい場合、バックスラッシュで、エスケープできます:
+
+  SiteTitle "sherzod \"The Geek\""
+
+=head2 TIEインターフェース 
+
+If OO style intimidates you, and C<import_from()> is too simple for you,
+Config::Simple also supports tie() interface. This interface allows you to tie()
+an ordinary Perl hash to the configuration file. From that point on, you can use 
+the variable as an ordinary Perl hash. 
+
+オブジェクト指向スタイルが恐いなら、C<import_from()>はとても簡単です。
+Config::Simple は、tie() インターフェースもサポートします。
+このインターフェースによって、設定ファイルを、普通のPerlのハッシュに、tie() することができます。
+この時から、通常のPerlハッシュとして、値を使うことができます。
+
+  tie %Config, "Config::Simple", 'app.cfg';
+
+  # 通常のハッシュのように、%Config を使います
+  print "Username is '$Config{User}'\n";
+  $Config{User} = 'sherzodR';
+
+The difference between C<import_from($file, \%Hash)> is, all the changes you make
+to the hash after tie()ing it, will also reflect in the configuration file object.
+If autosave() was turned on, they will also be written back to file:
+
+C<import_from($file, \%Hash)> との違いは、tie()した後のハッシュに行った全ての
+変更は、設定ファイルオブジェクトに反映されます。
+autosave()が有効なら、ファイルにも書き出されるでしょう:
+
+  tie %Config, "Config::Simple", "app.cfg";
+  tied(%Config)->autosave(1);  
+
+To access the method provided in OO syntax, you need to get underlying Config::Simple
+object. You can do so with tied() function:
+  
+オブジェクト指向シンタックスで、提供されるメソッドにアクセスするために、
+基礎にあるConfig::Simple オブジェクトを取る必要があります。tied() 関数でそれができます:
+
+  tied(%Config)->write();
+
+WARNING: tie interface is experimental and not well tested yet. Let me know if you 
+encounter a problem.
+
+警告: tie インターフェースは実験的であり、十分にテストされていません。
+問題にでくわしたら、教えてください。
+ 
+=head1 その他
+
+=head2 大文字、小文字は区別される
+
+By default, configuration file keys and values are case sensitive. Which means,
+$cfg->param("User") and $cfg->param("user") are referring to two different values.
+But it is possible to force Config::Simple to ignore cases all together by enabling
+C<-lc> switch while loading the library:
+
+デフォルトでは、設定ファイルのキーと値は大文字、小文字は区別されます。
+この意味は、$cfg->param("User") と、
+$cfg->param("user") は、2つの違った値を参照します。
+ですが、Config::Simple に、大文字、小文字の区別を無視させることもできます。
+ライブラリのロード時に、C<-lc> スイッチを有効にします:
+
+  use Config::Simple ('-lc');
+
+WARNING: If you call write() or save(), while working on C<-lc> mode, all the case
+information of the original file will be lost. So use it if you know what you're doing.
+
+警告: write() か save() を呼ぶと、C<-lc>モードが有効であると、
+元のファイルの、大文字、小文字の全ての情報は、失われます。
+ですので、何をしているのか分かっていないなら、これを使わないでください。
+
+=head2 クォートを使う
+
+Some people suggest if values consist of none alpha-numeric strings, they should be
+enclosed in double quotes. Well, says them! Although Config::Simple supports parsing
+such configuration files already, it doesn't follow this rule while writing them. 
+If you really need it to generate such compatible configuration files, C<-strict>
+switch is what you need:
+
+値が英数字以外の文字からなるなら、次のように提案する人もいます。
+ダブルクォートで囲むべきだと。えー、そうですね！
+Config::Simple は、そのような設定ファイルも、既にサポートしていますが、
+そういう設定ファイルを書く間は、Config::Simpleは、このルールに従いません。
+このルールが本当に必要なら、コンパチブルな設定ファイルを生成するために、
+C<-strict>スイッチが必要です:
+
+  use Config::Simple '-strict';
+
+Now, when you write the configuration data back to files, if values hold any none alpha-numeric
+strings, they will be quoted accordingly. All the double quotes that are part of the
+value will be escaped with a backslash.
+
+これで、ファイルに設定データを書くとき、値がどんな英数字以外の文字列を含んでいても、
+適切にクォートされます。値の一部にあるダブルクォートは、全てバックスラッシュでエスケープされます。
+
+=head2 例外ハンドル
+
+Config::Simple doesn't believe in dying that easily (unless you insult it using wrong syntax).
+It leaves the decision to the programmer implementing the library. You can use its error() -
+class method to access underlying error message. Methods that require you to check
+for their return values are read() and write(). If you pass filename to new(), you will
+need to check its return value as well. They return any true value indicating success,
+undef otherwise:
+
+Config::Simple がたやすく死ぬとは考えられません(間違ったシンタックスを使うようなことをしないかぎり)。
+Config::Simpleは、例外ハンドルライブラリを実装する判断をプログラマにまかせます。
+error() クラスメソッドを使うと、基礎となるエラーメッセージにアクセスできます。
+返り値をチェックする必要のあるメソッドは、read() と write() です。
+new()にファイル名を渡す場合も、同様に、その返り値をチェックする必要があります。
+成功なら、なんらかの真の値を返します。そうでなければ、undefを返します:
+
+  # 下のnew()は、常に真を返します:
+  $cfg = new Config::Simple();
+
+  # read() は、失敗することもあります:
+  $cfg->read('app.cfg') or die $cfg->error();
+
+  # 下の new()は、失敗することもあります:
+  $cfg = new Config::Simple('app.cfg') or die Config::Simple->error();
+
+  # import_from() は、 read() を呼ぶので, 失敗することもあります:
+  Config::Simple->import_from('app.cfg', \%Config) or die Config::Simple->error();
+
+  # write() は失敗するかもしれません:
+  $cfg->write() or die $cfg->error();
+
+  # tie() は失敗するかもしれません。ファイル名を引数に、new() を呼ぶので:
+  tie %Config, "Config::Simple", 'app.cfg' or die Config::Simple->error();
+
+=head1 メソッド
+
+=over 4
+
+=item new()
+
+- constructor. Optionally accepts several arguments. Returns Config::Simple object.
+Supported arguments are B<filename>, B<syntax>, B<autosave>. If there is a single
+argument, will be treated as the name of the configuration file.
+
+- コンストラクタ。オプションとして、複数の引数を受け入れます。Config::Simpleオブジェクトを返します。
+引数は、B<filename>、B<syntax>、B<autosave>です。もし、引数が1つなら、設定ファイルの名前として扱われます。
+
+=item autosave([$bool])
+
+- turns 'autosave' mode on if passed true argument. Returns current autosave mode
+if used without arguments. In 'autosave' mode Config::Simple writes all the changes
+back to its file without you having to call write() or save()
+
+- 真の引数を渡せば、'autosave'モードを有効にします。引数なしで、使うと、現在の autosave モードを返します。
+'autosave'モードでは、Config::Simpleは、write()か、save()を呼ぶことなしに、全ての変更をファイルに書き戻します。
+
+=item read()
+
+- accepts name  of the configuration file to parse. Before that, it tries to 
+guess the syntax of the file by calling guess_syntax() method. Then calls either of
+parse_ini_file(), parse_cfg_file() or parse_http_file() accordingly. If the name
+of the file is provided to the constructor - new(), there is no need to call read().
+
+設定ファイルの名前を受け入れ、解析します。
+その前に、guess_sntax()を呼んで、ファイルのシンタックスを推測しようとします。
+それから、適切に、parse_ini_file()か、parse_cfg_file()か、parse_http_file()を呼びます。
+コンストラクタ - new() - にファイルの名前が提供されると、read()を呼ぶ必要はありません。
+
+=item param([$name], [$value])
+
+- used for accessing and updating configuration variables. If used with no arguments
+returns all the available names from the configuration file.
+
+- 設定値にアクセス、および、更新するのに使われます。
+引数なしで使われると、設定ファイルから利用可能な全ての名前を返します。
+
+=item delete($name)
+
+- deletes a variable from a configuration file. $name has the same meaning and syntax
+as it does in param($name)
+
+- 設定から変数を消します。$name は、param($name)のシンタックスと、同じ意味です。
+
+=item clear() 
+
+- clears all the data from the object. Calling save() or turning autosave() on results
+in an empty configuration file as well.
+
+- オブジェクトから全てのデータを消します。
+save()を呼ぶか、autosave()を有効にしていると、結果として、空の設定ファイルになります。
+
+=item vars()
+
+- depending on the context used, returns all the values available in the configuration
+file either as a hash or a reference to a hash
+
+使われるコンテキストによって、ハッシュか、ハッシュへのリファレンスとして、
+設定ファイルの全ての利用可能な値を返します。
+
+=item import_names([$NS])
+
+- imports all the names from the configuration file to the caller's name space. Optional
+argument, if passed, will be treated as the name space variables to be imported into.
+All the names will be uppercased. Non-alphanumeric strings in the values will be underscored
+
+設定ファイルから、全ての名前を、呼び出し元の名前空間にインポートします。
+オプションに引数を渡せば、その引数をインポート先の名前空間の変数として扱います。
+全ての名前は、大文字になります。値に含まれる英数字以外の文字列は、アンダースコアになります。
+
+=item import_from($file, \%hash | $NS)
+
+- class method. If the second argument is a reference to an existing hash, it will
+load all the configuration contents into that hash. If the second argument is a 
+string, it will be treated as the name space variables should be imported into, just
+like import_names() does.
+
+- クラスメソッドです。2番目の引数は既存のハッシュへのリファレンスです。
+ハッシュに全ての設定内容を読み込みます。
+2番目の引数が文字列であれば、インポート先の名前空間の変数として扱われます。
+ちょうど、import_names()がするのと同じです。
+
+=item get_block($name)
+
+is mostly used for accessing blocks in ini-styled configuration files. 
+Returns a hashref of all the key/value pairs of a given block. Also supported by param()
+method with the help of "-block" option:
+
+これは、iniスタイルの設定ファイルのブロックにアクセスするために、よく使われます。
+与えられたブロックの、全てのキー/値のペアのハッシュリファレンスを返します。
+"-block"オプションの助けで、param() メソッドでもサポートされます:
+
+  $hash = $cfg->get_block('Project');
+  # 次のものと同じです:
+  $hash = $cfg->param(-block=>'Project');
+
+=item set_block($name, $values)
+
+used in assigning contents to a block in ini-styled configuration files. $name should
+be the name of a [block], and $values is assumed to be a hashref mapping key/value pairs.
+Also supported by param() method with the help of "-block" and "-value" (or "-values") options:
+
+iniスタイルの設定ファイルのブロックに内容を割り当てるのに使われます。
+$name は、[ブロック]の名前であるべきです。
+$value は、キー/値のペアをマッピングするハッシュリファレンスであると想定されます。
+"-block"と、"-value"(または、"-values")オプションの助けで、param()メソッドでもサポートされます:
+
+  $cfg->set_block('Project', {Count=>3, 'Multiple Column' => 20});
+  # 次のものと同じです:
+  $cfg->param(-block=>'Project', -value=>{Count=>3, 'Multiple Column' => 20});
+
+Warning: all the contents of a block, if previously existed will be wiped out.
+If you want to set specific key/value pairs, use explicit method:
+
+警告: ブロックの全ての内容であり、その前に存在していても、内容は消去されます。
+特定のキー/値 のペアをセットしたければ、はっきりとしたメソッドを使ってください:
+
+  $cfg->param('Project.Count', 3);
+
+=item as_string()
+
+- returns the configuration file as a chunk of text. It is the same text used by
+write() and save() to store the new configuration file back to file.
+
+- テキストの塊として、設定ファイルを返します。
+新しい設定ファイルを、ファイルに戻して蓄える、write() と save() メソッドで使われる同じテキストです。
+
+=item write()
+
+- writes the configuration file into disk. Argument, if passed, will be treated
+as the name of the file configuration variables should be saved in.
+
+- 設定ファイルをディスクに書きます。引数を渡すと、設定値が保存されるファイル名として扱われます。
+
+=item save()
+
+- same as write().
+
+- write()と同じ。
+
+=item dump()
+
+- for debugging only. Dumps the whole Config::Simple object using Data::Dumper.
+Argument, if passed, will be treated as the name of the file object should be dumped in.
+The second argument specifies amount of indentation as documented in L<Data::Dumper|Data::Dumper>
+manual. Default indent size is 2.
+
+- デバッグ専用。Data::Dumper を使って、Config::Simpleオブジェクトを全てダンプします。
+引数を渡すと、オブジェクトをダンプするファイル名として扱われます。
+2番目の引数はインデント幅を決めます。L<Data::Dumper|Data::Dumper>のマニュアルに書かれています。
+デフォルトのインデントのサイズは2です。
+
+=item error()
+
+- returns the last error message from read/write or import_* operations.
+
+- read/write、improt_* オペレーションからの最後のエラーメッセージを返します。
+
+=back
+
+=head1 TODO
+
+=over 4
+
+=item *
+
+Support for lines with continuation character, '\'. Currently its support
+is restricted and quite possibly buggy.
+
+継続文字列、'\'での、複数行のサポート。
+現在、そのサポートは制限されていて、バグのでる可能性が高いです。
+
+=item *
+
+Retaining comments while writing the configuration files back and/or methods for
+manipulating comments. Everyone loves comments!
+
+設定をファイルに書き戻す時にコメントを保持し、および/または、
+メソッドでコメントを操作する。みんな、コメントが大好きだ！
+
+=item *
+
+Retain the order of the blocks and other variables in the configuration files.
+
+設定ファイルのブロックや他の変数の順番を保持する。
+
+=back
+
+=head1 バグ
+
+Submit bugs and possibly patches to Sherzod B. Ruzmetov E<lt>sherzodr@cpan.orgE<gt>.
+
+バグを、可能ならパッチを Sherzod B. Ruzmetov E<lt>sherzodr@cpan.orgE<gt> に提出してください.
+
+=head1 クレジット
+
+=over 4
+
+=item Michael Caldwell (mjc@mjcnet.com)
+
+whitespace support, C<-lc> switch and for various bug fixes
+
+空白サポート、C<-lc>スイッチ、様々なバグフィックス。
+
+=item Scott Weinstein (Scott.Weinstein@lazard.com)
+
+bug fix in TIEHASH
+
+TIEHASH のバグフィックス。
+
+=item Ruslan U. Zakirov <cubic@wr.miee.ru>
+
+default name space suggestion and patch
+
+デフォルトの名前空間の提案とパッチ。
+
+=item Hirosi Taguti
+
+import_names() and import_from() idea.
+
+import_names() と、import_from() のアイデア。
+
+=item Vitaly Kushneriuk
+
+for bug fixes and suggestions
+
+バグフィックスと提案。
+
+=back
+
+=head1 著作権
+
+ (原文まま)
+
+  Copyright (C) 2002-2003 Sherzod B. Ruzmetov.
+ 
+  This software is free library. You can modify and/or distribute it
+  under the same terms as Perl itself
+
+=head1 著者
+
+  (原文まま)
+
+  Sherzod B. Ruzmetov E<lt>sherzodr@cpan.orgE<gt>
+  URI: http://author.handalak.com
+
+=head1 SEE ALSO 
+
+L<Config::General>, L<Config::Simple>, L<Config::Tiny>
+
+=head1 翻訳について
+
+翻訳者：加藤敦 (ktat.is@gmail.com)
+
+Perlドキュメント日本語訳 Project にて、
+Perlモジュール、ドキュメントの翻訳を行っております。
+
+ http://sourceforge.jp/projects/perldocjp/
+ http://www.freeml.com/ctrl/html/MLInfoForm/perldocjp@freeml.com
+ http://www.perldoc.jp
+

@@ -1,0 +1,258 @@
+
+=encoding utf8
+
+=head1 名前
+
+Text::CSV_XS - CSV形式の操作ルーチン
+
+=head1 概要
+
+ use Text::CSV_XS;
+
+ $csv = Text::CSV_XS->new();           # 新しいオブジェクトを作る
+ $csv = Text::CSV_XS->new(\%attr);     # 新しいオブジェクトを作る
+
+ $status = $csv->combine(@columns);    # 縦列を連結して一つの文字列にする
+ $line = $csv->string();               # 連結したその文字列を得る
+
+ $status = $csv->parse($line);         # CSV文字列をパースしてフィールド群に切り分ける
+ @columns = $csv->fields();            # パースされたそのフィールド群を得る
+
+ $status = $csv->status();             # 直前のステータスを得る
+ $bad_argument = $csv->error_input();  # 直前の不正引数を得る
+
+ $status = $csv->print($io, $columns); # $io ファイルへ、
+                                       # すぐさまフィールド群を書き込む
+
+ $columns = $csv->getline($io);        # ＄io ファイルから１行を読み込み、パース
+                                       # した後にフィールド群の配列リファレンスを返す
+
+ $csv->types(\@t_array);               # 縦列の形式を設定する
+
+=head1 説明
+
+コンマ区切り文字列 CVS を組み立てたり切り分けたりするのに、Text::CVS_XS は便利な機能を提供します。Text::CVS_XS クラスのインスタンスでは、フィールド群を連結して CSV 文字列にしたり、その反対にCSV文字列をパースしてフィールド群にすることができます。
+
+
+=head1 関数群
+
+=over 4
+
+=item version()
+
+(クラスメソッド) 使用しているモジュールのバージョンを返す。
+
+=item new(\%attr)
+
+(クラスメソッド) 新しい Text::CSV_XS インスタンスを返す。オブジェクトの属性値は、ハッシュリファレンス C<\%attr> で（随意に）指定する。次の属性値を指定できる：
+
+=over 8
+
+=item quote_char
+
+空白文字を含むフィールドをクオートするための文字で、デフォルトは二重引用符 (C<">)。undef を指定すると、文字列がクオートされない（空白文字を使わないような簡素な場合のみ使用すること）。
+
+=item eol
+
+横行に加える行の終わりを示す文字で、一般的には C<undef> （無、デフォルト）、 C<"\012"> (ラインフィード) もしくは C<"\015\012"> (キャリッジリターン+ラインフィード) である。
+
+=item escape_char
+
+クオートしたフィールドの中でエスケープを施す文字で、デフォルトではクオート文字 (C<">) と同じ。
+
+=item sep_char
+
+フィールドを区切る文字で、デフォルトはコンマ (C<,>)。
+
+=item binary
+
+この属性値が真 (TRUE) ならば、クオートしたフィールドの中でバイナリ文字を使用することができる。このバイナリ文字にはラインフィード、キャリッジリターン、そして NUL バイトが含まれている（ NUL バイトは C<"0> としてエスケープしなくてはならない）。デフォルトで、この機能はオフ。
+
+=item types
+
+カラムの形式；この属性値はすぐさま後述の I<types> メソッドに渡される。I<types> メソッドを使用する場合を除き、この属性値を設定してはならない。詳しくは、後述の I<types> メソッドの説明を参照。
+
+=item always_quote
+
+フィールド内のテキストが区切り文字を含むような場合など、その必要がある際にのみデフォルトではフィールドはクオートで区切られる。この属性値を真 TRUE に設定すると、全てのフィールドがクオートされる。この機能は外部アプリケーションを用いる場合に便利である。（ Text::CVS_XS を使わない可哀想なプログラマのために　:-)
+
+=back
+
+これらをまとめると、
+
+ $csv = Text::CSV_XS->new();
+
+は、以下と同じである；
+
+ $csv = Text::CSV_XS->new({
+     'quote_char'  => '"',
+     'escape_char' => '"',
+     'sep_char'    => ',',
+     'binary'      => 0
+ });
+
+=item combine
+
+ $status = $csv->combine(@columns);
+
+このオブジェクト関数は、引数から CVS 文字列を組み立て、成功か失敗のステータスを返す。失敗するのは、おそらく引数が足らないか不正な文字列を引数が含むからであろう。成功した場合、 C<string()> によって組み立てた CSV 文字列を得ることができる。失敗した場合、C<string()> は 未定義を返し C<error_input()> によって無効だった引数を得ることができる。
+
+=item print
+
+ $status = $csv->print($io, $columns);
+
+combine と似ているが、このメソッドは配列リファレンス（配列ではない）が入力されることを期待する；組み立てた CSV 文字列をまったく作らない；I<$io> オブジェクトへ直ちに書き込む。ここで、I<print> メソッドに与えるのは通常、I<$io> オブジェクトか 類似した他のオブジェクトである。注意すべき事として、この呼び出しで次の方法は間違いである；
+
+
+ open(FILE, ">whatever");
+ $status = $csv->print(\*FILE, $columns);
+
+C<\*FILE> グロブはオブジェクトではないので、print メソッドを実行することができない。解決方法は IO:File オブジェクトを使用するか IO::Wrap オブジェクトの中へグロブを隠蔽してしまうことである。詳細は、L<IO::File(3)> と L<IO::Wrap(3)> を参照。
+
+パフォーマンス上の理由から、この print メソッドは組み立てた CSV 文字列を外部へ提供しない。とりわけ I<$csv-E<gt>string()>, I<$csv-E<gt>status()>, I<$csv->fields()>, そして I<$csv-E<gt>error_input()> は、このメソッドの後で意味をなさない。
+
+=item string
+
+ $line = $csv->string();
+
+このオブジェクト関数は、 C<parse()> への入力したものか C<combine()> で組み立てられた CSV 文字列か、それが何であれ直前のものを返す。
+
+=item parse
+
+ $status = $csv->parse($line);
+
+このオブジェクト関数は CSV 文字列をフィールドに切り分けて、しかる後に成功か失敗のステータスを返す。失敗するのは、引数の不足か与えられた CSV 文字列が不適切なフォーマットだからであろう。成功した場合には、C<fields()> メソッドによって切り分けられたフィールドが得られる。失敗の場合には、 C<fields()> は未定義値を返し C<error_input()> によって不正な引数を得ることができる。
+
+カラムの形式を設定するために、I<types()> メソッドを使うべきである。後述の説明を参照。
+
+
+=item getline
+
+ $columns = $csv->getline($io);
+
+これは print と対をなすもので、parse が combine の対となるようなものだ： IO オブジェクト $IOにおいて $IO->getline() を用いて１行を読み出し、この１行をパースして配列リファレンスに納める。この配列リファレンスが返されるか、失敗した場合には undef が返される。
+
+繰り返しになるが、 I<$csv-E<gt>string()>, I<$csv-E<gt>fields()>, そして I<$csv-E<gt>status()> メソッドはこのメソッドの後では意味をなさない。
+
+=item types
+
+ $csv->types(\@tref);
+
+このメソッドは、縦行を指定された形式へ強制的に変換するのに用いる。たとえば、整数値で表現された１カラム、倍精度数形式の２カラム、文字列の１カラムがあった場合は、次を実行することになるだろう
+
+ $csv->types([Text::CSV_XS::IV(),
+              Text::CSV_XS::NV(),
+              Text::CSV_XS::NV(),
+              Text::CSV_XS::PV()]);
+
+カラム形式をデコードするときのみ、言い換えると I<parse()> と I<getline()> メソッドを使うときにのみ、このカラム形式が用いられる。
+
+
+カラムタイプを解除するのは次のようにする
+
+ $csv->types(undef);
+
+あるいはまた、現在の形式を得るには次の方法を採る
+
+ $types = $csv->types();
+
+=item fields
+
+ @columns = $csv->fields();
+
+このオブジェクト関数は、 C<combine()> への入力値か C<parse()> から得られる切り分けられたフィールド群か、それが何であれ直前のものを返す。
+
+=item status
+
+ $status = $csv->status();
+
+This object function returns success (or failure) of C<combine()> or
+C<parse()>, whichever was called more recently.
+このオブジェクト関数は、 C<combine()> か C<parse()> かそれが何であれ直前のメソッドが成功（もしくは失敗）したかどうかを返す。
+
+=item error_input
+
+ $bad_argument = $csv->error_input();
+
+このオブジェクト関数は、C<combine()> か C<parse()> か、それが何であれ直前のメソッドがエラーとなった引数（もしあれば）を返す。
+
+=back
+
+=head1 例
+
+  require Text::CSV_XS;
+
+  my $csv = Text::CSV_XS->new;
+
+  my $column = '';
+  my $sample_input_string = '"I said, ""Hi!""",Yes,"",2.34,,"1.09"';
+  if ($csv->parse($sample_input_string)) {
+    my @field = $csv->fields;
+    my $count = 0;
+    for $column (@field) {
+      print ++$count, " => ", $column, "\n";
+    }
+    print "\n";
+  } else {
+    my $err = $csv->error_input;
+    print "parse() failed on argument: ", $err, "\n";
+  }
+
+  my @sample_input_fields = ('You said, "Hello!"',
+			     5.67,
+			     'Surely',
+			     '',
+			     '3.14159');
+  if ($csv->combine(@sample_input_fields)) {
+    my $string = $csv->string;
+    print $string, "\n";
+  } else {
+    my $err = $csv->error_input;
+    print "combine() failed on argument: ", $err, "\n";
+  }
+
+=head1 注意
+
+このモジュールは策定中の CVS フォーマットを元にしているが、そのフォーマットが最も一般的なものとは言い難いかもしれない。
+
+=over 4
+
+=item 1 
+
+CVS フィールドの中に納めることができる文字には、 0x09 (tab) と of 0x20 (space) から 0x7E (tilde)の包括的な範囲とを含む。バイナリモードではクオートされたフィールドの中において全ての文字を受け付ける。
+
+=item 2
+
+CSV のフィールドは、二重引用符（quote char）で挟まれるべきである。
+
+=item 3
+
+CVS のフィールドの中にコンマ(separator char)がある場合は、二重引用符で挟まれなければならない。
+
+=item 4
+
+CVS フィールドの中に二重引用符を埋め込む場合は、一対となった二重引用符の間に挟まれなければならない。バイナリモードでは特に、 NUL バイトを示す C<"0> を用いるべきである。
+
+=item 5
+
+CSV 文字列は、 0x0A (ラインフィード) もしくは 0x0D + 0x0A(キャリッジリターン + ラインフィード)で終わるべきである。
+
+=back
+
+=head1 AUTHOR
+
+Alan Citterman F<E<lt>alan@mfgrtl.comE<gt>> が、この Perl モジュールを最初に書いた。Alan へ Text::CSV_XS に関するメールをどうか送らないで欲しい。なぜなら、今ではこのモジュールの主要部分を占める C コード部分について、彼は関与していないからである。
+
+Jochen Wiedmann F<E<lt>joe@ispsoft.deE<gt>> が、エンコードとデコードのルーチンを有限状態マシンを実装する C コードで書き直し、クオート、エスケープ、そしてセパレーター文字変数、バイナリモード、そして print と getline メソッドを加えた。
+
+=head1 SEE ALSO
+
+L<perl(1)>, L<IO::File(3)>, L<IO::Wrap(3)>
+
+=head1 Translator into Japanese (翻訳者)
+
+anahori (at users.sourceforge.jp)
+
+Japanized Perl Resources Project (L<http://sourceforge.jp/projects/perldocjp/>)
+
+=cut

@@ -1,0 +1,128 @@
+
+=encoding euc-jp
+
+=head1 名前 (NAME)
+
+Apache::JumpByReferer - Referer ヘッダ値によってジャンプやブロックをする
+
+=head1 概要 (SYNOPSIS)
+
+PERL_ACCESS (または EVERYTHING) を有効にして mod_perl をコンパイルする必要があります。
+そして、下記のような設定を書いて下さい:
+
+httpd.conf 内
+
+ <Directory /protected/directory/>
+   PerlAccessHandler Apache::JumpByReferer
+   PerlSetVar        RefererListFile conf/jump.conf
+   PerlSetVar        JumpByReferer   On
+ </Directory>
+
+RefererListFile 内 (conf/jump.conf)
+
+ # 書式:
+ # Referer 正規表現                    ジャンプする URL (または forbidden)
+
+ http://malicious\.site\.example\.com/ http://goodbye.example.com/
+ http://another\.malicious\.site/      forbidden
+ http://ime\.nu/                       forbidden
+ http://[^.]+\.google\.([^/]+)/        /hello_googler.html
+ http://[^.]+\.yahoo\.([^/]+)/         /do_you_yahoo/?
+ "Field blocked by"                    /do/not/block/the/field/
+
+=head1 説明 (DESCRIPTION)
+
+Apache::JumpByReferer は Apache + mod_perl におけるアクセス制御フェーズのハンドラです。
+あなたの指定した web サイトから来たユーザをブロック、あるいは別の URL に飛ばす事が可能です。
+
+このハンドラは、初回呼出の際に設定をキャッシュし、
+C<RefererListFile> の更新時刻を調べ、前回キャッシュした時間以降に更新されていたら
+再度キャッシュしなおします。即ち、あなたはいつでも設定変更のための書き換えを行えます。
+
+C<RefererListFile> に、あなたの指定する URL の正規表現 (I<REGEX>) を書きます。
+ユーザをジャンプさせたい場合、飛ばす先の URL を I<REGEX> の後ろに空白で繋いで書きます。
+もし、ディレクトリに対してアクセスして欲しくない場合は、C<Forbidden>
+(大文字小文字を区別しない) という文字列を I<REGEX> の後ろに空白で繋いで書きます。
+
+=head1 ディレクティブ (DIRECTIVES)
+
+=over 4
+
+=item * PerlSetVar JumpByReferer ( On | Off )
+
+C<JumpByReferer> はこのハンドラ動作のスイッチです。あなたは C<On> か C<Off>
+(大文字小文字を区別しない) の値をこのディレクティブに記述しなくてはなりません。
+このディレクティブが C<On> に設定されていない場合は、DECLINED を返し、機能しません。
+
+=item * PerlSetVar RefererListFile FILENAME
+
+C<RefererListFile> へ、あなたの設定を書かなくてはなりません。このファイルは
+Apache の C<User> と C<Group> ディレクティブで設定された
+ユーザ及びグループに対して、読み出し可能でなければいけません。
+
+=back
+
+=head1 RefererListFile のシンタックス (SYNTAX OF RefererListFile)
+
+あなたは行頭から妥当な I<REGEX> を記述すべきです。I<REGEX> は、
+妥当であるかのテストをされ、更新日時のタイムスタンプとあわせて
+名前空間にキャッシュされます。I<REGEX> が妥当ではない場合は、
+キャッシュされないでしょう。
+
+そして、飛ばす先の URL か C<Forbidden> を I<REGEX> の後ろに書いてください。
+
+I<REGEX> の内部にいくつかの空白文字を含んだものを記述したい場合は、
+それをクオートすべきです。もしそれをクオートしなかった場合、テキスト解析は
+失敗します。
+
+このハンドラは、URL が自身のサーバ内部であった場合、C<internal_redirect()>
+を実行するでしょう。URL がサーバ外部であった場合は、C<Location> ヘッダと
+C<REDIRECT> ステータスを出力するでしょう。これの判定方法は、C<http(s)://> から
+始まる場合を外部 URL、その他から始まる場合を内部 URI としています。
+
+コメント行は、C<#> 文字から始まる行で、空行は無視されます。
+
+=head1 NOTES
+
+このハンドラは、イニシャルリクエストに対してのみ適用され、即ち、
+サブリクエストや、内部リダイレクトに対しては動作しません。それは、
+もしこれらに適用した場合に、サーバが無限ループに陥ってしまうかもしれないからです。
+殆ど全ての非イニシャルリクエストは、イニシャルリクエストと同じ Referer
+ヘッダ値を持たされます。このハンドラが非イニシャルリクエストへも適用され、
+リダイレクト先の URI が親ディレクトリの設定を継承する時、このハンドラは、
+内部リダイレクトを実行し、現在の URI に対して何度もリダイレクトを行うでしょう。
+なぜなら、このケースでは、B<JumpByReferer> 設定の有効範囲の内部だからです。
+このハンドラが非イニシャルリクエストへも働く場合、恐らくあなたのシステムの
+リソースはこのハンドラによって瞬時に食い潰されるでしょう。そのため、
+この機能 (非イニシャルリクエストに機能しない事) は、自己防衛の為に存在します。
+恐らくこの設定で問題はないでしょう。しかし、このモジュールを使用する際には
+この事柄を十分に理解して下さい。
+
+=head1 行うこと (TODO)
+
+* このモジュールをテストするために、私は Apache::test の使い方を理解するべきです。
+
+* このハンドラを C<PerlAccessHandler> 以下に置くのが最良の手段であるか、私は理解すべきです。
+
+* 恐らく、私はドキュメントを正しく書くために、もっと英語を勉強しないとダメでしょう。
+
+=head1 参考資料 (SEE ALSO)
+
+mod_perl(1), Apache(3), L<Text::ParseWords>
+
+=head1 作者 (AUTHOR)
+
+谷口公一 E<lt>taniguchi@users.sourceforge.jpE<gt>
+
+=head1 著作権 (COPYRIGHT)
+
+Copyright (c) 2003 Koichi Taniguchi. Japan. All rights reserved.
+
+This program is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=head1 翻訳者
+
+谷口公一 E<lt>taniguchi@users.sourceforge.jpE<gt>
+
+=cut

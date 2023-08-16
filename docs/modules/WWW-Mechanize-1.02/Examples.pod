@@ -1,0 +1,305 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+WWW::Mechanize::Examples - WWW::Mechanizeを使用するサンプルプログラム
+
+=head1 SYNOPSIS
+
+たくさんの人たちがWWW::Mechanizeについて学んできましたし、今もそうして
+いますし、あなたもそうすることができます！
+
+以下はこの活動を通してユーザーが提供してくれたWWW::Mechanizeのサンプル
+です。もしあなたがサンプルを持っており、寄付しようと思ってくれたら、
+C<< <andy@petdance.com> >> にメールを送ってください。
+
+ディストリビューション中のF<t/*.t>ファイルも見てみると良いでしょう。
+
+これらの例は、何か特定のタスクをこなすことを意図していないことは覚えて
+おいてください。私の知る限りでは、これらがアクセスするサイトのほうの
+変更によりこれらはそれほど長い期間は機能しません。彼らは、みんなが
+どうWWW::Mechanizeを使えばよいかという例を提供してくれているのです。
+
+これらの例は、私が受け取ったのとは逆の順番に並べられており、したがって
+新しいものが常に先頭に来ていることも覚えておいてください。
+
+=head2 ccdl, by Andy Lester
+
+ランドマークたるI<Code Complete>の作者、Steve McConnellが第2版の各章を
+PDF形式で彼のWebサイトに置いています。これをKinko'sで印刷するために、
+ダウンロードする必要がありました。この小さなスクリプトが私の役に立って
+くれました。
+
+    #!/usr/bin/perl -w
+
+    use strict;
+    use WWW::Mechanize;
+
+    my $start = "http://www.stevemcconnell.com/cc2/cc.htm";
+
+    my $mech = WWW::Mechanize->new( autocheck => 1 );
+    $mech->get( $start );
+
+    my @links = $mech->find_all_links( url_regex => qr/\d+.+\.pdf$/ );
+
+    for my $link ( @links ) {
+        my $url = $link->url_abs;
+        my $filename = $url;
+        $filename =~ s[^.+/][];
+
+        print "Fetching $url";
+        $mech->get( $url, ':content_file' => $filename );
+
+        print "   ", -s $filename, " bytes\n";
+    }
+
+=head2 quotes.pl, by Andy Lester
+
+このスクリプトはI<Spidering Hacks>のハックとして取り上げられるところ
+でしたが、IMDBのTOSからかすめるようなものだったためか、最後には切り
+落とされました。私はTOSを壊すよう示唆するのではなく、あくまで例として
+ここに示します。
+
+最後のチェックでは、これはHTMLがマッチしないので動きませんでしたが、
+しかしいまだにサンプルコードとしては良いものです。
+
+    #!/usr/bin/perl -w
+    
+    use strict;
+    
+    use WWW::Mechanize;
+    use Getopt::Long;
+    use Text::Wrap;
+    
+    my $match = undef;
+    my $random = undef;
+    GetOptions(
+        "match=s" => \$match,
+        "random" => \$random,
+    ) or exit 1;
+    
+    my $movie = shift @ARGV or die "Must specify a movie\n";
+    
+    my $quotes_page = get_quotes_page( $movie );
+    my @quotes = extract_quotes( $quotes_page );
+    
+    if ( $match ) {
+        $match = quotemeta($match);
+        @quotes = grep /$match/i, @quotes;
+    }
+    
+    if ( $random ) {
+        print $quotes[rand @quotes];
+    } else {
+        print join( "\n", @quotes );
+    }
+    
+    
+    sub get_quotes_page {
+        my $movie = shift;
+    
+        my $mech = new WWW::Mechanize;
+        $mech->get( "http://www.imdb.com/search" );
+        $mech->success or die "Can't get the search page";
+    
+        $mech->submit_form(
+    	form_number => 2,
+    	fields => {
+    	    title	=> $movie,
+    	    restrict    => "Movies only",
+    	},
+        );
+    
+        my @links = $mech->find_all_links( url_regex => qr[^/Title] )
+    	or die "No matches for \"$movie\" were found.\n";
+    
+        # Use the first link
+        my ( $url, $title ) = @{$links[0]};
+    
+        warn "Checking $title...\n";
+    
+        $mech->get( $url );
+        my $link = $mech->find_link( text_regex => qr/Memorable Quotes/i )
+    	or die qq{"$title" has no quotes in IMDB!\n};
+    
+        warn "Fetching quotes...\n\n";
+        $mech->get( $link->[0] );
+    
+        return $mech->content;
+    }
+    
+    
+    sub extract_quotes {
+        my $page = shift;
+    
+        # Nibble away at the unwanted HTML at the beginnning...
+        $page =~ s/.+Memorable Quotes//si;
+        $page =~ s/.+?(<a name)/$1/si;
+    
+        # ... and the end of the page
+        $page =~ s/Browse titles in the movie quotes.+$//si;
+        $page =~ s/<p.+$//g;
+    
+        # Quotes separated by an <HR> tag
+        my @quotes = split( /<hr.+?>/, $page );
+    
+        for my $quote ( @quotes ) {
+    	my @lines = split( /<br>/, $quote );
+    	for ( @lines ) {
+    	    s/<[^>]+>//g;   # Strip HTML tags
+    	    s/\s+/ /g;	    # Squash whitespace
+    	    s/^ //;	    # Strip leading space
+    	    s/ $//;	    # Strip trailing space
+    	    s/&#34;/"/g;    # Replace HTML entity quotes
+    
+    	    # Word-wrap to fit in 72 columns
+    	    $Text::Wrap::columns = 72;
+    	    $_ = wrap( '', '    ', $_ );
+    	}
+    	$quote = join( "\n", @lines );
+        }
+    
+        return @quotes;
+    }
+
+=head2 cpansearch.pl, by Ed Silva
+
+CPANを検索して、その結果のURLでブラウザを立ち上げ（fire up）る、
+お手軽で小さなユーティリティーです。
+
+    #!/usr/bin/perl
+
+    # turn on perl's safety features
+    use strict;
+    use warnings;
+
+    # work out the name of the module we're looking for
+    my $module_name = $ARGV[0]
+      or die "Must specify module name on command line";
+
+    # create a new browser
+    use WWW::Mechanize;
+    my $browser = WWW::Mechanize->new();
+
+    # tell it to get the main page
+    $browser->get("http://search.cpan.org/");
+
+    # okay, fill in the box with the name of the
+    # module we want to look up
+    $browser->form(1);
+    $browser->field("query", $module_name);
+    $browser->click();
+
+    # click on the link that matches the module name
+    $browser->follow($module_name);
+
+    my $url = $browser->uri;
+
+    # launch a browser...
+    system('galeon', $url);
+
+    exit(0);
+
+=head2 lj_friends.cgi, by Matt Cashner
+
+    #!/usr/bin/perl
+
+    # Provides an rss feed of a paid user's LiveJournal friends list
+    # Full entries, protected entries, etc.
+    # Add to your favorite rss reader as
+    # http://your.site.com/cgi-bin/lj_friends.cgi?user=USER&password=PASSWORD
+
+    use warnings;
+    use strict;
+
+    use WWW::Mechanize;
+    use CGI;
+
+    my $cgi = CGI->new();
+    my $form = $cgi->Vars;
+
+    my $agent = WWW::Mechanize->new();
+
+    $agent->get('http://www.livejournal.com/login.bml');
+    $agent->form_number('3');
+    $agent->field('user',$form->{user});
+    $agent->field('password',$form->{password});
+    $agent->submit();
+    $agent->get('http://www.livejournal.com/customview.cgi?user='.$form->{user}.'&styleid=225596&checkcookies=1');
+    print "Content-type: text/plain\n\n";
+    print $agent->content();
+
+=head2 Hacking Movable Type, by Dan Rinzel
+
+    use WWW::Mechanize;
+
+    # a tool to automatically post entries to a moveable type weblog, and set arbitary creation dates
+
+    my $mech = WWW::Mechanize->new();
+    my %entry;
+    $entry->{title} = "Test AutoEntry Title";
+    $entry->{btext} = "Test AutoEntry Body";
+    $entry->{date} = '2002-04-15 14:18:00';
+    my $start = qq|http://my.blog.site/mt.cgi|;
+
+    $mech->get($start);
+    $mech->field('username','und3f1n3d');
+    $mech->field('password','obscur3d');
+    $mech->submit(); # to get login cookie
+    $mech->get(qq|$start?__mode=view&_type=entry&blog_id=1|);
+    $mech->form('entry_form');
+    $mech->field('title',$entry->{title});
+    $mech->field('category_id',1); # adjust as needed
+    $mech->field('text',$entry->{btext});
+    $mech->field('status',2); # publish, or 1 = draft
+    $results = $mech->submit(); 
+
+    # if we're ok with this entry being datestamped "NOW" (no {date} in %entry)
+    # we're done. Otherwise, time to be tricksy
+    # MT returns a 302 redirect from this form. the redirect itself contains a <body onload=""> handler
+    # which takes the user to an editable version of the form where the create date can be edited    
+    # MT date format of YYYY-MM-DD HH:MI:SS is the only one that won't error out
+
+    if ($entry->{date} && $entry->{date} =~ /^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}/) {
+    # travel the redirect
+    $results = $mech->get($results->{_headers}->{location});
+    $results->{_content} =~ /<body onLoad="([^\"]+)"/is;
+    my $js = $1;
+    $js =~ /\'([^']+)\'/;
+    $results = $mech->get($start.$1);
+    $mech->form('entry_form');
+    $mech->field('created_on_manual',$entry->{date});
+    $mech->submit();
+    }
+
+=head2 get-despair, by Randal Schwartz
+
+Randalがこの、despair.comを歩き回って全ての画像を物故抜いてくれるbotを
+提供してくれました。
+
+    use strict; 
+    $|++;
+     
+    use WWW::Mechanize;
+    use File::Basename; 
+      
+    my $m = WWW::Mechanize->new;
+     
+    $m->get("http://www.despair.com/indem.html");
+     
+    my @top_links = @{$m->links};
+      
+    for my $top_link_num (0..$#top_links) {
+    next unless $top_links[$top_link_num][0] =~ /^http:/; 
+     
+    $m->follow($top_link_num) or die "can't follow $top_link_num";
+     
+    print $m->uri, "\n";
+    for my $image (grep m{^http://store4}, map $_->[0], @{$m->links}) { 
+        my $local = basename $image;
+        print " $image...", $m->mirror($image, $local)->message, "\n"
+    }
+     
+    $m->back or die "can't go back";
+    }
