@@ -47,7 +47,7 @@ It would be nice to offer a native core syntax for this common behaviour. A simp
 This syntax has already been implemented as a CPAN module, [`Syntax::Keyword::Defer`](https://metacpan.org/pod/Syntax::Keyword::Defer). This PPC formalizes an attempt implement the same in core.
 -->
 
-このコードの場合、もし、`operation`関数が例外を投げると、後処理が行われません。これに対する伝統的な解決策は、`DESTROY`メソッドを持つ何からのオブジェクトをレキシカル変数に割り当て、変数のクリーンアップ時のオブジェクト破壊時に必要なコードを実行するというものです。このプロセスを自動的に行うモジュールはコアにはありませんが、CPANモジュールの`Scope::Guard`はよく取られる選択肢です。
+このコードの場合、もし、`operation`関数が例外を投げると、後処理が行われません。これに対する伝統的な解決策は、`DESTROY`メソッドを持つ何らかのオブジェクトをレキシカル変数に割り当て、変数のクリーンアップ時のオブジェクト破壊時に必要なコードを実行するというものです。このプロセスを自動的に行うモジュールはコアにはありませんが、CPANモジュールの`Scope::Guard`はよく取られる選択肢です。
 
 この一般的な振る舞いがネイティブのコアの構文として提供できれば良さそうです。`defer { BLOCK }`と書くだけで良ければ、ガードオブジェクトをレキシカル変数に保存することや、適切なタイミングに本当にリリースされたか心配する必要がなくなります。
 
