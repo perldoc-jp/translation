@@ -1,0 +1,5206 @@
+
+=encoding utf8
+
+=head1 NAME
+
+=begin original
+
+perlunicode - Unicode support in Perl
+
+=end original
+
+perlunicode - Perl における Unicode サポート
+
+=head1 DESCRIPTION
+
+=begin original
+
+If you haven't already, before reading this document, you should become
+familiar with both L<perlunitut> and L<perluniintro>.
+
+=end original
+
+もしまだなら、この文書を読む前に、L<perlunitut> と L<perluniintro> に
+親しんでおく方が良いでしょう。
+
+=begin original
+
+Unicode aims to B<UNI>-fy the en-B<CODE>-ings of all the world's
+character sets into a single Standard.   For quite a few of the various
+coding standards that existed when Unicode was first created, converting
+from each to Unicode essentially meant adding a constant to each code
+point in the original standard, and converting back meant just
+subtracting that same constant.  For ASCII and ISO-8859-1, the constant
+is 0.  For ISO-8859-5, (Cyrillic) the constant is 864; for Hebrew
+(ISO-8859-8), it's 1488; Thai (ISO-8859-11), 3424; and so forth.  This
+made it easy to do the conversions, and facilitated the adoption of
+Unicode.
+
+=end original
+
+Unicode は世界中の全ての文字集合のエンコーディング(en-B<CODE>-ings) を
+一つの標準に統合(B<UNI>-fy)することを目標としています。
+Unicode が最初に作られたといに存在していたいくつかの符号標準に
+ついては、それぞれから Unicode への変換は、元の標準のそれぞれの符号位置に
+ある定数を足すことで、
+逆変換は単に同じ定数を引くことでした。
+ASCII と ISO-8859-1 では、定数は 0 です。
+ISO-8859-5 (キリル文字) では、定数は 864 です;
+ヘブライ文字 (ISO-8859-8) では、これは 1488 です;
+タイ (ISO-8859-11) は 3424、などです。
+これは変換を容易にし、Unicode の採用を促進しました。
+
+=begin original
+
+And it worked; nowadays, those legacy standards are rarely used.  Most
+everyone uses Unicode.
+
+=end original
+
+そしてこれはうまくいきました; 最近は、これらの昔の標準はめったに使われません。
+ほとんどみんなが Unicode を使います。
+
+=begin original
+
+Unicode is a comprehensive standard.  It specifies many things outside
+the scope of Perl, such as how to display sequences of characters.  For
+a full discussion of all aspects of Unicode, see
+L<http://www.unicode.org>.
+
+=end original
+
+Unicode は包括的な標準です。
+これは、文字の並びをどのように表示するかといった、Perl のスコープの
+範囲外の多くのことを規定します。
+Unicode のあらゆる側面に関する完全な議論については、
+L<http://www.unicode.org> を参照してください。
+
+=head2 Important Caveats
+
+(重要な警告)
+
+=begin original
+
+Even though some of this section may not be understandable to you on
+first reading, we think it's important enough to highlight some of the
+gotchas before delving further, so here goes:
+
+=end original
+
+この節の一部は最初に読んだときには理解できないかもしれませんが、
+さらに掘り下げる前にいくつかの癖について強調することは重要だと考えたので、
+ここで行います:
+
+=begin original
+
+Unicode support is an extensive requirement. While Perl does not
+implement the Unicode standard or the accompanying technical reports
+from cover to cover, Perl does support many Unicode features.
+
+=end original
+
+Unicode サポートは大規模な要求です。
+Perl は標準 Unicode や付随する技術的なレポートを一つ残らず
+実装しているわけではありませんが、多くの Unicode 機能を
+サポートしています。
+
+=begin original
+
+Also, the use of Unicode may present security issues that aren't
+obvious, see L</Security Implications of Unicode> below.
+
+=end original
+
+また、Unicode を使うと、明らかではないセキュリティ問題が姿を現すかも
+知れません;
+後述の L</Security Implications of Unicode> を参照してください。
+
+=over 4
+
+=item Safest if you C<use feature 'unicode_strings'>
+
+(C<use feature 'unicode_strings'> とすれば一番安全)
+
+=begin original
+
+In order to preserve backward compatibility, Perl does not turn
+on full internal Unicode support unless the pragma
+L<S<C<use feature 'unicode_strings'>>|feature/The 'unicode_strings' feature>
+is specified.  (This is automatically
+selected if you S<C<use 5.012>> or higher.)  Failure to do this can
+trigger unexpected surprises.  See L</The "Unicode Bug"> below.
+
+=end original
+
+後方互換性を維持するために、Perl は
+L<S<C<use feature 'unicode_strings'>>|feature/The 'unicode_strings' feature> プラグマが指定されない限り
+完全な内部 Unicode 対応をオンにしません。
+(これは S<C<use 5.012>> 以上を使うと自動的に選択されます。)
+こうするのに失敗すると予測できない驚きを引き起こすかも知れません。
+後述する L</The "Unicode Bug"> を参照してください。
+
+=begin original
+
+This pragma doesn't affect I/O.  Nor does it change the internal
+representation of strings, only their interpretation.  There are still
+several places where Unicode isn't fully supported, such as in
+filenames.
+
+=end original
+
+このプラグマは I/O には影響しません。
+また、文字列の内部表現も変更しません; その解釈だけです。
+ファイル名のように Unicode に完全に対応していない場所がいくつかあります。
+
+=item Input and Output Layers
+
+(入出力層)
+
+=begin original
+
+Use the C<:encoding(...)> layer  to read from and write to
+filehandles using the specified encoding.  (See L<open>.)
+
+=end original
+
+特定のエンコーディングを使ってファイルハンドルと読み書きするには、
+C<:encoding(...)> 層を使ってください。
+(L<open> を参照してください。)
+
+=item You must convert your non-ASCII, non-UTF-8 Perl scripts to be
+UTF-8.
+
+(非 ASCII、非 UTF-8 Perl スクリプトは UTF-8 に変換しなければなりません)
+
+=begin original
+
+The L<encoding> module has been deprecated since perl 5.18 and the
+perl internals it requires have been removed with perl 5.26.
+
+=end original
+
+L<encoding> モジュールは perl 5.18 から廃止予定で、
+これが要求している perl の内部は perl 5.26 で削除されました。
+
+=item C<use utf8> still needed to enable L<UTF-8|/Unicode Encodings> in scripts
+
+(スクリプト内で L<UTF-8|/Unicode Encodings> を有効にするには、まだ C<use utf8> が必要です)
+
+=begin original
+
+If your Perl script is itself encoded in L<UTF-8|/Unicode Encodings>,
+the S<C<use utf8>> pragma must be explicitly included to enable
+recognition of that (in string or regular expression literals, or in
+identifier names).  B<This is the only time when an explicit S<C<use
+utf8>> is needed.>  (See L<utf8>).
+
+=end original
+
+Perl スクリプト自身が L<UTF-8|/Unicode Encodings> で
+エンコードされている場合、Perl スクリプトそれ自身の
+中を(文字列や正規表現リテラル、あるいは変数名で) 認識可能に
+するために、C<use utf8> プラグマを明示的に含めなければなりません。
+B<これは明示的に C<use utf8> が必要な唯一の場合です。>
+(L<utf8> を参照してください。)
+
+=begin original
+
+If a Perl script begins with the bytes that form the UTF-8 encoding of
+the Unicode BYTE ORDER MARK (C<BOM>, see L</Unicode Encodings>), those
+bytes are completely ignored.
+
+=end original
+
+Perl スクリプトが Unicode のバイト順マーク
+(BYTE ORDER MARK, C<BOM>, L</Unicode Encodings> 参照) の UTF-8
+エンコーディングを示すバイト列で始まっている場合、
+これらのバイト列は完全に無視されます。
+
+=item L<UTF-16|/Unicode Encodings> scripts autodetected
+
+(L<UTF-16|/Unicode Encodings> スクリプトは自動認識されます)
+
+=begin original
+
+If a Perl script begins with the Unicode C<BOM> (UTF-16LE,
+UTF16-BE), or if the script looks like non-C<BOM>-marked
+UTF-16 of either endianness, Perl will correctly read in the script as
+the appropriate Unicode encoding.
+
+=end original
+
+しかし、Unicode C<BOM> (UTF-16LE, UTF16-BE)で Perl スクリプトが
+始まっていたり、スクリプトが C<BOM> がついていない
+UTF-16(BE か LE のいずれか) であった場合、Perl はそのスクリプトを
+適切な Unicode エンコーディングとして正しく読み込みます。
+
+=back
+
+=head2 Byte and Character Semantics
+
+(バイトと文字のセマンティクス)
+
+=begin original
+
+Before Unicode, most encodings used 8 bits (a single byte) to encode
+each character.  Thus a character was a byte, and a byte was a
+character, and there could be only 256 or fewer possible characters.
+"Byte Semantics" in the title of this section refers to
+this behavior.  There was no need to distinguish between "Byte" and
+"Character".
+
+=end original
+
+Unicode 以前、ほとんどのエンコーディングはそれぞれの文字のエンコードに
+8 ビット (1 バイト) を使っていました。
+従って文字はバイトであり、バイトは文字であり、可能な文字は 256 文字
+以下でした。
+この章のタイトルである「バイトのセマンティクス」は、この振る舞いを
+示しています。
+「バイト」と「文字」を区別する必要はありませんでした。
+
+=begin original
+
+Then along comes Unicode which has room for over a million characters
+(and Perl allows for even more).  This means that a character may
+require more than a single byte to represent it, and so the two terms
+are no longer equivalent.  What matter are the characters as whole
+entities, and not usually the bytes that comprise them.  That's what the
+term "Character Semantics" in the title of this section refers to.
+
+=end original
+
+それから、100 万文字以上を扱える (そして Perl はもっと扱える) Unicode が
+登場します。
+これは、一つの文字を表現するのに複数バイトが必要になる場合があり、
+二つの用語はもはや等価ではないということを意味します。
+問題となるのはエンティティ全体としての文字であり、通常はそれを構成する
+バイトではありません。
+これが、この章のタイトルにある「文字セマンティクス」が指しているものです。
+
+=begin original
+
+Perl had to change internally to decouple "bytes" from "characters".
+It is important that you too change your ideas, if you haven't already,
+so that "byte" and "character" no longer mean the same thing in your
+mind.
+
+=end original
+
+Perl は、「バイト」と「文字」から切り離すために内部を変更する
+必要がありました。
+あなたの頭の中で「バイト」と「文字」はもはや同じものを
+意味しないように、(もしまだなら)考え方を変えることが重要です。
+
+=begin original
+
+The basic building block of Perl strings has always been a "character".
+The changes basically come down to that the implementation no longer
+thinks that a character is always just a single byte.
+
+=end original
+
+Perl の文字列の基礎要素は常に「文字」でした。
+変更は基本的に、実装はもはや文字が常に 1 バイトであるとは
+考えないということです。
+
+=begin original
+
+There are various things to note:
+
+=end original
+
+記しておくべき様々なことがあります:
+
+=over 4
+
+=item *
+
+=begin original
+
+String handling functions, for the most part, continue to operate in
+terms of characters.  C<length()>, for example, returns the number of
+characters in a string, just as before.  But that number no longer is
+necessarily the same as the number of bytes in the string (there may be
+more bytes than characters).  The other such functions include
+C<chop()>, C<chomp()>, C<substr()>, C<pos()>, C<index()>, C<rindex()>,
+C<sort()>, C<sprintf()>, and C<write()>.
+
+=end original
+
+文字列処理関数は、ほとんどの場合、引き続き文字に関して動作します。
+たとえば C<length()> は、以前と同じように文字列内の文字の数を返します。
+しかし、その数はもはや文字列内のバイト数と常に同じではありません
+(文字数よりもバイト数が多い場合があります)。
+その他のそのような関数には、
+C<chop()>, C<chomp()>, C<substr()>, C<pos()>, C<index()>, C<rindex()>,
+C<sort()>, C<sprintf()>, and C<write()> があります。
+
+=begin original
+
+The exceptions are:
+
+=end original
+
+例外は:
+
+=over 4
+
+=item *
+
+=begin original
+
+the bit-oriented C<vec>
+
+=end original
+
+ビット単位の C<vec>
+
+E<nbsp>
+
+=item *
+
+=begin original
+
+the byte-oriented C<pack>/C<unpack> C<"C"> format
+
+=end original
+
+バイト単位の C<pack>/C<unpack> C<"C"> フォーマット
+
+=begin original
+
+However, the C<W> specifier does operate on whole characters, as does the
+C<U> specifier.
+
+=end original
+
+しかし、C<W> 指示子は C<U> 指示子と同様、文字全体を操作します。
+
+=item *
+
+=begin original
+
+some operators that interact with the platform's operating system
+
+=end original
+
+プラットフォームのオペレーティングシステムと相互作用する一部の演算子
+
+=begin original
+
+Operators dealing with filenames are examples.
+
+=end original
+
+例としてはファイル名を扱う演算子です。
+
+=item *
+
+=begin original
+
+when the functions are called from within the scope of the
+S<C<L<use bytes|bytes>>> pragma
+
+=end original
+
+関数が S<C<L<use bytes|bytes>>> プラグマのスコープ内から呼び出された場合
+
+=begin original
+
+Likely, you should use this only for debugging anyway.
+
+=end original
+
+おそらく、これはデバッグのためだけに行うべきです。
+
+=back
+
+=item *
+
+=begin original
+
+Strings--including hash keys--and regular expression patterns may
+contain characters that have ordinal values larger than 255.
+
+=end original
+
+文字列 -- ハッシュのキーを含め -- と正規表現パターンは序数値として 255 を
+超える値を持つ文字を含めることができます。
+
+=begin original
+
+If you use a Unicode editor to edit your program, Unicode characters may
+occur directly within the literal strings in UTF-8 encoding, or UTF-16.
+(The former requires a C<use utf8>, the latter may require a C<BOM>.)
+
+=end original
+
+プログラムを編集するのに Unicode エディタを使っているのであれば、Unicode の
+文字 UTF-8 か UTF-16 のエンコーディングコーディングでリテラル文字列に
+含めることができます。
+(前者は C<use utf8> を必要とし、後者は C<BOM> を必要とするかもしれません。)
+
+=begin original
+
+L<perluniintro/Creating Unicode> gives other ways to place non-ASCII
+characters in your strings.
+
+=end original
+
+L<perluniintro/Creating Unicode> は、文字列に非 ASCII 文字を置くための
+その他の方法を提供します。
+
+=item *
+
+=begin original
+
+The C<chr()> and C<ord()> functions work on whole characters.
+
+=end original
+
+C<chr()> 関数と C<ord()> 関数は文字全体に対して働きます。
+
+=item *
+
+=begin original
+
+Regular expressions match whole characters.  For example, C<"."> matches
+a whole character instead of only a single byte.
+
+=end original
+
+正規表現は文字全体にマッチします。
+例えば、C<"."> は 1 バイトだけではなく、ひとつの文字全体にマッチします。
+
+=item *
+
+=begin original
+
+The C<tr///> operator translates whole characters.  (Note that the
+C<tr///CU> functionality has been removed.  For similar functionality to
+that, see C<pack('U0', ...)> and C<pack('C0', ...)>).
+
+=end original
+
+C<tr///> 演算子は文字全体を変換します。
+C<tr///CU> は削除されたことに注意してください。
+(これと同様のことを行うには C<pack('U0', ...)> と C<pack('C0', ...)> を
+参照してください。)
+
+=item *
+
+=begin original
+
+C<scalar reverse()> reverses by character rather than by byte.
+
+=end original
+
+C<scalar reverse()> はバイト単位ではなく文字単位で
+反転を行います。
+
+=item *
+
+=begin original
+
+The bit string operators, C<& | ^ ~> and (starting in v5.22)
+C<&. |. ^.  ~.> can operate on bit strings encoded in UTF-8, but this
+can give unexpected results if any of the strings contain code points
+above 0xFF.  Starting in v5.28, it is a fatal error to have such an
+operand.  Otherwise, the operation is performed on a non-UTF-8 copy of
+the operand.  If you're not sure about the encoding of a string,
+downgrade it before using any of these operators; you can use
+L<C<utf8::utf8_downgrade()>|utf8/Utility functions>.
+
+=end original
+
+ビット文字列演算子 C<& | ^ ~> および
+(v5.22 からの) C<&. |. ^.  ~.> は UTF-8 でエンコードされたビット文字列を
+操作できますが、文字列の一部に 0xFF を超える符号位置を含んでいる場合、
+予想外の結果になるかもしれません。
+v5.28 から、そのようなオペランドに対しては致命的エラーになります。
+さもなければ、処理はオペランドの非 UTF-8 のコピーに対して行われます。
+文字列のエンコーディンがはっきりしない場合、
+これらの演算子を使う前に降格してください;
+L<C<utf8::utf8_downgrade()>|utf8/Utility functions> が使えます。
+
+=back
+
+=begin original
+
+The bottom line is that Perl has always practiced "Character Semantics",
+but with the advent of Unicode, that is now different than "Byte
+Semantics".
+
+=end original
+
+まとめとしては、Perl は常に「文字の意味論」で動作しますが、
+Unicode の搭乗により、これは「バイトの意味論」とは
+異なるようになっています。
+
+=head2 ASCII Rules versus Unicode Rules
+
+(ASCII 規則対 Unicode 規則)
+
+=begin original
+
+Before Unicode, when a character was a byte was a character,
+Perl knew only about the 128 characters defined by ASCII, code points 0
+through 127 (except for under L<S<C<use locale>>|perllocale>).  That
+left the code
+points 128 to 255 as unassigned, and available for whatever use a
+program might want.  The only semantics they have is their ordinal
+numbers, and that they are members of none of the non-negative character
+classes.  None are considered to match C<\w> for example, but all match
+C<\W>.
+
+=end original
+
+Unicode 以前、文字はバイトでバイトは文字という時代は、
+Perl は ASCII で定義された 128 文字、符号位置 0 から 127 に
+ついてしか知りませんでした (L<S<C<use locale>>|perllocale> の下を除く)。
+そのため、符号位置 128 から 255 は割り当てられておらず、プログラムが
+望むあらゆる用途に利用可能でした。
+それらが持つ唯一のセマンティクスは序数であり、
+それらは否定でない文字クラスのメンバーではありません。
+たとえば、どれも C<\w> にマッチングするとは見なされず、すべてが C<\W> に
+マッチングします。
+
+=begin original
+
+Unicode, of course, assigns each of those code points a particular
+meaning (along with ones above 255).  To preserve backward
+compatibility, Perl only uses the Unicode meanings when there is some
+indication that Unicode is what is intended; otherwise the non-ASCII
+code points remain treated as if they are unassigned.
+
+=end original
+
+Unicodeはもちろん、これらの符号位置のそれぞれに特定の意味を割り当てます
+(255 より上も同様です)。
+後方互換性を保つために、Perl は Unicode が意図されたものであることを示す
+何らかの表示がある場合にのみ Unicode の意味を使用します;
+それ以外の場合、非 ASCII 符号位置は、割り当てられていないものとして
+扱われます。
+
+=begin original
+
+Here are the ways that Perl knows that a string should be treated as
+Unicode:
+
+=end original
+
+次のものは、文字列が Unicode として扱われるべきと Perl が分かる方法です:
+
+=over
+
+=item *
+
+=begin original
+
+Within the scope of S<C<use utf8>>
+
+=end original
+
+S<C<use utf8>> のスコープの内側
+
+=begin original
+
+If the whole program is Unicode (signified by using 8-bit B<U>nicode
+B<T>ransformation B<F>ormat), then all literal strings within it must be
+Unicode.
+
+=end original
+
+プログラム全体が (8-bit B<U>nicode B<T>ransformation B<F>ormat を
+使うことで示される) Unicode の場合、その中の全てのリテラルな文字列は
+Unicode でなければなりません。
+
+=item *
+
+=begin original
+
+Within the scope of
+L<S<C<use feature 'unicode_strings'>>|feature/The 'unicode_strings' feature>
+
+=end original
+
+L<S<C<use feature 'unicode_strings'>>|feature/The 'unicode_strings' feature>
+のスコープの内側
+
+=begin original
+
+This pragma was created so you can explicitly tell Perl that operations
+executed within its scope are to use Unicode rules.  More operations are
+affected with newer perls.  See L</The "Unicode Bug">.
+
+=end original
+
+このプラグマは、このスコープ内で実行される操作は Unicode の規則が
+使われるべきということを明示的に Perl に伝えるために作られました。
+より新しい perl では更なる操作が影響を受けます。
+L</The "Unicode Bug"> を参照してください。
+
+=item *
+
+=begin original
+
+Within the scope of S<C<use 5.012>> or higher
+
+=end original
+
+S<C<use 5.012>> 以上のスコープの内側
+
+=begin original
+
+This implicitly turns on S<C<use feature 'unicode_strings'>>.
+
+=end original
+
+これは暗黙に S<C<use feature 'unicode_strings'>> を有効にします。
+
+=item *
+
+=begin original
+
+Within the scope of
+L<S<C<use locale 'not_characters'>>|perllocale/Unicode and UTF-8>,
+or L<S<C<use locale>>|perllocale> and the current
+locale is a UTF-8 locale.
+
+=end original
+
+L<S<C<use locale 'not_characters'>>|perllocale/Unicode and UTF-8> か
+L<S<C<use locale>>|perllocale> のスコープ内で、現在のロケールが
+UTF-8 ロケール。
+
+=begin original
+
+The former is defined to imply Unicode handling; and the latter
+indicates a Unicode locale, hence a Unicode interpretation of all
+strings within it.
+
+=end original
+
+前者は Unicode の扱いを暗示し、後者は Unicode ロケールを示すので、
+この中の全ての文字列は Unicode の解釈になります。
+
+=item *
+
+=begin original
+
+When the string contains a Unicode-only code point
+
+=end original
+
+文字列が Unicode のみの符号位置を含んでいるとき
+
+=begin original
+
+Perl has never accepted code points above 255 without them being
+Unicode, so their use implies Unicode for the whole string.
+
+=end original
+
+Perl は Unicode でない限り 255 を超える符号位置を決して受け入れないので、
+これらを使うと文字列全体が Unicode であることを暗示します。
+
+=item *
+
+=begin original
+
+When the string contains a Unicode named code point C<\N{...}>
+
+=end original
+
+文字列が Unicode の名前付き符号位置 C<\N{...}> を含んでいるとき
+
+=begin original
+
+The C<\N{...}> construct explicitly refers to a Unicode code point,
+even if it is one that is also in ASCII.  Therefore the string
+containing it must be Unicode.
+
+=end original
+
+C<\N{...}> 構文は、たとえ ASCII にもあるものだとしても、
+明示的に Unicode 符号位置を参照します。
+従ってこれを含む文字列は Unicode でなければなりません。
+
+=item *
+
+=begin original
+
+When the string has come from an external source marked as
+Unicode
+
+=end original
+
+文字列が Unicode とマークされている外部ソースから来たとき
+
+=begin original
+
+The L<C<-C>|perlrun/-C [numberE<sol>list]> command line option can
+specify that certain inputs to the program are Unicode, and the values
+of this can be read by your Perl code, see L<perlvar/"${^UNICODE}">.
+
+=end original
+
+L<C<-C>|perlrun/-C [numberE<sol>list]> コマンドラインオプションは
+プログラムへの特定の入力が Unicode であることを指定でき、その値は
+Perl のコードで読み込めます; L<perlvar/"${^UNICODE}"> を参照してください。
+
+=item * When the string has been upgraded to UTF-8
+
+(文字列が UTF-8 に昇格したとき)
+
+=begin original
+
+The function L<C<utf8::utf8_upgrade()>|utf8/Utility functions>
+can be explicitly used to permanently (unless a subsequent
+C<utf8::utf8_downgrade()> is called) cause a string to be treated as
+Unicode.
+
+=end original
+
+L<C<utf8::utf8_upgrade()>|utf8/Utility functions> 関数は、
+(後に C<utf8::utf8_downgrade()> が呼び出されるまで)
+恒久的に文字列を Unicode として扱うことを明示的に示すために使われます。
+
+=item * There are additional methods for regular expression patterns
+
+(正規表現パターンに追加の手法があるとき)
+
+=begin original
+
+A pattern that is compiled with the C<< /u >> or C<< /a >> modifiers is
+treated as Unicode (though there are some restrictions with C<< /a >>).
+Under the C<< /d >> and C<< /l >> modifiers, there are several other
+indications for Unicode; see L<perlre/Character set modifiers>.
+
+=end original
+
+C<< /u >> や C<< /a >> の修飾子付きでコンパイルされたパターンは、
+Unicode として扱われます (但し、C<< /a >> にはいくつかの制限があります)。
+C<< /d >> と C<< /l >> の修飾子の下では、Unicode を示す他の方法がいくつか
+あります; L<perlre/Character set modifiers> を参照してください。
+
+=back
+
+=begin original
+
+Note that all of the above are overridden within the scope of
+C<L<use bytes|bytes>>; but you should be using this pragma only for
+debugging.
+
+=end original
+
+前述の全ては C<L<use bytes|bytes>> のスコープ内では上書きされます;
+しかしこのプラグマはデバッグ用にのみ使うべきです。
+
+=begin original
+
+Note also that some interactions with the platform's operating system
+never use Unicode rules.
+
+=end original
+
+また、プラットフォームのオペレーティングシステムとの相互作用の一部は
+決して Unicode の規則を使いません。
+
+=begin original
+
+When Unicode rules are in effect:
+
+=end original
+
+Unicode の規則が有効の場合:
+
+=over 4
+
+=item *
+
+=begin original
+
+Case translation operators use the Unicode case translation tables.
+
+=end original
+
+大小文字の変換演算子は Unicode の大小文字変換テーブルを使用します。
+
+=begin original
+
+Note that C<uc()>, or C<\U> in interpolated strings, translates to
+uppercase, while C<ucfirst>, or C<\u> in interpolated strings,
+translates to titlecase in languages that make the distinction (which is
+equivalent to uppercase in languages without the distinction).
+
+=end original
+
+C<uc()> や展開文字列中の C<\U> は大文字に変換し、C<ucfirst> や
+展開文字列中の C<\u> はその言語で区別されているときに
+タイトルケースに変換します (これは、区別がない言語では大文字と等価です)。
+
+=begin original
+
+There is a CPAN module, C<L<Unicode::Casing>>, which allows you to
+define your own mappings to be used in C<lc()>, C<lcfirst()>, C<uc()>,
+C<ucfirst()>, and C<fc> (or their double-quoted string inlined versions
+such as C<\U>).  (Prior to Perl 5.16, this functionality was partially
+provided in the Perl core, but suffered from a number of insurmountable
+drawbacks, so the CPAN module was written instead.)
+
+=end original
+
+C<lc()>, C<lcfirst()>, C<uc()>, C<ucfirst()>, C<fc> (および C<\U> のような
+ダブルクォート文字列インライン版) で使える独自のマッピングを定義できる
+CPAN モジュール C<L<Unicode::Casing>> があります。
+(Perl 5.16 以前では、この機能は Perl コアで部分的に提供されていましたが、
+多くの克服できない欠点があったため、代わりに CPAN モジュールが書かれました。)
+
+=item *
+
+=begin original
+
+Character classes in regular expressions match based on the character
+properties specified in the Unicode properties database.
+
+=end original
+
+正規表現の文字クラスは、Unicode 特性データベースで定義されている文字特性を
+基にしてマッチングします。
+
+=begin original
+
+C<\w> can be used to match a Japanese ideograph, for instance; and
+C<[[:digit:]]> a Bengali number.
+
+=end original
+
+例えば、C<\w> は日本語の文字にマッチングするために使われ、
+C<[[:digit:]]> はベンガル数字に使われます。
+
+=item *
+
+=begin original
+
+Named Unicode properties, scripts, and block ranges may be used (like
+bracketed character classes) by using the C<\p{}> "matches property"
+construct and the C<\P{}> negation, "doesn't match property".
+
+=end original
+
+名前付き Unicode 特性、用字、ブロック範囲は、
+C<\p{}> 「特性にマッチング」構文および否定である C<\P{}>
+「特性にマッチングしない」を使って(大かっこ文字クラスのように)使えます。
+
+=begin original
+
+See L</"Unicode Character Properties"> for more details.
+
+=end original
+
+さらなる詳細については L</"Unicode Character Properties"> を参照してください。
+
+=begin original
+
+You can define your own character properties and use them
+in the regular expression with the C<\p{}> or C<\P{}> construct.
+See L</"User-Defined Character Properties"> for more details.
+
+=end original
+
+独自の文字特性を定義して、C<\p{}> と C<\P{}> 構文によって
+正規表現でそれらを使うことができます。
+さらなる詳細については L</"User-Defined Character Properties"> を
+参照してください。
+
+=back
+
+=head2 Extended Grapheme Clusters (Logical characters)
+
+(拡張書記素クラスタ (論理文字))
+
+=begin original
+
+Consider a character, say C<H>.  It could appear with various marks around it,
+such as an acute accent, or a circumflex, or various hooks, circles, arrows,
+I<etc.>, above, below, to one side or the other, I<etc>.  There are many
+possibilities among the world's languages.  The number of combinations is
+astronomical, and if there were a character for each combination, it would
+soon exhaust Unicode's more than a million possible characters.  So Unicode
+took a different approach: there is a character for the base C<H>, and a
+character for each of the possible marks, and these can be variously combined
+to get a final logical character.  So a logical character--what appears to be a
+single character--can be a sequence of more than one individual characters.
+The Unicode standard calls these "extended grapheme clusters" (which
+is an improved version of the no-longer much used "grapheme cluster");
+Perl furnishes the C<\X> regular expression construct to match such
+sequences in their entirety.
+
+=end original
+
+一つの文字、例えば C<H> について考えてみます。
+これは文字の回りの様々なマークと共に現れることがあって、
+鋭アクセント、曲折アクセント、フック、円、矢など、上、下、左、右、などです。
+世界中の言語の中では多くの可能性があります。
+組み合わせの数は天文学的で、
+それぞれの組み合わせを一つの文字にすると、Unicode の数百万の可能な文字を
+すぐに使い切ってしまいます。
+それで Unicode は異なる手法を取りました:
+基本となる C<H> を一つの文字として、
+それぞれの可能なマークのそれぞれを一つの文字として、
+最後に論理的な文字でこれらを様々に結合できるようにしました。
+それで一つの論理文字--単一の文字として現れるもの--は
+複数の独立した文字の並びになることがあります。
+Unicode 標準はこれを「拡張書記素クラスタ」("extended grapheme cluster")
+(もはやあまり使われない「書記素クラスタ」"grapheme cluster" の改良版) と
+呼びます;
+Perl はこのような並び丸ごとにマッチングする C<\X> 正規表現構文を
+用意しています。
+
+=begin original
+
+But Unicode's intent is to unify the existing character set standards and
+practices, and several pre-existing standards have single characters that
+mean the same thing as some of these combinations, like ISO-8859-1,
+which has quite a few of them. For example, C<"LATIN CAPITAL LETTER E
+WITH ACUTE"> was already in this standard when Unicode came along.
+Unicode therefore added it to its repertoire as that single character.
+But this character is considered by Unicode to be equivalent to the
+sequence consisting of the character C<"LATIN CAPITAL LETTER E">
+followed by the character C<"COMBINING ACUTE ACCENT">.
+
+=end original
+
+しかし、Unicode の目的は、既存の文字集合の標準とプラクティスを
+統合することであり、いくつかの既存の標準には、これらの組み合わせの
+いくつかと同じことを意味する単一の文字があります;
+たとえば、ISO-8859-1 には、かなりの数のそのような文字があります。
+たとえば、C<"LATIN CAPITAL LETTER E WITH ACUTE"> は、Unicode が
+登場したときにすでにこの標準に含まれていました。
+したがって、Unicode はそれを単一の文字としてレパートリーに追加しました。
+しかし、Unicode では、この文字は、文字 C<"LATIN CAPITAL LETTER E"> の後に
+文字 C<"COMBINING ACUTE ACCENT"> が続く並びと等価であると見なされます。
+
+=begin original
+
+C<"LATIN CAPITAL LETTER E WITH ACUTE"> is called a "pre-composed"
+character, and its equivalence with the "E" and the "COMBINING ACCENT"
+sequence is called canonical equivalence.  All pre-composed characters
+are said to have a decomposition (into the equivalent sequence), and the
+decomposition type is also called canonical.  A string may be comprised
+as much as possible of precomposed characters, or it may be comprised of
+entirely decomposed characters.  Unicode calls these respectively,
+"Normalization Form Composed" (NFC) and "Normalization Form Decomposed".
+The C<L<Unicode::Normalize>> module contains functions that convert
+between the two.  A string may also have both composed characters and
+decomposed characters; this module can be used to make it all one or the
+other.
+
+=end original
+
+C<"LATIN CAPITAL LETTER E WITH ACUTE"> は「合成済」(pre-composed) 文字と
+呼ばれ、"E" および "COMBINING ACCENT" と等価な並びは正準等価
+(canonical equivalence) と呼ばれます。
+全ての合成済文字は(等価な並びに)分解でき、分解の種類もまた正準と呼ばれます。
+文字列は、可能な限り合成済文字で構成される場合もあれば、
+完全に分解された文字で構成される場合もあります。
+Unicode では、これらをそれぞれ
+「正規化形式 C」("Normalization Form Composed": NFC) と
+"Normalization Form Decomposed" と呼んでいます。
+C<L<Unicode::Normalize>> モジュールには、
+二つの文字を変換する関数が含まれています。
+文字列は、合成された文字と分解された文字の両方を持つこともできます。
+このモジュールを使用して、すべてを片方にすることも、
+もう片方にすることもできます。
+
+=begin original
+
+You may be presented with strings in any of these equivalent forms.
+There is currently nothing in Perl 5 that ignores the differences.  So
+you'll have to specially handle it.  The usual advice is to convert your
+inputs to C<NFD> before processing further.
+
+=end original
+
+これらの同等のどの形式でも文字列が表現される場合があります。
+現在のところ、Perl 5 にはこの違いを無視するものは何もありません。
+そのため、特別にそれを扱う必要があります。
+通常のアドバイスは、処理を進める前に入力を C<NFD> に変換することです。
+
+=begin original
+
+For more detailed information, see L<http://unicode.org/reports/tr15/>.
+
+=end original
+
+さらに詳しい情報については、L<http://unicode.org/reports/tr15/> を
+参照してください。
+
+=head2 Unicode Character Properties
+
+(Unicode 文字特性)
+
+=begin original
+
+(The only time that Perl considers a sequence of individual code
+points as a single logical character is in the C<\X> construct, already
+mentioned above.   Therefore "character" in this discussion means a single
+Unicode code point.)
+
+=end original
+
+(Perl が個々の符号位置の並びを単一の論理文字として扱う
+唯一のタイミングは、既に前述した C<\X> 構文です。
+従って、この議論での「文字」は単一の Unicode 符号位置を意味します。)
+
+=begin original
+
+Very nearly all Unicode character properties are accessible through
+regular expressions by using the C<\p{}> "matches property" construct
+and the C<\P{}> "doesn't match property" for its negation.
+
+=end original
+
+ほぼ全ての Unicode 文字特性は、
+C<\p{}> "matches property" 構文とその否定形の C<\P{}>
+"doesn't match property" を使った正規表現を通してアクセス可能です。
+
+=begin original
+
+For instance, C<\p{Uppercase}> matches any single character with the Unicode
+C<"Uppercase"> property, while C<\p{L}> matches any character with a
+C<General_Category> of C<"L"> (letter) property (see
+L</General_Category> below).  Brackets are not
+required for single letter property names, so C<\p{L}> is equivalent to C<\pL>.
+
+=end original
+
+たとえば、C<\p{Uppercase}> は Unicode の C<"Uppercase"> 特性を持つ任意の
+単一の文字にマッチングし、C<\p{L}> は C<General_Category> C<"L"> (letter)
+特性を持つ任意の文字にマッチングします
+(後述する L</General_Category> 参照)。
+中かっこは一文字の特性名では省略することができるので、C<\p{L}> は
+C<\pL> と等価です。
+
+=begin original
+
+More formally, C<\p{Uppercase}> matches any single character whose Unicode
+C<Uppercase> property value is C<True>, and C<\P{Uppercase}> matches any character
+whose C<Uppercase> property value is C<False>, and they could have been written as
+C<\p{Uppercase=True}> and C<\p{Uppercase=False}>, respectively.
+
+=end original
+
+より正式には、C<\p{Uppercase}> は Unicode の C<Uppercase> 特性値 が
+C<True> である任意の単一の文字とマッチングし、C<\P{UpperCase}> は
+C<UpperCase> 特性値 が C<False> である任意の文字とマッチングします;
+そしてこれらはそれぞれ C<\p{Uppercase=True}>, C<\p{Uppercase=False}> と書けます。
+
+=begin original
+
+This formality is needed when properties are not binary; that is, if they can
+take on more values than just C<True> and C<False>.  For example, the
+C<Bidi_Class> property (see L</"Bidirectional Character Types"> below),
+can take on several different
+values, such as C<Left>, C<Right>, C<Whitespace>, and others.  To match these, one needs
+to specify both the property name (C<Bidi_Class>), AND the value being
+matched against
+(C<Left>, C<Right>, I<etc.>).  This is done, as in the examples above, by having the
+two components separated by an equal sign (or interchangeably, a colon), like
+C<\p{Bidi_Class: Left}>.
+
+=end original
+
+この形式は、特性が 2 値でない場合、つまり、単に C<True> と C<False> より多くの
+値を取ることができる場合に必要です。
+たとえば、C<Bidi_Class> 特性(L</"Bidirectional Character Types"> を参照)は、
+C<Left>, C<Right>, C<Whitespace> などのさまざまな値を取ることができます。
+これらにマッチングするには、特性名(C<Bidi_Class>)と、
+マッチングする値 (C<Left>, C<Right> など) の両方を指定する必要があります。
+これは、前述の例のように、二つの要素を等号
+(または、C<\p{Biddi_Class:Left}> のように交換可能なコロン)で
+区切ることによって、実行されます。
+
+=begin original
+
+All Unicode-defined character properties may be written in these compound forms
+of C<\p{I<property>=I<value>}> or C<\p{I<property>:I<value>}>, but Perl provides some
+additional properties that are written only in the single form, as well as
+single-form short-cuts for all binary properties and certain others described
+below, in which you may omit the property name and the equals or colon
+separator.
+
+=end original
+
+すべての Unicode が定義した文字特性は、C<\p{I<property>=I<value>}> や
+C<\p{I<property>:I<value>}> のような複合形式で書けますが、
+Perl は特性名および等号やコロンの区切り文字を省略できるように、
+単一形式でのみ書ける追加の特性や、全ての 2 値特性と一部の後述する
+ものに対する単一形式のショートカットを提供します。
+
+=begin original
+
+Most Unicode character properties have at least two synonyms (or aliases if you
+prefer): a short one that is easier to type and a longer one that is more
+descriptive and hence easier to understand.  Thus the C<"L"> and
+C<"Letter"> properties above are equivalent and can be used
+interchangeably.  Likewise, C<"Upper"> is a synonym for C<"Uppercase">,
+and we could have written C<\p{Uppercase}> equivalently as C<\p{Upper}>.
+Also, there are typically various synonyms for the values the property
+can be.   For binary properties, C<"True"> has 3 synonyms: C<"T">,
+C<"Yes">, and C<"Y">; and C<"False"> has correspondingly C<"F">,
+C<"No">, and C<"N">.  But be careful.  A short form of a value for one
+property may not mean the same thing as the same short form for another.
+Thus, for the C<L</General_Category>> property, C<"L"> means
+C<"Letter">, but for the L<C<Bidi_Class>|/Bidirectional Character Types>
+property, C<"L"> means C<"Left">.  A complete list of properties and
+synonyms is in L<perluniprops>.
+
+=end original
+
+ほとんどの Unicode 文字特性には、少なくとも二つの同義語
+(またはあなたが好むなら別名)があります; 簡単に入力できる短いものと、
+より長いけれども説明的で理解しやすいものです。
+したがって、前述の C<"L"> および C<"Letter"> 特性は等価であり、
+交換可能です。
+同様に、C<"Upper"> は C<"Uppercase"> の同義語であり、C<\p{Uppercase}> は
+等価に C<\p{Upper}> と書けます。
+また、典型的には特性の値に対してさまざまな同義語があります。
+2 値特性の場合、C<"True"> には三つの同義語があります:
+C<"T">, C<"Yes">, C<"Y">; C<"False"> には C<"F">, C<"No">, C<"N"> が
+あります。
+しかし注意してください。
+ある特性に対する値の短い形式は、他の特性の同じ短い形式と同じものを
+意味するとは限りません。
+従って、C<L</General_Category>> 特性では C<"L"> は C<"Letter"> を
+意味しますが、L<C<Bidi_Class>|/Bidirectional Character Types> 特性では、
+C<"L"> は C<"Left"> を意味します。
+特性および同義語の完全な一覧は L<perluniprops> にあります。
+
+=begin original
+
+Upper/lower case differences in property names and values are irrelevant;
+thus C<\p{Upper}> means the same thing as C<\p{upper}> or even C<\p{UpPeR}>.
+Similarly, you can add or subtract underscores anywhere in the middle of a
+word, so that these are also equivalent to C<\p{U_p_p_e_r}>.  And white space
+is irrelevant adjacent to non-word characters, such as the braces and the equals
+or colon separators, so C<\p{   Upper  }> and C<\p{ Upper_case : Y }> are
+equivalent to these as well.  In fact, white space and even
+hyphens can usually be added or deleted anywhere.  So even C<\p{ Up-per case = Yes}> is
+equivalent.  All this is called "loose-matching" by Unicode.  The few places
+where stricter matching is used is in the middle of numbers, and in the Perl
+extension properties that begin or end with an underscore.  Stricter matching
+cares about white space (except adjacent to non-word characters),
+hyphens, and non-interior underscores.
+
+=end original
+
+特性名と値の大文字と小文字の違いは無関係です;
+したがって C<\p{Upper}> は C<\p{upper}>, さらには C<\p{UpPeR}> とも同じことを
+意味します。
+同様に、単語の中のどこにでも下線を追加または削除できるので、
+これらは C<\p{U_p_p_e_r}> とも等価です。
+また、中かっこや等号、コロンなどの非単語文字に隣接した空白は無視されるので、
+C<\p{   Upper  }> and C<\p{ Upper_case : Y }> も等価です。
+実際には、通常、空白とハイフンさえどこにでも追加または削除できます。
+したがって、C<\p{Upper case=Yes}> ですらも等価です。
+これはすべて Unicode で「緩いマッチング」と呼ばれます。
+数少ない厳密なマッチングが採用されている場所は数値の中と、下線で始まったり
+終わったりする Perl 拡張特性です。
+より厳密なマッチングは空白(非単語文字に隣接するものを除く)、ハイフン、
+非内部下線を考慮します。
+
+=begin original
+
+You can also use negation in both C<\p{}> and C<\P{}> by introducing a caret
+(C<^>) between the first brace and the property name: C<\p{^Tamil}> is
+equal to C<\P{Tamil}>.
+
+=end original
+
+C<\p{}> と C<\P{}> の両方で、キャレット(C<^>) を最初のブレースと
+特性名の間に置くことによって意味を反転することができます:
+C<\p{^Tamil}> は C<\P{Tamil}> と等価です。
+
+=begin original
+
+Almost all properties are immune to case-insensitive matching.  That is,
+adding a C</i> regular expression modifier does not change what they
+match.  There are two sets that are affected.
+The first set is
+C<Uppercase_Letter>,
+C<Lowercase_Letter>,
+and C<Titlecase_Letter>,
+all of which match C<Cased_Letter> under C</i> matching.
+And the second set is
+C<Uppercase>,
+C<Lowercase>,
+and C<Titlecase>,
+all of which match C<Cased> under C</i> matching.
+This set also includes its subsets C<PosixUpper> and C<PosixLower> both
+of which under C</i> match C<PosixAlpha>.
+(The difference between these sets is that some things, such as Roman
+numerals, come in both upper and lower case so they are C<Cased>, but
+aren't considered letters, so they aren't C<Cased_Letter>'s.)
+
+=end original
+
+ほとんど全ての特性は大文字小文字を考慮したマッチングの影響を受けません。
+つまり、C</i> 正規表現修飾子を追加することは、
+それらがマッチングするものを変えません。
+影響を受ける二つの集合があります。
+最初の集合は、
+C<Uppercase_Letter>,
+C<Lowercase_Letter>,
+C<Titlecase_Letter>,
+C</i> の下で C<Cased_Letter> にマッチングする全てです。
+二番目の集合は、
+C<Uppercase>,
+C<Lowercase>,
+C<Titlecase>,
+C</i> マッチングの基で C<Cased> にマッチングする全てです。
+この集合はまた、C</i> マッチングの基で C<PosixAlpha> にマッチングする
+そのサブセット C<PosixUpper> と C<PosixLower> を含みます。
+(これらの集合の違いは、ローマ数字のような一部のもので、
+大文字と小文字の両方に含まれるので C<Cased> であるけれども、
+しかし字と考えられないので、C<Cased_Letter> ではありません。)
+
+=begin original
+
+See L</Beyond Unicode code points> for special considerations when
+matching Unicode properties against non-Unicode code points.
+
+=end original
+
+非 Unicode 符号位置に対して Unicode 特性をマッチングしたときの
+特殊処理については L</Beyond Unicode code points> を参照してください。
+
+=head3 B<General_Category>
+
+=begin original
+
+Every Unicode character is assigned a general category, which is the "most
+usual categorization of a character" (from
+L<http://www.unicode.org/reports/tr44>).
+
+=end original
+
+全ての Unicode 文字は一つの一般カテゴリに割り当てられています;
+これは「その文字の最も普通のカテゴライズ」
+(L<http://www.unicode.org/reports/tr44> より)です。
+
+=begin original
+
+The compound way of writing these is like C<\p{General_Category=Number}>
+(short: C<\p{gc:n}>).  But Perl furnishes shortcuts in which everything up
+through the equal or colon separator is omitted.  So you can instead just write
+C<\pN>.
+
+=end original
+
+これらを書く複合的な方法は C<\p{General_Category=Number}>
+(短縮形: C<\p{gc:n}>) のようなものです。
+Perl は等号またはコロンの区切り文字までの全てを省略できる機能を
+提供しています。
+従って、代わりに単に C<\pN> と書けます。
+
+=begin original
+
+Here are the short and long forms of the values the C<General Category> property
+can have:
+
+=end original
+
+以下は、Unicode の C<一般カテゴリ> 特性が持つことができる値の
+短形式と長形式です:
+
+    Short       Long
+
+    L           Letter
+    LC, L&      Cased_Letter (that is: [\p{Ll}\p{Lu}\p{Lt}])
+    Lu          Uppercase_Letter
+    Ll          Lowercase_Letter
+    Lt          Titlecase_Letter
+    Lm          Modifier_Letter
+    Lo          Other_Letter
+
+    M           Mark
+    Mn          Nonspacing_Mark
+    Mc          Spacing_Mark
+    Me          Enclosing_Mark
+
+    N           Number
+    Nd          Decimal_Number (also Digit)
+    Nl          Letter_Number
+    No          Other_Number
+
+    P           Punctuation (also Punct)
+    Pc          Connector_Punctuation
+    Pd          Dash_Punctuation
+    Ps          Open_Punctuation
+    Pe          Close_Punctuation
+    Pi          Initial_Punctuation
+                (may behave like Ps or Pe depending on usage)
+    Pf          Final_Punctuation
+                (may behave like Ps or Pe depending on usage)
+    Po          Other_Punctuation
+
+    S           Symbol
+    Sm          Math_Symbol
+    Sc          Currency_Symbol
+    Sk          Modifier_Symbol
+    So          Other_Symbol
+
+    Z           Separator
+    Zs          Space_Separator
+    Zl          Line_Separator
+    Zp          Paragraph_Separator
+
+    C           Other
+    Cc          Control (also Cntrl)
+    Cf          Format
+    Cs          Surrogate
+    Co          Private_Use
+    Cn          Unassigned
+
+=begin original
+
+Single-letter properties match all characters in any of the
+two-letter sub-properties starting with the same letter.
+C<LC> and C<L&> are special: both are aliases for the set consisting of everything matched by C<Ll>, C<Lu>, and C<Lt>.
+
+=end original
+
+単一文字の特性は同じ文字で始まる二文字の任意のサブ特性に含まれる
+すべての文字にマッチします。
+C<LC> と C<L&> は特別です: 両方とも C<Ll>, C<Lu>, C<Lt> に
+マッチングする全てからなる集合への別名です。
+
+=head3 B<Bidirectional Character Types>
+
+(B<双方向文字型>)
+
+=begin original
+
+Because scripts differ in their directionality (Hebrew and Arabic are
+written right to left, for example) Unicode supplies a C<Bidi_Class> property.
+Some of the values this property can have are:
+
+=end original
+
+用字はその方向性で異なるので (例えばヘブライ語とアラビア語は右から左に
+書きます) Unicode は以下の特性を C<Bidi_Class> 特性で提供しています。
+この特性が持つことができる値の一部は:
+
+    Value       Meaning
+
+    L           Left-to-Right
+    LRE         Left-to-Right Embedding
+    LRO         Left-to-Right Override
+    R           Right-to-Left
+    AL          Arabic Letter
+    RLE         Right-to-Left Embedding
+    RLO         Right-to-Left Override
+    PDF         Pop Directional Format
+    EN          European Number
+    ES          European Separator
+    ET          European Terminator
+    AN          Arabic Number
+    CS          Common Separator
+    NSM         Non-Spacing Mark
+    BN          Boundary Neutral
+    B           Paragraph Separator
+    S           Segment Separator
+    WS          Whitespace
+    ON          Other Neutrals
+
+=begin original
+
+This property is always written in the compound form.
+For example, C<\p{Bidi_Class:R}> matches characters that are normally
+written right to left.  Unlike the
+C<L</General_Category>> property, this
+property can have more values added in a future Unicode release.  Those
+listed above comprised the complete set for many Unicode releases, but
+others were added in Unicode 6.3; you can always find what the
+current ones are in L<perluniprops>.  And
+L<http://www.unicode.org/reports/tr9/> describes how to use them.
+
+=end original
+
+この特性は常に複合形式で書かれます。
+たとえば、C<\p{Bidi_Class:R}> は通常右から左に書く文字にマッチします。
+C<L</General_Category>> 特性とは異なり、
+この特性は将来リリースされる Unicode でさらに値が追加されるかもしれません。
+これらの上述したものは何回もの Unicode のリリースの間完全な一覧でしたが、
+その他の物は Unicode 6.3 で追加されたものです;
+現在の内容についてはいつでも L<perluniprops> で確認できます。
+これらの使い方については
+L<http://www.unicode.org/reports/tr9/> に記述されています。
+
+=head3 B<Scripts>
+
+(B<用字>)
+
+=begin original
+
+The world's languages are written in many different scripts.  This sentence
+(unless you're reading it in translation) is written in Latin, while Russian is
+written in Cyrillic, and Greek is written in, well, Greek; Japanese mainly in
+Hiragana or Katakana.  There are many more.
+
+=end original
+
+世界の言語は多くの異なった用字で書かれています。
+この文は(訳文を読んでいない限り)ラテン文字で書かれていますが、ロシア語は
+キリル文字で書かれています; そしてギリシャ語は、ええと、ギリシャ文字です;
+日本語は主にひらがなやカタカナで書かれています。
+もっとたくさんあります。
+
+=begin original
+
+The Unicode C<Script> and C<Script_Extensions> properties give what
+script a given character is in.  The C<Script_Extensions> property is an
+improved version of C<Script>, as demonstrated below.  Either property
+can be specified with the compound form like
+C<\p{Script=Hebrew}> (short: C<\p{sc=hebr}>), or
+C<\p{Script_Extensions=Javanese}> (short: C<\p{scx=java}>).
+In addition, Perl furnishes shortcuts for all
+C<Script_Extensions> property names.  You can omit everything up through
+the equals (or colon), and simply write C<\p{Latin}> or C<\P{Cyrillic}>.
+(This is not true for C<Script>, which is required to be
+written in the compound form.  Prior to Perl v5.26, the single form
+returned the plain old C<Script> version, but was changed because
+C<Script_Extensions> gives better results.)
+
+=end original
+
+Unicode の C<Script> と C<Script_Extensions> 特性は、指定された
+文字の中にある用字を示します。
+C<Script_Extensions> 特性は、後述するように、
+C<Script> の改良版です。
+それぞれの用字は C<\p{Script=Hebrew}> (短縮: C<\p{sc=hebr}>)
+または
+C<\p{Script_Extensions=Javanese}> (short: C<\p{scx=java}>) のような
+複合形式で指定できます。
+さらに Perl は、すべての C<Script_Extensions> 用字のショートカットを
+提供します。
+等号(またはコロン)までのすべてを省略できます;
+そして単に C<\p{Latin}> や C<\P{Cyrillic}> と書けます。
+(これは C<Script> では正しくありません; これは
+複合形式で書かれることを要求します。
+Perl v5.26 より前は、単一形式は昔ながらの単純な
+C<Script> 版を返していましたが、C<Script_Extensions> が
+より良い結果を返すので、変更されました。)
+
+=begin original
+
+The difference between these two properties involves characters that are
+used in multiple scripts.  For example the digits '0' through '9' are
+used in many parts of the world.  These are placed in a script named
+C<Common>.  Other characters are used in just a few scripts.  For
+example, the C<"KATAKANA-HIRAGANA DOUBLE HYPHEN"> is used in both Japanese
+scripts, Katakana and Hiragana, but nowhere else.  The C<Script>
+property places all characters that are used in multiple scripts in the
+C<Common> script, while the C<Script_Extensions> property places those
+that are used in only a few scripts into each of those scripts; while
+still using C<Common> for those used in many scripts.  Thus both these
+match:
+
+=end original
+
+これら二つの特性の違いは、複数の用字で使われている文字に関係があります。
+例えば、数字 '0' から '9' は世界中の大部分で使われています。
+これらは C<Common> という名前の用字に置かれています。
+その他の文字はほんのいくつかの用字でのみ使われています。
+例えば、C<"KATAKANA-HIRAGANA DOUBLE HYPHEN"> は日本語の二つの用字
+Katakana と Hiragana の両方で使われていますが、その他では使われていません。
+C<Script> 特性は、C<Common> 用字にあって、複数のの用字で使われている
+全ての文字に与えられています;
+一方 C<Script_Extensions> 特性は、それらの用字それぞれのほんのいくつかの
+用字でのみ使われているものに与えられます;
+一方多くの用字で使われているものについては未だ C<Common> が使われています。
+従ってこれらは両方ともマッチングし:
+
+ "0" =~ /\p{sc=Common}/     # Matches
+ "0" =~ /\p{scx=Common}/    # Matches
+
+=begin original
+
+and only the first of these match:
+
+=end original
+
+そしてこれらは最初だけがマッチングします:
+
+ "\N{KATAKANA-HIRAGANA DOUBLE HYPHEN}" =~ /\p{sc=Common}  # Matches
+ "\N{KATAKANA-HIRAGANA DOUBLE HYPHEN}" =~ /\p{scx=Common} # No match
+
+=begin original
+
+And only the last two of these match:
+
+=end original
+
+それこれらは最後の二つだけがマッチングします:
+
+ "\N{KATAKANA-HIRAGANA DOUBLE HYPHEN}" =~ /\p{sc=Hiragana}  # No match
+ "\N{KATAKANA-HIRAGANA DOUBLE HYPHEN}" =~ /\p{sc=Katakana}  # No match
+ "\N{KATAKANA-HIRAGANA DOUBLE HYPHEN}" =~ /\p{scx=Hiragana} # Matches
+ "\N{KATAKANA-HIRAGANA DOUBLE HYPHEN}" =~ /\p{scx=Katakana} # Matches
+
+=begin original
+
+C<Script_Extensions> is thus an improved C<Script>, in which there are
+fewer characters in the C<Common> script, and correspondingly more in
+other scripts.  It is new in Unicode version 6.0, and its data are likely
+to change significantly in later releases, as things get sorted out.
+New code should probably be using C<Script_Extensions> and not plain
+C<Script>.  If you compile perl with a Unicode release that doesn't have
+C<Script_Extensions>, the single form Perl extensions will instead refer
+to the plain C<Script> property.  If you compile with a version of
+Unicode that doesn't have the C<Script> property, these extensions will
+not be defined at all.
+
+=end original
+
+このように C<Script_Extensions> は改良された C<Script> で、
+C<Common> 用字にある文字はより少なく、それに応じて他の用字の文字は
+より多くなっています。
+これは Unicode バージョン 6.0 からの新しいもので、そのデータは
+将来のリリースで整理されて大きく変更される可能性が高いです。
+新しいコードはおそらく、単なる C<Script> ではなく
+C<Script_Extensions> を使うべきです。
+C<Script_Extensions> がない Unicode のリリースで perl を
+コンパイルしている場合、単一形式の Perl 拡張は代わりに
+単なる C<Script> 特性を参照します。
+C<Script> 特性がないバージョンでコンパイルしている場合、
+これらの拡張は何も定義されません。
+
+=begin original
+
+(Actually, besides C<Common>, the C<Inherited> script, contains
+characters that are used in multiple scripts.  These are modifier
+characters which inherit the script value
+of the controlling character.  Some of these are used in many scripts,
+and so go into C<Inherited> in both C<Script> and C<Script_Extensions>.
+Others are used in just a few scripts, so are in C<Inherited> in
+C<Script>, but not in C<Script_Extensions>.)
+
+=end original
+
+(実際、C<Common> を除くと、C<Inherited> 用字は複数の用字で使われている
+文字を含みます。
+制御文字の用字の値を継承する文字のための修飾文字です。
+その一部は多くの用字で使われているので、
+C<Script> と C<Script_Extensions> の両方の中に
+C<Inherited> が入っています。
+その他のものはいくつかの用字でのみ使われているので、
+C<Script> の C<Inherited> にはありますが、
+C<Script_Extensions> にはありません。)
+
+=begin original
+
+It is worth stressing that there are several different sets of digits in
+Unicode that are equivalent to 0-9 and are matchable by C<\d> in a
+regular expression.  If they are used in a single language only, they
+are in that language's C<Script> and C<Script_Extensions>.  If they are
+used in more than one script, they will be in C<sc=Common>, but only
+if they are used in many scripts should they be in C<scx=Common>.
+
+=end original
+
+Unicode には、0-9 と等価で、正規表現内で C<\d> にマッチングできる数字の
+集合がいくつかあることは強調する価値があります。
+それらが単一の言語だけで使われた場合、それらはその言語の
+C<Script> と C<Script_Extensions> です。
+これらが複数の用字で使われている場合、
+それらは C<sc=Common> の中にありますが、
+C<scx=Common> にあるべき多くの用字で使われている場合のみです。
+
+=begin original
+
+The explanation above has omitted some detail; refer to UAX#24 "Unicode
+Script Property": L<http://www.unicode.org/reports/tr24>.
+
+=end original
+
+前述の説明は一部の詳細を省略しています;
+UAX#24 "Unicode Script Property": L<http://www.unicode.org/reports/tr24> を
+参照してください。
+
+=begin original
+
+A complete list of scripts and their shortcuts is in L<perluniprops>.
+
+=end original
+
+用字とその省略形の完全な一覧は L<perluniprops> にあります。
+
+=head3 B<Use of the C<"Is"> Prefix>
+
+(B<C<"Is"> 接頭辞の使用>)
+
+=begin original
+
+For backward compatibility (with ancient Perl 5.6), all properties writable
+without using the compound form mentioned
+so far may have C<Is> or C<Is_> prepended to their name, so C<\P{Is_Lu}>, for
+example, is equal to C<\P{Lu}>, and C<\p{IsScript:Arabic}> is equal to
+C<\p{Arabic}>.
+
+=end original
+
+(とても古い Perl 5.6 との)後方互換性のため、
+これまでのところ記述している複合形式を使うことなく書き込み可能な
+すべての特性はその名前の前に C<Is>
+または C<Is_> を置くことができます; したがって、C<\P{Is_Lu}> は C<\P{Lu}> と
+等価で、C<\p{IsScript:Arabic}> は C<\p{Arabic}> と等価です。
+
+=head3 B<Blocks>
+
+(B<ブロック>)
+
+=begin original
+
+In addition to B<scripts>, Unicode also defines B<blocks> of
+characters.  The difference between scripts and blocks is that the
+concept of scripts is closer to natural languages, while the concept
+of blocks is more of an artificial grouping based on groups of Unicode
+characters with consecutive ordinal values. For example, the C<"Basic Latin">
+block is all the characters whose ordinals are between 0 and 127, inclusive; in
+other words, the ASCII characters.  The C<"Latin"> script contains some letters
+from this as well as several other blocks, like C<"Latin-1 Supplement">,
+C<"Latin Extended-A">, I<etc.>, but it does not contain all the characters from
+those blocks. It does not, for example, contain the digits 0-9, because
+those digits are shared across many scripts, and hence are in the
+C<Common> script.
+
+=end original
+
+B<用字> に加え、Unicode では文字の B<ブロック> を定義しています。
+用字とブロックの違いは、用字のコンセプトが自然言語に
+密着したものであるのに対して、ブロックのコンセプトは連続した番号を持つ
+Unicode 文字のグループに基づいたより人工的なグループ分けであることです。
+たとえば、C<"Basic Latin"> ブロックは番号 0 から 127 までの全ての文字です;
+言い換えると ASCII 文字です。
+C<"Latin"> 用字は、このブロックの文字と、C<"Latin-1 Supplement">,
+C<"Latin Extended-A"> などのその他のいくつかのブロックの文字を含んでいますが、
+それらのブロックのすべての文字を含んではいません。
+例を挙げると、数字 0-9 は多くの用字を越えて共有されているので、
+(Latin 用字は)数字を含まないので、これらは C<Common> 用字にあります。
+
+=begin original
+
+For more about scripts versus blocks, see UAX#24 "Unicode Script Property":
+L<http://www.unicode.org/reports/tr24>
+
+=end original
+
+用字とブロックに違いに関する詳細については、
+UAX#24 "Unicode Script Property"
+L<http://www.unicode.org/reports/tr24> を参照してください。
+
+=begin original
+
+The C<Script_Extensions> or C<Script> properties are likely to be the
+ones you want to use when processing
+natural language; the C<Block> property may occasionally be useful in working
+with the nuts and bolts of Unicode.
+
+=end original
+
+C<Script_Extensions> や C<Script> 特性は自然言語を処理するときにおそらく
+使いたいと思うようなものです;
+C<Block> 特性は Unicode の基本的な部分で動作させるのに時々有用です。
+
+=begin original
+
+Block names are matched in the compound form, like C<\p{Block: Arrows}> or
+C<\p{Blk=Hebrew}>.  Unlike most other properties, only a few block names have a
+Unicode-defined short name.
+
+=end original
+
+ブロック名は C<\p{Block: Arrows}> や C<\p{Blk=Hebrew}> のような
+復号形式でマッチングします。
+その他のほとんどの特性と違って、いくつかのブロック名だけが Unicode が
+定義した短い名前を持ちます。
+
+=begin original
+
+Perl also defines single form synonyms for the block property in cases
+where these do not conflict with something else.  But don't use any of
+these, because they are unstable.  Since these are Perl extensions, they
+are subordinate to official Unicode property names; Unicode doesn't know
+nor care about Perl's extensions.  It may happen that a name that
+currently means the Perl extension will later be changed without warning
+to mean a different Unicode property in a future version of the perl
+interpreter that uses a later Unicode release, and your code would no
+longer work.  The extensions are mentioned here for completeness:  Take
+the block name and prefix it with one of: C<In> (for example
+C<\p{Blk=Arrows}> can currently be written as C<\p{In_Arrows}>); or
+sometimes C<Is> (like C<\p{Is_Arrows}>); or sometimes no prefix at all
+(C<\p{Arrows}>).  As of this writing (Unicode 9.0) there are no
+conflicts with using the C<In_> prefix, but there are plenty with the
+other two forms.  For example, C<\p{Is_Hebrew}> and C<\p{Hebrew}> mean
+C<\p{Script_Extensions=Hebrew}> which is NOT the same thing as
+C<\p{Blk=Hebrew}>.  Our
+advice used to be to use the C<In_> prefix as a single form way of
+specifying a block.  But Unicode 8.0 added properties whose names begin
+with C<In>, and it's now clear that it's only luck that's so far
+prevented a conflict.  Using C<In> is only marginally less typing than
+C<Blk:>, and the latter's meaning is clearer anyway, and guaranteed to
+never conflict.  So don't take chances.  Use C<\p{Blk=foo}> for new
+code.  And be sure that block is what you really really want to do.  In
+most cases scripts are what you want instead.
+
+=end original
+
+Perl はまた、他のものと競合しない場合には、
+ブロック特性に対して単一形式の同義語を定義します。
+しかし、これらは不安定なので、使わないでください。
+これらは Perl の拡張なので、公式の Unicode 特性名の下位にあたります;
+Unicode は Perl の拡張を認識しませんし、気にしません。
+現在は Perl 拡張を意味する名前が、将来のUnicodeリリースを使用する
+perlインタプリタの将来のバージョンでは、警告なしに別の Unicode 特性を
+意味するように変更され、コードが動作しなくなる可能性があります。
+ここでは、完全性のために拡張について説明します:
+ロック名の前に次のいずれかの接頭辞を付けます:
+C<In> (例えば C<\p{Blk=Arrows}> は現在 C<\p{In_Arrows}> と書けます);
+時々 C<Is> (C<\p{Is_Arrows}> のように);
+時々全く接頭辞なし (C<\p{Arrows}>)。
+この文書の執筆時点 (Unicode 9.0) では、C<In_> 接頭辞の使用と
+競合することはありませんが、他の二つの形式では多くの競合があります。
+例えば、C<\p{Is_Hebrew}> および C<\p{Hebrew}> は、
+C<\p{Script_Extensions=Hebrew}> を意味しますが、C<\p{Blk=Hebrew}> と
+同じものでは「ありません」。
+以前勧めていたのは、ブロックを指定する単一形式として
+C<In_> 接頭辞を使うことでした。
+しかし Unicode 8.0 では、名前が C<In> で始まる特性が追加されたため、
+今まで競合を回避できていたのは単に幸運なだけだったことが
+明らかになりました。
+C<In> を使用することは、C<Blk:> よりもわずかにタイプ数が少ないだけで、
+とにかく後者の意味はより明確で、決して衝突しないことが保証されます。
+だから、危険を冒さないでください。
+新しいコードには C<\p{Blk=foo}> を使ってください。
+そして、これが本当に本当にやりたいことであることを確認してください。
+ほとんどの場合、本当に必要なものはそうではなく用字です。
+
+=begin original
+
+A complete list of blocks is in L<perluniprops>.
+
+=end original
+
+ブロックの完全な一覧は L<perluniprops> にあります。
+
+=head3 B<Other Properties>
+
+(B<その他の特性>)
+
+=begin original
+
+There are many more properties than the very basic ones described here.
+A complete list is in L<perluniprops>.
+
+=end original
+
+ここで記述したとても基本的なものよりもとても多くの特性があります。
+完全な一覧は L<perluniprops> です。
+
+=begin original
+
+Unicode defines all its properties in the compound form, so all single-form
+properties are Perl extensions.  Most of these are just synonyms for the
+Unicode ones, but some are genuine extensions, including several that are in
+the compound form.  And quite a few of these are actually recommended by Unicode
+(in L<http://www.unicode.org/reports/tr18>).
+
+=end original
+
+Unicode は、複合形式ですべての特性を定義するので、
+単一形式の特性はすべて Perl 拡張になります。
+これらのほとんどは Unicode のものの同義語にすぎませんが、いくつかは
+本物の拡張であり、複合形式のものもあります。
+そしてこれらのいくつかは実際に Unicode
+(L<http://www.unicode.org/reports/tr18>)で推奨されています。
+
+=begin original
+
+This section gives some details on all extensions that aren't just
+synonyms for compound-form Unicode properties
+(for those properties, you'll have to refer to the
+L<Unicode Standard|http://www.unicode.org/reports/tr44>.
+
+=end original
+
+この節では、単に複合形式の Unicode 特性の同義語ではないすべての
+拡張機能について詳しく説明します (これらの特性については、
+L<Unicode Standard http://www.unicode.org/reports/tr44> を
+参照してください)。
+
+=over
+
+=item B<C<\p{All}>>
+
+=begin original
+
+This matches every possible code point.  It is equivalent to C<qr/./s>.
+Unlike all the other non-user-defined C<\p{}> property matches, no
+warning is ever generated if this is property is matched against a
+non-Unicode code point (see L</Beyond Unicode code points> below).
+
+=end original
+
+これは全ての符号位置にマッチングします。
+これは C<qr/./s> と等価です。
+その他全てのユーザー定義でない C<\p{}> 特性のマッチングと異なり、
+この特性はたとえ非 Unicode 符号位置に対してマッチングしても警告は
+発生しません (後述する L</Beyond Unicode code points> 参照)。
+
+=item B<C<\p{Alnum}>>
+
+=begin original
+
+This matches any C<\p{Alphabetic}> or C<\p{Decimal_Number}> character.
+
+=end original
+
+これは任意の C<\p{Alphabetic}> または C<\p{Decimal_Number}> 文字に
+マッチングします。
+
+=item B<C<\p{Any}>>
+
+=begin original
+
+This matches any of the 1_114_112 Unicode code points.  It is a synonym
+for C<\p{Unicode}>.
+
+=end original
+
+これは任意の 1_114_112 Unicode 符号位置にマッチングします。
+これは C<\p{Unicode}> の同義語です。
+
+=item B<C<\p{ASCII}>>
+
+=begin original
+
+This matches any of the 128 characters in the US-ASCII character set,
+which is a subset of Unicode.
+
+=end original
+
+これは、Unicode のサブセットである、US-ASCII 文字集合の 128 文字に
+マッチングします。
+
+=item B<C<\p{Assigned}>>
+
+=begin original
+
+This matches any assigned code point; that is, any code point whose L<general
+category|/General_Category> is not C<Unassigned> (or equivalently, not C<Cn>).
+
+=end original
+
+これは任意の割り当てられた符号位置にマッチングします; つまり、
+L<general category|/General_Category> が
+C<Unassigned> ではない(または同等に C<Cn> ではない) 符号位置です。
+
+=item B<C<\p{Blank}>>
+
+=begin original
+
+This is the same as C<\h> and C<\p{HorizSpace}>:  A character that changes the
+spacing horizontally.
+
+=end original
+
+これは C<\h> および C<\p{HorizSpace}> と同じです: スペースを垂直に変更する
+文字です。
+
+=item B<C<\p{Decomposition_Type: Non_Canonical}>>    (Short: C<\p{Dt=NonCanon}>)
+
+=begin original
+
+Matches a character that has a non-canonical decomposition.
+
+=end original
+
+非正準分解文字にマッチングします。
+
+=begin original
+
+The L</Extended Grapheme Clusters (Logical characters)> section above
+talked about canonical decompositions.  However, many more characters
+have a different type of decomposition, a "compatible" or
+"non-canonical" decomposition.  The sequences that form these
+decompositions are not considered canonically equivalent to the
+pre-composed character.  An example is the C<"SUPERSCRIPT ONE">.  It is
+somewhat like a regular digit 1, but not exactly; its decomposition into
+the digit 1 is called a "compatible" decomposition, specifically a
+"super" decomposition.  There are several such compatibility
+decompositions (see L<http://www.unicode.org/reports/tr44>), including
+one called "compat", which means some miscellaneous type of
+decomposition that doesn't fit into the other decomposition categories
+that Unicode has chosen.
+
+=end original
+
+前述の L</Extended Grapheme Clusters (Logical characters)> 節は
+正準分解について記述しました。
+しかし、多くの文字は異なる種類の分解を持ち、
+「互換」分解あるいは「非正準」分解と呼ばれます。
+これらの分解を形成する並びは合成済文字への正準等価ではないと考えられます。
+例えば、C<"SUPERSCRIPT ONE"> です。
+これは普通の数字 1 のようなものですが、正確ではありません;
+これの数字 1 への分解は
+「互換」分解と呼ばれ、特に「スーパー」分解と呼ばれます。
+このような互換分解(L<http://www.unicode.org/reports/tr44>を参照)は
+いくつかあります; "compat" と呼ばれる、
+Unicode が選択したその他の分解カテゴリに収まらない、様々な分解を意味するものも
+あります。
+
+=begin original
+
+Note that most Unicode characters don't have a decomposition, so their
+decomposition type is C<"None">.
+
+=end original
+
+ほとんどの Unicode 文字は分解を持たないので、それらの分解型は C<"None"> です。
+
+=begin original
+
+For your convenience, Perl has added the C<Non_Canonical> decomposition
+type to mean any of the several compatibility decompositions.
+
+=end original
+
+便利なように、Perl は任意の様々な互換分解を意味する C<Non_Canonical> 分解型を
+追加しています。
+
+=item B<C<\p{Graph}>>
+
+=begin original
+
+Matches any character that is graphic.  Theoretically, this means a character
+that on a printer would cause ink to be used.
+
+=end original
+
+任意の図形文字にマッチングします。
+理論的には、これはプリンタがインクを使うことになる文字を意味します。
+
+=item B<C<\p{HorizSpace}>>
+
+=begin original
+
+This is the same as C<\h> and C<\p{Blank}>:  a character that changes the
+spacing horizontally.
+
+=end original
+
+これは C<\h> や C<\p{Blank}> と同じです:
+スペースを垂直に変更するものです。
+
+=item B<C<\p{In=*}>>
+
+=begin original
+
+This is a synonym for C<\p{Present_In=*}>
+
+=end original
+
+これは C<\p{Present_In=*}> の同義語です。
+
+=item B<C<\p{PerlSpace}>>
+
+=begin original
+
+This is the same as C<\s>, restricted to ASCII, namely C<S<[ \f\n\r\t]>>
+and starting in Perl v5.18, a vertical tab.
+
+=end original
+
+これは C<\s> と同じで、ASCII に制限されます; つまり C<S<[ \f\n\r\t]>>、
+および、Perl v5.18 から垂直タブ、です。
+
+=begin original
+
+Mnemonic: Perl's (original) space
+
+=end original
+
+記憶法: Perl の (元々の) スペース
+
+=item B<C<\p{PerlWord}>>
+
+=begin original
+
+This is the same as C<\w>, restricted to ASCII, namely C<[A-Za-z0-9_]>
+
+=end original
+
+これは C<\w> と同じで ASCII に制限されます; つまり C<[A-Za-z0-9_]> です。
+
+=begin original
+
+Mnemonic: Perl's (original) word.
+
+=end original
+
+記憶法: Perl の (元々の) 単語。
+
+=item B<C<\p{Posix...}>>
+
+=begin original
+
+There are several of these, which are equivalents, using the C<\p{}>
+notation, for Posix classes and are described in
+L<perlrecharclass/POSIX Character Classes>.
+
+=end original
+
+これらのいくつかには Posix クラスのための C<\p{}> 記法を使った
+等価物があります; これらは
+L<perlrecharclass/POSIX Character Classes> に記述されています。
+
+=item B<C<\p{Present_In: *}>>    (Short: C<\p{In=*}>)
+
+=begin original
+
+This property is used when you need to know in what Unicode version(s) a
+character is.
+
+=end original
+
+この特性は、この文字の Unicode バージョンを知る必要があるときに使われます。
+
+=begin original
+
+The "*" above stands for some Unicode version number, such as
+C<1.1> or C<12.0>; or the "*" can also be C<Unassigned>.  This property will
+match the code points whose final disposition has been settled as of the
+Unicode release given by the version number; C<\p{Present_In: Unassigned}>
+will match those code points whose meaning has yet to be assigned.
+
+=end original
+
+前述の "*" は、C<1.1> や C<12.0> のような Unicode バージョン番号です;
+あるいは "*" は C<Unassigned> も取ります。
+この特性は、最終的な配置がバージョン番号によって指定された Unicode リリースに
+設定された符号位置にマッチングします;
+C<\p{Present_In: Unassigned}> は、まだ意味が割り当てられていない符号位置に
+マッチングします。
+
+=begin original
+
+For example, C<U+0041> C<"LATIN CAPITAL LETTER A"> was present in the very first
+Unicode release available, which is C<1.1>, so this property is true for all
+valid "*" versions.  On the other hand, C<U+1EFF> was not assigned until version
+5.1 when it became C<"LATIN SMALL LETTER Y WITH LOOP">, so the only "*" that
+would match it are 5.1, 5.2, and later.
+
+=end original
+
+たとえば、C<U+0041> C<"LATIN CAPITAL LETTER A"> は、使用可能な
+最初の Unicode リリースである C<1.1> から存在しているので、
+この特性はすべての有効な "*" バージョンに対して真です。
+一方、C<U+1EFF> は、これが C<"LATIN SMALL LETTER Y WITH LOOP"> になった
+バージョン 5.1 まで割り当てられていなかったので、
+これにマッチングする "*" は 5.1, 5.2, およびそれ以降です。
+
+=begin original
+
+Unicode furnishes the C<Age> property from which this is derived.  The problem
+with Age is that a strict interpretation of it (which Perl takes) has it
+matching the precise release a code point's meaning is introduced in.  Thus
+C<U+0041> would match only 1.1; and C<U+1EFF> only 5.1.  This is not usually what
+you want.
+
+=end original
+
+Unicodeは、C<Age> 特性を、これから派生したものから提供します。
+Age の問題は、(Perl が行う) 厳密な解釈によって、符号位置の
+意味が導入された正確なリリースと一致することです。
+したがって、C<U+0041> は、1.1 のみにマッチングし、C<U+1eff> は 5.1 とのみ
+マッチングします。
+これは通常、あなたが望むものではありません。
+
+=begin original
+
+Some non-Perl implementations of the Age property may change its meaning to be
+the same as the Perl C<Present_In> property; just be aware of that.
+
+=end original
+
+Age 特性の非 Perl 実装の中には、Perl の C<Present_In> 特性と
+同じ意味を持つように変更しているものがあります; 知っておいてください。
+
+=begin original
+
+Another confusion with both these properties is that the definition is not
+that the code point has been I<assigned>, but that the meaning of the code point
+has been I<determined>.  This is because 66 code points will always be
+unassigned, and so the C<Age> for them is the Unicode version in which the decision
+to make them so was made.  For example, C<U+FDD0> is to be permanently
+unassigned to a character, and the decision to do that was made in version 3.1,
+so C<\p{Age=3.1}> matches this character, as also does C<\p{Present_In: 3.1}> and up.
+
+=end original
+
+これらの特性に関するもう一つの混乱は、定義は
+この符号位置が I<割り当てられた> ということではなく、
+符号位置の意味が I<決定された> ということです。
+これは、66 の符号位置が常に割り当てられなくなり、
+それらに対する C<Age> はそう決定された Unicode のバージョンだからです。
+たとえば、C<U+FDD0> は永続的に文字が割り当てられないことなっていて、
+この決定はバージョン 3.1 で行われたので、
+したがって C<\p{Age=3.1}> はこの文字にマッチングし、
+C<\p{Present_In:3.1}> 以上もマッチングします。
+
+=item B<C<\p{Print}>>
+
+=begin original
+
+This matches any character that is graphical or blank, except controls.
+
+=end original
+
+制御文字を除く、任意の図形文字か空白にマッチングします。
+
+=item B<C<\p{SpacePerl}>>
+
+=begin original
+
+This is the same as C<\s>, including beyond ASCII.
+
+=end original
+
+これは C<\s> は同様で、ASCII の範囲外を含みます。
+
+=begin original
+
+Mnemonic: Space, as modified by Perl.  (It doesn't include the vertical tab
+until v5.18, which both the Posix standard and Unicode consider white space.)
+
+=end original
+
+記憶法: スペース、Perl によって修正。
+(これは、v5.18 までは、Posix 標準と Unicode の両方が空白と考える
+垂直タブを含みません。)
+
+=item B<C<\p{Title}>> and  B<C<\p{Titlecase}>>
+
+(B<C<\p{Title}>> と B<C<\p{Titlecase}>>)
+
+=begin original
+
+Under case-sensitive matching, these both match the same code points as
+C<\p{General Category=Titlecase_Letter}> (C<\p{gc=lt}>).  The difference
+is that under C</i> caseless matching, these match the same as
+C<\p{Cased}>, whereas C<\p{gc=lt}> matches C<\p{Cased_Letter>).
+
+=end original
+
+大文字小文字を無視するマッチングの下では、これらの両方は
+C<\p{General Category=Titlecase_Letter}> (C<\p{gc=lt}>) として
+同じ符号位置にマッチングします。
+違いは、C</i> 大文字小文字無視マッチングでは、
+これらのマッチングは C<\p{Cased}> と同じで、
+C<\p{gc=lt}> は C<\p{Cased_Letter>) にマッチングすると言うことです。
+
+=item B<C<\p{Unicode}>>
+
+=begin original
+
+This matches any of the 1_114_112 Unicode code points.
+C<\p{Any}>.
+
+=end original
+
+これは任意の 1_114_112 Unicode 符号位置にマッチングします。
+これは C<\p{Any}> の同義語です。
+
+=item B<C<\p{VertSpace}>>
+
+=begin original
+
+This is the same as C<\v>:  A character that changes the spacing vertically.
+
+=end original
+
+これは C<\v> と同じです: 垂直の空白を変更する文字です。
+
+=item B<C<\p{Word}>>
+
+=begin original
+
+This is the same as C<\w>, including over 100_000 characters beyond ASCII.
+
+=end original
+
+これは C<\w> と同じで、ASCII 範囲外の 100_000 を超える文字を含みます。
+
+=item B<C<\p{XPosix...}>>
+
+=begin original
+
+There are several of these, which are the standard Posix classes
+extended to the full Unicode range.  They are described in
+L<perlrecharclass/POSIX Character Classes>.
+
+=end original
+
+これらのいくつかには、完全な Unicode の範囲に拡張された標準 Posix クラスが
+あります; これらは
+L<perlrecharclass/POSIX Character Classes> に記述されています。
+
+=back
+
+=head2 Wildcards in Property Values
+
+(特性値でのワイルドカード)
+
+=begin original
+
+Starting in Perl 5.30, it is possible to do do something like this:
+
+=end original
+
+Starting in Perl 5.30, it is possible to do do something like this:
+(TBT)
+
+ qr!\p{numeric_value=/\A[0-5]\z/}!
+
+=begin original
+
+or, by abbreviating and adding C</x>,
+
+=end original
+
+or, by abbreviating and adding C</x>,
+(TBT)
+
+ qr! \p{nv= /(?x) \A [0-5] \z / }!
+
+=begin original
+
+This matches all code points whose numeric value is one of 0, 1, 2, 3,
+4, or 5.  This particular example could instead have been written as
+
+=end original
+
+This matches all code points whose numeric value is one of 0, 1, 2, 3,
+4, or 5.  This particular example could instead have been written as
+(TBT)
+
+ qr! \A [ \p{nv=0}\p{nv=1}\p{nv=2}\p{nv=3}\p{nv=4}\p{nv=5} ] \z !xx
+
+=begin original
+
+in earlier perls, so in this case this feature just makes things easier
+and shorter to write.  If we hadn't included the C<\A> and C<\z>, these
+would have matched things like C<1E<sol>2> because that contains a 1 (as
+well as a 2).  As written, it matches things like subscripts that have
+these numeric values.  If we only wanted the decimal digits with those
+numeric values, we could say,
+
+=end original
+
+in earlier perls, so in this case this feature just makes things easier
+and shorter to write.  If we hadn't included the C<\A> and C<\z>, these
+would have matched things like C<1E<sol>2> because that contains a 1 (as
+well as a 2).  As written, it matches things like subscripts that have
+these numeric values.  If we only wanted the decimal digits with those
+numeric values, we could say,
+(TBT)
+
+ qr! (?[ \d & \p{nv=/[0-5]/ ]) }!x
+
+=begin original
+
+The C<\d> gets rid of needing to anchor the pattern, since it forces the
+result to only match C<[0-9]>, and the C<[0-5]> further restricts it.
+
+=end original
+
+The C<\d> gets rid of needing to anchor the pattern, since it forces the
+result to only match C<[0-9]>, and the C<[0-5]> further restricts it.
+(TBT)
+
+=begin original
+
+The text in the above examples enclosed between the C<"E<sol>">
+characters can be just about any regular expression.  It is independent
+of the main pattern, so doesn't share any capturing groups, I<etc>.  The
+delimiters for it must be ASCII punctuation, but it may NOT be
+delimited by C<"{">, nor C<"}"> nor contain a literal C<"}">, as that
+delimits the end of the enclosing C<\p{}>.  Like any pattern, certain
+other delimiters are terminated by their mirror images.  These are
+C<"(">, C<"[>", and C<"E<lt>">.  If the delimiter is any of C<"-">,
+C<"_">, C<"+">, or C<"\">, or is the same delimiter as is used for the
+enclosing pattern, it must be be preceded by a backslash escape, both
+fore and aft.
+
+=end original
+
+The text in the above examples enclosed between the C<"E<sol>">
+characters can be just about any regular expression.  It is independent
+of the main pattern, so doesn't share any capturing groups, I<etc>.  The
+delimiters for it must be ASCII punctuation, but it may NOT be
+delimited by C<"{">, nor C<"}"> nor contain a literal C<"}">, as that
+delimits the end of the enclosing C<\p{}>.  Like any pattern, certain
+other delimiters are terminated by their mirror images.  These are
+C<"(">, C<"[>", and C<"E<lt>">.  If the delimiter is any of C<"-">,
+C<"_">, C<"+">, or C<"\">, or is the same delimiter as is used for the
+enclosing pattern, it must be be preceded by a backslash escape, both
+fore and aft.
+(TBT)
+
+=begin original
+
+Beware of using C<"$"> to indicate to match the end of the string.  It
+can too easily be interpreted as being a punctuation variable, like
+C<$/>.
+
+=end original
+
+Beware of using C<"$"> to indicate to match the end of the string.  It
+can too easily be interpreted as being a punctuation variable, like
+C<$/>.
+(TBT)
+
+=begin original
+
+No modifiers may follow the final delimiter.  Instead, use
+L<perlre/(?adlupimnsx-imnsx)> and/or
+L<perlre/(?adluimnsx-imnsx:pattern)> to specify modifiers.
+
+=end original
+
+No modifiers may follow the final delimiter.  Instead, use
+L<perlre/(?adlupimnsx-imnsx)> and/or
+L<perlre/(?adluimnsx-imnsx:pattern)> to specify modifiers.
+(TBT)
+
+=begin original
+
+This feature is not available when the left-hand side is prefixed by
+C<Is_>, nor for any form that is marked as "Discouraged" in
+L<perluniprops/Discouraged>.
+
+=end original
+
+This feature is not available when the left-hand side is prefixed by
+C<Is_>, nor for any form that is marked as "Discouraged" in
+L<perluniprops/Discouraged>.
+(TBT)
+
+=begin original
+
+Perl wraps your pattern with C<(?iaa: ... )>.  This is because nothing
+outside ASCII can match the Unicode property values available in this
+release, and they should match caselessly.  If your pattern has a syntax
+error, this wrapping will be shown in the error message, even though you
+didn't specify it yourself.  This could be confusing if you don't know
+about this.
+
+=end original
+
+Perl wraps your pattern with C<(?iaa: ... )>.  This is because nothing
+outside ASCII can match the Unicode property values available in this
+release, and they should match caselessly.  If your pattern has a syntax
+error, this wrapping will be shown in the error message, even though you
+didn't specify it yourself.  This could be confusing if you don't know
+about this.
+(TBT)
+
+=begin original
+
+This experimental feature has been added to begin to implement
+L<https://www.unicode.org/reports/tr18/#Wildcard_Properties>.  Using it
+will raise a (default-on) warning in the
+C<experimental::uniprop_wildcards> category.  We reserve the right to
+change its operation as we gain experience.
+
+=end original
+
+This experimental feature has been added to begin to implement
+L<https://www.unicode.org/reports/tr18/#Wildcard_Properties>.  Using it
+will raise a (default-on) warning in the
+C<experimental::uniprop_wildcards> category.  We reserve the right to
+change its operation as we gain experience.
+(TBT)
+
+=begin original
+
+Your subpattern can be just about anything, but for it to have some
+utility, it should match when called with either or both of
+a) the full name of the property value with underscores (and/or spaces
+in the Block property) and some things uppercase; or b) the property
+value in all lowercase with spaces and underscores squeezed out.  For
+example,
+
+=end original
+
+Your subpattern can be just about anything, but for it to have some
+utility, it should match when called with either or both of
+a) the full name of the property value with underscores (and/or spaces
+in the Block property) and some things uppercase; or b) the property
+value in all lowercase with spaces and underscores squeezed out.  For
+example,
+(TBT)
+
+ qr!\p{Blk=/Old I.*/}!
+ qr!\p{Blk=/oldi.*/}!
+
+=begin original
+
+would match the same things.
+
+=end original
+
+would match the same things.
+(TBT)
+
+=begin original
+
+A warning is issued if none of the legal values for a property are
+matched by your pattern.  It's likely that a future release will raise a
+warning if your pattern ends up causing every possible code point to
+match.
+
+=end original
+
+A warning is issued if none of the legal values for a property are
+matched by your pattern.  It's likely that a future release will raise a
+warning if your pattern ends up causing every possible code point to
+match.
+(TBT)
+
+=begin original
+
+Another example that shows that within C<\p{...}>, C</x> isn't needed to
+have spaces:
+
+=end original
+
+Another example that shows that within C<\p{...}>, C</x> isn't needed to
+have spaces:
+(TBT)
+
+ qr!\p{scx= /Hebrew|Greek/ }!
+
+=begin original
+
+To be safe, we should have anchored the above example, to prevent
+matches for something like C<Hebrew_Braile>, but there aren't
+any script names like that.
+
+=end original
+
+To be safe, we should have anchored the above example, to prevent
+matches for something like C<Hebrew_Braile>, but there aren't
+any script names like that.
+(TBT)
+
+=begin original
+
+There are certain properties that it doesn't currently work with.  These
+are:
+
+=end original
+
+There are certain properties that it doesn't currently work with.  These
+are:
+(TBT)
+
+ Bidi Mirroring Glyph
+ Bidi Paired Bracket
+ Case Folding
+ Decomposition Mapping
+ Equivalent Unified Ideograph
+ Name
+ Name Alias
+ Lowercase Mapping
+ NFKC Case Fold
+ Titlecase Mapping
+ Uppercase Mapping
+
+=begin original
+
+Nor is the C<@I<unicode_property>@> form implemented.
+
+=end original
+
+Nor is the C<@I<unicode_property>@> form implemented.
+(TBT)
+
+=begin original
+
+Here's a complete example of matching IPV4 internet protocol addresses
+in any (single) script
+
+=end original
+
+Here's a complete example of matching IPV4 internet protocol addresses
+in any (single) script
+(TBT)
+
+ no warnings 'experimental::script_run';
+ no warnings 'experimental::regex_sets';
+ no warnings 'experimental::uniprop_wildcards';
+
+ # Can match a substring, so this intermediate regex needs to have
+ # context or anchoring in its final use.  Using nt=de yields decimal
+ # digits.  When specifying a subset of these, we must include \d to
+ # prevent things like U+00B2 SUPERSCRIPT TWO from matching
+ my $zero_through_255 =
+  qr/ \b (*sr:                                  # All from same sript
+            (?[ \p{nv=0} & \d ])*               # Optional leading zeros
+        (                                       # Then one of:
+                                  \d{1,2}       #   0 - 99
+            | (?[ \p{nv=1} & \d ])  \d{2}       #   100 - 199
+            | (?[ \p{nv=2} & \d ])
+               (  (?[ \p{nv=:[0-4]:} & \d ]) \d #   200 - 249
+                | (?[ \p{nv=5}     & \d ])
+                  (?[ \p{nv=:[0-5]:} & \d ])    #   250 - 255
+               )
+        )
+      )
+    \b
+  /x;
+
+ my $ipv4 = qr/ \A (*sr:         $zero_through_255
+                         (?: [.] $zero_through_255 ) {3}
+                   )
+                \z
+            /x;
+
+=head2 User-Defined Character Properties
+
+(ユーザ定義文字特性)
+
+=begin original
+
+You can define your own binary character properties by defining subroutines
+whose names begin with C<"In"> or C<"Is">.  (The experimental feature
+L<perlre/(?[ ])> provides an alternative which allows more complex
+definitions.)  The subroutines can be defined in any
+package.  The user-defined properties can be used in the regular expression
+C<\p{}> and C<\P{}> constructs; if you are using a user-defined property from a
+package other than the one you are in, you must specify its package in the
+C<\p{}> or C<\P{}> construct.
+
+=end original
+
+あなた自身の 2 値文字特性を、C<"In"> または C<"Is"> で始まる名前の
+サブルーチンを定義することによって持つことができます。
+(実験的機能 L<perlre/(?[ ])> はより複雑な定義を可能にする選択肢を
+提供します。)
+そのサブルーチンは任意のパッケージで定義することができます。
+ユーザー定義特性は正規表現の C<\p{}> 構造や C<\P{}> 構造で使うことができます;
+もしユーザー定義特性をそれがあるパッケージ以外で使いたいのであれば、
+パッケージ名を C<\p{}> (もしくは C<\P{}>)のために指定する必要があります。
+
+    # assuming property Is_Foreign defined in Lang::
+    package main;  # property package name required
+    if ($txt =~ /\p{Lang::IsForeign}+/) { ... }
+
+    package Lang;  # property package name not required
+    if ($txt =~ /\p{IsForeign}+/) { ... }
+
+=begin original
+
+Note that the effect is compile-time and immutable once defined.
+However, the subroutines are passed a single parameter, which is 0 if
+case-sensitive matching is in effect and non-zero if caseless matching
+is in effect.  The subroutine may return different values depending on
+the value of the flag, and one set of values will immutably be in effect
+for all case-sensitive matches, and the other set for all case-insensitive
+matches.
+
+=end original
+
+この効果はコンパイル時のもので、一度定義してしまったら
+変更できないことに注意してください。
+しかし、サブルーチンは一つの引数を取ります;
+大文字小文字を認識するマッチングが有効の場合は 0 となり、
+大文字小文字を無視するマッチングが有効の場合は非 0 となります。
+サブルーチンはフラグの値に依存して異なった値を返すことがあり、
+ある集合の値は全ての大文字小文字を認識するマッチングで変わらず有効になり、
+もう一つの集合は大文字小文字を無視するマッチングで有効になります。
+
+=begin original
+
+Note that if the regular expression is tainted, then Perl will die rather
+than calling the subroutine when the name of the subroutine is
+determined by the tainted data.
+
+=end original
+
+正規表現が汚染されている場合、Perl はサブルーチンの呼び出し時ではなく、
+サブルーチンの名前が汚染されたデータによって決定された時点で
+die することに注意してください。
+
+=begin original
+
+The subroutines must return a specially-formatted string, with one
+or more newline-separated lines.  Each line must be one of the following:
+
+=end original
+
+サブルーチンは、ひとつ以上の改行で区切られた特定の形式の文字列を
+返さなければなりません。
+各行は以下のいずれかの形式でなければなりません:
+
+=over 4
+
+=item *
+
+=begin original
+
+A single hexadecimal number denoting a code point to include.
+
+=end original
+
+含まれる符号位置を示す 1 つの 16 進数。
+
+=item *
+
+=begin original
+
+Two hexadecimal numbers separated by horizontal whitespace (space or
+tabular characters) denoting a range of code points to include.  The
+second number must not be smaller than the first.
+
+=end original
+
+含まれる符号位置の範囲を示す、
+水平的空白(スペースもしくはタブ)によって区切られる 2 つの 16 進数。
+2 番目の数字は最初の数字より小さくてはいけません。
+
+=item *
+
+=begin original
+
+Something to include, prefixed by C<"+">: a built-in character
+property (prefixed by C<"utf8::">) or a fully qualified (including package
+name) user-defined character property,
+to represent all the characters in that property; two hexadecimal code
+points for a range; or a single hexadecimal code point.
+
+=end original
+
+(C<"+"> を前置して) その特性に含めるもの:
+(C<"utf8::"> が前置された) 組み込みの文字特性もしくは
+(パッケージ名を含めた)完全修飾されたユーザー定義の文字特性;
+範囲のための 2 つの 16 進符号位置; あるいは単一の 16 進符号位置。
+
+=item *
+
+=begin original
+
+Something to exclude, prefixed by C<"-">: an existing character
+property (prefixed by C<"utf8::">) or a fully qualified (including package
+name) user-defined character property,
+to represent all the characters in that property; two hexadecimal code
+points for a range; or a single hexadecimal code point.
+
+=end original
+
+(C<"-"> を前置して) その特性から除外するもの:
+(C<"utf8::"> が前置された) 組み込みの文字特性もしくは
+(パッケージ名を含めた)完全修飾されたユーザー定義の文字特性;
+範囲のための 2 つの 16 進符号位置; あるいは単一の 16 進符号位置。
+
+=item *
+
+=begin original
+
+Something to negate, prefixed C<"!">: an existing character
+property (prefixed by C<"utf8::">) or a fully qualified (including package
+name) user-defined character property,
+to represent all the characters in that property; two hexadecimal code
+points for a range; or a single hexadecimal code point.
+
+=end original
+
+(C<"!"> を前置して)否定を取るもの:
+(C<"utf8::"> が前置された) 組み込みの文字特性もしくは
+(パッケージ名を含めた)完全修飾されたユーザー定義の文字特性;
+範囲のための 2 つの 16 進符号位置; あるいは単一の 16 進符号位置。
+
+=item *
+
+=begin original
+
+Something to intersect with, prefixed by C<"&">: an existing character
+property (prefixed by C<"utf8::">) or a fully qualified (including package
+name) user-defined character property,
+for all the characters except the characters in the property; two
+hexadecimal code points for a range; or a single hexadecimal code point.
+
+=end original
+
+(C<"&"> を前置して)共通集合を取るもの:
+特性にある文字以外の全ての文字のための
+(C<"utf8::"> が前置された) 既に存在する文字特性または
+(パッケージ名を含めた)完全修飾されたユーザー定義文字特性;
+範囲のための 2 つの 16 進符号位置; あるいは単一の 16 進符号位置。
+
+=back
+
+=begin original
+
+For example, to define a property that covers both the Japanese
+syllabaries (hiragana and katakana), you can define
+
+=end original
+
+例えば、両方の日本語の音節(ひらがなとカタカナ)を対象とする特性を
+定義するには、以下のように定義します
+
+    sub InKana {
+        return <<END;
+    3040\t309F
+    30A0\t30FF
+    END
+    }
+
+=begin original
+
+Imagine that the here-doc end marker is at the beginning of the line.
+Now you can use C<\p{InKana}> and C<\P{InKana}>.
+
+=end original
+
+ヒアドキュメントの終端マーカーは行の先頭に置かれることを思い出してください。
+これで、C<\p{InKana}> や C<\P{InKana}> を使うことができます。
+
+=begin original
+
+You could also have used the existing block property names:
+
+=end original
+
+すでに存在しているブロック特性名を使うこともできます:
+
+    sub InKana {
+        return <<'END';
+    +utf8::InHiragana
+    +utf8::InKatakana
+    END
+    }
+
+=begin original
+
+Suppose you wanted to match only the allocated characters,
+not the raw block ranges: in other words, you want to remove
+the unassigned characters:
+
+=end original
+
+生のブロック範囲ではなく、割り当てられた文字のみにマッチさせたいと
+考えているとしましょう: 言い換えれば、未割り当て文字を
+取り除きたいということです:
+
+    sub InKana {
+        return <<'END';
+    +utf8::InHiragana
+    +utf8::InKatakana
+    -utf8::IsCn
+    END
+    }
+
+=begin original
+
+The negation is useful for defining (surprise!) negated classes.
+
+=end original
+
+否定は否定クラスを定義するのに便利です。
+
+    sub InNotKana {
+        return <<'END';
+    !utf8::InHiragana
+    -utf8::InKatakana
+    +utf8::IsCn
+    END
+    }
+
+=begin original
+
+This will match all non-Unicode code points, since every one of them is
+not in Kana.  You can use intersection to exclude these, if desired, as
+this modified example shows:
+
+=end original
+
+これは全ての非 Unicode 符号位置にマッチングします;
+これらのどれも Kana ではないからです。
+もし必要なら、この修正された例にように、これらを除外するために
+共通集合を使えます:
+
+    sub InNotKana {
+        return <<'END';
+    !utf8::InHiragana
+    -utf8::InKatakana
+    +utf8::IsCn
+    &utf8::Any
+    END
+    }
+
+=begin original
+
+C<&utf8::Any> must be the last line in the definition.
+
+=end original
+
+C<&utf8::Any> は定義の最後の行でなければなりません。
+
+=begin original
+
+Intersection is used generally for getting the common characters matched
+by two (or more) classes.  It's important to remember not to use C<"&"> for
+the first set; that would be intersecting with nothing, resulting in an
+empty set.  (Similarly using C<"-"> for the first set does nothing).
+
+=end original
+
+共通集合は一般的に二つ(またはそれ以上)のクラスによってマッチングする
+共通の文字を得るために使われます。
+最初の集合に C<"&"> を使わないことを覚えておくことは重要です;
+これは空集合との共通集合を取るので、結果として空集合になります
+(同様に、最初の集合に C<"-"> を使っても何もしません)。
+
+=begin original
+
+Unlike non-user-defined C<\p{}> property matches, no warning is ever
+generated if these properties are matched against a non-Unicode code
+point (see L</Beyond Unicode code points> below).
+
+=end original
+
+ユーザー定義でない C<\p{}> 特性のマッチングと異なり、
+この特性はたとえ非 Unicode 符号位置に対してマッチングしても警告は
+発生しません (後述する L</Beyond Unicode code points> 参照)。
+
+=head2 User-Defined Case Mappings (for serious hackers only)
+
+(ユーザ定義の大文字・小文字の対応関係(真剣なハッカー専用))
+
+=begin original
+
+B<This feature has been removed as of Perl 5.16.>
+The CPAN module C<L<Unicode::Casing>> provides better functionality without
+the drawbacks that this feature had.  If you are using a Perl earlier
+than 5.16, this feature was most fully documented in the 5.14 version of
+this pod:
+L<http://perldoc.perl.org/5.14.0/perlunicode.html#User-Defined-Case-Mappings-%28for-serious-hackers-only%29>
+
+=end original
+
+B<この機能は Perl 5.16 で削除されました。>
+CPAN モジュール C<L<Unicode::Casing>> はこの機能が持っていた欠点なしに
+よりよい機能を提供します。
+5.16 より前の Perl を使っている場合、この機能は 5.14 版のこの pod に
+もっともよく文書化されています:
+L<http://perldoc.perl.org/5.14.0/perlunicode.html#User-Defined-Case-Mappings-%28for-serious-hackers-only%29>
+
+=head2 Character Encodings for Input and Output
+
+(入出力のための文字エンコーディング)
+
+=begin original
+
+See L<Encode>.
+
+=end original
+
+L<Encode> を参照してください。
+
+=head2 Unicode Regular Expression Support Level
+
+(Unicode 正規表現対応レベル)
+
+=begin original
+
+The following list of Unicode supported features for regular expressions describes
+all features currently directly supported by core Perl.  The references
+to "Level I<N>" and the section numbers refer to
+L<UTS#18 "Unicode Regular Expressions"|http://www.unicode.org/reports/tr18>,
+version 18, October 2016.
+
+=end original
+
+以下に挙げるリストは、現在コア Perl が直接対応している全ての機能を記述する、
+正規表現のための Unicode 対応のリストです。
+"Level I<N>" に対する参照とセクション番号は
+L<UTS#18 "Unicode Regular Expressions"|http://www.unicode.org/reports/tr18>,
+2016 年 10 月のバージョン 18 を参照しています。
+
+=head3 Level 1 - Basic Unicode Support
+
+ RL1.1   Hex Notation                     - Done          [1]
+ RL1.2   Properties                       - Done          [2]
+ RL1.2a  Compatibility Properties         - Done          [3]
+ RL1.3   Subtraction and Intersection     - Experimental  [4]
+ RL1.4   Simple Word Boundaries           - Done          [5]
+ RL1.5   Simple Loose Matches             - Done          [6]
+ RL1.6   Line Boundaries                  - Partial       [7]
+ RL1.7   Supplementary Code Points        - Done          [8]
+
+=over 4
+
+=item [1] C<\N{U+...}> and C<\x{...}>
+
+=item [2]
+C<\p{...}> C<\P{...}>.  This requirement is for a minimal list of
+properties.  Perl supports these and all other Unicode character
+properties, as R2.7 asks (see L</"Unicode Character Properties"> above).
+
+([2] C<\p{...}> C<\P{...}>。この要求は最小限の特性の一覧に対するものです。Perl はこれらおよび、R2.7 によるその他全ての Unicode 文字特性に対応しています (上述の L</"Unicode Character Properties"> 参照)。)
+
+=item [3]
+Perl has C<\d> C<\D> C<\s> C<\S> C<\w> C<\W> C<\X> C<[:I<prop>:]>
+C<[:^I<prop>:]>, plus all the properties specified by
+L<http://www.unicode.org/reports/tr18/#Compatibility_Properties>.  These
+are described above in L</Other Properties>
+
+(Perl は C<\d> C<\D> C<\s> C<\S> C<\w> C<\W> C<\X> C<[:I<prop>:]> C<[:^I<prop>:]> に加えて、L<http://www.unicode.org/reports/tr18/#Compatibility_Properties> で指定されている全ての特性を持ちます。これらは前述の L</Other Properties> に記されています。)
+
+=item [4]
+
+=begin original
+
+The experimental feature C<"(?[...])"> starting in v5.18 accomplishes
+this.
+
+=end original
+
+v5.18 からの実験的機能 C<"(?[...])"> がこれを行います。
+
+=begin original
+
+See L<perlre/(?[ ])>.  If you don't want to use an experimental
+feature, you can use one of the following:
+
+=end original
+
+L<perlre/(?[ ])> を参照してください。
+実験的機能を使いたくない場合次のうちのどれかが使えます:
+
+=over 4
+
+=item *
+
+=begin original
+
+Regular expression lookahead
+
+=end original
+
+正規表現先読み
+
+=begin original
+
+You can mimic class subtraction using lookahead.
+For example, what UTS#18 might write as
+
+=end original
+
+class subtraction を先読みを使って模倣することができます。
+たとえば、以下の UTR #18 は
+
+    [{Block=Greek}-[{UNASSIGNED}]]
+
+=begin original
+
+in Perl can be written as:
+
+=end original
+
+以下のように Perl で記述できます:
+
+    (?!\p{Unassigned})\p{Block=Greek}
+    (?=\p{Assigned})\p{Block=Greek}
+
+=begin original
+
+But in this particular example, you probably really want
+
+=end original
+
+しかし、この特定の例では、あなたが実際に望んでいたのは次のものでしょう
+
+    \p{Greek}
+
+=begin original
+
+which will match assigned characters known to be part of the Greek script.
+
+=end original
+
+これは Greek 用字の一部として知られている assigned character にマッチします。
+
+=item *
+
+CPAN module C<L<Unicode::Regex::Set>>
+
+=begin original
+
+It does implement the full UTS#18 grouping, intersection, union, and
+removal (subtraction) syntax.
+
+=end original
+
+これは UTR #18 のグルーピング、intersection、union, removal(substraction)
+構文を完全に実装しています。
+
+=item *
+
+L</"User-Defined Character Properties">
+
+=begin original
+
+C<"+"> for union, C<"-"> for removal (set-difference), C<"&"> for intersection
+
+=end original
+
+結合のためには C<"+">、除去(差集合)のためには C<"-">、
+共通集合のためには C<"&"> です
+
+=back
+
+=item [5]
+C<\b> C<\B> meet most, but not all, the details of this requirement, but
+C<\b{wb}> and C<\B{wb}> do, as well as the stricter R2.3.
+
+=item [6]
+
+=begin original
+
+Note that Perl does Full case-folding in matching, not Simple:
+
+=end original
+
+Perl はマッチングで Simple ではなく Full 大文字小文字畳み込みを
+行うことに注意してください:
+
+=begin original
+
+For example C<U+1F88> is equivalent to C<U+1F00 U+03B9>, instead of just
+C<U+1F80>.  This difference matters mainly for certain Greek capital
+letters with certain modifiers: the Full case-folding decomposes the
+letter, while the Simple case-folding would map it to a single
+character.
+
+=end original
+
+例えば C<U+1F88> は単なる C<U+1F80> ではなく C<U+1F00 U+03B9> と等価です。
+この違いは、主にある種の修飾子付きのある種のギリシャ大文字に対して
+問題になります: Full 大文字小文字畳み込みは文字を分解しますが、
+Simple 大文字小文字畳み込みはそれを単一文字にマッピングします。
+
+=item [7]
+
+=begin original
+
+The reason this is considered to be only partially implemented is that
+Perl has L<C<qrE<sol>\b{lb}E<sol>>|perlrebackslash/\b{lb}> and
+C<L<Unicode::LineBreak>> that are conformant with
+L<UAX#14 "Unicode Line Breaking Algorithm"|http://www.unicode.org/reports/tr14>.
+The regular expression construct provides default behavior, while the
+heavier-weight module provides customizable line breaking.
+
+=end original
+
+これが部分的にのみ実装していると考えられる理由は、Perl は
+L<UAX#14 "Unicode Line Breaking Algorithm"|http://www.unicode.org/reports/tr14>
+に準拠している
+L<C<qrE<sol>\b{lb}E<sol>>|perlrebackslash/\b{lb}> と
+C<L<Unicode::LineBreak>> があるからです。
+正規表現構文はデフォルトの振る舞いを提供する一方、
+この重量級モジュールは行区切りのカスタマイズを提供します。
+
+=begin original
+
+But Perl treats C<\n> as the start- and end-line
+delimiter, whereas Unicode specifies more characters that should be
+so-interpreted.
+
+=end original
+
+しかし Perl は C<\n> を行の先頭と末尾の区切り文字として扱い、
+一方 Unicode はそのように解釈するべきより多くの文字を指定しています。
+
+=begin original
+
+These are:
+
+=end original
+
+これは:
+
+ VT   U+000B  (\v in C)
+ FF   U+000C  (\f)
+ CR   U+000D  (\r)
+ NEL  U+0085
+ LS   U+2028
+ PS   U+2029
+
+=begin original
+
+C<^> and C<$> in regular expression patterns are supposed to match all
+these, but don't.
+These characters also don't, but should, affect C<< <> >> C<$.>, and
+script line numbers.
+
+=end original
+
+正規表現パターンの C<^> と C<$> はこれら全てにマッチングすることが
+想定されますが、マッチングしません。
+これらの文字は、C<< <> >>, C<$.>,  スクリプトの行番号にも影響を
+与えるべきですが、与えません。
+
+=begin original
+
+Also, lines should not be split within C<CRLF> (i.e. there is no
+empty line between C<\r> and C<\n>).  For C<CRLF>, try the C<:crlf>
+layer (see L<PerlIO>).
+
+=end original
+
+また、C<CRLF> の中の行を分割しません (つまり C<\r> と C<\n> の間に
+空行はありません)。
+C<CRLF> については、C<:crlf> 層 (L<PerlIO> 参照) を試してください。
+
+=item [8]
+UTF-8/UTF-EBDDIC used in Perl allows not only C<U+10000> to
+C<U+10FFFF> but also beyond C<U+10FFFF>
+
+([8] Perl で使われる UTF-8/UTF-EBDDIC は C<U+10000> から C<U+10FFFF> だけでなく C<U+10FFFF> を超える値も認めません)
+
+=back
+
+=head3 Level 2 - Extended Unicode Support
+
+ RL2.1   Canonical Equivalents           - Retracted     [9]
+                                           by Unicode
+ RL2.2   Extended Grapheme Clusters      - Partial       [10]
+ RL2.3   Default Word Boundaries         - Done          [11]
+ RL2.4   Default Case Conversion         - Done
+ RL2.5   Name Properties                 - Done
+ RL2.6   Wildcards in Property Values    - Partial       [12]
+ RL2.7   Full Properties                 - Done
+
+=over 4
+
+=item [9]
+Unicode has rewritten this portion of UTS#18 to say that getting
+canonical equivalence (see UAX#15
+L<"Unicode Normalization Forms"|http://www.unicode.org/reports/tr15>)
+is basically to be done at the programmer level.  Use NFD to write
+both your regular expressions and text to match them against (you
+can use L<Unicode::Normalize>).
+
+=item [10]
+Perl has C<\X> and C<\b{gcb}> but we don't have a "Grapheme Cluster Mode".
+
+=item [11] see
+L<UAX#29 "Unicode Text Segmentation"|http://www.unicode.org/reports/tr29>,
+
+=item [12] see
+L</Wildcards in Property Values> above.
+
+=back
+
+=head3 Level 3 - Tailored Support
+
+ RL3.1   Tailored Punctuation            - Missing
+ RL3.2   Tailored Grapheme Clusters      - Missing       [13]
+ RL3.3   Tailored Word Boundaries        - Missing
+ RL3.4   Tailored Loose Matches          - Retracted by Unicode
+ RL3.5   Tailored Ranges                 - Retracted by Unicode
+ RL3.6   Context Matching                - Partial       [14]
+ RL3.7   Incremental Matches             - Missing
+ RL3.8   Unicode Set Sharing             - Retracted by Unicode
+ RL3.9   Possible Match Sets             - Missing
+ RL3.10  Folded Matching                 - Retracted by Unicode
+ RL3.11  Submatchers                     - Partial       [15]
+
+=over 4
+
+=item [13]
+Perl has L<Unicode::Collate>, but it isn't integrated with regular
+expressions.  See
+L<UTS#10 "Unicode Collation Algorithms"|http://www.unicode.org/reports/tr10>.
+
+=item [14]
+Perl has C<(?<=x)> and C<(?=x)>, but this requirement says that it
+should be possible to specify that matches may occur only in a substring
+with the lookaheads and lookbehinds able to see beyond that matchable
+portion.
+
+=item [15]
+Perl has user-defined properties (L</"User-Defined Character
+Properties">) to look at single code points in ways beyond Unicode, and
+it might be possible, though probably not very clean, to use code blocks
+and things like C<(?(DEFINE)...)> (see L<perlre>) to do more specialized
+matching.
+
+=back
+
+=head2 Unicode Encodings
+
+(Unicode のエンコーディング)
+
+=begin original
+
+Unicode characters are assigned to I<code points>, which are abstract
+numbers.  To use these numbers, various encodings are needed.
+
+=end original
+
+Unicode 文字は抽象的な数値である I<符号位置> にアサインされています。
+これらの数値を使うために、さまざまなエンコーディングが必要となります。
+
+=over 4
+
+=item *
+
+UTF-8
+
+=begin original
+
+UTF-8 is a variable-length (1 to 4 bytes), byte-order independent
+encoding.  In most of Perl's documentation, including elsewhere in this
+document, the term "UTF-8" means also "UTF-EBCDIC".  But in this section,
+"UTF-8" refers only to the encoding used on ASCII platforms.  It is a
+superset of 7-bit US-ASCII, so anything encoded in ASCII has the
+identical representation when encoded in UTF-8.
+
+=end original
+
+UTF-8 は可変長(1 から 4 バイト)で、
+バイトの並び順に依存しないエンコーディングです。
+この文書の他の場所を含む Perl の文書のほとんどで、
+"UTF-8" という用語は "UTF-EBCDIC" も意味します。
+しかしこの節では、
+"UTF-8" は ASCII プラットフォームで使われているエンコーディングを
+意味します。
+これは 7 ビット US-ASCII のスーパーセットなので、
+ASCII でエンコードされたものは全て UTF-8 でエンコードしたものと
+同じ表現になります。
+
+=begin original
+
+The following table is from Unicode 3.2.
+
+=end original
+
+以下のテーブルは Unicode 3.2 のものです。
+
+ Code Points            1st Byte  2nd Byte  3rd Byte 4th Byte
+
+   U+0000..U+007F       00..7F
+   U+0080..U+07FF     * C2..DF    80..BF
+   U+0800..U+0FFF       E0      * A0..BF    80..BF
+   U+1000..U+CFFF       E1..EC    80..BF    80..BF
+   U+D000..U+D7FF       ED        80..9F    80..BF
+   U+D800..U+DFFF       +++++ utf16 surrogates, not legal utf8 +++++
+   U+E000..U+FFFF       EE..EF    80..BF    80..BF
+  U+10000..U+3FFFF      F0      * 90..BF    80..BF    80..BF
+  U+40000..U+FFFFF      F1..F3    80..BF    80..BF    80..BF
+ U+100000..U+10FFFF     F4        80..8F    80..BF    80..BF
+
+=begin original
+
+Note the gaps marked by "*" before several of the byte entries above.  These are
+caused by legal UTF-8 avoiding non-shortest encodings: it is technically
+possible to UTF-8-encode a single code point in different ways, but that is
+explicitly forbidden, and the shortest possible encoding should always be used
+(and that is what Perl does).
+
+=end original
+
+上記で '*' のマークが付いているいくつかのバイトエントリの前の
+隙間に注意してください。
+これらは、正当な UTF-8 が最短でないエンコードを避けるために
+あります: 技術的には UTF-8 エンコードは一つの符号位置を複数の方法で
+表すことができますが、これは明示的に禁止されていて、可能な限り最短の
+エンコードが常に使われます(そしてそれが Perl のすることです)。
+
+=begin original
+
+Another way to look at it is via bits:
+
+=end original
+
+これを見るもう一つの方法はビット単位で見ることです:
+
+                Code Points  1st Byte  2nd Byte  3rd Byte  4th Byte
+
+                   0aaaaaaa  0aaaaaaa
+           00000bbbbbaaaaaa  110bbbbb  10aaaaaa
+           ccccbbbbbbaaaaaa  1110cccc  10bbbbbb  10aaaaaa
+ 00000dddccccccbbbbbbaaaaaa  11110ddd  10cccccc  10bbbbbb  10aaaaaa
+
+=begin original
+
+As you can see, the continuation bytes all begin with C<"10">, and the
+leading bits of the start byte tell how many bytes there are in the
+encoded character.
+
+=end original
+
+見ての通り、後続バイトはすべて C<"10"> から始まっていて、開始バイトの
+先行ビットはエンコードされた文字がどのくらいの長さであるかを示しています。
+
+=begin original
+
+The original UTF-8 specification allowed up to 6 bytes, to allow
+encoding of numbers up to C<0x7FFF_FFFF>.  Perl continues to allow those,
+and has extended that up to 13 bytes to encode code points up to what
+can fit in a 64-bit word.  However, Perl will warn if you output any of
+these as being non-portable; and under strict UTF-8 input protocols,
+they are forbidden.  In addition, it is now illegal to use a code point
+larger than what a signed integer variable on your system can hold.  On
+32-bit ASCII systems, this means C<0x7FFF_FFFF> is the legal maximum
+(much higher on 64-bit systems).
+
+=end original
+
+元の UTF-8 仕様は、C<0x7FFF_FFFF> までの数値をエンコードできるように、
+6 バイトまで許されていました。
+Perl はこれを許し続け、さらに 64 ビットワードに適合する符号位置を
+エンコードするために 13 バイトまで拡張しています。
+しかし、これらを出力すると、Perl は互換性がないとして警告します;
+そして厳密な UTF-8 入力プロトコルでは、これらは禁止されています。
+さらに、システムの符号付き整数変数が保持できるよりも
+大きな符号位置は不正になりました。
+32 ビット ASCII システムでは、
+これは、C<0x7FFF_FFFF> が正当な最大であることを意味します
+(64 ビットシステムでは遙かに大きいです)。
+
+=item *
+
+UTF-EBCDIC
+
+=begin original
+
+Like UTF-8, but EBCDIC-safe, in the way that UTF-8 is ASCII-safe.
+This means that all the basic characters (which includes all
+those that have ASCII equivalents (like C<"A">, C<"0">, C<"%">, I<etc.>)
+are the same in both EBCDIC and UTF-EBCDIC.)
+
+=end original
+
+UTF-8 と似ていますが、UTF-8 が ASCII-safe であるように EBCDIC-safe です。
+つまり、全ての基本文字 ((C<"A">, C<"0">, C<"%"> などのような) ASCII の
+等価物が EBCDIC と UTF-EBCDIC で同じものを意味します。
+
+=begin original
+
+UTF-EBCDIC is used on EBCDIC platforms.  It generally requires more
+bytes to represent a given code point than UTF-8 does; the largest
+Unicode code points take 5 bytes to represent (instead of 4 in UTF-8),
+and, extended for 64-bit words, it uses 14 bytes instead of 13 bytes in
+UTF-8.
+
+=end original
+
+UTF-EBCDIC は EBCDIC プラットフォームで使われます。
+一般的に、ある符号位置を表現するのに UTF-8 よりも多くのバイト数を
+必要とします; 最大の Unicode 符号位置は表現するのに (UTF-8 の 4 バイト
+ではなく) 5 バイトを使い、64 ビットワードのために拡張されると、
+UTF-8 の場合の 13 バイトではなく 14 バイトを使います。
+
+=item *
+
+=begin original
+
+UTF-16, UTF-16BE, UTF-16LE, Surrogates, and C<BOM>'s (Byte Order Marks)
+
+=end original
+
+UTF-16, UTF-16BE, UTF-16LE, サロゲート, C<BOM> (Byte Order Marks)
+
+=begin original
+
+The followings items are mostly for reference and general Unicode
+knowledge, Perl doesn't use these constructs internally.
+
+=end original
+
+以下の項目はほとんど参照および一般的な Unicode 知識のためのもので、
+Perl はこれらの構造を内部で使っていません。
+
+=begin original
+
+Like UTF-8, UTF-16 is a variable-width encoding, but where
+UTF-8 uses 8-bit code units, UTF-16 uses 16-bit code units.
+All code points occupy either 2 or 4 bytes in UTF-16: code points
+C<U+0000..U+FFFF> are stored in a single 16-bit unit, and code
+points C<U+10000..U+10FFFF> in two 16-bit units.  The latter case is
+using I<surrogates>, the first 16-bit unit being the I<high
+surrogate>, and the second being the I<low surrogate>.
+
+=end original
+
+UTF-8 と同様、UTF-16 は可変長エンコーディングですが、
+UTF-8 が 8 ビットの符号ユニットを使っているところ、
+UTF-16 は 16 ビットの符号ユニットを使います。
+UTF-16 は全ての符号位置が 2 バイトもしくは 4 バイトです:
+C<U+0000..U+FFFF> の範囲の Unicode の符号位置はひとつの 16 ビット
+ユニットに収められ、C<U+10000..U+10FFFF> の範囲の符号位置は 2 つの
+16 ビットユニットに収められます。
+後者をサロゲート(surrogates) と呼びます; 最初の 16 ビットユニットは
+I<high surrogate> で、二番目は I<low surrogate> となります。
+
+=begin original
+
+Surrogates are code points set aside to encode the C<U+10000..U+10FFFF>
+range of Unicode code points in pairs of 16-bit units.  The I<high
+surrogates> are the range C<U+D800..U+DBFF> and the I<low surrogates>
+are the range C<U+DC00..U+DFFF>.  The surrogate encoding is
+
+=end original
+
+サロゲートは Unicode の符号位置の C<U+10000..U+10FFFF> の範囲を
+16 ビットユニットのペアで表現する集合です。
+I<high surrogates> は C<U+D800..U+DBFF> の範囲で、I<low surrogates> は
+C<U+DC00..U+DFFF> の範囲です。
+サロゲートのエンコーディングは
+
+    $hi = ($uni - 0x10000) / 0x400 + 0xD800;
+    $lo = ($uni - 0x10000) % 0x400 + 0xDC00;
+
+=begin original
+
+and the decoding is
+
+=end original
+
+であり、デコードは以下のようなものです
+
+    $uni = 0x10000 + ($hi - 0xD800) * 0x400 + ($lo - 0xDC00);
+
+=begin original
+
+Because of the 16-bitness, UTF-16 is byte-order dependent.  UTF-16
+itself can be used for in-memory computations, but if storage or
+transfer is required either UTF-16BE (big-endian) or UTF-16LE
+(little-endian) encodings must be chosen.
+
+=end original
+
+16-bitness のため、UTF-16 はバイトの並び順に依存します。
+UTF-16 それ自身はメモリ内の計算に使うことができますが、格納や転送の際には
+UTF-16BE (ビッグエンディアン)か UTF-16LE (リトルエンディアン)の
+いずれかのエンコーディングを選択しなければなりません。
+
+=begin original
+
+This introduces another problem: what if you just know that your data
+is UTF-16, but you don't know which endianness?  Byte Order Marks, or
+C<BOM>'s, are a solution to this.  A special character has been reserved
+in Unicode to function as a byte order marker: the character with the
+code point C<U+FEFF> is the C<BOM>.
+
+=end original
+
+このことは別の問題を引き起こします: あなたのデータが UTF-16 であることだけを
+知っていて、そのバイト並び順を知らなかったとしたら?
+バイト順マーク (Byte Order Marks)、略して C<BOM> はこれを解決します。
+バイト並びのマーカーとしての機能のために Unicode では特殊な文字が
+予約されています: 符号位置 C<U+FEFF> の文字が C<BOM> です。
+
+=begin original
+
+The trick is that if you read a C<BOM>, you will know the byte order,
+since if it was written on a big-endian platform, you will read the
+bytes C<0xFE 0xFF>, but if it was written on a little-endian platform,
+you will read the bytes C<0xFF 0xFE>.  (And if the originating platform
+was writing in ASCII platform UTF-8, you will read the bytes
+C<0xEF 0xBB 0xBF>.)
+
+=end original
+
+このトリックは、C<BOM> を読み込んだときにバイト順がわかるということです;
+ビッグエンディアンのプラットフォームで書かれたものならなら
+C<0xFE 0xFF> を読み出し、リトルエンディガンのプラットフォームで
+書かれたものなら C<0xFF 0xFE> を読み出します。
+(そしてもし元のプラットフォームで ASCII プラットフォームの UTF-8 で
+書かれたものならば、C<0xEF 0xBB 0xBF> というバイト列を
+読むことになるでしょう。)
+
+=begin original
+
+The way this trick works is that the character with the code point
+C<U+FFFE> is not supposed to be in input streams, so the
+sequence of bytes C<0xFF 0xFE> is unambiguously "C<BOM>, represented in
+little-endian format" and cannot be C<U+FFFE>, represented in big-endian
+format".
+
+=end original
+
+このトリックがうまくいくのは符号位置 C<U+FFFE> の文字は
+入力ストリームには現れないはずであるということによって、
+C<0xFF 0xFE> という並びは紛れなく
+「リトルエンディアンフォーマットの C<BOM>」であって
+「ビッグエンディアンの C<U+FFFE>」 とはならないのです。
+
+=begin original
+
+Surrogates have no meaning in Unicode outside their use in pairs to
+represent other code points.  However, Perl allows them to be
+represented individually internally, for example by saying
+C<chr(0xD801)>, so that all code points, not just those valid for open
+interchange, are
+representable.  Unicode does define semantics for them, such as their
+C<L</General_Category>> is C<"Cs">.  But because their use is somewhat dangerous,
+Perl will warn (using the warning category C<"surrogate">, which is a
+sub-category of C<"utf8">) if an attempt is made
+to do things like take the lower case of one, or match
+case-insensitively, or to output them.  (But don't try this on Perls
+before 5.14.)
+
+=end original
+
+サロゲートは、他の符号位置を表すためにペアで使用する以外は、
+Unicode では意味を持ちません。
+ただし、Perl では、例えば C<chr(0xD801)> と記述することによって、
+内部的に個別に表すことができるため、
+オープンな交換に妥当な符号位置だけでなく、
+すべての符号位置を表すことができます。
+Unicode では、C<L</General_Category>> が C<"Cs"> であるなどの、
+このための意味論が定義されています。
+しかし、これらの使用はやや危険であるため、Perl では、小文字を使用したり、
+大文字と小文字を無視してマッチングしたり、出力しようとした場合には、
+(C<"utf8"> のサブカテゴリである C<"surrogate"> 警告カテゴリを使って) 警告が
+出されます。
+(ただし、5.14 より前の Perl でこれを使用しないでください。)
+
+=item *
+
+UTF-32, UTF-32BE, UTF-32LE
+
+=begin original
+
+The UTF-32 family is pretty much like the UTF-16 family, except that
+the units are 32-bit, and therefore the surrogate scheme is not
+needed.  UTF-32 is a fixed-width encoding.  The C<BOM> signatures are
+C<0x00 0x00 0xFE 0xFF> for BE and C<0xFF 0xFE 0x00 0x00> for LE.
+
+=end original
+
+UTF-32 ファミリーは UTF-16 ファミリーと良く似ていますが、ユニットが
+32 ビットで、そのためサロゲート方式の必要がないという点が異なります。
+UTF-32 は固定長エンコーディングです。
+C<BOM> シグネチャは BE では C<0x00 0x00 0xFE 0xFF> に、
+LE では C<0xFF 0xFE 0x00 0x00> になります。
+
+=item *
+
+UCS-2, UCS-4
+
+=begin original
+
+Legacy, fixed-width encodings defined by the ISO 10646 standard.  UCS-2 is a 16-bit
+encoding.  Unlike UTF-16, UCS-2 is not extensible beyond C<U+FFFF>,
+because it does not use surrogates.  UCS-4 is a 32-bit encoding,
+functionally identical to UTF-32 (the difference being that
+UCS-4 forbids neither surrogates nor code points larger than C<0x10_FFFF>).
+
+=end original
+
+ISO 10646 標準で定義されている古い固定長のエンコーディングです。
+UCS-2 は 16 ビットエンコーディングです。
+UTF-16 とは異なり、UCS-2 は C<U+FFFF> を超えた範囲に拡張できません;
+これはサロゲートを使わないためです。
+UCS-4 は 32 ビットエンコーディングで、機能的には UTF-32 と同じです
+(違いは、UCS-4 はサロゲートや C<0x10_FFFF> より大きな符号位置を
+禁止していることです)。
+
+=item *
+
+UTF-7
+
+=begin original
+
+A seven-bit safe (non-eight-bit) encoding, which is useful if the
+transport or storage is not eight-bit safe.  Defined by RFC 2152.
+
+=end original
+
+7 ビットセーフ(非 8 ビット)エンコーディングで、8 ビットセーフでない
+転送や格納に便利です。
+RFC 2152 によって定義されています。
+
+=back
+
+=head2 Noncharacter code points
+
+(非文字符号位置)
+
+=begin original
+
+66 code points are set aside in Unicode as "noncharacter code points".
+These all have the C<Unassigned> (C<Cn>) C<L</General_Category>>, and
+no character will ever be assigned to any of them.  They are the 32 code
+points between C<U+FDD0> and C<U+FDEF> inclusive, and the 34 code
+points:
+
+=end original
+
+66 の符号位置は、Unicode では「非文字符号位置」として確保されています。
+これらはすべて C<Unassigned> (C<Cn>) C<L</General_Category>> を 持ち、
+これらに文字が割り当てられることはありません。
+それは、C<U+FDD0> と C<U+FDEF> の間にある 32 の符号位置と、
+次の 34 の符号位置です。
+
+ U+FFFE   U+FFFF
+ U+1FFFE  U+1FFFF
+ U+2FFFE  U+2FFFF
+ ...
+ U+EFFFE  U+EFFFF
+ U+FFFFE  U+FFFFF
+ U+10FFFE U+10FFFF
+
+=begin original
+
+Until Unicode 7.0, the noncharacters were "B<forbidden> for use in open
+interchange of Unicode text data", so that code that processed those
+streams could use these code points as sentinels that could be mixed in
+with character data, and would always be distinguishable from that data.
+(Emphasis above and in the next paragraph are added in this document.)
+
+=end original
+
+Unicode 7.0 までは、非文字は
+「Unicode テキストデータのオープンな交換での使用は B<禁止>」であったため、
+これらのストリームを処理するコードは、これらの符号位置を
+文字データと混在させられる標識として使うことができ、
+それは常にデータと区別できました。
+(前述および次の段落の強調は、この文書によって追加されています。)
+
+=begin original
+
+Unicode 7.0 changed the wording so that they are "B<not recommended> for
+use in open interchange of Unicode text data".  The 7.0 Standard goes on
+to say:
+
+=end original
+
+Unicode 7.0 では、「Unicode テキストデータのオープンな交換での使用は
+B<非推奨>」という表現に変更されました。
+7.0 標準では、次のように記述されています。
+
+=over 4
+
+=begin original
+
+"If a noncharacter is received in open interchange, an application is
+not required to interpret it in any way.  It is good practice, however,
+to recognize it as a noncharacter and to take appropriate action, such
+as replacing it with C<U+FFFD> replacement character, to indicate the
+problem in the text.  It is not recommended to simply delete
+noncharacter code points from such text, because of the potential
+security issues caused by deleting uninterpreted characters.  (See
+conformance clause C7 in Section 3.2, Conformance Requirements, and
+L<Unicode Technical Report #36, "Unicode Security
+Considerations"|http://www.unicode.org/reports/tr36/#Substituting_for_Ill_Formed_Subsequences>)."
+
+=end original
+
+「オープンな交換で非文字が受信された場合、
+アプリケーションはそれを解釈する必要はない。
+しかし、それを非文字として認識し、テキスト内の問題を示すために
+C<U+FFFD> 置換文字で置き換えるなどの適切なアクションを
+実行することはよい習慣である。
+解釈されない文字を削除することによってセキュリティ上の問題が発生する
+可能性があるため、そのようなテキストから非文字符号位置を単純に
+削除することは推奨しない。
+(Conformance Clause C7 in Section 3.2,Conformance Requirements および
+L<Unicode Technical Report #36, "Unicode Security
+Considerations"|http://www.unicode.org/reports/tr36/#Substituting_for_Ill_Formed_Subsequences>
+を参照)。」
+
+=back
+
+=begin original
+
+This change was made because it was found that various commercial tools
+like editors, or for things like source code control, had been written
+so that they would not handle program files that used these code points,
+effectively precluding their use almost entirely!  And that was never
+the intent.  They've always been meant to be usable within an
+application, or cooperating set of applications, at will.
+
+=end original
+
+この変更は、
+エディタやソースコード制御のような様々な市販のツールが、
+これらの符号位置を使ったプログラムファイルを扱わず、
+事実上これらの使用をほぼ完全に排除していることが分かったからです!
+そしてこれは決して意図してものではありません。
+これは常に、アプリケーション単体や、協調するアプリケーションの
+集合の中で、任意に使えることを意味していました。
+
+=begin original
+
+If you're writing code, such as an editor, that is supposed to be able
+to handle any Unicode text data, then you shouldn't be using these code
+points yourself, and instead allow them in the input.  If you need
+sentinels, they should instead be something that isn't legal Unicode.
+For UTF-8 data, you can use the bytes 0xC1 and 0xC2 as sentinels, as
+they never appear in well-formed UTF-8.  (There are equivalents for
+UTF-EBCDIC).  You can also store your Unicode code points in integer
+variables and use negative values as sentinels.
+
+=end original
+
+任意の Unicode テキストデータを扱えると想定される、エディタなどのコードを
+書いている場合は、これらの符号位置を自分自身では使わず、
+入力として使用できるようにする必要があります。
+番兵文字が必要な場合は、正当な Unicode ではないものを使う必要があります。
+UTF-8 データの場合は、バイト 0xC1 および 0xC2 を番兵文字として使用できます;
+これらは整形式の UTF-8 では決して現れないからです
+(UTF-EBCDIC にも同等のものがあります。)
+Unicode 符号位置を整数変数に格納し、負の値をセンチネルとして
+使用することもできます。
+
+
+=begin original
+
+If you're not writing such a tool, then whether you accept noncharacters
+as input is up to you (though the Standard recommends that you not).  If
+you do strict input stream checking with Perl, these code points
+continue to be forbidden.  This is to maintain backward compatibility
+(otherwise potential security holes could open up, as an unsuspecting
+application that was written assuming the noncharacters would be
+filtered out before getting to it, could now, without warning, start
+getting them).  To do strict checking, you can use the layer
+C<:encoding('UTF-8')>.
+
+=end original
+
+そのようなツールを書いているのでないのなら、
+非文字を入力として受け付けるかどうかはあなた次第です
+(しかし標準はそうしないことを勧めています)。
+Perl で厳密な入力ストリームチェックをするなら、
+これらの符号位置は禁止され続けます。
+これは後方互換性を維持するためです
+(そうしないと、非文字は受け取る前にフィルタリングされることを仮定して
+書かれた、疑わないアプリケーションが、警告なしに受け取るようになるといため、
+潜在的なセキュリティホールが開く可能性があります)。
+厳密なチェックをするためには、C<:encoding('UTF-8')> 層を使えます。
+
+=begin original
+
+Perl continues to warn (using the warning category C<"nonchar">, which
+is a sub-category of C<"utf8">) if an attempt is made to output
+noncharacters.
+
+=end original
+
+Perl は、非文字を出力しようとすると(C<"utf8"> のサブカテゴリである
+C<"nonchar"> 警告カテゴリを使って)警告し続けます。
+
+=head2 Beyond Unicode code points
+
+(Unicode 符号位置を越えたもの)
+
+=begin original
+
+The maximum Unicode code point is C<U+10FFFF>, and Unicode only defines
+operations on code points up through that.  But Perl works on code
+points up to the maximum permissible signed number available on the
+platform.  However, Perl will not accept these from input streams unless
+lax rules are being used, and will warn (using the warning category
+C<"non_unicode">, which is a sub-category of C<"utf8">) if any are output.
+
+=end original
+
+Unicode 符号位置の最大値は C<U+10FFFF> で、
+Unicode はここまでの符号位置に対する操作のみを定義しています。
+しかし、Perl は、プラットフォームで利用可能な符号付きの最大数までの
+符号位置で動作します。
+しかし、Perl は、緩い規則が使用されていないかぎり、入力ストリームから
+これらを受け入れず、それらを出力しようとすると(C<"utf8"> の
+サブカテゴリである C<"non_unicode"> 警告カテゴリを使って)警告します。
+
+=begin original
+
+Since Unicode rules are not defined on these code points, if a
+Unicode-defined operation is done on them, Perl uses what we believe are
+sensible rules, while generally warning, using the C<"non_unicode">
+category.  For example, C<uc("\x{11_0000}")> will generate such a
+warning, returning the input parameter as its result, since Perl defines
+the uppercase of every non-Unicode code point to be the code point
+itself.  (All the case changing operations, not just uppercasing, work
+this way.)
+
+=end original
+
+Unicode の規則はこれらの符号位置に対して定義されていないため、
+Unicode が定義した操作がこれらに対して行われた場合、
+Perl は私たちがふさわしいと信じる規則を使いますが、一般的には
+C<"non_unicode"> カテゴリの警告を行います。
+例えば、C<uc("\x{11_0000}")> はこの警告を生成し、入力パラメータを
+その結果として返します; Perl はすべての非 Unicode 符号位置の大文字をその
+符号位置自身と定義しているからです。
+(大文字化だけでなく、全ての大文字小文字変更操作はこのように
+動作します。)
+
+=begin original
+
+The situation with matching Unicode properties in regular expressions,
+the C<\p{}> and C<\P{}> constructs, against these code points is not as
+clear cut, and how these are handled has changed as we've gained
+experience.
+
+=end original
+
+正規表現中で C<\p{}> や C<\P{}> 構文による Unicode 特性を
+このような符号位置に対してマッチングさせる状況は
+はっきりしたものではなく、これらをどのように扱うかは
+経験を積むにつれて変更されてきました。
+
+=begin original
+
+One possibility is to treat any match against these code points as
+undefined.  But since Perl doesn't have the concept of a match being
+undefined, it converts this to failing or C<FALSE>.  This is almost, but
+not quite, what Perl did from v5.14 (when use of these code points
+became generally reliable) through v5.18.  The difference is that Perl
+treated all C<\p{}> matches as failing, but all C<\P{}> matches as
+succeeding.
+
+=end original
+
+一つの可能性は、これらの符号位置に対するあらゆるマッチングを
+未定義として扱うことです。
+しかし、Perl はマッチングが未定義であるという概念を持っていないので、
+これは失敗、または C<FALSE> に変換されます。
+これは、(完全にではありませんが) ほぼ (これらの符号位置が一般的に
+信頼できるようになった) v5.14 から v5.18 までの動作です。
+違いは、 Perl は全ての C<\p{}> マッチングを失敗として扱うけれども、
+全ての C<\P{}> マッチングは成功として扱うことです。
+
+=begin original
+
+One problem with this is that it leads to unexpected, and confusing
+results in some cases:
+
+=end original
+
+これの問題の一つは、場合によっては、予想外で混乱する結果が
+導かれることです:
+
+ chr(0x110000) =~ \p{ASCII_Hex_Digit=True}      # Failed on <= v5.18
+ chr(0x110000) =~ \p{ASCII_Hex_Digit=False}     # Failed! on <= v5.18
+
+=begin original
+
+That is, it treated both matches as undefined, and converted that to
+false (raising a warning on each).  The first case is the expected
+result, but the second is likely counterintuitive: "How could both be
+false when they are complements?"  Another problem was that the
+implementation optimized many Unicode property matches down to already
+existing simpler, faster operations, which don't raise the warning.  We
+chose to not forgo those optimizations, which help the vast majority of
+matches, just to generate a warning for the unlikely event that an
+above-Unicode code point is being matched against.
+
+=end original
+
+つまり、両方のマッチングは未定義として扱われ、
+偽に変換されます (それぞれ警告が発生します)。
+最初の場合は予想される結果ですが、2 番目のものはおそらく直感に反します:
+「補集合の両方で失敗するってどういうこと?」
+もう一つの問題は、多くの Unicode 特性は、警告を発生させない、
+既存のより単純で高速な演算に最適化される実装であることです。
+私たちは、単に Unicode を超える符号位置に対してマッチングをするという
+めったに起きないことで警告を出すということのために、
+圧倒的多数のマッチングの助けになるこれらの最適化をしないで
+済ませるということはしないことを選びました;
+
+=begin original
+
+As a result of these problems, starting in v5.20, what Perl does is
+to treat non-Unicode code points as just typical unassigned Unicode
+characters, and matches accordingly.  (Note: Unicode has atypical
+unassigned code points.  For example, it has noncharacter code points,
+and ones that, when they do get assigned, are destined to be written
+Right-to-left, as Arabic and Hebrew are.  Perl assumes that no
+non-Unicode code point has any atypical properties.)
+
+=end original
+
+これらの問題の結果として、v5.20 から Perl が行うことは、
+非 Unicode 符号位置を単なる典型的な未割り当て Unicode 文字として扱い、
+それに応じてマッチングするということです。
+(注意: Unicode には典型的でない未割り当て符号位置があります。
+例えば、非文字符号位置があります; 割り当てられたときにはそうだったものの
+一つは、アラビア語やヘブライ語のように右から左に書かれることになるものです。
+Perl は、非 Unicode 符号位置に典型的でない属性はないことを仮定しています。)
+
+=begin original
+
+Perl, in most cases, will raise a warning when matching an above-Unicode
+code point against a Unicode property when the result is C<TRUE> for
+C<\p{}>, and C<FALSE> for C<\P{}>.  For example:
+
+=end original
+
+ほとんどの場合、Perl は、Unicode 特性を Unicode を超える符号位置に
+マッチングして、結果が C<\p{}> なら C<TRUE>、C<\P{}> なら C<FALSE> の
+場合、警告を発生させます。
+例えば:
+
+ chr(0x110000) =~ \p{ASCII_Hex_Digit=True}      # Fails, no warning
+ chr(0x110000) =~ \p{ASCII_Hex_Digit=False}     # Succeeds, with warning
+
+=begin original
+
+In both these examples, the character being matched is non-Unicode, so
+Unicode doesn't define how it should match.  It clearly isn't an ASCII
+hex digit, so the first example clearly should fail, and so it does,
+with no warning.  But it is arguable that the second example should have
+an undefined, hence C<FALSE>, result.  So a warning is raised for it.
+
+=end original
+
+これら両方の例において、マッチングする文字は非 Unicode なので、
+Unicode はこれがどのようにマッチングするべきかを定義していません。
+これは明らかに ASCII 16 進文字ではないので、
+最初の例は明らかに失敗するべきで、実際警告なしで失敗します。
+しかし 2 番目の例は未定義の、つまり C<FALSE> の結果となるべきです。
+従って警告が発生します。
+
+=begin original
+
+Thus the warning is raised for many fewer cases than in earlier Perls,
+and only when what the result is could be arguable.  It turns out that
+none of the optimizations made by Perl (or are ever likely to be made)
+cause the warning to be skipped, so it solves both problems of Perl's
+earlier approach.  The most commonly used property that is affected by
+this change is C<\p{Unassigned}> which is a short form for
+C<\p{General_Category=Unassigned}>.  Starting in v5.20, all non-Unicode
+code points are considered C<Unassigned>.  In earlier releases the
+matches failed because the result was considered undefined.
+
+=end original
+
+従って、警告は以前の Perl よりも遙かに少ない場合で、
+結果に議論の余地がある場合にのみ発生します。
+Perl によって行われた (および行われうる) どの最適化によっても
+警告は飛ばされなくなったので、Perl の以前の手法の二つの問題両方を
+解決しています。
+この変更の影響を受ける、もっともよく使われている特性は、
+C<\p{General_Category=Unassigned}> の短縮版である C<\p{Unassigned}> です。
+v5.20 から、全ての非 Unicode 符号位置は C<Unassigned> として扱われます。
+以前のリリースでは、結果は未定義として扱われていたのでこのマッチングは
+失敗していました。
+
+=begin original
+
+The only place where the warning is not raised when it might ought to
+have been is if optimizations cause the whole pattern match to not even
+be attempted.  For example, Perl may figure out that for a string to
+match a certain regular expression pattern, the string has to contain
+the substring C<"foobar">.  Before attempting the match, Perl may look
+for that substring, and if not found, immediately fail the match without
+actually trying it; so no warning gets generated even if the string
+contains an above-Unicode code point.
+
+=end original
+
+警告が発生するべきかもしれないけれでも発生しない唯一の場所は、
+最適化によってパターンマッチング自体が試みられさえもしなかった場合です。
+例えば、ある正規表現パターンにマッチングする文字列に対して、
+文字列が特定の部分文字列 C<"foobar"> を含んでいなければならないことに
+Perl が気付いたとします。
+マッチングを試みる前に Perl はその部分文字列を探し、もし見つからなければ、
+実際にマッチングを試みる前に直ちに失敗します;
+従って、文字列に非 Unicode 符号位置が含まれていたとしても、
+警告は発生しません。
+
+=begin original
+
+This behavior is more "Do what I mean" than in earlier Perls for most
+applications.  But it catches fewer issues for code that needs to be
+strictly Unicode compliant.  Therefore there is an additional mode of
+operation available to accommodate such code.  This mode is enabled if a
+regular expression pattern is compiled within the lexical scope where
+the C<"non_unicode"> warning class has been made fatal, say by:
+
+=end original
+
+この振る舞いは、ほとんどのアプリケーションにとって、
+以前の Perl よりもより「空気を読む」ものです。
+しかし、これは厳密に Unicode に準拠していることが必要なコードにとっては
+より少ないながらも問題があります。
+従って、そのようなコードに適応するために追加の
+操作モードが利用可能です。
+このモードは次のように、C<"non_unicode"> 警告クラスが致命的になっている
+レキシカルスコープ内で正規表現がコンパイルされたときに有効になります:
+
+ use warnings FATAL => "non_unicode"
+
+=begin original
+
+(see L<warnings>).  In this mode of operation, Perl will raise the
+warning for all matches against a non-Unicode code point (not just the
+arguable ones), and it skips the optimizations that might cause the
+warning to not be output.  (It currently still won't warn if the match
+isn't even attempted, like in the C<"foobar"> example above.)
+
+=end original
+
+(L<warnings> 参照)。
+この操作モードでは、Perl は (議論の余地のあるものだけでなく)
+非 Unicode 符号位置に対する全てのマッチングで警告を出力し、
+警告が出力されなくなるかもしれない最適化を飛ばします。
+(現在のところ、前述の C<"foobar"> の例のように、マッチングが試みられさえ
+しなかった場合は、警告は出ないままです。)
+
+=begin original
+
+In summary, Perl now normally treats non-Unicode code points as typical
+Unicode unassigned code points for regular expression matches, raising a
+warning only when it is arguable what the result should be.  However, if
+this warning has been made fatal, it isn't skipped.
+
+=end original
+
+まとめると、Perl は通常正規表現マッチングでは非 Unicode 符号位置を
+典型的な Unicode 未割り当て符号位置として扱い、
+その結果に議論の余地がある場合にのみ警告を出力するようになりました。
+しかし、警告が致命的になっている場合は、これは飛ばされません。
+
+=begin original
+
+There is one exception to all this.  C<\p{All}> looks like a Unicode
+property, but it is a Perl extension that is defined to be true for all
+possible code points, Unicode or not, so no warning is ever generated
+when matching this against a non-Unicode code point.  (Prior to v5.20,
+it was an exact synonym for C<\p{Any}>, matching code points C<0>
+through C<0x10FFFF>.)
+
+=end original
+
+これら全てに関して一つの例外があります。
+C<\p{All}> は Unicode 特性のように見えますが、
+これは Unicode であろうがなかろうが全ての可能な符号位置に対して
+真と定義されている Perl 拡張なので、非 Unicode 符号位置に対してこれを
+マッチングしても警告は発生しません。
+(v5.20 より前では、これは C<\p{Any}> の正確な別名で、
+C<0> から C<0x10FFFF> の符号位置にマッチングしていました。)
+
+=head2 Security Implications of Unicode
+
+(Unicode のセキュリティへの影響)
+
+=begin original
+
+First, read
+L<Unicode Security Considerations|http://www.unicode.org/reports/tr36>.
+
+=end original
+
+まず、
+L<Unicode Security Considerations|http://www.unicode.org/reports/tr36> を
+読んでください。
+
+=begin original
+
+Also, note the following:
+
+=end original
+
+また、以下のことに注意してください:
+
+=over 4
+
+=item *
+
+=begin original
+
+Malformed UTF-8
+
+=end original
+
+不正な UTF-8
+
+=begin original
+
+UTF-8 is very structured, so many combinations of bytes are invalid.  In
+the past, Perl tried to soldier on and make some sense of invalid
+combinations, but this can lead to security holes, so now, if the Perl
+core needs to process an invalid combination, it will either raise a
+fatal error, or will replace those bytes by the sequence that forms the
+Unicode REPLACEMENT CHARACTER, for which purpose Unicode created it.
+
+=end original
+
+UTF-8 is very structured, so many combinations of bytes are invalid.
+以前は、Perl はこれと戦って、不正な組み合わせに意味を持たせようとしましたが、
+これはセキュリティホールを引き起こすことがあったので、
+今では、Perl コアが不正な組み合わせを処理する必要があると、
+致命的エラーが発生するか、それらのバイト列を、Unicode がこのために作った
+Unicode の REPLACEMENT CHARACTER を形成する並びに置き換えます。
+
+=begin original
+
+Every code point can be represented by more than one possible
+syntactically valid UTF-8 sequence.  Early on, both Unicode and Perl
+considered any of these to be valid, but now, all sequences longer
+than the shortest possible one are considered to be malformed.
+
+=end original
+
+全ての符号位置は、一つの可能な文法的に正当な UTF-8 並び以上の
+方法で表現できます。
+以前は、Unicode と Perl はこれら全ても正当であると考えていましたが、
+今は、最短のもの以外の、より長い全ての並びは不正と考えられます。
+
+=begin original
+
+Unicode considers many code points to be illegal, or to be avoided.
+Perl generally accepts them, once they have passed through any input
+filters that may try to exclude them.  These have been discussed above
+(see "Surrogates" under UTF-16 in L</Unicode Encodings>,
+L</Noncharacter code points>, and L</Beyond Unicode code points>).
+
+=end original
+
+Unicode は多くの符号位置を不正または避けるべきと考えています。
+Perl は、一旦これらを除外しようとする入力フィルタを通過したものは、
+一般的にこれらを受け入れます。
+これらは先に議論しています
+(L</Unicode Encodings> の UTF-16 の「サロゲート」("Surrogates"),
+L</Noncharacter code points>, L</Beyond Unicode code points> を
+参照してください)。
+
+=item *
+
+=begin original
+
+Regular expression pattern matching may surprise you if you're not
+accustomed to Unicode.  Starting in Perl 5.14, several pattern
+modifiers are available to control this, called the character set
+modifiers.  Details are given in L<perlre/Character set modifiers>.
+
+=end original
+
+Unicode に慣れていないなら、正規表現パターンマッチングは
+あなたを驚かせるかもしれません。
+Perl 5.14 から、これを制御するためのいくつかのパターンマッチング修飾子が
+利用可能になりました; これは文字集合修飾子と呼ばれます。
+詳細は L<perlre/Character set modifiers> にあります。
+
+=back
+
+=begin original
+
+As discussed elsewhere, Perl has one foot (two hooves?) planted in
+each of two worlds: the old world of ASCII and single-byte locales, and
+the new world of Unicode, upgrading when necessary.
+If your legacy code does not explicitly use Unicode, no automatic
+switch-over to Unicode should happen.
+
+=end original
+
+すでに述べている通り、Perl は二つの世界のそれぞれに片方の足
+(二つのひづめ?) を突っ込んでいます: ASCII と単一バイトロケールの
+古い世界と、必要に応じて昇格する Unicode の新しい世界です。
+もしあなたの古いコードが明示的に Unicode を使っていないのなら、
+Unicode への切り替えが自動的になされることはありません。
+
+=head2 Unicode in Perl on EBCDIC
+
+(EBCDIC 上の Perl での Unicode)
+
+=begin original
+
+Unicode is supported on EBCDIC platforms.  See L<perlebcdic>.
+
+=end original
+
+Unicode は EBCDIC プラットフォームで対応しています。
+L<perlebcdic> を参照してください。
+
+=begin original
+
+Unless ASCII vs. EBCDIC issues are specifically being discussed,
+references to UTF-8 encoding in this document and elsewhere should be
+read as meaning UTF-EBCDIC on EBCDIC platforms.
+See L<perlebcdic/Unicode and UTF>.
+
+=end original
+
+特に ASCII 対 EBCDIC 問題について
+議論されている場合でない限り、
+EBCDIC プラットフォームでは、
+この文書やその他での
+UTF-8 エンコーディングへの言及は、
+UTF-EBCDIC を意味するものとして読むべきです。
+L<perlebcdic/Unicode and UTF> を参照してください。
+
+=begin original
+
+Because UTF-EBCDIC is so similar to UTF-8, the differences are mostly
+hidden from you; S<C<use utf8>> (and NOT something like
+S<C<use utfebcdic>>) declares the script is in the platform's
+"native" 8-bit encoding of Unicode.  (Similarly for the C<":utf8">
+layer.)
+
+=end original
+
+UTF-EBCDIC は UTF-8 にとても似ているので、違いはほとんど隠されています;
+S<C<use utf8>> (そして S<C<use utfebcdic>> のようなものでは「ありません」) は
+スクリプトがそのプラットフォームの「ネイティブな」Unicode の 8 ビット
+エンコーディングであることを宣言します。 
+(C<":utf8"> 層も同様です。)
+
+=head2 Locales
+
+(ロケール)
+
+=begin original
+
+See L<perllocale/Unicode and UTF-8>
+
+=end original
+
+L<perllocale/Unicode and UTF-8> を参照してください。
+
+=head2 When Unicode Does Not Happen
+
+(Unicode ではない場合)
+
+=begin original
+
+There are still many places where Unicode (in some encoding or
+another) could be given as arguments or received as results, or both in
+Perl, but it is not, in spite of Perl having extensive ways to input and
+output in Unicode, and a few other "entry points" like the C<@ARGV>
+array (which can sometimes be interpreted as UTF-8).
+
+=end original
+
+Perl には入出力を Unicode で行うための幅広い方法があり、
+C<@ARGV> 配列のように (時々 UTF-8 として解釈できるような)その他の
+「エントリポイント」がいくつかあるにも関わらず、
+(何らかのエンコーディングで)
+Unicode が引数として与えられたり結果として返されたり、あるいは
+両方であるべきにも関わらず、そうなっていない場所も未だ多くあります。
+
+=begin original
+
+The following are such interfaces.  Also, see L</The "Unicode Bug">.
+For all of these interfaces Perl
+currently (as of v5.16.0) simply assumes byte strings both as arguments
+and results, or UTF-8 strings if the (deprecated) C<encoding> pragma has been used.
+
+=end original
+
+以下に挙げるのはそのようなインターフェースです。
+また、L</The "Unicode Bug"> を参照してください。
+これらすべてが現在の Perl(v5.16.0) では単純に引数と戻り値の両方が
+バイト文字列か、(廃止予定の) C<encoding> プラグマが使われていれば
+UTF-8 文字列であると仮定しています。
+
+=begin original
+
+One reason that Perl does not attempt to resolve the role of Unicode in
+these situations is that the answers are highly dependent on the operating
+system and the file system(s).  For example, whether filenames can be
+in Unicode and in exactly what kind of encoding, is not exactly a
+portable concept.  Similarly for C<qx> and C<system>: how well will the
+"command-line interface" (and which of them?) handle Unicode?
+
+=end original
+
+このような状況において、Perl が Unicode による解決をしないのかの
+理由の一つは、答えがオペレーティングシステムや
+ファイルシステムに強く依存しているからです。
+たとえば、ファイル名が Unicode で記述できてエンコーディングが
+合っていたとしてもそれは移植性のあるコンセプトではないのです。
+同様なことが C<qx> や C<system> にも言えます:
+「コマンドラインインターフェース」は Unicode をどのように
+扱うのでしょうか?
+
+=over 4
+
+=item *
+
+C<chdir>, C<chmod>, C<chown>, C<chroot>, C<exec>, C<link>, C<lstat>, C<mkdir>,
+C<rename>, C<rmdir>, C<stat>, C<symlink>, C<truncate>, C<unlink>, C<utime>, C<-X>
+
+=item *
+
+C<%ENV>
+
+=item *
+
+=begin original
+
+C<glob> (aka the C<E<lt>*E<gt>>)
+
+=end original
+
+C<glob> (または C<E<lt>*E<gt>>)
+
+=item *
+
+C<open>, C<opendir>, C<sysopen>
+
+=item *
+
+=begin original
+
+C<qx> (aka the backtick operator), C<system>
+
+=end original
+
+C<qx> (または逆クォート演算子), C<system>
+
+=item *
+
+C<readdir>, C<readlink>
+
+=back
+
+=head2 The "Unicode Bug"
+
+(「Unicode バグ」)
+
+=begin original
+
+The term, "Unicode bug" has been applied to an inconsistency with the
+code points in the C<Latin-1 Supplement> block, that is, between
+128 and 255.  Without a locale specified, unlike all other characters or
+code points, these characters can have very different semantics
+depending on the rules in effect.  (Characters whose code points are
+above 255 force Unicode rules; whereas the rules for ASCII characters
+are the same under both ASCII and Unicode rules.)
+
+=end original
+
+「Unicode バグ」("Unicode bug")という用語は、
+C<Latin-1 Supplement> ブロック、つまり 128 から 255 にある符号位置の
+非一貫性に対して使われます。
+その他の文字や符号位置とは異なり、これらの文字は
+有効な規則によってとても異なったセマンティクスです。
+(255 を超える符号位置の文字は Unicode の規則が強制されます;
+一方 ASCII 文字のための規則は、ASCII と Unicode の規則で同じです。)
+
+=begin original
+
+Under Unicode rules, these upper-Latin1 characters are interpreted as
+Unicode code points, which means they have the same semantics as Latin-1
+(ISO-8859-1) and C1 controls.
+
+=end original
+
+Unicode の規則の下では、これらの上位の Latin1 文字は  Unicode 符号位置として
+解釈され、Latin-1 (ISO-8859-1) および C1 制御文字と
+同じセマンティクスを持ちます。
+
+=begin original
+
+As explained in L</ASCII Rules versus Unicode Rules>, under ASCII rules,
+they are considered to be unassigned characters.
+
+=end original
+
+L</ASCII Rules versus Unicode Rules> で説明されているように、
+ASCII の規則では、これらは未割り当て文字と見なされます。
+
+=begin original
+
+This can lead to unexpected results.  For example, a string's
+semantics can suddenly change if a code point above 255 is appended to
+it, which changes the rules from ASCII to Unicode.  As an
+example, consider the following program and its output:
+
+=end original
+
+これにより、予期しない結果が生じる可能性があります。
+たとえば、255 を超えるコードポイントが文字列に追加された場合、
+文字列のセマンティクスが突然変更され、規則が ASCII から Unicode に
+変更される可能性があります。
+例として、次のプログラムとその出力を考えてみます:
+
+ $ perl -le'
+     no feature "unicode_strings";
+     $s1 = "\xC2";
+     $s2 = "\x{2660}";
+     for ($s1, $s2, $s1.$s2) {
+         print /\w/ || 0;
+     }
+ '
+ 0
+ 0
+ 1
+
+=begin original
+
+If there's no C<\w> in C<s1> nor in C<s2>, why does their concatenation
+have one?
+
+=end original
+
+C<s1> や C<s2> に C<\w> がなければ、なぜこれらの結合は一つになるのでしょう?
+
+=begin original
+
+This anomaly stems from Perl's attempt to not disturb older programs that
+didn't use Unicode, along with Perl's desire to add Unicode support
+seamlessly.  But the result turned out to not be seamless.  (By the way,
+you can choose to be warned when things like this happen.  See
+C<L<encoding::warnings>>.)
+
+=end original
+
+この異常は、Unicode を使用していない、
+古いプログラムを妨害しないようにしようという Perl の試みと、
+Unicode 対応をシームレスに追加しようとする Perl の
+願望によるものです。
+しかしその結果はシームレスになりませんでした。
+(ところで、このようなことが起きたときに警告されるようにできます。
+C<L<encoding::warnings>> を参照してください。)
+
+=begin original
+
+L<S<C<use feature 'unicode_strings'>>|feature/The 'unicode_strings' feature>
+was added, starting in Perl v5.12, to address this problem.  It affects
+these things:
+
+=end original
+
+Perl v5.12 から、この問題に対応に対応するために
+L<S<C<use feature 'unicode_strings'>>|feature/The 'unicode_strings' feature>
+が追加されました。
+これは以下のような影響があります:
+
+=over 4
+
+=item *
+
+=begin original
+
+Changing the case of a scalar, that is, using C<uc()>, C<ucfirst()>, C<lc()>,
+and C<lcfirst()>, or C<\L>, C<\U>, C<\u> and C<\l> in double-quotish
+contexts, such as regular expression substitutions.
+
+=end original
+
+スカラの大文字小文字を変える; つまり、C<uc()>, C<ucfirst()>, C<lc()>,
+C<lcfirst()> を使ったり、正規表現置換のようなダブルクォート風
+コンテキストの中で C<\L>, C<\U>, C<\u>, C<\l> を使う。
+
+=begin original
+
+Under C<unicode_strings> starting in Perl 5.12.0, Unicode rules are
+generally used.  See L<perlfunc/lc> for details on how this works
+in combination with various other pragmas.
+
+=end original
+
+Perl 5.12.0 からの C<unicode_strings> では、一般的に
+Unicode の規則が使われます。
+これがさまざまなプラグマと組み合わせて動作する方法の
+詳細については、L<perlfunc/lc> を参照してください。
+
+=item *
+
+=begin original
+
+Using caseless (C</i>) regular expression matching.
+
+=end original
+
+大文字小文字を無視した (C</i>) 正規表現マッチングを使う。
+
+=begin original
+
+Starting in Perl 5.14.0, regular expressions compiled within
+the scope of C<unicode_strings> use Unicode rules
+even when executed or compiled into larger
+regular expressions outside the scope.
+
+=end original
+
+Perl 5.14.0 から、C<unicode_strings> のスコープ内でコンパイルされた
+正規表現は、スコープの外で実行されたり、
+より大きな正規表現の中にコンパイルされたりした場合でも、
+Unicode の規則を使います。
+
+=item *
+
+=begin original
+
+Matching any of several properties in regular expressions.
+
+=end original
+
+正規表現中にいくつかの特性を使う。
+
+=begin original
+
+These properties are C<\b> (without braces), C<\B> (without braces),
+C<\s>, C<\S>, C<\w>, C<\W>, and all the Posix character classes
+I<except> C<[[:ascii:]]>.
+
+=end original
+
+その特性は、(大かっこなしの) C<\b>, (大かっこなしの) C<\B>,
+C<\s>, C<\S>, C<\w>, C<\W> および、
+C<[[:ascii:]]> I<以外の> Posix 文字クラスです。
+
+=begin original
+
+Starting in Perl 5.14.0, regular expressions compiled within
+the scope of C<unicode_strings> use Unicode rules
+even when executed or compiled into larger
+regular expressions outside the scope.
+
+=end original
+
+Perl 5.14.0 から、C<unicode_strings> のスコープ内でコンパイルされた
+正規表現は、スコープの外で実行されたり、
+より大きな正規表現の中にコンパイルされたりした場合でも、
+Unicode の規則を使います。
+
+=item *
+
+=begin original
+
+In C<quotemeta> or its inline equivalent C<\Q>.
+
+=end original
+
+C<quotemeta> や、インラインの等価物である C<\Q> の中。
+
+=begin original
+
+Starting in Perl 5.16.0, consistent quoting rules are used within the
+scope of C<unicode_strings>, as described in L<perlfunc/quotemeta>.
+Prior to that, or outside its scope, no code points above 127 are quoted
+in UTF-8 encoded strings, but in byte encoded strings, code points
+between 128-255 are always quoted.
+
+=end original
+
+Perl 5.16.0 から、L<perlfunc/quotemeta> で記述されているように、
+C<unicode_strings> のスコープの中では、
+一貫したクォート規則が使われます。
+それ以前であったり、スコープ外の場合、
+UTF-8 エンコードされた文字列では 128 を超える符号位置の文字は
+クォートされないが、
+バイトエンコードされた文字列では、128-255 の符号位置は常にクォートされる。
+
+=item *
+
+=begin original
+
+In the C<..> or L<range|perlop/Range Operators> operator.
+
+=end original
+
+C<..> という L<範囲|perlop/Range Operators> 演算子の中。
+
+=begin original
+
+Starting in Perl 5.26.0, the range operator on strings treats their lengths
+consistently within the scope of C<unicode_strings>. Prior to that, or
+outside its scope, it could produce strings whose length in characters
+exceeded that of the right-hand side, where the right-hand side took up more
+bytes than the correct range endpoint.
+
+=end original
+
+Perl 5.26.0 から、文字列への範囲演算子は、
+C<unicode_strings> のスコープ内で、その長さを一貫性を持って扱います。
+それより前、あるいはスコープの外では、
+右側が正しい範囲の端点より多くのバイト数を必要とする場所では、
+右側の長さを超えた長さの文字を生成することがあります。
+
+=item *
+
+=begin original
+
+In L<< C<split>'s special-case whitespace splitting|perlfunc/split >>.
+
+=end original
+
+L<< C<split> の空白分割の特殊処理|perlfunc/split >> の中。
+
+=begin original
+
+Starting in Perl 5.28.0, the C<split> function with a pattern specified as
+a string containing a single space handles whitespace characters consistently
+within the scope of of C<unicode_strings>. Prior to that, or outside its scope,
+characters that are whitespace according to Unicode rules but not according to
+ASCII rules were treated as field contents rather than field separators when
+they appear in byte-encoded strings.
+
+=end original
+
+Perl 5.28.0 から、単一の空白からなる文字列をパターンとして
+指定された C<split> 関数は、C<unicode_strings> のスコープ内では
+空白文字を一貫性を持って扱います。
+それより前、あるいはスコープの外では、
+Unicode の規則では空白だけれども ASCII の規則ではそうではない文字は、
+バイトエンコードされた文字列に現れた場合、
+フィールド区切りではなくフィールドの内容として扱われていました。
+
+=back
+
+=begin original
+
+You can see from the above that the effect of C<unicode_strings>
+increased over several Perl releases.  (And Perl's support for Unicode
+continues to improve; it's best to use the latest available release in
+order to get the most complete and accurate results possible.)  Note that
+C<unicode_strings> is automatically chosen if you S<C<use 5.012>> or
+higher.
+
+=end original
+
+前述のところから、C<unicode_strings> の効果は Perl のリリースが進むにつれて
+拡大していることが分かります。
+(そして Perl の Unicode 対応は改良し続けられています;
+最大限に完全で正確な結果を得るためには、利用可能な最新のリリースを
+使うのが最良です。)
+S<C<use 5.012>> 以上を使うと、C<unicode_strings> は自動的に選択されることに
+注意してください。
+
+=begin original
+
+For Perls earlier than those described above, or when a string is passed
+to a function outside the scope of C<unicode_strings>, see the next section.
+
+=end original
+
+前述したものより古い Perl の場合や、文字列が C<unicode_strings> の
+スコープ外の関数から渡された場合、次の節を参照してください。
+
+=head2 Forcing Unicode in Perl (Or Unforcing Unicode in Perl)
+
+(Unicode を Perl に強制する (あるいは Unicode でないことを Perl に強制する))
+
+=begin original
+
+Sometimes (see L</"When Unicode Does Not Happen"> or L</The "Unicode Bug">)
+there are situations where you simply need to force a byte
+string into UTF-8, or vice versa.  The standard module L<Encode> can be
+used for this, or the low-level calls
+L<C<utf8::upgrade($bytestring)>|utf8/Utility functions> and
+L<C<utf8::downgrade($utf8string[, FAIL_OK])>|utf8/Utility functions>.
+
+=end original
+
+ときとして(L</When Unicode Does Not Happen> を参照)、バイト列を
+UTF-8 であるように強制したりその逆を行う場合があるかもしれません。
+標準モジュール L<Encode> や、
+低レベルの呼び出し
+L<C<utf8::upgrade($bytestring)>|utf8/Utility functions> と
+L<C<utf8::downgrade($utf8string[, FAIL_OK])>|utf8/Utility functions> が
+このために使えます。
+
+=begin original
+
+Note that C<utf8::downgrade()> can fail if the string contains characters
+that don't fit into a byte.
+
+=end original
+
+C<utf8::downgrade()> は、バイトに収まらない文字を含む文字列の場合は
+失敗することがあることに注意してください。
+
+=begin original
+
+Calling either function on a string that already is in the desired state is a
+no-op.
+
+=end original
+
+既に望み通りの状態になっている文字列に対してこれらの関数を呼び出しても、
+何も起こりません。
+
+=begin original
+
+L</ASCII Rules versus Unicode Rules> gives all the ways that a string is
+made to use Unicode rules.
+
+=end original
+
+L</ASCII Rules versus Unicode Rules> は、Unicode の規則を使う文字列が
+作られる全ての方法を提供します。
+
+=head2 Using Unicode in XS
+
+(XS で Unicode を使う)
+
+=begin original
+
+See L<perlguts/"Unicode Support"> for an introduction to Unicode at
+the XS level, and L<perlapi/Unicode Support> for the API details.
+
+=end original
+
+XS レベルの Unicode の紹介については L<perlguts/"Unicode Support"> を、
+API の詳細については L<perlapi/Unicode Support> を参照してください。
+
+=head2 Hacking Perl to work on earlier Unicode versions (for very serious hackers only)
+
+(以前の Unicode のバージョンで動作させるように Perl をハックする (とても真剣なハッカー専用))
+
+=begin original
+
+Perl by default comes with the latest supported Unicode version built-in, but
+the goal is to allow you to change to use any earlier one.  In Perls
+v5.20 and v5.22, however, the earliest usable version is Unicode 5.1.
+Perl v5.18 and v5.24 are able to handle all earlier versions.
+
+=end original
+
+Perl はデフォルトでは最新の Unicode バージョンが組み込まれていますが、
+目標は、より古いものに変更できるようにすることです。
+しかし、Perl v5.20 と v5.22 は、利用可能なもっと早いバージョンは
+Unicode 5.1 です。
+Perl v5.18 と v5.24 では、それ以前の全てのバージョンが利用可能です。
+
+=begin original
+
+Download the files in the desired version of Unicode from the Unicode web
+site L<http://www.unicode.org>).  These should replace the existing files in
+F<lib/unicore> in the Perl source tree.  Follow the instructions in
+F<README.perl> in that directory to change some of their names, and then build
+perl (see L<INSTALL>).
+
+=end original
+
+Unicode の Web サイト L<http://www.unicode.org> から、目的の Unicode
+バージョンのファイルをダウンロードします。
+これらのファイルは、Perl ソースツリーの F<lib/unicore> の既存のファイルを
+置き換える必要があります。
+一部の名前を変えるには、そのディレクトリにある F<README.perl> の指示に従って、
+perl をビルドしてください (L<INSTALL> 参照)。
+
+=head2 Porting code from perl-5.6.X
+
+(perl 5.6.X からコードを移植する)
+
+=begin original
+
+Perls starting in 5.8 have a different Unicode model from 5.6. In 5.6 the
+programmer was required to use the C<utf8> pragma to declare that a
+given scope expected to deal with Unicode data and had to make sure that
+only Unicode data were reaching that scope. If you have code that is
+working with 5.6, you will need some of the following adjustments to
+your code. The examples are written such that the code will continue to
+work under 5.6, so you should be safe to try them out.
+
+=end original
+
+Perl 5.8 からは 5.6 とは異なる Unicode モデルを持っています。
+5.6 ではプログラマは、ある与えられたスコープが Unicode データを
+取り扱うのと Unicode データだけがそのスコープにあることを宣言するのに
+C<utf8> プラグマの使用を要求されていました。
+5.6 で動いていたプログラムを持っているのなら、以下に挙げる微調整を施す
+必要があるでしょう。
+例は 5.6 でも動くように書かれているので、安心して試すことができます。
+
+=over 3
+
+=item *
+
+=begin original
+
+A filehandle that should read or write UTF-8
+
+=end original
+
+UTF-8 で読み書きすべきファイルハンドル
+
+  if ($] > 5.008) {
+    binmode $fh, ":encoding(UTF-8)";
+  }
+
+=item *
+
+=begin original
+
+A scalar that is going to be passed to some extension
+
+=end original
+
+何らかのエクステンションに渡そうとするスカラ
+
+=begin original
+
+Be it C<Compress::Zlib>, C<Apache::Request> or any extension that has no
+mention of Unicode in the manpage, you need to make sure that the
+UTF8 flag is stripped off. Note that at the time of this writing
+(January 2012) the mentioned modules are not UTF-8-aware. Please
+check the documentation to verify if this is still true.
+
+=end original
+
+C<Compress::Zlib>, C<Apache::Request> などの、マニュアルページに Unicode に
+関する記載がない何らかのエクステンションで、確実に UTF8 フラグが
+オフにする必要があります。
+これを書いている時点(2012 年 1 月)では、上記のモジュールは
+UTF-8 対応でないことに注意してください。
+これがまだ真であるのなら、ドキュメントをチェックして確かめてください。
+
+  if ($] > 5.008) {
+    require Encode;
+    $val = Encode::encode("UTF-8", $val); # make octets
+  }
+
+=item *
+
+=begin original
+
+A scalar we got back from an extension
+
+=end original
+
+エクステンションから返ってきたスカラ
+
+=begin original
+
+If you believe the scalar comes back as UTF-8, you will most likely
+want the UTF8 flag restored:
+
+=end original
+
+そのスカラが UTF-8 として返ってきたものだと信じているのなら、
+UTF-8 フラグをリストアしたいと考えるでしょう:
+
+  if ($] > 5.008) {
+    require Encode;
+    $val = Encode::decode("UTF-8", $val);
+  }
+
+=item *
+
+=begin original
+
+Same thing, if you are really sure it is UTF-8
+
+=end original
+
+同様に、UTF-8 だと確信しているのなら
+
+  if ($] > 5.008) {
+    require Encode;
+    Encode::_utf8_on($val);
+  }
+
+=item *
+
+=begin original
+
+A wrapper for L<DBI> C<fetchrow_array> and C<fetchrow_hashref>
+
+=end original
+
+L<DBI> の C<fetchrow_array> と C<fetchrow_hashref> へのラッパ
+
+=begin original
+
+When the database contains only UTF-8, a wrapper function or method is
+a convenient way to replace all your C<fetchrow_array> and
+C<fetchrow_hashref> calls. A wrapper function will also make it easier to
+adapt to future enhancements in your database driver. Note that at the
+time of this writing (January 2012), the DBI has no standardized way
+to deal with UTF-8 data. Please check the L<DBI documentation|DBI> to verify if
+that is still true.
+
+=end original
+
+データベースが UTF-8 のみから構成されているとき、ラッパ関数や
+ラッパメソッドはあなたの C<fetchrow_array> や C<fetchrow_hashref> の
+呼び出しを置き換えるのに便利な方法でしょう。
+ラッパ関数はまた、あなたの使っているデータベースドライバが
+将来拡張されたときに適用しやすくするでしょう。
+このドキュメントを書いている時点(2012 年 1 月)では、DBI は UTF-8 のデータを
+扱う標準的な方法を持っていません。
+これがまだ真なら L<DBI の文書|DBI> をチェックして確かめてください。
+
+  sub fetchrow {
+    # $what is one of fetchrow_{array,hashref}
+    my($self, $sth, $what) = @_;
+    if ($] < 5.008) {
+      return $sth->$what;
+    } else {
+      require Encode;
+      if (wantarray) {
+        my @arr = $sth->$what;
+        for (@arr) {
+          defined && /[^\000-\177]/ && Encode::_utf8_on($_);
+        }
+        return @arr;
+      } else {
+        my $ret = $sth->$what;
+        if (ref $ret) {
+          for my $k (keys %$ret) {
+            defined
+            && /[^\000-\177]/
+            && Encode::_utf8_on($_) for $ret->{$k};
+          }
+          return $ret;
+        } else {
+          defined && /[^\000-\177]/ && Encode::_utf8_on($_) for $ret;
+          return $ret;
+        }
+      }
+    }
+  }
+
+=item *
+
+=begin original
+
+A large scalar that you know can only contain ASCII
+
+=end original
+
+ASCII だけが含まれていると分かっている大きなスカラ
+
+=begin original
+
+Scalars that contain only ASCII and are marked as UTF-8 are sometimes
+a drag to your program. If you recognize such a situation, just remove
+the UTF8 flag:
+
+=end original
+
+ASCII だけから構成されているのに UTF8 として印付けされているスカラが
+あなたのプログラムへ引きずりこまれることがあります。
+そのような場合を認識したならば、単に UTF-8 フラグを取り除いてください:
+
+  utf8::downgrade($val) if $] > 5.008;
+
+=back
+
+=head1 BUGS
+
+=begin original
+
+See also L</The "Unicode Bug"> above.
+
+=end original
+
+前述の L</The "Unicode Bug"> も参照してください。
+
+=head2 Interaction with Extensions
+
+(エクステンションとの相互作用)
+
+=begin original
+
+When Perl exchanges data with an extension, the extension should be
+able to understand the UTF8 flag and act accordingly. If the
+extension doesn't recognize that flag, it's likely that the extension
+will return incorrectly-flagged data.
+
+=end original
+
+Perl がエクステンションとデータをやり取りするとき、そのエクステンションは
+UTF8 フラグを理解し、また、それに従った振る舞いをすべきです。
+エクステンションがこのフラグを認識しない場合、そのエクステンションは
+正しくないフラグがついたデータを返す可能性があります。
+
+=begin original
+
+So if you're working with Unicode data, consult the documentation of
+every module you're using if there are any issues with Unicode data
+exchange. If the documentation does not talk about Unicode at all,
+suspect the worst and probably look at the source to learn how the
+module is implemented. Modules written completely in Perl shouldn't
+cause problems. Modules that directly or indirectly access code written
+in other programming languages are at risk.
+
+=end original
+
+そのため、もし Unicode データを扱おうというのであれば、 Unicode データの
+交換に関して何らかの記述があるのなら使うモジュールすべてのドキュメントを
+調べてください。
+ドキュメントが Unicode に関して何の言及もしていないのなら、最悪のケースを
+考慮し、そしてそのモジュールがどのように実装されているかを知るために
+ソースを見ることになるかもしれません。
+完全に Perl で書かれたモジュールは問題を引き起こしません。
+他のプログラミング言語で書かれている直接または間接にアクセスするコードに
+リスクがあるのです。
+
+=begin original
+
+For affected functions, the simple strategy to avoid data corruption is
+to always make the encoding of the exchanged data explicit. Choose an
+encoding that you know the extension can handle. Convert arguments passed
+to the extensions to that encoding and convert results back from that
+encoding. Write wrapper functions that do the conversions for you, so
+you can later change the functions when the extension catches up.
+
+=end original
+
+影響を受けた関数のための、データの劣化(data corruption)を防ぐ単純な
+戦略とは、交換するデータのエンコーディングを常に明確にするということです。
+エクステンションが取り扱うことができると知っているエンコーディングを
+選択してください。
+エクステンションに渡す引数を選択したエンコーディングに変換し、
+エクステンションから返ってきた結果をそのエンコーディングから
+逆方向に変換します。
+変換を行ってくれるラッパ関数を書いておいて、
+エクステンションが追いついた時に関数を変更できるようにしておきます。
+
+=begin original
+
+To provide an example, let's say the popular C<Foo::Bar::escape_html>
+function doesn't deal with Unicode data yet. The wrapper function
+would convert the argument to raw UTF-8 and convert the result back to
+Perl's internal representation like so:
+
+=end original
+
+例として、まだ Unicode データを取り扱うようにはできていない、
+有名な C<Foo::Bar::escape_html> について述べましょう。
+ラッパ関数は引数を生の UTF-8 に変換し、結果を Perl の内部表現に
+逆変換します:
+
+    sub my_escape_html ($) {
+        my($what) = shift;
+        return unless defined $what;
+        Encode::decode("UTF-8", Foo::Bar::escape_html(
+                                     Encode::encode("UTF-8", $what)));
+    }
+
+=begin original
+
+Sometimes, when the extension does not convert data but just stores
+and retrieves it, you will be able to use the otherwise
+dangerous L<C<Encode::_utf8_on()>|Encode/_utf8_on> function. Let's say
+the popular C<Foo::Bar> extension, written in C, provides a C<param>
+method that lets you store and retrieve data according to these prototypes:
+
+=end original
+
+エクステンションがデータを変換しないけれども格納したり取り出したりするときに、
+ときとして危険な L<C<Encode::_utf8_on()>|Encode/_utf8_on> 関数以外のものを
+使うことができるかもしれません。
+C で書かれていて、データを以下のプロトタイプに従って格納したり
+取り出したりする C<param> メソッドを持っている
+有名な C<Foo::Bar> エクステンションについて述べてみましょう:
+
+    $self->param($name, $value);            # set a scalar
+    $value = $self->param($name);           # retrieve a scalar
+
+=begin original
+
+If it does not yet provide support for any encoding, one could write a
+derived class with such a C<param> method:
+
+=end original
+
+どのエンコーディングもまだサポートしていないのなら、
+以下のような C<param> メソッドを持った派生クラスを
+記述することができるでしょう:
+
+    sub param {
+      my($self,$name,$value) = @_;
+      utf8::upgrade($name);     # make sure it is UTF-8 encoded
+      if (defined $value) {
+        utf8::upgrade($value);  # make sure it is UTF-8 encoded
+        return $self->SUPER::param($name,$value);
+      } else {
+        my $ret = $self->SUPER::param($name);
+        Encode::_utf8_on($ret); # we know, it is UTF-8 encoded
+        return $ret;
+      }
+    }
+
+=begin original
+
+Some extensions provide filters on data entry/exit points, such as
+C<DB_File::filter_store_key> and family. Look out for such filters in
+the documentation of your extensions; they can make the transition to
+Unicode data much easier.
+
+=end original
+
+一部のエクステンションはデータのエントリ/脱出ポイントでフィルターを
+提供しています; たとえば C<DB_File::filter_store_key> とその仲間です。
+あなた使うエクステンションのドキュメントにあるそのようなフィルターに
+注意してください; それらは Unicode データの変化をより容易にします。
+
+=head2 Speed
+
+(速度)
+
+=begin original
+
+Some functions are slower when working on UTF-8 encoded strings than
+on byte encoded strings.  All functions that need to hop over
+characters such as C<length()>, C<substr()> or C<index()>, or matching
+regular expressions can work B<much> faster when the underlying data are
+byte-encoded.
+
+=end original
+
+一部の関数は UTF-8 でエンコードされた文字列に対して適用したときにバイト
+エンコードされた文字列に対するときよりも遅くなります。
+文字に対して働く必要のある C<length()>, C<substr()>, C<index()> 
+のような関数のすべてと正規表現マッチングは、データが
+バイトエンコードされているときには B<かなり> 早く動作できます。
+
+=begin original
+
+In Perl 5.8.0 the slowness was often quite spectacular; in Perl 5.8.1
+a caching scheme was introduced which improved the situation.  In general,
+operations with UTF-8 encoded strings are still slower. As an example,
+the Unicode properties (character classes) like C<\p{Nd}> are known to
+be quite a bit slower (5-20 times) than their simpler counterparts
+like C<[0-9]> (then again, there are hundreds of Unicode characters matching
+C<Nd> compared with the 10 ASCII characters matching C<[0-9]>).
+
+=end original
+
+Perl 5.8.0 ではこの遅さはしばしば目立つものでした; Perl 5.8.1 では
+状況を改善するキャッシュ機構が導入されました。
+一般的には、UTF-8 エンコードされた文字列に対する操作はまだ遅いものです。
+たとえば、C<\p{Nd}> のような Unicode の特性(文字クラス)は対応する
+C<[0-9]> のような単純なものよりも目立って遅い(5 倍から10 倍)ことが
+知られています(繰り返しますが、C<[0-9]> は 10 の ASCII 文字に対して
+マッチするのに対して C<Nd> は数百の Unicode 文字にマッチします)。
+
+=head1 SEE ALSO
+
+L<perlunitut>, L<perluniintro>, L<perluniprops>, L<Encode>, L<open>, L<utf8>, L<bytes>,
+L<perlretut>, L<perlvar/"${^UNICODE}">,
+L<http://www.unicode.org/reports/tr44>).
+
+=cut
+
+=begin meta
+
+Translate: KIMURA Koichi (-5.8.5)
+Update: SHIRAKATA Kentaro <argrath@ub32.org> (5.10.0-)
+Status: in progress
+
+=end meta
+
