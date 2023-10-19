@@ -1,0 +1,164 @@
+=encoding utf8
+
+=pod
+
+=head1 題名
+
+Moose::Cookbook::Meta::Recipe3 - アトリビュートのトレートを利用したラベルの実装
+
+=head1 概要
+
+  package MyApp::Meta::Attribute::Trait::Labeled;
+  use Moose::Role;
+
+  has label => (
+      is        => 'rw',
+      isa       => 'Str',
+      predicate => 'has_label',
+  );
+
+  package Moose::Meta::Attribute::Custom::Trait::Labeled;
+  sub register_implementation {'MyApp::Meta::Attribute::Trait::Labeled'}
+
+  package MyApp::Website;
+  use Moose;
+
+  has url => (
+      traits => [qw/Labeled/],
+      is     => 'rw',
+      isa    => 'Str',
+      label  => "The site's URL",
+  );
+
+  has name => (
+      is  => 'rw',
+      isa => 'Str',
+  );
+
+  sub dump {
+      my $self = shift;
+
+      my $dump = '';
+
+      my %attributes = %{ $self->meta->get_attribute_map };
+      for my $name ( sort keys %attributes ) {
+          my $attribute = $attributes{$name};
+
+          if (   $attribute->does('MyApp::Meta::Attribute::Trait::Labeled')
+              && $attribute->has_label ) {
+              $dump .= $attribute->label;
+          }
+          else {
+              $dump .= $name;
+          }
+
+          my $reader = $attribute->get_read_method;
+          $dump .= ": " . $self->$reader . "\n";
+      }
+
+      return $dump;
+  }
+
+  package main;
+
+  my $app = MyApp::Website->new( url => "http://google.com", name => "Google" );
+
+=head1 このレシピを読む前に
+
+このレシピはL<Moose::Cookbook::Meta::Recipe2>のバリエーションです。まずはそちらを先にお読みください。
+
+=head1 動機
+
+L<Moose::Cookbook::Meta::Recipe2>ではアトリビュートにラベルをつけられるアトリビュートメタクラスを作成しました。
+
+でも、メタクラスを使うやり方が通用するのは、ラベル「と」有効期限のように、ほかの新しい振る舞いを組み合わせたくなるまでのこと。2つのメタクラスをサブクラス化する別のメタクラスを作る手もありますが、それをしては訳のわからないことになってしまいます（多くのアトリビュートにさまざまな振る舞いを組み合わせたい場合はなおさらです）。
+
+さいわい、Mooseにはもっとまともな選択肢があります。それぞれの拡張モジュールをクラスではなくロールとしてカプセル化するというのがそれです。アトリビュートにラベルを追加するロールを作ることもできますし、もうひとつ有効期限を実装するロールを作ることもできるでしょう。
+
+=head1 トレート
+
+メタクラスに組み込むロールにはトレートという特別な名前がついていますが、名前が違うからといってだまされないでください。B<トレートは単なるロールにすぎません>。
+
+L<Moose/has>を使うとアトリビュートにC<traits>パラメータを渡せます。このパラメータはトレートのリストを受け取り、合成して無名のメタクラスを作り、その無名のメタクラスをアトリビュートのメタクラスにします。
+
+そう、裏ではまだ大量のメタクラスを利用しているのですが、その管理はMooseの方でしてくれます。
+
+トレートは、ロールができることなら何でもできます（アトリビュートを追加・改善したり、メソッドをラップしたり、メソッドを増やしたり、インタフェースを定義したり、等）。唯一違うのは、変更するのはユーザレベルのクラスではなく、アトリビュートのメタクラスである、ということだけです。
+
+=head1 コードの詳細
+
+このレシピとレシピ2のコード例を並べて見てみると、トレートの定義や利用の仕方は本格的なメタクラスの使い方とよく似ていることがわかります。
+
+  package MyApp::Meta::Attribute::Trait::Labeled;
+  use Moose::Role;
+
+  has label => (
+      is        => 'rw',
+      isa       => 'Str',
+      predicate => 'has_label',
+  );
+
+ここではL<Moose::Meta::Attribute>をサブクラス化するかわりにロールを定義します。L<recipe 2|Moose::Cookbook::Meta::Recipe2>のメタクラスと同様に、ロールを登録しておくと短い名前で参照できるようになります。
+
+  package Moose::Meta::Attribute::Custom::Trait::Labeled;
+  sub register_implementation { 'MyApp::Meta::Attribute::Trait::Labeled' }
+
+Mooseがトレートのフルネームを調べるときはC<Moose::Meta::Attribute::Custom::Trait::$TRAIT_NAME>のC<register_implementation>メソッドを探します。
+
+残りのコードについては、L<レシピ2|Moose::Cookbook::Meta::Recipe2>と「異なる」部分のみ見ていきましょう。
+
+  has url => (
+      traits => [qw/Labeled/],
+      is     => 'rw',
+      isa    => 'Str',
+      label  => "The site's URL",
+  );
+
+ここでは、C<metaclass>パラメータを渡すかわりにC<traits>を渡しています。C<traits>にはトレート名のリストが入ります。Mooseはこのトレートから構築した無名のアトリビュートメタクラスをそのアトリビュートのメタクラスとして利用します。C<label>パラメータを渡すと、メタクラスの例と同じ動作をします。
+
+          if (   $attribute->does('MyApp::Meta::Attribute::Trait::Labeled')
+              && $attribute->has_label ) {
+              $dump .= $attribute->label;
+          }
+
+メタクラスの例ではC<< $attribute->isa >>を使いましたが、ロールの場合はメタアトリビュートが必要なロールをC<does>しているかを問い合わせます。メタアトリビュートがそのロールを組み込んでいない場合、アトリビュートのメタオブジェクトがC<has_label>メソッドを持つことはありません。
+
+違いはこれだけ。あとはすべて同じです！
+
+=head1 メタクラスをトレートにする
+
+「ちょっと待って！　拡張モジュールはもう全部アトリビュートメタクラスで書いてしまったから、そのコードは壊したくないよ」と抗議された方へ。
+
+さいわいメタクラスは簡単にトレートに書き換えられますし、そのまま元のメタクラスを提供することもできます。
+
+  package MyApp::Meta::Attribute::Labeled;
+  use Moose;
+  extends 'Moose::Meta::Attribute';
+  with 'MyApp::Meta::Attribute::Trait::Labeled';
+
+  package Moose::Meta::Attribute::Custom::Labeled;
+  sub register_implementation { 'MyApp::Meta::Attribute::Labeled' }
+
+ただし、残念ながらその逆（メタクラスから作ったトレートを提供すること）はそれほど簡単なことではありません。
+
+=head1 まとめ
+
+アトリビュートを拡張するのであれば、L<Moose::Meta::Attribute>をサブクラス化するより、振る舞いを合成できるようにする方が簡単で柔軟です。トレートを使うと、CPANにある、あるいは将来自分で書くほかの拡張モジュールとの相性がよくなります。MooseのL<Moose/has>にトレートのリストを与えると、動的にアトリビュートメタクラスを生成することが簡単にできるようになります。
+
+=head1 作者
+
+Shawn M Moore E<lt>sartak@gmail.comE<gt>
+
+Dave Rolsky E<lt>autarch@urth.org<gt>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2006-2009 by Infinity Interactive, Inc.
+
+L<http://www.iinteractive.com>
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=cut
+

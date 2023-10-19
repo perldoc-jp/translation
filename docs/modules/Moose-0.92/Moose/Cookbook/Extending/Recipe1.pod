@@ -1,0 +1,217 @@
+=encoding utf8
+
+=pod
+
+=head1 題名
+
+Moose::Cookbook::Extending::Recipe1 - Mooseの拡張モジュール概観
+
+=head1 本文
+
+Mooseには拡張モジュールを割り込ませてMooseそのものの振る舞いを変えるやり方がいくつかあります。また、振る舞いを変えられる部分もたくさんあります。このレシピではそれぞれの拡張メソッドの概要とともに、おすすめのツールをいくつか紹介します。
+
+まだメタクラスのレシピを読んでいない方は、そちらを先にご覧ください。メタクラスを理解しないままMooseの拡張モジュールを書くことはできませんし、そちらのレシピではメタクラスのサブクラスやトレートのような基本的な拡張のメカニズムを説明しています。
+
+=head2 ほかの拡張モジュールとうまくつきあう
+
+このドキュメントを書いた目的のひとつは、ほかの拡張モジュールと相性のよい拡張モジュールを作る手助けをすることです。これは、拡張モジュールをCPANにリリースするつもりがあるなら特に大事なことです。
+
+Mooseには相性のよい拡張モジュールを書くときに役立つモジュールがいくつかあります。L<Moose::Exporter>やL<Moose::Util::MetaRole>を使うと、Mooseのコア機能だけでなく、これらのモジュールを使っているほかのCPANモジュールとも確実に組み合わせられるようになります。
+
+=head1 Mooseを拡張できるポイント
+
+みなさんがMooseの拡張モジュールでしたいと思うようなことは、大きくいくつかのカテゴリーに分類できます。
+
+=head2 メタクラスの拡張
+
+Mooseを拡張する方法のひとつは、Mooseのメタクラスを拡張することです。たとえば、L<Moose::Cookbook::Meta::Recipe4>ではメタクラスにC<table>アトリビュートを追加するサブクラスの例を見ました。ORMを書いている人にとっては、これは理にかなった拡張といえるでしょう。
+
+CPANにあがっている拡張モジュールの多くは、アトリビュートのメタクラスを拡張するものです。たとえば、L<MooseX::AttributeHelpers>というディストリビューションは、オブジェクト以外のアトリビュート（ハッシュリファレンスや単なる数）にも振る舞いを委譲する新しいアトリビュートメタクラスを提供するものです。
+
+メタクラスを拡張するモジュールは、サブクラスとしても、ロール／トレートとしてもパッケージングできますが、サブクラスにするよりはトレートにすることをおすすめします。サブクラスをたくさん合成するより、バラバラなトレートを合成する方がはるかに簡単ですから。
+
+拡張モジュールをロールとして実装する場合は、L<Moose::Util::MetaRole>モジュールを利用できます。
+
+=head2 シュガー関数の提供
+
+メタクラスを拡張するモジュールの場合、その構成要素の一部として、L<Moose.pm|Moose>がしているのと同じようにシュガー関数を提供したくなる場合もあるかもしれません。Mooseにはこれを非常に簡単にするL<Moose::Exporter>というヘルパーモジュールがあります（L<Moose::Exporter>はこの先のレシピでも何度か利用します）。
+
+=head2 オブジェクトクラスの拡張
+
+Mooseを拡張する常套手段としてはもうひとつ、デフォルトのオブジェクトクラスの振る舞いを変えるというテクニックがあります。たとえば、L<MooseX::Singleton>モジュールはオブジェクトの振る舞いを変えてシングルトンにしてくれますし、L<MooseX::StrictConstructor>モジュールを使うと、対応するアトリビュートがない引数はコンストラクタが拒否するようになります。
+
+オブジェクトクラスの拡張モジュールにはしばしばメタクラスの拡張モジュールも含まれています。特に、クラスを不変化したときでもオブジェクトの拡張を動作させたい場合は、L<Moose::Meta::Instance>やL<Moose::Meta::Method::Constructor>、L<Moose::Meta::Method::Destructor>といったオブジェクトをいくつか（あるいはすべて）拡張する必要があるかもしれません。
+
+L<Moose::Util::MetaRole>というモジュールを使うと、前述したメタクラスだけでなく、オブジェクトのベースクラスにもロールを組み込めるようになります。
+
+=head2 ロールを提供する
+
+拡張モジュールの中には、ユーザに取り込んでもらうロールの形をとっているものもあります。L<MooseX::Object::Pluggable>というモジュールがその好例です（実はこれ、C<MooseX>という名前はついていますが、実際にはMooseの振る舞いを変更するものではなく、プラガブルにしたいオブジェクトに取り込ませることのできるロールにすぎないのです）。
+
+この手の拡張モジュールを実装する場合は、特に何かをする必要はありません。単にロールを作って、ドキュメントにはいつものようにC<with>というシュガー関数経由で使ってください、と書くだけです。
+
+   package MyApp::User;
+
+   use Moose;
+
+   with 'MooseX::My::Role';
+
+=head2 新しい型
+
+もうひとつよくあるMooseの拡張モジュールとして、Mooseの型システムに新しい型を追加するものがあります。この場合は単にモジュールの中で型を作るだけです。ユーザがそのモジュールをロードしたら、型が作られ、以後はその名前で型を参照できるようになります。これの実例としては、L<MooseX::Types::URI>とL<MooseX::Types::DateTime>というディストリビューションがあげられます。いずれもL<MooseX::Types>モジュールを下敷きにして作られたものです。
+
+=head1 ロールとトレートとサブクラス
+
+これはぜひ理解しておいていただきたいのですが、B<ロールとトレートは同じものです>。トレーとはインスタンスにロールを適用したものです。唯一の違いは、トレートは名前の一部を省略してもMooseがクラス名を導き出せるようにパッケージングされていることです。言い換えると、トレートの場合は「Big」のような短縮表記で呼び出せるし、MooseはそこからC<MooseX::Embiggen::Meta::Attribute::Role::Big>のようなクラス名を導き出せる、ということです。
+
+実際にトレートを利用している例については、L<Moose::Cookbook::Meta::Recipe3>やL<Moose::Cookbook::Meta::Recipe5>をご覧ください。いずれも特にトレートの名前解決メカニズムを紹介しています。
+
+拡張モジュールをメタクラスやベースオブジェクトのロールとして実装すると、ほかのモジュールとの相性がよくなります。エンドユーザがメタクラスのサブクラスをいくつも効果的に合成するのは大変なことですが、ロールを合成するのはごく簡単なことだからです。
+
+=head1 自作の拡張モジュールを使う
+
+拡張モジュールを組み込めるポイントはいくつもあります。場合によっては自作の拡張モジュールを複数の方法で取り込めるようにすることもできます。
+
+=head2 メタクラスのトレートとしての拡張モジュール
+
+トレートとしても使える拡張モジュールであれば、エンドユーザには単にトレートのリストの中に名前を入れておいてください、と言うことができます（いまのところこの手が使えるのは（クラスの）メタクラスとアトリビュートのメタクラスのトレートのみですが）。
+
+  use Moose -traits => [ 'Big', 'Blue' ];
+
+  has 'animal' => (
+      traits => [ 'Big', 'Blue' ],
+      ...
+  );
+
+ほかのメタクラスやオブジェクトのベースクラスに組み込める拡張モジュールの場合は、トレートのメカニズムを利用することはできません。
+
+トレートのメカニズムの利点は、トレートがコードのどこで組み込まれているかが非常にわかりやすいことです。また、トレートを組み込む対象についても、取り込む側の方で細かくコントロールできます（特にアトリビュートのトレートの場合はそうです。アトリビュートのトレートは、クラスのひとつのアトリビュートだけに組み込むこともできます）。
+
+=head2 メタクラス（およびベースオブジェクト）のサブクラスとしての拡張モジュール
+
+Mooseには、取り込む側の方で使いたいサブクラスを指定できるような簡単なAPIは用意されていません（例外はアトリビュートのメタクラスです。アトリビュートの宣言には、拡張モジュールを取り込む側がサブクラスを指定するのに使えるC<metaclass>というオプションがあります）。
+
+これが、拡張モジュールをサブクラスとして実装するのはよくない、というひとつの理由になっているのですが、インポート時に呼び出し元に対してC<< Moose->init_meta >>を実行して、別のメタクラスやベースオブジェクトクラスを指定すれば、特定のサブクラスの利用を強制することはできます。
+
+どうしてもそうしたい場合は、L<Moose::Exporter>を使ってL<Moose.pm|Moose>のシュガー関数を再エクスポートするようにしてください。L<Moose::Exporter>を使うと、エクスポートするクラスにC<init_meta>メソッドがある場合は、クラスがインポートされるときに確実にそのC<init_meta>メソッドを呼んでくれます。
+
+そのC<init_meta>の中で、呼び出し元に指定したサブクラスを利用するように手配できます。
+
+  package MooseX::Embiggen;
+
+  use Moose ();
+  use Moose::Exporter;
+
+  use MooseX::Embiggen::Meta::Class;
+  use MooseX::Embiggen::Object;
+
+  Moose::Exporter->setup_import_methods( also => 'Moose' );
+
+  sub init_meta {
+      shift;    # just your package name
+      my %options = @_;
+
+      return Moose->init_meta(
+          for_class  => $options{for_class},
+          metaclass  => 'MooseX::Embiggen::Meta::Class',
+          base_class => 'MooseX::Embiggen::Object',
+      );
+  }
+
+注意: C<init_meta>は、C<< Moose->init_meta >>がしているように、かならずメタクラスオブジェクトを返すようにしてください。
+
+=head2 メタクラス（およびベースオブジェクト）のロールとしての拡張モジュール
+
+拡張モジュールをメタクラスのロールとして実装すると、拡張モジュールを組み込みやすくなりますし、ほかのロールベースのメタクラスの拡張モジュールとの相性もよくなります。
+
+サブクラスの場合と同様に、ロールとして取り込んでもらいたい拡張モジュールもL<Moose::Exporter>を利用する単一のモジュールとしてパッケージしたくなるかもしれませんが、この場合はL<Moose::Util::MetaRole>を利用してすべてのロールを組み込むようにします。このモジュールを使う利点は、「すでにユーザのメタクラスに組み込まれているサブクラスやロールには手をつけない」ことです。これはつまり、「デフォルトで」拡張モジュールの相性がよくなるため、ユーザがほかのロールベースの拡張モジュールと簡単に組み合わせられるようになる、ということです。
+
+  package MooseX::Embiggen;
+
+  use Moose ();
+  use Moose::Exporter;
+
+  use MooseX::Embiggen::Role::Meta::Class;
+  use MooseX::Embiggen::Role::Meta::Attribute;
+  use MooseX::Embiggen::Role::Meta::Method::Constructor;
+  use MooseX::Embiggen::Role::Object;
+
+  my ( $import, $unimport, $init_meta ) = Moose::Exporter->build_import_methods(
+      also => ['Moose'] metaclass_roles =>
+          ['MooseX::Embiggen::Role::Meta::Class'],
+      attribute_metaclass_roles => ['MooseX::Embiggen::Role::Meta::Attribute'],
+      constructor_class_roles =>
+          ['MooseX::Embiggen::Role::Meta::Method::Constructor'],
+      base_class_roles => ['MooseX::Embiggen::Role::Object'],
+      install          => [qw(import unimport)],
+  );
+
+  sub init_meta {
+      my $package = shift;
+      my %options = @_;
+
+      Moose->init_meta(%options);
+
+      return $package->$init_meta(%options);
+  }
+
+ご覧の通り、L<Moose::Util::MetaRole>はどんなメタクラスにロールを組み込むときでも使えます（ベースオブジェクトクラスの場合も同様です）。拡張モジュールがロールを組み込んでも、ほかの拡張モジュールが組み込んだロールはそのまま残りますし、その逆も同様です。なお、C<Moose::Util::MetaRole>のを必要とするほとんどの箇所ではC<Moose::Exporter>が代わりに全て処理することも可能です。詳しくはC<Moose::Exporter>のドキュメントをご覧下さい。
+
+=head2 シュガー関数を提供する
+
+L<Moose::Exporter>を使うと、独自のシュガー関数をエクスポートすることができます。また、ほかのモジュールのシュガー関数をエクスポートすることもできます。
+
+  package MooseX::Embiggen;
+
+  use Moose ();
+  use Moose::Exporter;
+
+  Moose::Exporter->setup_import_methods(
+      with_meta => ['embiggen'],
+      also        => 'Moose',
+  );
+
+  sub embiggen {
+      my $meta = shift;
+      $meta->embiggen(@_);
+  }
+
+こうすると、この拡張モジュールを取り込んだクラスではC<embiggen>サブルーチンを使うことができるようになります。
+
+  package Consumer;
+
+  use MooseX::Embiggen;
+
+  extends 'Thing';
+
+  embiggen ...;
+
+これをメタクラスやベースクラスのロールと合成するのはごく簡単です。
+
+=head1 従来の拡張のメカニズム
+
+L<Moose::Exporter>やL<Moose::Util::MetaRole>が登場する前にも、Mooseを拡張する方法はいくつもありました。ただし、一般的に、これらのメソッドはあまり相性がよくありませんし、拡張モジュールがひとつのときにしかうまく動きませんでした。
+
+そういったメソッドの例としては、L<metaclass.pm|metaclass>やL<Moose::Policy>（これは裏でL<metaclass.pm|metaclass>を利用しています）、それからL<Moose::Exporter>がしているさまざまなハックをするものがありますが、みなさんの拡張モジュールではそういったメソッドを使わないようにしてください。
+
+念のため、相性のよい拡張モジュールを書けば、古い拡張モジュールと組み合わせることもできます（一般的に古い拡張モジュールはお互いに相性がよくないものですが）。
+
+=head1 まとめ
+
+拡張モジュールを書くとき、メタクラスやベースオブジェクトのロールとして書けそうならぜひそうしてください。L<Moose::Exporter>やL<Moose::Util::MetaRole>のドキュメントを読んでおくのもお忘れなく。
+
+=head1 作者
+
+Dave Rolsky E<lt>autarch@urth.orgE<gt>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2009 by Infinity Interactive, Inc.
+
+L<http://www.iinteractive.com>
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=cut
+

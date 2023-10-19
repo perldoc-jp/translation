@@ -1,0 +1,170 @@
+=encoding utf8
+
+=pod
+
+=head1 題名
+
+Moose::Cookbook::Basics::Recipe3 - 遅延評価を行うB<BinaryTree>の例
+
+=head1 概要
+
+  package BinaryTree;
+  use Moose;
+
+  has 'node' => ( is => 'rw', isa => 'Any' );
+
+  has 'parent' => (
+      is        => 'rw',
+      isa       => 'BinaryTree',
+      predicate => 'has_parent',
+      weak_ref  => 1,
+  );
+
+  has 'left' => (
+      is        => 'rw',
+      isa       => 'BinaryTree',
+      predicate => 'has_left',
+      lazy      => 1,
+      default   => sub { BinaryTree->new( parent => $_[0] ) },
+      trigger   => \&_set_parent_for_child
+  );
+
+  has 'right' => (
+      is        => 'rw',
+      isa       => 'BinaryTree',
+      predicate => 'has_right',
+      lazy      => 1,
+      default   => sub { BinaryTree->new( parent => $_[0] ) },
+      trigger   => \&_set_parent_for_child
+  );
+
+  sub _set_parent_for_child {
+      my ( $self, $child ) = @_;
+
+      confess "You cannot insert a tree which already has a parent"
+          if $child->has_parent;
+
+      $child->parent($self);
+  }
+
+=head1 本文
+
+このレシピでは、高度なアトリビュートの機能をいろいろ使って、複雑で強力な振る舞いを作る方法を説明します。とりわけここではC<predicate>やC<lazy>、C<trigger>といった新しいアトリビュートのオプションを多数紹介していきます。
+
+例題のクラスは、古典的なバイナリツリーです。ノードはそれぞれがC<BinaryTree>のインスタンスで、任意の値を入れられるC<node>というアトリビュートと、子のツリーを参照しているC<right>アトリビュートとC<left>アトリビュート、それからC<parent>というアトリビュートがあります。
+
+C<node>アトリビュートから見ていきましょう。
+
+  has 'node' => ( is => 'rw', isa => 'Any' );
+
+Mooseはこのアトリビュートに読み書き可能なアクセサを生成します。型制約はC<Any>なので、文字通り何でも入れられます。
+
+C<isa>オプションは外してしまってもよかったのですが、ここではコンピュータのためではなく、ほかのプログラマのために入れておきました。
+
+続いてC<parent>アトリビュートに移りましょう。
+
+  has 'parent' => (
+      is        => 'rw',
+      isa       => 'BinaryTree',
+      predicate => 'has_parent',
+      weak_ref  => 1,
+  );
+
+こちらも読み書き可能なアクセサがありますが、今度はC<isa>オプションによってこのアトリビュートはかならずC<BinaryTree>のインスタンスでなければならないと指定されています。2番目のレシピで見た通り、Mooseベースのクラスを作ると、かならず対応するクラスの型制約も用意されます。
+
+C<predicate>は新しいオプションで、そのアトリビュートが初期化済みかどうかをチェックできるメソッドを生成するものです（ここでは、メソッド名はC<has_parent>となります）。
+
+そして、このアトリビュート最後のオプションであるC<weak_ref>ですが、C<parent>は循環参照しているので（C<parent>ツリーのC<left>アトリビュートかC<right>アトリビュートにはすでにこのオブジェクトへの参照があるはずです）、確実にウィークリファレンスにしてメモリリークを避けたいところです。C<weak_ref>を真にすると、アクセサ関数が変化して、リファレンスを入れたらウィークリファレンスにしてくれるようになります。
+
+最後はC<left>アトリビュートとC<right>アトリビュートです。この2つは名前を除けば本質的には同じものですので、ここではC<left>だけ見ることにします。
+
+  has 'left' => (
+      is        => 'rw',
+      isa       => 'BinaryTree',
+      predicate => 'has_left',
+      lazy      => 1,
+      default   => sub { BinaryTree->new( parent => $_[0] ) },
+      trigger   => \&_set_parent_for_child
+  );
+
+C<lazy>、C<default>、C<trigger>という新しいオプションが3つありますが、C<lazy>オプションとC<default>オプションはリンクしています。実は、C<lazy>アトリビュートが使えるのは、C<default>（あるいはあとで取り上げるC<builder>）があるときだけなのです。デフォルトを用意しないでアトリビュートを遅延評価しようとすると、クラスの生成に失敗して例外が発生します。(2)
+
+2番目のレシピでは、B<BankAccount>クラスのC<balance>アトリビュートにはC<0>というデフォルト値が用意されていました。このようにデフォルト値がリファレンスでない場合は「値」がコピーされるのですが、デフォルト値がリファレンスの場合は、ディープクローニングではなく、単にリファレンスがコピーされます。そのため、単純にデフォルトに素のリファレンスを指定すると、最初に生成されたリファレンスがそのままそのアトリビュートを持つすべてのオブジェクトに使い回されてしまいます。
+
+この問題の回避策は、無名サブルーチンを使うことです。無名サブルーチンを使うと、デフォルトが呼ばれるたびに新しいリファレンスが生成されます。
+
+  has 'foo' => ( is => 'rw', default => sub { [] } );
+
+もっとも、実際には、Mooseではデフォルトにサブルーチン以外のリファレンスを使うことはできないようになっています。
+
+  # will fail
+  has 'foo' => ( is => 'rw', default => [] );
+
+これはエラーになりますのでしないでください。
+
+お気づきの通り、ここではデフォルトサブルーチンの中でC<$_[0]>を使っています。デフォルトのサブルーチンは、実行時にはそのオブジェクトのメソッドとして呼ばれるためです。
+
+この例では、デフォルトとして、現在のツリーを親に持つ新しいC<BinaryTree>オブジェクトを作っています。
+
+通常、デフォルト値はオブジェクトがインスタンス化されるとすぐに評価されます。ところが、このC<BinaryTree>クラスの場合、それは大問題になりかねません！　最初のオブジェクトを作ったとき、すぐにC<left>アトリビュートとC<right>アトリビュートの初期化が行われると、そこでもまた新しいC<BinaryTree>ができ、それがまた自身のC<left>、C<right>スロットを初期化しようとして、大惨事になってしまいます！
+
+C<left>アトリビュートとC<right>アトリビュートをC<lazy>にしておくとこの問題は回避できます。アトリビュートの値を読み込むとき、すでに値が存在していればデフォルトはいっさい実行されなくなります。
+
+最後にもうひとつ追加しておきたい振る舞いがあります。自動的に生成されるC<right>やC<left>のアクセサは期待通りの働きをしてくれるとはいえません。C<left>ないしC<right>アトリビュートに値をセットしたら、忘れずにそのツリーの親も更新しておきたいところです。
+
+ここで自前のアクセサを用意してもよいのですが、それではMooseを使っている意味はありません。ここではそのかわりにC<trigger>を使います。C<trigger>にサブルーチンリファレンスをセットすると、アトリビュートに値が書き込まれたときはかならずそのサブルーチンがメソッドとして呼ばれるようになります。このメソッド呼び出しは、オブジェクトが生成されるときでも、あとからアトリビュートのアクセサメソッドに新しいオブジェクトを渡すときでも起こりますが、C<default>やC<builder>経由で値が書き込まれた場合には起こりません。
+
+  sub _set_parent_for_child {
+      my ( $self, $child ) = @_;
+
+      confess "You cannot insert a tree which already has a parent"
+          if $child->has_parent;
+
+      $child->parent($self);
+  }
+
+このトリガでは2つのことをしています。まず、新しい子ノードがすでに親を持っていないかを確認しています（これは例を簡単にするためです。もっと賢くしたいのであれば、古い親ツリーからその子を削除して新しいツリーに追加するところでしょう）。
+
+子ノードに親がない場合は現在のツリーに追加して、C<parent>アトリビュートには確実に正しい値が設定されるようにします。
+
+ほかのレシピの場合と同じく、B<BinaryTree>もほかのPerl 5のクラスと同じように使えます。F<t/000_recipes/moose_cookbook_basics_recipe3.t>にはもっと詳しい使用例があります。
+
+=head1 まとめ
+
+このレシピではMooseの高度な機能をいくつか紹介しました。このレシピがほかのところでもみなさんのコードをシンプルにするお役に立てば幸いです。
+
+=head1 脚注
+
+=over 4
+
+=item (1)
+
+ウィークリファレンスはトリッキーなものですから、控えめに、（循環参照がある場合のように）適切な理由があるときのみ使うようにしてください。気をつけないと、アトリビュートの値が「不思議な」消え方をすることがあります（これは、Perlの参照カウント式ガベージコレクタが走ってウィークリファレンスにしておいた値を削除してしまうためです）。
+
+要するに、なにをやっているかわからないのであれば使わないように、ということです。:)
+
+=item (2)
+
+2番目のレシピで紹介したように、お望みであればC<lazy>オプションなしでC<default>オプションを使うことは「できます」。
+
+また、C<default>のかわりにC<builder>を使うこともできます。詳しくはL<Moose::Cookbook::Basics::Recipe8>をご覧ください。
+
+=back
+
+=head1 作者
+
+Stevan Little E<lt>stevan@iinteractive.comE<gt>
+
+Dave Rolsky E<lt>autarch@urth.orgE<gt>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2006-2009 by Infinity Interactive, Inc.
+
+L<http://www.iinteractive.com>
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=cut
+

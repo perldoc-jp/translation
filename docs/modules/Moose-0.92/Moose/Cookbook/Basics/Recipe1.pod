@@ -1,0 +1,189 @@
+=encoding utf8
+
+=pod
+
+=head1 題名
+
+Moose::Cookbook::Basics::Recipe1 - (毎度おなじみ) B<Point>の例
+
+=head1 概要
+
+  package Point;
+  use Moose;
+
+  has 'x' => (isa => 'Int', is => 'rw', required => 1);
+  has 'y' => (isa => 'Int', is => 'rw', required => 1);
+
+  sub clear {
+      my $self = shift;
+      $self->x(0);
+      $self->y(0);
+  }
+
+  package Point3D;
+  use Moose;
+
+  extends 'Point';
+
+  has 'z' => (isa => 'Int', is => 'rw', required => 1);
+
+  after 'clear' => sub {
+      my $self = shift;
+      $self->z(0);
+  };
+
+  package main;
+
+  # hash or hashrefs are ok for the constructor
+  my $point1 = Point->new(x => 5, y => 7);
+  my $point2 = Point->new({x => 5, y => 7});
+
+  my $point3d = Point3D->new(x => 5, y => 42, z => -5);
+
+=head1 本文
+
+これは古典的なPointの例です。Perl 6の黙示録12番からそのまま引用してきました。K&Rの古典的なCの教科書にも同じような例が載っています。
+
+Perl 5のクラスはすべてそうですが、Mooseのクラスもパッケージの中で定義されます。C<strict>とC<warnings>はMooseの方で有効にしてくれますので、C<use Moose>とさえ書いておけばうっかりミスを防げます。
+
+Mooseはロードされると呼び出し元のパッケージ内にシュガー関数をいくつかエクスポートします（つまり、私たちはMooseの「キーワード」になる関数をいくつかインポートします）。もっとも、これらの関数は本当にPerl 5のキーワードになるわけではありません。あくまでも私たちのパッケージにエクスポートされたPerlの関数にすぎないものです。
+
+Mooseは自動的に私たちのパッケージをL<Moose::Object>のサブクラスにします。L<Moose::Object>クラスは、アトリビュートに対応したコンストラクタなど、さまざまな機能を提供してくれるものです。詳しくはL<Moose::Object>をご覧ください。
+
+続いてはキーワードについてです。ここで紹介する最初のキーワードはC<has>です。これはクラスの中でインスタンスのアトリビュートを定義するものです。
+
+  has 'x' => (isa => 'Int', is => 'rw', required => 1);
+
+このようにすると、C<x>という名前のアトリビュートが生成されます。C<isa>パラメータは、このアトリビュートに保存される値はC<Int>型の制約を満たすことを期待している、という意味です(1)。このアトリビュート用に生成されるアクセサは読み書き可能になります。
+
+C<< requires => 1 >>というパラメータは、新しいオブジェクトを生成するときにはかならずこのアトリビュートを用意しなければならないという意味です（座標情報のないpointオブジェクトはあまり意味があるとは思えないので許していません）。
+
+アトリビュートを定義したので、今度はメソッドを定義しましょう。Mooseの場合も、ふつうのPerl 5のオブジェクト指向と同じく、メソッドはパッケージ内で定義されたサブルーチンにすぎません。
+
+  sub clear {
+      my $self = shift;
+      $self->x(0);
+      $self->y(0);
+  }
+
+これでB<Point>クラスはおしまいです。
+
+続いて、B<Point>のサブクラスであるB<Point3D>を作りましょう。スーパークラスを宣言するにはMooseのキーワードであるC<extends>を使います。
+
+  extends 'Point';
+
+このC<extends>キーワードはC<use base>によく似て、最初に必要があればクラスをロードするのですが、C<base>と違って、C<extends>キーワードはパッケージのC<@ISA>にどんな値が含まれていても「上書き」してしまいます（C<use base>はパッケージのC<@ISA>に値を追加します）。
+
+個人的には、C<extends>の振る舞いの方が直感的だと思います。(2)
+
+次に、B<Point3D>にC<z>という新しいアトリビュートを作ります。
+
+  has 'z' => (isa => 'Int', is => 'rw', required => 1);
+
+このアトリビュートはB<Point>のC<x>、C<y>アトリビュートと同じようなものです。
+
+C<after>キーワードは、Mooseでは「メソッドモディファイア」（アスペクト指向プログラミングでいう「アドバイス」）と呼ばれる機能です。
+
+  after 'clear' => sub {
+      my $self = shift;
+      $self->z(0);
+  };
+
+B<Point3D>オブジェクトでC<clear>が呼ばれると、モディファイアメソッドも呼ばれます（当然ながら、モディファイアが呼ばれるのは本物のメソッドの「あと」になります）。
+
+この例では、本物のC<clear>メソッドはB<Point>から継承したものです。モディファイアメソッドは修飾されるメソッドと同じ引数を受け取ります（この場合はC<$self>のみです）。
+
+もちろんC<after>モディファイアを使うのが唯一のやり方ではありません。B<これはPerlですから>ね。このようなコードでも同じ結果が得られます。
+
+  sub clear {
+      my $self = shift;
+      $self->SUPER::clear();
+      $self->z(0);
+  }
+
+また、C<override>という別のモディファイアを使うこともできるでしょう。
+
+  override 'clear' => sub {
+      my $self = shift;
+      super();
+      $self->z(0);
+  };
+
+C<override>モディファイアを使うとC<super>というキーワードを利用できるようになります。これは非常にRuby的なやり方でスーパークラスのメソッドにディスパッチするためのものです。
+
+メソッドモディファイアを使うかどうか、またどのモディファイアを使うかどうかの選択は、往々にして機能の問題であるのと同じくらいスタイルの問題でもあります。
+
+B<Point>はL<Moose::Object>を継承しているので、L<Moose::Object>のデフォルトコンストラクタも継承します。
+
+  my $point1 = Point->new(x => 5, y => 7);
+  my $point2 = Point->new({x => 5, y => 7});
+
+  my $point3d = Point3D->new(x => 5, y => 42, z => -5);
+
+C<new>コンストラクタはこのクラスで定義されている各アトリビュートの名前付き引数のペアを、ハッシュまたはハッシュリファレンスの形で受け付けます。この例の場合、アトリビュートは必須ですから、引数を渡さずにC<new>を呼ぶとエラーになります。
+
+  my $point = Point->new( x => 5 ); # no y, kaboom!
+
+これで、C<$point>とC<$point3d>はほかのPerl 5オブジェクトと同様に使えるようになりました。どんなことができるかをもっと詳しく知りたい方はF<t/000_recipes/moose_cookbook_basics_recipe1.t>のテストファイルをご覧ください。
+
+=head2 Mooseオブジェクトはハッシュリファレンスにすぎません
+
+ここまで紹介してきたことはいずれもいささか魔法じみて見えるかもしれませんが、大事なのは、Mooseのオブジェクトはフードをかぶったハッシュリファレンスにすぎない、ということ(3)。たとえば、C<$self>をC<Data::Dumper>に渡してやれば、まさに期待通りの出力が得られます。
+
+オブジェクトのデータ構造の中をつつき回すことさえできます（まったくおすすめできませんが）。
+
+Mooseのオブジェクトがハッシュリファレンスであるということは、Mooseを使っていないクラスであってもハッシュリファレンスでさえあれば簡単にMooseで拡張できるということ。ハッシュリファレンス以外のクラスを拡張したい場合は、C<MooseX::InsideOut>を試してみてください。
+
+=head1 まとめ
+
+このレシピではいくつかの基本的なコンセプト（アトリビュート、サブクラス、簡単なメソッドモディファイア）について説明しました。
+
+=head1 脚注
+
+=over 4
+
+=item (1)
+
+Mooseには最初から多くの型制約が用意されています（C<Int>もそのひとつです）。型制約システムについての詳細はL<Moose::Util::TypeConstraints>をご覧ください。
+
+=item (2)
+
+C<extends>キーワードは多重継承をサポートしています（単にすべてのスーパークラスを配列の形でC<extends>に渡すだけです）。
+
+  extends 'Foo', 'Bar', 'Baz';
+
+=item (3)
+
+Mooseはblessされたハッシュリファレンス以外のインスタンスもサポートしています（グロブリファレンスなど。L<MooseX::GlobRef::Object>をご覧ください）。
+
+=back
+
+=head1 参照
+
+=over 4
+
+=item メソッドモディファイア
+
+メソッドモディファイアの概念はCLOSのものをそのまま借用しました。下記のリンク先にはすばらしい説明があります。
+
+L<http://www.gigamonkeys.com/book/object-reorientation-generic-functions.html>
+
+=back
+
+=head1 作者
+
+Stevan Little E<lt>stevan@iinteractive.comE<gt>
+
+Dave Rolsky E<lt>autarch@urth.orgE<gt>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2006-2009 by Infinity Interactive, Inc.
+
+L<http://www.iinteractive.com>
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=cut
+
