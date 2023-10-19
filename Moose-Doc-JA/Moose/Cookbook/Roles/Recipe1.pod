@@ -1,0 +1,182 @@
+=encoding utf8
+
+=pod
+
+=head1 題名
+
+Moose::Cookbook::Roles::Recipe1 - Moose::Roleの例
+
+=head1 概要
+
+  package Eq;
+  use Moose::Role;
+
+  requires 'equal_to';
+
+  sub not_equal_to {
+      my ( $self, $other ) = @_;
+      not $self->equal_to($other);
+  }
+
+  package Comparable;
+  use Moose::Role;
+
+  with 'Eq';
+
+  requires 'compare';
+
+  sub equal_to {
+      my ( $self, $other ) = @_;
+      $self->compare($other) == 0;
+  }
+
+  sub greater_than {
+      my ( $self, $other ) = @_;
+      $self->compare($other) == 1;
+  }
+
+  sub less_than {
+      my ( $self, $other ) = @_;
+      $self->compare($other) == -1;
+  }
+
+  sub greater_than_or_equal_to {
+      my ( $self, $other ) = @_;
+      $self->greater_than($other) || $self->equal_to($other);
+  }
+
+  sub less_than_or_equal_to {
+      my ( $self, $other ) = @_;
+      $self->less_than($other) || $self->equal_to($other);
+  }
+
+  package Printable;
+  use Moose::Role;
+
+  requires 'to_string';
+
+  package US::Currency;
+  use Moose;
+
+  with 'Comparable', 'Printable';
+
+  has 'amount' => ( is => 'rw', isa => 'Num', default => 0 );
+
+  sub compare {
+      my ( $self, $other ) = @_;
+      $self->amount <=> $other->amount;
+  }
+
+  sub to_string {
+      my $self = shift;
+      sprintf '$%0.2f USD' => $self->amount;
+  }
+
+=head1 本文
+
+Rolesにはおもに2つの目的があります。インタフェースと、コードの再利用です。このレシピでは、比較を定義するロールとオブジェクトのコードを表示するロールを利用して、コードの再利用について説明します。
+
+まずはC<Eq>から見ていきましょう。最初にC<use Moose>がC<use Moose::Role>になっているところに注目してください。また、C<requires>という新しいシュガー関数も使われています。
+
+  requires 'equal_to';
+
+これは、このロールを取り込むクラスはかならずC<equal_to>というメソッドを用意する必要がある、という意味です。このメソッドは、ロールを取り込むクラスに直書きしてもよいですし、ほかのロールから取り込んでもかまいません。
+
+C<Eq>ロールには、要求したC<equal_to>メソッドを利用したC<not_equal_to>というメソッドが定義されています。このようにすると、ロールを取り込むクラスが用意しなければならないメソッドを最小限にとどめることができます。
+
+次のC<Comparable>ロールは、C<Eq>ロールを下敷きにして作られています。ここではC<with>という新しいシュガー関数を利用してC<Eq>をC<Comparable>の中に取り込んでいます。
+
+  with 'Eq';
+
+C<with>関数は取り込みたいロールのリストを引数に取ります。この例では、C<Eq>が要求しているC<equal_to>メソッドをC<Comparable>ロールが用意していますが、そのようにしないこともできます（その場合はC<Comparable>を取り込むクラスが自前でC<equal_to>を用意する必要があります）。言い換えると、ロールは必須メソッドを用意「しなくても」ほかのロールを取り込める、ということです。
+
+C<Comparable>ロールはC<compare>というメソッドを要求します。
+
+  requires 'compare';
+
+また、C<Comparable>ロールはほかにも最終的にはC<compare>に依存するいくつかのメソッドを提供しています。
+
+  sub equal_to {
+      my ( $self, $other ) = @_;
+      $self->compare($other) == 0;
+  }
+
+  sub greater_than {
+      my ( $self, $other ) = @_;
+      $self->compare($other) == 1;
+  }
+
+  sub less_than {
+      my ( $self, $other ) = @_;
+      $self->compare($other) == -1;
+  }
+
+  sub greater_than_or_equal_to {
+      my ( $self, $other ) = @_;
+      $self->greater_than($other) || $self->equal_to($other);
+  }
+
+  sub less_than_or_equal_to {
+      my ( $self, $other ) = @_;
+      $self->less_than($other) || $self->equal_to($other);
+  }
+
+最後はC<Printable>ロールです。このロールはインタフェースを提供するためだけに存在しています（メソッドはなく、必須メソッドのリストしかありません）。この場合、C<to_string>メソッドだけを要求しています。
+
+インタフェースロールが便利なのは、メソッドと「名前」の双方を定義してくれるからです。このロールを組み込んだクラスはかならずC<to_string>メソッドを持っていることがわかるだけでなく、このメソッドが期待通りの意味を持っていることも想定できます（おそらく実際のコードではC<Printable>ロールのドキュメントにメソッドの意味が書かれるはずです）。
+
+最後のC<US::Currency>クラスでは、C<Comparable>ロールとC<Printable>ロールを両方取り込んでいます。
+
+  with 'Comparable', 'Printable';
+
+また、C<amount>という、通常のMooseのアトリビュートも定義されています。
+
+  has 'amount' => ( is => 'rw', isa => 'Num', default => 0 );
+
+最後に、私たちのロールが要求しているメソッドの実装を見ていきます。C<compare>メソッドはこうです。
+
+  sub compare {
+      my ( $self, $other ) = @_;
+      $self->amount <=> $other->amount;
+  }
+
+C<Comparable>ロールを取り込んでこのメソッドを定義してやると、C<equal_to>、C<greater_than>、C<less_than>、C<greater_than_or_equal_to>、C<less_than_or_equal_to>というメソッドが自由に使えるようになります。
+
+あとは、C<to_string>メソッドです。
+
+  sub to_string {
+      my $self = shift;
+      sprintf '$%0.2f USD' => $self->amount;
+  }
+
+=head1 まとめ
+
+ロールは非常に強力なものになりえます。再利用可能な振る舞いをカプセル化したり、クラスが提供するメソッドの（意味やインタフェースといった）情報をやりとりしたりするうえではすばらしいツールです。
+
+=head1 脚注
+
+=over 4
+
+=item (1)
+
+C<Runner>とC<Process>という2つのクラスがあるものと思ってください。どちらにもC<run>というメソッドがありますが、オブジェクトにC<run>メソッドの実装を要求するだけでは、このメソッドが「実際になにをするか」はまだなんとも言えません。ところが、C<Executable>ロールを実装しているオブジェクトを要求していれば、ある程度意味がわかるようになります。
+
+=back
+
+=head1 作者
+
+Stevan Little E<lt>stevan@iinteractive.comE<gt>
+
+Dave Rolsky E<lt>autarch@urth.orgE<gt>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2006-2009 by Infinity Interactive, Inc.
+
+L<http://www.iinteractive.com>
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=cut
+

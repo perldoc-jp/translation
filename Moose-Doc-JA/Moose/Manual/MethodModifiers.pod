@@ -1,0 +1,235 @@
+=encoding utf8
+
+=pod
+
+=head1 題名
+
+Moose::Manual::MethodModifiers - Mooseのメソッドモディファイア
+
+=head1 メソッドモディファイアとは
+
+Mooseには「メソッドモディファイア」と呼ばれる機能があります（「フック」や「アドバイス」だと思っていただいても結構です）。
+
+この機能を理解するには、おそらくいくつか例を見てみるのがいちばんでしょう。
+
+  package Example;
+
+  use Moose;
+
+  sub foo {
+      print "foo\n";
+  }
+
+  before 'foo' => sub { print "about to call foo\n"; };
+  after 'foo'  => sub { print "just called foo\n"; };
+
+  around 'foo' => sub {
+      my $orig = shift;
+      my $self = shift;
+
+      print "I'm around foo\n";
+
+      $self->$orig(@_);
+
+      print "I'm still around foo\n";
+  };
+
+これでC<< Example->new->foo >>を呼ぶと、次のような出力が得られます。
+
+  about to call foo
+  I'm around foo
+  foo
+  I'm still around foo
+  just called foo
+
+名前が「before」、「after」、「around」ですから、おそらくこの結果は予想されていた通りだったことと思います。
+
+また、ご覧の通り、beforeモディファイアはaroundモディファイアの前に来ていますし、afterモディファイアは最後に来ています。
+
+同じ種類のモディファイアが複数ある場合、beforeモディファイアとaroundモディファイアは最後に追加されたものから、afterモディファイアは最初に追加されたものから順に実行されます。
+
+   before 2
+    before 1
+     around 2
+      around 1
+       primary
+      around 1
+     around 2
+    after 1
+   after 2
+
+=head1 なぜモディファイアを使うのか
+
+メソッドモディファイアには多くの使い方があります。非常によくあるのは、ロールのなかで使う例です。メソッドモディファイアを使うと、そのロールを使ったクラスのメソッドの振る舞いを変えることができるようになります。ロールについてはL<Moose::Manual::Roles>をご覧ください。
+
+モディファイアがもっとも役に立つのはロールの中です。だから、以下の例の中にはややわざとらしいものもあります（これらはモディファイアの動作を紹介するためのものなので、もっとも自然な使い方とはいえないこともあります）。
+
+=head1 before、after、around
+
+メソッドモディファイアを使うと、アトリビュートアクセサのようにMooseが生成してくれたメソッドに振る舞いを追加することができます。
+
+  has 'size' => ( is => 'rw' );
+
+  before 'size' => sub {
+      my $self = shift;
+
+      if (@_) {
+          Carp::cluck('Someone is setting size');
+      }
+  };
+
+beforeモディファイアにはもうひとつ、メソッドを呼ぶ前に何らかの事前チェックを行うという使い方があります。たとえば、
+
+  before 'size' => sub {
+      my $self = shift;
+
+      die 'Cannot set size while the person is growing'
+          if @_ && $self->is_growing;
+  };
+
+こうすると、型制約では対応できない論理的なチェックを実装できます。これは特にオブジェクトの状態変化に関する論理的な規則を定義するときに役に立ちます。
+
+同じように、afterモディファイアは実行したアクションのログ取りに利用できます。
+
+なお、beforeモディファイアとafterモディファイアの返り値はいずれも無視されます。
+
+aroundモディファイアはbeforeモディファイアやafterモディファイアより少し強力です。aroundモディファイアはもとのメソッドに渡された引数を変更できますし、もとのメソッドをまったく呼ばないという決定を下すこともできます。また、aroundモディファイアを使うと返り値を修正することもできます。
+
+aroundモディファイアは、最初の引数にもとのメソッド、「その次に」オブジェクト、最後にメソッドに渡されたすべての引数を受け取ります。
+
+  around 'size' => sub {
+      my $orig = shift;
+      my $self = shift;
+
+      return $self->$orig()
+          unless @_;
+
+      my $size = shift;
+      $size = $size / 2
+          if $self->likes_small_things();
+
+      return $self->$orig($size);
+  };
+
+=head1 innerとaugment
+
+augmentとinnerは同じ機能を2つにわけたものです。augmentモディファイアはサブクラス化をひっくり返したようなものを提供します（実装の一部はスーパークラスで行い、残りはサブクラスが実装してくれることを期待する、と書くのがaugmentモディファイアです）。
+
+スーパークラスでC<inner()>を呼ぶと、サブクラスのC<augment>モディファイアが呼ばれます。
+
+  package Document;
+
+  use Moose;
+
+  sub as_xml {
+      my $self = shift;
+
+      my $xml = "<document>\n";
+      $xml .= inner();
+      $xml .= "</document>\n";
+
+      return $xml;
+  }
+
+このメソッドの中でC<inner()>を使っておくと、サブクラス（ひとつとは限りません）があとからこのメソッドに独自の具体的な実装を追加できるようになります。
+
+  package Report;
+
+  use Moose;
+
+  extends 'Document';
+
+  augment 'as_xml' => sub {
+      my $self = shift;
+
+      my $xml = "<report>\n";
+      $xml .= inner();
+      $xml .= "</report>\n";
+
+      return $xml;
+  };
+
+ReportオブジェクトでC<as_xml>を呼ぶと、このような結果が得られます。
+
+  <document>
+  <report>
+  </report>
+  </document>
+
+ただし、C<Report>でもC<inner()>を呼んでいますので、サブクラス化を続ければさらにこのドキュメントの内部にコンテンツを追加していくことができます。
+
+  package Report::IncomeAndExpenses;
+
+  use Moose;
+
+  extends 'Report';
+
+  augment 'as_xml' => sub {
+      my $self = shift;
+
+      my $xml = '<income>' . $self->income . '</income>';
+      $xml .= "\n";
+      $xml .= '<expenses>' . $self->expenses . '</expenses>';
+      $xml .= "\n";
+
+      $xml .= inner() || q{};
+
+      return $xml;
+  };
+
+これでレポートの中身はこうなります。
+
+  <document>
+  <report>
+  <income>$10</income>
+  <expenses>$8</expenses>
+  </report>
+  </document>
+
+このC<augment>とC<inner()>の組み合わせが特殊なのは（もっとも抽象的な）親から（もっとも具体的な）子の順に呼ばれるメソッドを持てるところです（これは通常の継承パターンとは正反対です）。
+
+C<Report::IncomeAndExpenses>でもC<inner()>を呼んでいることにも注意してください。オブジェクトがC<Report::IncomeAndExpenses>のインスタンスである場合は、この呼び出しはなにもしません。ただ偽を返します。
+
+=head1 overrideとsuper
+
+最後になりますが、MooseにはPerlに組み込まれているメソッドオーバーライドの仕組みについても簡単なシュガー関数を用意しています。親クラスのメソッドをオーバーライドしたい場合は、C<override>でできます。
+
+  package Employee;
+
+  use Moose;
+
+  extends 'Person';
+
+  has 'job_title' => ( is => 'rw' );
+
+  override 'display_name' => sub {
+      my $self = shift;
+
+      return super() . q{, } . $self->title();
+  };
+
+C<super()>の呼び出しはC<< $self->SUPER::display_name >>を呼ぶのとほとんど同じです。異なるのは、スーパークラスのメソッドに渡される引数はかならずメソッドモディファイアに渡されるものと同じで、変更できないことです。
+
+C<super()>に引数を渡してもすべて無視されます。また、C<super()>を呼ぶ前にC<@_>の値を変更しても同じです。
+
+=head1 セミコロン
+
+これらのメソッドモディファイアはいずれもPerlの関数として実装されているので、モディファイアの宣言はかならずセミコロンで終えなければなりません。
+
+  after 'foo' => sub { };
+
+=head1 作者
+
+Dave Rolsky E<lt>autarch@urth.orgE<gt>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2008-2009 by Infinity Interactive, Inc.
+
+L<http://www.iinteractive.com>
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=cut
+

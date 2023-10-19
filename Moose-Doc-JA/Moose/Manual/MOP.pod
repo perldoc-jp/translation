@@ -1,0 +1,116 @@
+=encoding utf8
+
+=pod
+
+=head1 題名
+
+Moose::Manual::MOP - Moose（とClass::MOP）のメタAPI
+
+=head1 はじめに
+
+MooseにはC<Class::MOP>を下敷きにした強力なイントロスペクションAPIがあります。MOPというのはメタオブジェクトプロトコル（Meta-Object Protocol）の略称ですが、平たく言うと、クラスやアトリビュート、メソッドなどのイントロスペクションを行うためのAPIです。
+
+実は、アトリビュートやbefore/after/aroundメソッドモディファイア、不変化といったMooseの中核となる機能の多くはC<Class::MOP>が提供しているものです（ほとんどの場合、Mooseは既存のC<Class::MOP>のクラスを利用したりサブクラス化して機能を追加しているのですが、中にはロールやaugmentモディファイア、型のように、完全にMoose独自の新機能もあります）。
+
+MOPに興味がある方はぜひC<Class::MOP>のことを学んでください。どのドキュメントを読めばよいかわかるようになります（探しているイントロスペクションのメソッドがMoose本体ではなくC<Class::MOP>のクラスに定義されている、ということも多いのです）。
+
+MOPは単に「読み取り専用」のイントロスペクションを提供するだけではありません。アトリビュートやメソッドを追加したり、ロールを組み込んだりできるようにもしてくれます（実際、Mooseの宣言的なシュガー関数はすべてMOPのAPIに薄皮をかぶせただけのものです）。
+
+Mooseの拡張モジュールを書きたいのであれば、MOPのAPIについてもある程度学ぶ必要が出てきます。また、イントロスペクションメソッドは、ドキュメントや継承グラフを生成したり、実行時にほかのリフレクションを行ったりしたいときにも便利です。
+
+このドキュメントは、メタAPIの完全なリファレンスではありません。ここで予定しているのは、目玉となる機能の一部を取り上げて、どのように動作するのか感覚をつかんでもらうことだけです。本当に理解するには、ほかのドキュメントをたくさん読む必要があるでしょうし、もしかすると多少はMooseの内部に潜り込む必要さえあるかもしれません。
+
+=head1 やってみよう
+
+メタAPIの世界に足を踏み入れる場合、クラスのメタクラスオブジェクト（L<Moose::Meta::Class>）から始めるのがふつうです。これはクラスないしオブジェクトのC<meta>メソッドを呼ぶと利用できます。
+
+  package User;
+
+  use Moose;
+
+  my $meta = __PACKAGE__->meta;
+
+このC<meta>メソッドは、Mooseを使うとクラスに追加されます。
+
+また、C<< Class::MOP::Class->initialize($name) >>を使うと任意のクラスのメタクラスオブジェクトが得られます。クラスにメタメソッドがあるかどうかわからない場合はこちらの方がC<< $class->meta >>を呼ぶより安全です。
+
+C<< Class::MOP::Class->initialize >>コンストラクタは、（Mooseなどを通じて）作成済みのメタクラスがあればそれを返し、なければ新しいC<Class::MOP::Class>オブジェクトを返します。これはMooseを使っているクラスだけでなく、メタAPIのクラスや、Mooseをまったく使っていないクラスでも有効です。
+
+=head1 メタクラスオブジェクトを使う
+
+メタクラスオブジェクトを使うと、クラスのアトリビュートやメソッド、ロール、親クラスなどがわかります。たとえば、クラスのすべてのアトリビュートを見るにはこうします。
+
+  for my $attr ( $meta->get_all_attributes ) {
+      print $attr->name, "\n";
+  }
+
+C<get_all_attributes>メソッドのドキュメントはC<Class::MOP::Class>にあります。Mooseを使っているクラスの場合は、そのクラスと親クラスで定義されているアトリビュートのL<Moose::Meta::Attribute>オブジェクトのリストが返ります。
+
+メソッドのリストも得られます。
+
+  for my $method ( $meta->get_all_methods ) {
+      print $method->fully_qualified_name, "\n";
+  }
+
+今度はL<Moose::Meta::Method>のリストを回しています。なお、これらのオブジェクトの中には、実際にはL<Moose::Meta::Method>のサブクラスが混じっていることがあります（Mooseは、ラップされたメソッドや委譲されたメソッド、コンストラクタなどには別のクラスを使うためです）。
+
+クラスの親クラスやサブクラスを見ることもできます。
+
+  for my $class ( $meta->linearized_isa ) {
+      print "$class\n";
+  }
+
+  for my $subclass ( $meta->subclasses ) {
+      print "$subclass\n";
+  }
+
+なお、これらのメソッドはいずれもメタクラスオブジェクトではなく、クラスの「名前」を返します。
+
+=head1 MOPを使ってクラスを変更する
+
+メタクラスオブジェクトを使うとクラスに直接アトリビュートやメソッドを追加するといった変更を加えることができます。
+
+たとえば、クラスにメソッドを加えてみましょう。
+
+  $meta->add_method( 'say' => sub { print @_, "\n" } );
+
+アトリビュートの場合はこうなります。
+
+  $meta->add_attribute(
+      name => 'size',
+      is   => 'rw',
+      isa  => 'Int',
+  );
+
+これは、PerlのシンタックスやMooseのシュガーを使ってメソッドやアトリビュートを定義するのに比べてはるかに面倒に見えますが、このAPIを使うと非常に強力な拡張モジュールを作れるようになります。
+
+このマニュアルの別の場所でクラスを不変化する話をしたのを覚えている方もいるかもしれません。クラスを不変化するのはよい習慣ですが、不変化してからこれらの更新メソッドを呼ぶと例外が発生してしまいます。
+
+クラスをふたたび可変にしたい場合は単純にC<< $meta->make_mutable >>を呼んでください。変更が済んだらC<< $meta->make_immutable >>を呼べばまた不変化できます。
+
+ただし、このようなメタAPIがもっともよく使われているのは、Mooseの拡張モジュールの部品としてです。このような拡張モジュールは、クラスを不変化する前に実行されることを想定しているものです。
+
+=head1 深入りしたくなったら
+
+Mooseの拡張に興味があるなら、L<Moose::Cookbook>の「メタ」や「拡張」についてのレシピはすべて読んでおくことをおすすめします。これらのレシピでは、MOPのさまざまな実例を紹介しています。
+
+自分で拡張モジュールを書きたくなったとき、いちばんよい勉強法のひとつは、ほかの似たような拡張モジュールを探して、どのように動作しているか調べることです。また、おそらくさまざまなMoose::Meta::*クラスやC<Class::MOP>ディストリビューションなどのAPIドキュメントもいろいろ読む必要があるでしょう。
+
+最後になりますが、MooseのメーリングリストやIRCでは質問も歓迎しています。メーリングリストやIRC、その他のリファレンスなどの情報はL<Moose.pmのドキュメント|Moose/GETTING HELP>にあります。
+
+=head1 作者
+
+Dave Rolsky E<lt>autarch@urth.orgE<gt> and Stevan Little
+E<lt>stevan@iinteractive.comE<gt>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2009 by Infinity Interactive, Inc.
+
+L<http://www.iinteractive.com>
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=cut
+

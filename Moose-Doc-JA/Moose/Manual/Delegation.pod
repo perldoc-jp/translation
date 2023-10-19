@@ -1,0 +1,139 @@
+=encoding utf8
+
+=pod
+
+=head1 題名
+
+Moose::Manual::Delegation - アトリビュートの委譲
+
+=head1 委譲とはなにか
+
+委譲というのは、アトリビュートの別のメソッドを呼ぶだけという「影のような」メソッドを作成できるようにする機能です。この非常に便利な機能を使うと、複雑な「has-a」の関係を単純化して、APIをひとつのクラスに統合してしまうことができるようになります。
+
+また、委譲を使うと、クラスを使う側はそのクラスが持つすべてのオブジェクトを知る必要がなくなるので、覚えなければならないAPIの数も減ります。
+
+委譲の定義は、「本当の」クラス（委譲元のクラス）が提供するひとつ以上のメソッドと、移譲先のクラスに用意するメソッドのマッピングという形で行います。移譲先のクラスでは、委譲元のクラスが提供するメソッド名を再利用することもできますし、独自の名前を用意することもできます。
+
+また、委譲は、既存のクラス（特に、Mooseを使っていないクラスや、サブクラスしづらい（あるいはできない）クラス）をラップするときにも便利です。
+
+=head1 マッピングを定義する
+
+Mooseは委譲のマッピングを定義するために、簡単なものから複雑なものまで、さまざまなオプションを提供しています。
+
+もっとも簡単なのは、単にメソッドのリストを指定する方法です。
+
+  package Website;
+
+  use Moose;
+
+  has 'uri' => (
+      is      => 'ro',
+      isa     => 'URI',
+      handles => [qw( host path )],
+  );
+
+こう定義しておくと、C<< $website->host >>を呼べば「とにかく動きます」（裏では、MooseがC<< $website->uri->host >>を呼んでくれます）。
+
+ハッシュリファレンスを使ってマッピングを定義することもできます。こうすると、マッピングの一部でメソッドをリネームできるようになります。
+
+  package Website;
+
+  use Moose;
+
+  has 'uri' => (
+      is      => 'ro',
+      isa     => 'URI',
+      handles => {
+          hostname => 'host',
+          path     => 'path',
+      },
+  );
+
+この例ではC<URI.pm>のC<host>というメソッド名を使うかわりに、C<< $website->hostname >>というメソッドを作成しています。
+
+この2つがもっともよく使うマッピングです。残りの方法はもう少し複雑で、あまり一般的でもありません。
+
+  has 'uri' => (
+      is      => 'ro',
+      isa     => 'URI',
+      handles => qr/^(?:host|path|query.*)/,
+  );
+
+これは配列の場合と似ていますが、正規表現を使って委譲元が提供しているすべてのメソッドに対してマッチするか調べる点が異なります。これを正しく動作させるためには、アトリビュートのC<isa>パラメータを指定しなければなりません、また、そのパラメータはクラスでなければなりません。Mooseはこのパラメータを利用して委譲元のクラスのイントロスペクションを行い、どんなメソッドを提供しているか判断します。
+
+C<handles>の値にはロールの名前を使うこともできます。
+
+  has 'uri' => (
+      is      => 'ro',
+      isa     => 'URI',
+      handles => 'HasURI',
+  );
+
+Mooseはこのロールのイントロスペクションを行ってどんなメソッドを提供しているか判断し、そのそれぞれのメソッドについてマッピングを生成します。
+
+最後に、マッピングを「生成」するサブルーチンリファレンスを指定することもできます。おそらくこのバージョンを使う必要は（あったとしても）めったにないでしょうが、実際にどう動作するのかについての詳細はL<Moose>のドキュメントをご覧ください。
+
+=head1 Perl構造体
+
+C<handles>は一般的なPerl構造体に対しての処理をヘルパーメソッドに委譲することができます。もしL<MooseX::AttributeHelpers|MooseX::AttributeHelpers>を使ったことあるなら仕組みは非常に似通っています。
+
+  has 'queue' => (
+      isa     => 'ArrayRef[Item]',
+      traits  => ['Array'],
+      default => sub { [ ] },
+      handles => {
+          add_item  => 'push',
+          next_item => 'shift',
+      },
+  )
+
+C<Array> トレートをC<traits> 引数に指定することにより、MooseにArrayにまつわるヘルパーを使用したいということを伝えます。このようにすることにより、Mooseは C<add_item> と C<next_item> メソッドを生成してくれます。裏方ではC<add_item>は以下のようなイメージの実装になっているます：
+
+  sub add_item {
+      my ($self, @items) = @_;
+
+      for my $item (@items) {
+          $Item_TC->validate($item);
+      }
+
+      push @{ $self->queue }, @items;
+  }
+
+C<Array> 以外にも C<Hash>、 C<Bool>、 C<String>、 C<Number>、 そして C<Counter>用のトレートも用意されています。詳しくはL<Moose::Meta::Attribute::Native|Moose::Meta::Attribute::Native>をご覧下さい。
+
+=head1 カリー化
+
+カリー化とは メソッドや関数を他のメソッドに対し事前に一部の引数を固定して定義してしまったものを刺します。Mooseはメソッド委譲を定義する時にカリー化を行う機能を備えています。
+
+    package Spider;
+    use Moose;
+
+    has request => (
+        is      => 'ro'
+        isa     => 'HTTP::Request',
+        handles => {
+            set_user_agent => [ header => 'UserAgent' ],
+        },
+    )
+
+このような定義を行うことによりC<< $spider->set_user_agent('MyClient') >> を呼ぶと実際にはC<< $spider->request->header('UserAgent', 'MyClient') >>が呼ばれる事になります。
+
+=head1 アトリビュートが見つからない場合
+
+必須でなかったり未定義になりうるアトリビュートのメソッドを委譲すること自体はまったく問題ありませんが、委譲したメソッドが呼ばれたときにアトリビュートにオブジェクトが入っていなかった場合は実行時エラーが発生します。
+
+=head1 作者
+
+Dave Rolsky E<lt>autarch@urth.orgE<gt>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2009 by Infinity Interactive, Inc.
+
+L<http://www.iinteractive.com>
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=cut
+

@@ -1,0 +1,122 @@
+=encoding utf8
+
+=pod
+
+=head1 題名
+
+Moose::Cookbook::Meta::Recipe6 - メソッドメタクラスを使ってメソッドをパブリックにしたりプライベートにしたりする
+
+=head1 概要
+
+  package My::Meta::Method;
+
+  use Moose;
+  use Moose::Util::TypeConstraints;
+
+  extends 'Moose::Meta::Method';
+
+  has '_policy' => (
+      is       => 'ro',
+      isa      => enum( [ qw( public private ) ] ),
+      default  => 'public',
+      init_arg => 'policy',
+  );
+
+  sub new {
+      my $class   = shift;
+      my %options = @_;
+
+      my $self = $class->SUPER::wrap(%options);
+
+      $self->{_policy} = $options{policy};
+
+      $self->_add_policy_wrapper;
+
+      return $self;
+  }
+
+  sub _add_policy_wrapper {
+      my $self = shift;
+
+      return if $self->is_public;
+
+      my $name      = $self->name;
+      my $package   = $self->package_name;
+      my $real_body = $self->body;
+
+      my $body = sub {
+          die "The $package\::$name method is private"
+              unless ( scalar caller() ) eq $package;
+
+          goto &{$real_body};
+      };
+
+      $self->{body} = $body;
+  }
+
+  sub is_public  { $_[0]->_policy eq 'public' }
+  sub is_private { $_[0]->_policy eq 'private' }
+
+  package MyApp::User;
+
+  use Moose;
+
+  has 'password' => ( is => 'rw' );
+
+  __PACKAGE__->meta()->add_method(
+      '_reset_password',
+      My::Meta::Method->new(
+          name         => '_reset_password',
+          package_name => __PACKAGE__,
+          body         => sub { $_[0]->password('reset') },
+          policy       => 'private',
+      )
+  );
+
+=head1 本文
+
+この例ではパブリックメソッドとプライベートメソッドを区別する独自のメソッドメタクラスを紹介します。メソッドがプライベートとして定義された場合は、メソッドにラッパを追加して、定義されたクラス以外から呼ばれた場合はdieするようにします。
+
+ここでクラスにメソッドを追加しているやり方はいささか汚いので、本当に実装するのであればおそらくプライベートメソッドとして宣言できるようなシュガー関数のたぐいを追加した方がよさそうですが、それはこのレシピの範囲を超えますので、詳しくは拡張についてのレシピをご覧ください。
+
+このカスタムクラスのコアとなるのはC<policy>アトリビュートとC<_add_policy_wrapper>メソッドです。
+
+お気づきの通り、C<policy>アトリビュートはコンストラクタの中で明示的に値をセットする必要があります。
+
+      $self->{policy} = $options{policy};
+
+こうする必要があるのは、Mooseのメタクラスはオブジェクトを生成するときにメタのAPIを使わないためです（Mooseのクラスはたいてい高速化のために「インライン展開」された独自のコンストラクタを使います）。
+
+この例の場合、親クラスのコンストラクタはC<wrap>メソッドなので、オブジェクトを作る際にはそれを呼んでいますが、そちらにはサブクラス特有のアトリビュートは含まれていません。
+
+本当に仕事をしているのはC<_add_policy_wrapper>メソッドです。メソッドがプライベートの場合は本当のサブルーチンのまわりにラッパを用意して、呼び出し元とこのサブルーチンが定義されているパッケージが一致するかチェックします。
+
+両者が一致しない場合はdieで死にます。一致する場合は本物のメソッドが呼ばれます。C<goto>を使っているのはラッパがコールスタックの中に現れないようにするためです。
+
+最後にC<< $self->{body} >>の値を置き換えます。これも、Moose自身がMooseを使っていないために私たちがあまり洗練されていない処理をしなければならないところです。
+
+このメソッドのオブジェクトをメタクラスのC<add_method>メソッドに渡すと、メソッドの本体を受け取ってクラスから利用できるようにしてくれます。
+
+最後になりますが、これらのメソッドをイントロスペクションAPI経由で取り出す場合は、C<is_public>メソッドとC<is_private>メソッドを呼ぶと、そのメソッドについての追加情報を得ることができます。
+
+=head1 まとめ
+
+独自のメソッドメタクラスを使うとメソッドに振る舞いやメタ情報を追加できますが、残念ながらPerlインタプリタにはメソッドの定義に簡単に割り込めるフックがありませんので、これらのメソッドを追加するAPIはあまりきれいなものではありません。
+
+これは、独自のMooseシュガー関数を用意したり、L<Devel::Declare>のようなツールを使ってPerlに本格的な新しいキーワードを用意してやると改善できます。
+
+=head1 作者
+
+Dave Rolsky E<lt>autarch@urth.orgE<gt>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2009 by Infinity Interactive, Inc.
+
+L<http://www.iinteractive.com>
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=cut
+
