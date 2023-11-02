@@ -1,8 +1,6 @@
-# 補足
-
-- 用語はperldocの[perlglossary](https://perldoc.perl.org/perlglossary)を参照しています
-
 # 対訳表
+
+用語はperldocの[perlglossary](https://perldoc.perl.org/perlglossary)を参照しています
 
 | English | 日本語 |
 | --- | --- |
