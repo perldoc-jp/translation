@@ -1,6 +1,6 @@
 # 翻訳のチュートリアル
 
-[翻訳作業の作法や手順はこちらに詳細なドキュメントがあります](https://perldoc.jp/manners) が、もっとざっくりしたチュートリアルがあってもいいかなということで、CPANモジュールのPODを翻訳する場合の作業内容をステップ・バイ・ステップで書きくだしてみたいと思います。
+[翻訳作業の作法や手順はこちらに詳細なドキュメントがあります](https://github.com/perldoc-jp/translation/blob/master/wiki/translation-manners.md) が、もっとざっくりしたチュートリアルがあってもいいかなということで、CPANモジュールのPODを翻訳する場合の作業内容をステップ・バイ・ステップで書きくだしてみたいと思います。
 
 ちなみに、There's more than one way to do it. ということで、ステップごとにやり方は複数あります。ここに書いているのはあくまでひとつの例ということで、あらかじめご了承ください。
 
@@ -57,7 +57,7 @@ perldoc の `-u` オプションは、PODをレンダリングせずに生で表
 $ PERL5LIB=local/lib/perl5 perldoc -u Feature::Compat::Class > docs/modules/Feature-Compat-Class-0.05/Class.pod
 ```
 
-翻訳ファイルの配置ルールについては、こちらの [翻訳の作法](https://perldoc.jp/manners) に詳しいです。
+翻訳ファイルの配置ルールについては、こちらの[翻訳の作法](https://github.com/perldoc-jp/translation/blob/master/wiki/translation-manners.md)に詳しいです。
 
 ### PODの初期状態でコミットする
 
