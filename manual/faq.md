@@ -26,11 +26,11 @@ PR を送ってもしれっと追加してもらえるようです！
 2. 翻訳の修正や追加
   - このリポジトリの書き込み権限がない方は、[この translation](https://github.com/perldoc-jp/translation) を fork して PR を送る。
   - このリポジトリの書き込み権限がある方は、PRを送るか、あるいは、直接修正をしてください。
-  - 詳しくは、[チュートリアル](https://github.com/perldoc-jp/translation/blob/master/wiki/translation-tutorial.md)を参照ください。
+  - 詳しくは、[チュートリアル](https://github.com/perldoc-jp/translation/blob/master/manual/translation-tutorial.md)を参照ください。
 
 以上です。PRがマージされたら、perldoc.jpに反映されます。
 
-[翻訳作業自体の作法はこちらに詳細なドキュメント](https://github.com/perldoc-jp/translation/blob/master/wiki/translation-manners.md)があります。
+[翻訳作業自体の作法はこちらに詳細なドキュメント](https://github.com/perldoc-jp/translation/blob/master/manual/translation-manners.md)があります。
 
 ### 質問はどこでできますか？
 
@@ -39,7 +39,7 @@ Discordの翻訳チャンネルを気軽にご利用ください。https://disco
 ### 訳語の対訳表はありますか？
 
 次を参照してください。
--  https://github.com/perldoc-jp/translation/blob/master/wiki/translation-table.md
+-  https://github.com/perldoc-jp/translation/blob/master/manual/translation-table.md
 
 ### 文字コードは何を使えばいいですか？
 
