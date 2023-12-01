@@ -1,0 +1,466 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+HTML::TokeParser - Alternative HTML::Parser interface
+
+=end original
+
+HTML::TokeParser - 代替 HTML::Parser インタフェース
+
+(訳注: (TBR)がついている段落は「みんなの自動翻訳＠TexTra」による
+機械翻訳です。)
+
+=head1 SYNOPSIS
+
+ require HTML::TokeParser;
+ $p = HTML::TokeParser->new("index.html") ||
+      die "Can't open: $!";
+ $p->empty_element_tags(1);  # configure its behaviour
+
+ while (my $token = $p->get_token) {
+     #...
+ }
+
+=head1 DESCRIPTION
+
+=begin original
+
+The C<HTML::TokeParser> is an alternative interface to the
+C<HTML::Parser> class.  It is an C<HTML::PullParser> subclass with a
+predeclared set of token types.  If you wish the tokens to be reported
+differently you probably want to use the C<HTML::PullParser> directly.
+
+=end original
+
+C<HTML::TokeParser>は、C<HTML::Parser>クラスの代替インタフェースです。
+これは、事前に宣言されたトークン型のセットを持つC<HTML::PullParser>サブクラスです。
+トークンを別の方法で報告する場合は、おそらくC<HTML::PullParser>を直接使用します。
+(TBR)
+
+=begin original
+
+The following methods are available:
+
+=end original
+
+次の方法を使用できます。
+(TBR)
+
+=over 4
+
+=item $p = HTML::TokeParser->new( $filename, %opt );
+
+=item $p = HTML::TokeParser->new( $filehandle, %opt );
+
+=item $p = HTML::TokeParser->new( \$document, %opt );
+
+=begin original
+
+The object constructor argument is either a file name, a file handle
+object, or the complete document to be parsed.  Extra options can be
+provided as key/value pairs and are processed as documented by the base
+classes.
+
+=end original
+
+オブジェクトコンストラクタの引数は、ファイル名、ファイルハンドルオブジェクト、または解析される完全な文書のいずれかです。
+追加のオプションは、キーと値のペアとして提供でき、基本クラスによって文書化されたとおりに処理されます。
+(TBR)
+
+=begin original
+
+If the argument is a plain scalar, then it is taken as the name of a
+file to be opened and parsed.  If the file can't be opened for
+reading, then the constructor will return C<undef> and $! will tell
+you why it failed.
+
+=end original
+
+引数がプレーンなスカラーの場合、それは開かれて解析されるファイルの名前とみなされます。
+ファイルを読み込むために開くことができない場合、コンストラクタはC<undef>を返し、$!が失敗の理由を教えてくれます。
+(TBR)
+
+=begin original
+
+If the argument is a reference to a plain scalar, then this scalar is
+taken to be the literal document to parse.  The value of this
+scalar should not be changed before all tokens have been extracted.
+
+=end original
+
+引数がプレーンスカラーへの参照である場合、このスカラーは解析するリテラル文書とみなされます。
+このスカラーの値は、すべてのトークンが抽出される前に変更しないでください。
+(TBR)
+
+=begin original
+
+Otherwise the argument is taken to be some object that the
+C<HTML::TokeParser> can read() from when it needs more data.  Typically
+it will be a filehandle of some kind.  The stream will be read() until
+EOF, but not closed.
+
+=end original
+
+それ以外の場合、引き数は、C<HTML::TokeParser>がさらにデータを必要とするときにread()できるオブジェクトとみなされます。
+通常は、何らかのファイルハンドルです。
+ストリームはEOFまでread()されますが、閉じられません。
+(TBR)
+
+=begin original
+
+A newly constructed C<HTML::TokeParser> differ from its base classes
+by having the C<unbroken_text> attribute enabled by default. See
+L<HTML::Parser> for a description of this and other attributes that
+influence how the document is parsed. It is often a good idea to enable
+C<empty_element_tags> behaviour.
+
+=end original
+
+新しく構築されたC<HTML::TokeParser>は、その基本クラスとは異なり、C<unbroken_text>属性がデフォルトで有効になっています。
+この属性と、文書の解析方法に影響するその他の属性の説明については、L<HTML::Parser>を参照してください。
+多くの場合、C<empty_element_tags>の動作を有効にすることをお勧めします。
+(TBR)
+
+=begin original
+
+Note that the parsing result will likely not be valid if raw undecoded
+UTF-8 is used as a source.  When parsing UTF-8 encoded files turn
+on UTF-8 decoding:
+
+=end original
+
+生のデコードされていないUTF-8がソースとして使用されている場合、解析結果は有効ではない可能性があることに注意してください。
+UTF-8でエンコードされたファイルを解析する場合は、UTF-8デコードをオンにします。
+(TBR)
+
+   open(my $fh, "<:utf8", "index.html") || die "Can't open 'index.html': $!";
+   my $p = HTML::TokeParser->new( $fh );
+   # ...
+
+=begin original
+
+If a $filename is passed to the constructor the file will be opened in
+raw mode and the parsing result will only be valid if its content is
+Latin-1 or pure ASCII.
+
+=end original
+
+$filenameがコンストラクタに渡された場合、ファイルはrawモードで開かれ、解析結果は内容がLatin-1または純粋なASCIIの場合にのみ有効になります。
+(TBR)
+
+=begin original
+
+If parsing from an UTF-8 encoded string buffer decode it first:
+
+=end original
+
+UTF-8でエンコードされた文字列バッファから解析する場合は、まずそれをデコードします。
+(TBR)
+
+   utf8::decode($document);
+   my $p = HTML::TokeParser->new( \$document );
+   # ...
+
+=item $p->get_token
+
+=begin original
+
+This method will return the next I<token> found in the HTML document,
+or C<undef> at the end of the document.  The token is returned as an
+array reference.  The first element of the array will be a string
+denoting the type of this token: "S" for start tag, "E" for end tag,
+"T" for text, "C" for comment, "D" for declaration, and "PI" for
+process instructions.  The rest of the token array depend on the type
+like this:
+
+=end original
+
+このメソッドは、HTML文書内で見つかった次のI<token>、または文書の最後のC<undef>を返します。
+トークンは配列参照として返されます。
+配列の最初の要素は、このトークンの型を示す文字列になります。
+"S"は開始タグ、"E"は終了タグ、"T"はテキスト、"C"はコメント、"D"は宣言、"PI"はプロセス命令を表します。
+トークン配列の残りの部分は、次のように型によって異なります。
+(TBR)
+
+  ["S",  $tag, $attr, $attrseq, $text]
+  ["E",  $tag, $text]
+  ["T",  $text, $is_data]
+  ["C",  $text]
+  ["D",  $text]
+  ["PI", $token0, $text]
+
+=begin original
+
+where $attr is a hash reference, $attrseq is an array reference and
+the rest are plain scalars.  The L<HTML::Parser/Argspec> explains the
+details.
+
+=end original
+
+ここで、$attrはハッシュ参照、$attrseqは配列参照、それ以外は普通のスカラーです。
+詳細はL<HTML::Parser/Argspec>を参照してください。
+(TBR)
+
+=item $p->unget_token( @tokens )
+
+=begin original
+
+If you find you have read too many tokens you can push them back,
+so that they are returned the next time $p->get_token is called.
+
+=end original
+
+読み取ったトークンが多すぎる場合は、それらをプッシュバックして、次に$p->get_tokenが呼び出されたときに返されるようにすることができます。
+(TBR)
+
+=item $p->get_tag
+
+=item $p->get_tag( @tags )
+
+=begin original
+
+This method returns the next start or end tag (skipping any other
+tokens), or C<undef> if there are no more tags in the document.  If
+one or more arguments are given, then we skip tokens until one of the
+specified tag types is found.  For example:
+
+=end original
+
+このメソッドは、(他のトークンをスキップして)次の開始タグまたは終了タグを戻します。
+文書にタグがない場合は、C<undef>を戻します。
+1つ以上の引数が指定されている場合は、指定されたタグタイプのいずれかが見つかるまでトークンをスキップします。
+次に例を示します。
+(TBR)
+
+   $p->get_tag("font", "/font");
+
+=begin original
+
+will find the next start or end tag for a font-element.
+
+=end original
+
+はfont-elementの次の開始タグまたは終了タグを検索する。
+(TBR)
+
+=begin original
+
+The tag information is returned as an array reference in the same form
+as for $p->get_token above, but the type code (first element) is
+missing. A start tag will be returned like this:
+
+=end original
+
+タグ情報は、上記の$p->get_tokenと同じ形式で配列参照として返されますが、型コード(最初の要素)がありません。
+開始タグは次のように返されます。
+(TBR)
+
+  [$tag, $attr, $attrseq, $text]
+
+=begin original
+
+The tagname of end tags are prefixed with "/", i.e. end tag is
+returned like this:
+
+=end original
+
+終了タグのタグ名の前には「/」が付きます。
+つまり、終了タグは次のように返されます。
+(TBR)
+
+  ["/$tag", $text]
+
+=item $p->get_text
+
+=item $p->get_text( @endtags )
+
+=begin original
+
+This method returns all text found at the current position. It will
+return a zero length string if the next token is not text. Any
+entities will be converted to their corresponding character.
+
+=end original
+
+このメソッドは、現在の位置にあるすべてのテキストを戻します。
+次のトークンがテキストでない場合は、長さ0の文字列を戻します。
+エンティティは、対応する文字に変換されます。
+(TBR)
+
+=begin original
+
+If one or more arguments are given, then we return all text occurring
+before the first of the specified tags found. For example:
+
+=end original
+
+1つ以上の引数を指定すると、指定したタグの最初のタグより前にあるすべてのテキストが返されます。
+次に例を示します。
+(TBR)
+
+   $p->get_text("p", "br");
+
+=begin original
+
+will return the text up to either a paragraph of linebreak element.
+
+=end original
+
+は改行要素の段落までのテキストを返す。
+(TBR)
+
+=begin original
+
+The text might span tags that should be I<textified>.  This is
+controlled by the $p->{textify} attribute, which is a hash that
+defines how certain tags can be treated as text.  If the name of a
+start tag matches a key in this hash then this tag is converted to
+text.  The hash value is used to specify which tag attribute to obtain
+the text from.  If this tag attribute is missing, then the upper case
+name of the tag enclosed in brackets is returned, e.g. "[IMG]".  The
+hash value can also be a subroutine reference.  In this case the
+routine is called with the start tag token content as its argument and
+the return value is treated as the text.
+
+=end original
+
+テキストは、I<textified>である必要があるタグにまたがる場合があります。
+これは$p->{textify}属性によって制御されます。
+これは、特定のタグをテキストとして処理する方法を定義するハッシュです。
+開始タグの名前がこのハッシュのキーと一致する場合、このタグはテキストに変換されます。
+ハッシュ値は、テキストを取得するタグ属性を指定するために使用されます。
+このタグ属性が欠落している場合は、角かっこで囲まれたタグの大文字の名前(例:"[IMG]")が返されます。
+ハッシュ値はサブルーチン参照にすることもできます。
+この場合、ルーチンは開始タグトークンの内容を引数として呼び出され、戻り値はテキストとして扱われます。
+(TBR)
+
+=begin original
+
+The default $p->{textify} value is:
+
+=end original
+
+デフォルトの$p->{textify}値は次のとおりです。
+(TBR)
+
+  {img => "alt", applet => "alt"}
+
+=begin original
+
+This means that <IMG> and <APPLET> tags are treated as text, and that
+the text to substitute can be found in the ALT attribute.
+
+=end original
+
+つまり、<IMG>タグと<APPLET>タグはテキストとして扱われ、置換するテキストはALT属性にあります。
+(TBR)
+
+=item $p->get_trimmed_text
+
+=item $p->get_trimmed_text( @endtags )
+
+=begin original
+
+Same as $p->get_text above, but will collapse any sequences of white
+space to a single space character.  Leading and trailing white space is
+removed.
+
+=end original
+
+上記の$p->get_textと同じですが、空白文字のシーケンスを1つの空白文字にまとめます。
+先頭と末尾の空白文字は削除されます。
+(TBR)
+
+=item $p->get_phrase
+
+=begin original
+
+This will return all text found at the current position ignoring any
+phrasal-level tags.  Text is extracted until the first non
+phrasal-level tag.  Textification of tags is the same as for
+get_text().  This method will collapse white space in the same way as
+get_trimmed_text() does.
+
+=end original
+
+これは、句レベルのタグを無視して、現在の位置にあるすべてのテキストを返します。
+テキストは、句レベルでない最初のタグまで抽出されます。
+タグのTextificationは、get_text()と同じです。
+このメソッドは、get_trimmed_text()と同じ方法で空白を縮小します。
+(TBR)
+
+=begin original
+
+The definition of <i>phrasal-level tags</i> is obtained from the
+HTML::Tagset module.
+
+=end original
+
+<i>句レベルのタグ</i>の定義は、HTML::Tagsetモジュールから取得されます。
+(TBR)
+
+=back
+
+=head1 EXAMPLES
+
+=begin original
+
+This example extracts all links from a document.  It will print one
+line for each link, containing the URL and the textual description
+between the <A>...</A> tags:
+
+=end original
+
+次の例では、文書からすべてのリンクを抽出します。
+リンクごとに1行印刷され、<A>.</A>タグの間にURLと説明が含まれます。
+(TBR)
+
+  use HTML::TokeParser;
+  $p = HTML::TokeParser->new(shift||"index.html");
+
+  while (my $token = $p->get_tag("a")) {
+      my $url = $token->[1]{href} || "-";
+      my $text = $p->get_trimmed_text("/a");
+      print "$url\t$text\n";
+  }
+
+=begin original
+
+This example extract the <TITLE> from the document:
+
+=end original
+
+次の例では、文書から<TITLE>を抽出します:
+(TBR)
+
+  use HTML::TokeParser;
+  $p = HTML::TokeParser->new(shift||"index.html");
+  if ($p->get_tag("title")) {
+      my $title = $p->get_trimmed_text;
+      print "Title: $title\n";
+  }
+
+=head1 SEE ALSO
+
+L<HTML::PullParser>, L<HTML::Parser>
+
+=head1 COPYRIGHT
+
+Copyright 1998-2005 Gisle Aas.
+
+This library is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
+
+=begin meta
+
+Translate: SHIRAKATA Kentaro <argrath@ub32.org>
+Status: in progress
+
+=end meta
+
+=cut
+

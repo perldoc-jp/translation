@@ -1,0 +1,2698 @@
+
+=encoding euc-jp
+
+=head1 NAME
+
+=begin original
+
+HTML::Parser - HTML parser class
+
+=end original
+
+HTML::Parser - HTMLパーサクラス
+
+(訳注: (TBR)がついている段落は「みんなの自動翻訳＠TexTra」による
+機械翻訳です。)
+
+=head1 SYNOPSIS
+
+ use HTML::Parser ();
+
+ # Create parser object
+ $p = HTML::Parser->new( api_version => 3,
+                         start_h => [\&start, "tagname, attr"],
+                         end_h   => [\&end,   "tagname"],
+                         marked_sections => 1,
+                       );
+
+ # Parse document text chunk by chunk
+ $p->parse($chunk1);
+ $p->parse($chunk2);
+ #...
+ $p->eof;                 # signal end of document
+
+ # Parse directly from file
+ $p->parse_file("foo.html");
+ # or
+ open(my $fh, "<:utf8", "foo.html") || die;
+ $p->parse_file($fh);
+
+=head1 DESCRIPTION
+
+=begin original
+
+Objects of the C<HTML::Parser> class will recognize markup and
+separate it from plain text (alias data content) in HTML
+documents.  As different kinds of markup and text are recognized, the
+corresponding event handlers are invoked.
+
+=end original
+
+C<HTML::Parser>クラスのオブジェクトはマークアップを認識し、HTML文書内のプレーンテキスト(別名データコンテンツ)からマークアップを分離します。
+異なる種類のマークアップとテキストが認識されると、対応するイベントハンドラが起動されます。
+(TBR)
+
+=begin original
+
+C<HTML::Parser> is not a generic SGML parser.  We have tried to
+make it able to deal with the HTML that is actually "out there", and
+it normally parses as closely as possible to the way the popular web
+browsers do it instead of strictly following one of the many HTML
+specifications from W3C.  Where there is disagreement, there is often
+an option that you can enable to get the official behaviour.
+
+=end original
+
+C<HTML::Parser>は一般的なSGMLパーサーではありません。
+私たちは、実際に「存在する」HTMLを処理できるようにしようとしました。
+C<HTML::Parser>は通常、W3Cの多くのHTML仕様の1つに厳密に従うのではなく、一般的なWebブラウザの方法にできるだけ近い方法で解析します。
+意見の相違がある場合は、公式の動作を取得できるオプションがあります。
+(TBR)
+
+=begin original
+
+The document to be parsed may be supplied in arbitrary chunks.  This
+makes on-the-fly parsing as documents are received from the network
+possible.
+
+=end original
+
+解析される文書は、任意のチャンクで提供される場合がある。
+これにより、ネットワークから文書を受信したときに、その場で解析することが可能になる。
+(TBR)
+
+=begin original
+
+If event driven parsing does not feel right for your application, you
+might want to use C<HTML::PullParser>.  This is an C<HTML::Parser>
+subclass that allows a more conventional program structure.
+
+=end original
+
+イベント駆動型の解析がアプリケーションに適していない場合は、C<HTML::PullParser>を使用できます。
+これは、より一般的なプログラム構造を可能にするC<HTML::Parser>サブクラスです。
+(TBR)
+
+=head1 METHODS
+
+=begin original
+
+The following method is used to construct a new C<HTML::Parser> object:
+
+=end original
+
+新しいC<HTML::Parser>オブジェクトを構築するには、次のメソッドを使用します。
+(TBR)
+
+=over
+
+=item $p = HTML::Parser->new( %options_and_handlers )
+
+=begin original
+
+This class method creates a new C<HTML::Parser> object and
+returns it.  Key/value argument pairs may be provided to assign event
+handlers or initialize parser options.  The handlers and parser
+options can also be set or modified later by the method calls described below.
+
+=end original
+
+このクラスメソッドは、新しいC<HTML::Parser>オブジェクトを作成し、それを返します。
+イベントハンドラを割り当てたり、パーサオプションを初期化したりするために、キーと値の引数のペアを指定できます。
+ハンドラとパーサオプションは、後で後述するメソッドコールによって設定または変更することもできます。
+(TBR)
+
+=begin original
+
+If a top level key is in the form "<event>_h" (e.g., "text_h") then it
+assigns a handler to that event, otherwise it initializes a parser
+option. The event handler specification value must be an array
+reference.  Multiple handlers may also be assigned with the 'handlers
+=> [%handlers]' option.  See examples below.
+
+=end original
+
+最上位レベルのキーが"<event>_h"("text_h"など)の形式の場合は、そのイベントにハンドラが割り当てられます。
+それ以外の場合は、パーサーオプションが初期化されます。
+イベントハンドラの指定値は配列参照である必要があります。
+'handlers=>[%handlers]'オプションを使用して複数のハンドラを割り当てることもできます。
+次の例を参照してください。
+(TBR)
+
+=begin original
+
+If new() is called without any arguments, it will create a parser that
+uses callback methods compatible with version 2 of C<HTML::Parser>.
+See the section on "version 2 compatibility" below for details.
+
+=end original
+
+引数を指定せずにnew()を呼び出すと、バージョン2のC<HTML::Parser>と互換性のあるコールバックメソッドを使用するパーサが作成されます。
+詳細については、後述の「バージョン2との互換性」のセクションを参照してください。
+(TBR)
+
+=begin original
+
+The special constructor option 'api_version => 2' can be used to
+initialize version 2 callbacks while still setting other options and
+handlers.  The 'api_version => 3' option can be used if you don't want
+to set any options and don't want to fall back to v2 compatible
+mode.
+
+=end original
+
+特別なコンストラクタオプション'api_version=>2'は、他のオプションとハンドラを設定しながらバージョン2コールバックを初期化するために使用できます。
+'api_version=>3'オプションは、オプションを設定せず、v2互換モードにフォールバックしない場合に使用できます。
+(TBR)
+
+=begin original
+
+Examples:
+
+=end original
+
+例:
+(TBR)
+
+ $p = HTML::Parser->new(api_version => 3,
+                        text_h => [ sub {...}, "dtext" ]);
+
+=begin original
+
+This creates a new parser object with a text event handler subroutine
+that receives the original text with general entities decoded.
+
+=end original
+
+これにより、テキストイベントハンドラーサブルーチンを持つ新しいパーサーオブジェクトが作成されます。
+このサブルーチンは、汎用エンティティーがデコードされた元のテキストを受け取ります。
+(TBR)
+
+ $p = HTML::Parser->new(api_version => 3,
+			start_h => [ 'my_start', "self,tokens" ]);
+
+=begin original
+
+This creates a new parser object with a start event handler method
+that receives the $p and the tokens array.
+
+=end original
+
+これにより、$pとtokens配列を受け取る開始イベントハンドラーメソッドを持つ新しいパーサーオブジェクトが作成されます。
+(TBR)
+
+ $p = HTML::Parser->new(api_version => 3,
+		        handlers => { text => [\@array, "event,text"],
+                                      comment => [\@array, "event,text"],
+                                    });
+
+=begin original
+
+This creates a new parser object that stores the event type and the
+original text in @array for text and comment events.
+
+=end original
+
+これにより、テキストイベントとコメントイベントのイベントタイプと元のテキストを@arrayに格納する新しいパーサーオブジェクトが作成されます。
+(TBR)
+
+=back
+
+=begin original
+
+The following methods feed the HTML document
+to the C<HTML::Parser> object:
+
+=end original
+
+次のメソッドは、HTML文書をC<HTML::Parser>オブジェクトに渡します。
+(TBR)
+
+=over
+
+=item $p->parse( $string )
+
+=begin original
+
+Parse $string as the next chunk of the HTML document.  Handlers invoked should
+not attempt to modify the $string in-place until $p->parse returns.
+
+=end original
+
+$stringをHTML文書の次のチャンクとして解析します。
+呼び出されたハンドラは、$p->parseが返されるまで、$stringをその場で変更しようとしてはなりません。
+(TBR)
+
+=begin original
+
+If an invoked event handler aborts parsing by calling $p->eof, then $p->parse()
+will return a FALSE value.  Otherwise the return value is a reference to the
+parser object ($p).
+
+=end original
+
+呼び出されたイベントハンドラが$p->eofを呼び出して解析を中断した場合、$p->parse()はFALSE値を返します。
+それ以外の場合、戻り値はパーサオブジェクト($p)への参照です。
+(TBR)
+
+=item $p->parse( $code_ref )
+
+=begin original
+
+If a code reference is passed as the argument to be parsed, then the
+chunks to be parsed are obtained by invoking this function repeatedly.
+Parsing continues until the function returns an empty (or undefined)
+result.  When this happens $p->eof is automatically signaled.
+
+=end original
+
+解析される引数としてコード参照が渡された場合、解析されるチャンクは、この関数を繰り返し呼び出すことによって取得されます。
+解析は、関数が空の(または未定義の)結果を返すまで続行されます。
+これが発生すると、$p->eofが自動的にシグナリングされます。
+(TBR)
+
+=begin original
+
+Parsing will also abort if one of the event handlers calls $p->eof.
+
+=end original
+
+イベントハンドラーの1つが$p->eofを呼び出した場合にも、構文解析は中断されます。
+(TBR)
+
+=begin original
+
+The effect of this is the same as:
+
+=end original
+
+この効果は、次と同じです。
+(TBR)
+
+ while (1) {
+    my $chunk = &$code_ref();
+    if (!defined($chunk) || !length($chunk)) {
+        $p->eof;
+        return $p;
+    }
+    $p->parse($chunk) || return undef;
+ }
+
+=begin original
+
+But it is more efficient as this loop runs internally in XS code.
+
+=end original
+
+しかし、このループはXSコード内で内部的に実行されるので、より効率的です。
+(TBR)
+
+=item $p->parse_file( $file )
+
+=begin original
+
+Parse text directly from a file.  The $file argument can be a
+filename, an open file handle, or a reference to an open file
+handle.
+
+=end original
+
+ファイルからテキストを直接解析します。
+$file引数には、ファイル名、開いているファイルハンドル、または開いているファイルハンドルへの参照を指定できます。
+(TBR)
+
+=begin original
+
+If $file contains a filename and the file can't be opened, then the
+method returns an undefined value and $! tells why it failed.
+Otherwise the return value is a reference to the parser object.
+
+=end original
+
+$fileにファイル名が含まれており、そのファイルを開くことができない場合、メソッドは未定義の値を返し、$!は失敗した理由を示します。
+それ以外の場合、戻り値はパーサーオブジェクトへの参照です。
+(TBR)
+
+=begin original
+
+If a file handle is passed as the $file argument, then the file will
+normally be read until EOF, but not closed.
+
+=end original
+
+ファイルハンドルが$file引数として渡された場合、ファイルは通常EOFまで読み込まれますが、閉じられることはありません。
+(TBR)
+
+=begin original
+
+If an invoked event handler aborts parsing by calling $p->eof,
+then $p->parse_file() may not have read the entire file.
+
+=end original
+
+呼び出されたイベントハンドラが$p->eofを呼び出して解析を中止した場合、$p->parse_file()はファイル全体を読み込んでいない可能性があります。
+(TBR)
+
+=begin original
+
+On systems with multi-byte line terminators, the values passed for the
+offset and length argspecs may be too low if parse_file() is called on
+a file handle that is not in binary mode.
+
+=end original
+
+複数バイトの行ターミネータを持つシステムでは、バイナリモードでないファイルハンドルに対してparse_file()が呼び出された場合、offsetとlength argspecsに渡される値が小さすぎる可能性があります。
+(TBR)
+
+=begin original
+
+If a filename is passed in, then parse_file() will open the file in
+binary mode.
+
+=end original
+
+ファイル名が渡された場合、parse_file()はそのファイルをバイナリモードで開きます。
+(TBR)
+
+=item $p->eof
+
+=begin original
+
+Signals the end of the HTML document.  Calling the $p->eof method
+outside a handler callback will flush any remaining buffered text
+(which triggers the C<text> event if there is any remaining text).
+
+=end original
+
+HTML文書の終了を通知します。
+ハンドラコールバックの外部で$p->eofメソッドを呼び出すと、バッファに残っているテキストがフラッシュされます(テキストが残っている場合は、C<text>イベントがトリガーされます)。
+(TBR)
+
+=begin original
+
+Calling $p->eof inside a handler will terminate parsing at that point
+and cause $p->parse to return a FALSE value.  This also terminates
+parsing by $p->parse_file().
+
+=end original
+
+ハンドラ内で$p->eofを呼び出すと、その時点で解析が終了し、$p->parseはFALSE値を返します。
+これにより、$p->parse_file()による解析も終了します。
+(TBR)
+
+=begin original
+
+After $p->eof has been called, the parse() and parse_file() methods
+can be invoked to feed new documents with the parser object.
+
+=end original
+
+$p->eofが呼び出された後、parse()メソッドとparse_file()メソッドを呼び出して、新しい文書にパーサーオブジェクトを渡すことができます。
+(TBR)
+
+=begin original
+
+The return value from eof() is a reference to the parser object.
+
+=end original
+
+eof()からの戻り値は、パーサーオブジェクトへの参照です。
+(TBR)
+
+=back
+
+=begin original
+
+Most parser options are controlled by boolean attributes.
+Each boolean attribute is enabled by calling the corresponding method
+with a TRUE argument and disabled with a FALSE argument.  The
+attribute value is left unchanged if no argument is given.  The return
+value from each method is the old attribute value.
+
+=end original
+
+ほとんどのパーサーオプションは、ブール属性によって制御されます。
+各ブール属性は、対応するメソッドをTRUE引数でコールすると使用可能になり、FALSE引数でコールすると使用不可になります。
+引数を指定しない場合、属性値は変更されません。
+各メソッドからの戻り値は、古い属性値です。
+(TBR)
+
+=begin original
+
+Methods that can be used to get and/or set parser options are:
+
+=end original
+
+パーサーオプションの取得または設定に使用できるメソッドは次のとおりです。
+(TBR)
+
+=over
+
+=item $p->attr_encoded
+
+=item $p->attr_encoded( $bool )
+
+=begin original
+
+By default, the C<attr> and C<@attr> argspecs will have general
+entities for attribute values decoded.  Enabling this attribute leaves
+entities alone.
+
+=end original
+
+デフォルトでは、C<attr>およびC<@attr>argspecsには、デコードされたアトリビュート値の一般エンティティがあります。
+このアトリビュートを有効にすると、エンティティはそのままになります。
+(TBR)
+
+=item $p->backquote
+
+=item $p->backquote( $bool )
+
+=begin original
+
+By default, only ' and " are recognized as quote characters around
+attribute values.  MSIE also recognizes backquotes for some reason.
+Enabling this attribute provides compatibility with this behaviour.
+
+=end original
+
+デフォルトでは、属性値を囲む引用符として認識されるのは'と"のみです。
+MSIEは、何らかの理由で逆引用符も認識します。
+この属性を有効にすると、この動作との互換性が提供されます。
+(TBR)
+
+=item $p->boolean_attribute_value( $val )
+
+=begin original
+
+This method sets the value reported for boolean attributes inside HTML
+start tags.  By default, the name of the attribute is also used as its
+value.  This affects the values reported for C<tokens> and C<attr>
+argspecs.
+
+=end original
+
+このメソッドは、HTML開始タグ内のブール属性に対してレポートされる値を設定します。
+デフォルトでは、属性の名前も値として使用されます。
+これは、C<tokens>およびC<attr>argspecsに対してレポートされる値に影響します。
+(TBR)
+
+=item $p->case_sensitive
+
+=item $p->case_sensitive( $bool )
+
+=begin original
+
+By default, tagnames and attribute names are down-cased.  Enabling this
+attribute leaves them as found in the HTML source document.
+
+=end original
+
+デフォルトでは、タグ名と属性名は小文字に変換されます。
+この属性を有効にすると、HTMLソース文書内のタグ名と属性名のままになります。
+(TBR)
+
+=item $p->closing_plaintext
+
+=item $p->closing_plaintext( $bool )
+
+=begin original
+
+By default, "plaintext" element can never be closed. Everything up to
+the end of the document is parsed in CDATA mode.  This historical
+behaviour is what at least MSIE does.  Enabling this attribute makes
+closing "</plaintext>" tag effective and the parsing process will resume
+after seeing this tag.  This emulates early gecko-based browsers.
+
+=end original
+
+デフォルトでは、"plaintext"要素は決して閉じることができません。
+文書の最後までのすべてがCDATAモードで解析されます。
+この歴史的な動作は、少なくともMSIEが行っていることです。
+この属性を有効にすると、閉じる"</plaintext>"タグが有効になり、このタグを見た後に解析プロセスが再開されます。
+これは初期のgeckoベースのブラウザをエミュレートします。
+(TBR)
+
+=item $p->empty_element_tags
+
+=item $p->empty_element_tags( $bool )
+
+=begin original
+
+By default, empty element tags are not recognized as such and the "/"
+before ">" is just treated like a normal name character (unless
+C<strict_names> is enabled).  Enabling this attribute make
+C<HTML::Parser> recognize these tags.
+
+=end original
+
+デフォルトでは、空の要素タグは認識されず、「>」の前の「/」は通常の名前文字と同じように扱われます(C<strict_names>が有効になっていない場合)。
+この属性を有効にすると、C<HTML::Parser>はこれらのタグを認識します。
+(TBR)
+
+=begin original
+
+Empty element tags look like start tags, but end with the character
+sequence "/>" instead of ">".  When recognized by C<HTML::Parser> they
+cause an artificial end event in addition to the start event.  The
+C<text> for the artificial end event will be empty and the C<tokenpos>
+array will be undefined even though the the token array will have one
+element containing the tag name.
+
+=end original
+
+空の要素タグは開始タグのように見えますが、">"ではなく"/>"で終わります。
+C<HTML::Parser>によって認識されると、開始イベントに加えて人工的な終了イベントが発生します。
+トークン配列にタグ名を含む要素が1つあっても、人工的な終了イベントのC<text>は空になり、C<tokenpos>配列は未定義になります。
+(TBR)
+
+=item $p->marked_sections
+
+=item $p->marked_sections( $bool )
+
+=begin original
+
+By default, section markings like <![CDATA[...]]> are treated like
+ordinary text.  When this attribute is enabled section markings are
+honoured.
+
+=end original
+
+デフォルトでは、<![CDATA[.]]>などのセクションマーキングは通常のテキストと同様に扱われます。
+この属性が有効になっている場合、セクションマーキングは受け入れられます。
+(TBR)
+
+=begin original
+
+There are currently no events associated with the marked section
+markup, but the text can be returned as C<skipped_text>.
+
+=end original
+
+現在、マーク区間のマークアップに関連付けられたイベントはありませんが、テキストはC<skipped_text>として返されます。
+(TBR)
+
+=item $p->strict_comment
+
+=item $p->strict_comment( $bool )
+
+=begin original
+
+By default, comments are terminated by the first occurrence of "-->".
+This is the behaviour of most popular browsers (like Mozilla, Opera and
+MSIE), but it is not correct according to the official HTML
+standard.  Officially, you need an even number of "--" tokens before
+the closing ">" is recognized and there may not be anything but
+whitespace between an even and an odd "--".
+
+=end original
+
+デフォルトでは、コメントは「-->」の最初の出現で終了します。
+これはほとんどの一般的なブラウザ(Mozilla、Opera、MSIEなど)の動作ですが、公式のHTML標準によれば正しくありません。
+公式には、閉じる「>」が認識される前に偶数の「--」トークンが必要であり、偶数と奇数の「--」の間には空白文字しかない場合があります。
+(TBR)
+
+=begin original
+
+The official behaviour is enabled by enabling this attribute.
+
+=end original
+
+正式な動作は、この属性を有効にすることで有効になります。
+(TBR)
+
+=begin original
+
+Enabling of 'strict_comment' also disables recognizing these forms as
+comments:
+
+=end original
+
+'strict_comment'を有効にすると、これらのフォームがコメントとして認識されなくなります。
+(TBR)
+
+  </ comment>
+  <! comment>
+
+=item $p->strict_end
+
+=item $p->strict_end( $bool )
+
+=begin original
+
+By default, attributes and other junk are allowed to be present on end tags in a
+manner that emulates MSIE's behaviour.
+
+=end original
+
+デフォルトでは、属性やその他のジャンクは、MSIEの動作をエミュレートする方法でエンドタグに存在することが許可されている。
+(TBR)
+
+=begin original
+
+The official behaviour is enabled with this attribute.  If enabled,
+only whitespace is allowed between the tagname and the final ">".
+
+=end original
+
+この属性を使用すると、公式の動作が有効になります。
+有効にすると、タグ名と最後の「>」の間に空白のみが許可されます。
+(TBR)
+
+=item $p->strict_names
+
+=item $p->strict_names( $bool )
+
+=begin original
+
+By default, almost anything is allowed in tag and attribute names.
+This is the behaviour of most popular browsers and allows us to parse
+some broken tags with invalid attribute values like:
+
+=end original
+
+デフォルトでは、タグ名と属性名にはほとんどすべてのものが許可されています。
+これは最も一般的なブラウザの動作であり、次のような無効な属性値を持つ壊れたタグを解析できます。
+(TBR)
+
+   <IMG SRC=newprevlstGr.gif ALT=[PREV LIST] BORDER=0>
+
+=begin original
+
+By default, "LIST]" is parsed as a boolean attribute, not as
+part of the ALT value as was clearly intended.  This is also what
+Mozilla sees.
+
+=end original
+
+デフォルトでは、"LIST]"はブール値として解析され、意図したとおりにALT値の一部として解析されることはありません。
+Mozillaも同じことを考えている。
+(TBR)
+
+=begin original
+
+The official behaviour is enabled by enabling this attribute.  If
+enabled, it will cause the tag above to be reported as text
+since "LIST]" is not a legal attribute name.
+
+=end original
+
+正式な動作は、この属性を有効にすることで有効になります。
+有効にすると、「LIST]」は有効な属性名ではないため、上記のタグがテキストとして報告されます。
+(TBR)
+
+=item $p->unbroken_text
+
+=item $p->unbroken_text( $bool )
+
+=begin original
+
+By default, blocks of text are given to the text handler as soon as
+possible (but the parser takes care always to break text at a
+boundary between whitespace and non-whitespace so single words and
+entities can always be decoded safely).  This might create breaks that
+make it hard to do transformations on the text. When this attribute is
+enabled, blocks of text are always reported in one piece.  This will
+delay the text event until the following (non-text) event has been
+recognized by the parser.
+
+=end original
+
+デフォルトでは、テキストのブロックはできるだけ早くテキストハンドラに渡されます(ただし、パーサーは、単一の単語やエンティティを常に安全にデコードできるように、空白と空白以外の境界でテキストを分割するように常に注意します)。
+これにより、テキストの変換を困難にする分割が作成される場合があります。
+この属性が有効になっている場合、テキストのブロックは常に1つに報告されます。
+これにより、次の(テキスト以外の)イベントがパーサーによって認識されるまで、テキストイベントが遅延されます。
+(TBR)
+
+=begin original
+
+Note that the C<offset> argspec will give you the offset of the first
+segment of text and C<length> is the combined length of the segments.
+Since there might be ignored tags in between, these numbers can't be
+used to directly index in the original document file.
+
+=end original
+
+C<offset>argspecはテキストの最初のセグメントのオフセットを与え、C<length>はセグメントの結合長であることに注意してください。
+間に無視されるタグがある可能性があるため、これらの番号を使用して元の文書ファイル内で直接インデックスを付けることはできません。
+(TBR)
+
+=item $p->utf8_mode
+
+=item $p->utf8_mode( $bool )
+
+=begin original
+
+Enable this option when parsing raw undecoded UTF-8.  This tells the
+parser that the entities expanded for strings reported by C<attr>,
+C<@attr> and C<dtext> should be expanded as decoded UTF-8 so they end
+up compatible with the surrounding text.
+
+=end original
+
+デコードされていない未加工のUTF-8を解析する場合、このオプションを有効にします。
+これにより、C<attr>、C<@attr>、およびC<dtext>によって報告された文字列に対して展開されたエンティティは、デコードされたUTF-8として展開され、周囲のテキストとの互換性が保たれるようにする必要があることがパーサーに通知されます。
+(TBR)
+
+=begin original
+
+If C<utf8_mode> is enabled then it is an error to pass strings
+containing characters with code above 255 to the parse() method, and
+the parse() method will croak if you try.
+
+=end original
+
+C<utf8_mode>が有効になっている場合、255を超えるコードの文字を含む文字列をparse()メソッドに渡すとエラーとなり、parse()メソッドは試行するとクルックします。
+(TBR)
+
+=begin original
+
+Example: The Unicode character "\x{2665}" is "\xE2\x99\xA5" when UTF-8
+encoded.  The character can also be represented by the entity
+"&hearts;" or "&#x2665".  If we feed the parser:
+
+=end original
+
+例:UTF-8でエンコードされた場合、Unicode文字「\x{2665}」は「\xE2\x 99\xA 5」です。
+この文字は、エンティティ「&hearts;」または「&#x2665」で表すこともできます。
+パーサーに次のように入力します。
+(TBR)
+
+  $p->parse("\xE2\x99\xA5&hearts;");
+
+=begin original
+
+then C<dtext> will be reported as "\xE2\x99\xA5\x{2665}" without
+C<utf8_mode> enabled, but as "\xE2\x99\xA5\xE2\x99\xA5" when enabled.
+The later string is what you want.
+
+=end original
+
+C<dtext>は、C<utf8_mode>が有効になっていない場合は"\xE2\x 99\xA 5\x{2665}"と報告されますが、C<dtext>が有効になっている場合は"\xE2\x 99\xA 5\xE 2\x 99\xA 5"と報告されます。
+後の文字列が必要な文字列です。
+(TBR)
+
+=begin original
+
+This option is only available with perl-5.8 or better.
+
+=end original
+
+このオプションはperl-5.8以降でのみ使用できます。
+(TBR)
+
+=item $p->xml_mode
+
+=item $p->xml_mode( $bool )
+
+=begin original
+
+Enabling this attribute changes the parser to allow some XML
+constructs.  This enables the behaviour controlled by individually by
+the C<case_sensitive>, C<empty_element_tags>, C<strict_names> and
+C<xml_pic> attributes and also suppresses special treatment of
+elements that are parsed as CDATA for HTML.
+
+=end original
+
+この属性を有効にすると、一部のXML構造を許可するようにパーサーが変更されます。
+これにより、C<case_sensitive>、C<empty_element_tags>、C<strict_names>およびC<xml_pic>属性によって個別に制御される動作が有効になり、HTMLのCDATAとして解析される要素の特別な処理も抑制されます。
+(TBR)
+
+=item $p->xml_pic
+
+=item $p->xml_pic( $bool )
+
+=begin original
+
+By default, I<processing instructions> are terminated by ">". When
+this attribute is enabled, processing instructions are terminated by
+"?>" instead.
+
+=end original
+
+デフォルトでは、I<processing instructions>は">"で終了します。
+この属性を有効にすると、処理命令は代わりに"?>"で終了します。
+(TBR)
+
+=back
+
+=begin original
+
+As markup and text is recognized, handlers are invoked.  The following
+method is used to set up handlers for different events:
+
+=end original
+
+マークアップとテキストが認識されると、ハンドラが呼び出されます。
+さまざまなイベントのハンドラを設定するには、次のメソッドを使用します。
+(TBR)
+
+=over
+
+=item $p->handler( event => \&subroutine, $argspec )
+
+=item $p->handler( event => $method_name, $argspec )
+
+=item $p->handler( event => \@accum, $argspec )
+
+=item $p->handler( event => "" );
+
+=item $p->handler( event => undef );
+
+=item $p->handler( event );
+
+=begin original
+
+This method assigns a subroutine, method, or array to handle an event.
+
+=end original
+
+このメソッドは、イベントを処理するサブルーチン、メソッド、または配列を割り当てます。
+(TBR)
+
+=begin original
+
+Event is one of C<text>, C<start>, C<end>, C<declaration>, C<comment>,
+C<process>, C<start_document>, C<end_document> or C<default>.
+
+=end original
+
+イベントは、C<text>、C<start>、C<end>、C<declaration>、C<comment>、C<process>、C<start_document>、C<end_document>、またはC<default>のいずれかです。
+(TBR)
+
+=begin original
+
+The C<\&subroutine> is a reference to a subroutine which is called to handle
+the event.
+
+=end original
+
+C<\&subroutine>は、イベントを処理するために呼び出されるサブルーチンへの参照である。
+(TBR)
+
+=begin original
+
+The C<$method_name> is the name of a method of $p which is called to handle
+the event.
+
+=end original
+
+C<$method_name>は、イベントを処理するために呼び出される$pのメソッドの名前です。
+(TBR)
+
+=begin original
+
+The C<@accum> is an array that will hold the event information as
+sub-arrays.
+
+=end original
+
+C<@accum>は、イベント情報をサブ配列として保持する配列です。
+(TBR)
+
+=begin original
+
+If the second argument is "", the event is ignored.
+If it is undef, the default handler is invoked for the event.
+
+=end original
+
+2番目の引数が""の場合、イベントは無視されます。
+undefの場合、イベントに対してデフォルトのハンドラが呼び出されます。
+(TBR)
+
+=begin original
+
+The C<$argspec> is a string that describes the information to be reported
+for the event.  Any requested information that does not apply to a
+specific event is passed as C<undef>.  If argspec is omitted, then it
+is left unchanged.
+
+=end original
+
+C<$argspec>は、イベントについて報告される情報を記述する文字列です。
+特定のイベントに適用されない要求された情報は、C<undef>として渡されます。
+argspecが省略された場合、変更されないままになります。
+(TBR)
+
+=begin original
+
+The return value from $p->handler is the old callback routine or a
+reference to the accumulator array.
+
+=end original
+
+$p->ハンドラからの戻り値は、古いコールバックルーチンまたはアキュムレータ配列への参照です。
+(TBR)
+
+=begin original
+
+Any return values from handler callback routines/methods are always
+ignored.  A handler callback can request parsing to be aborted by
+invoking the $p->eof method.  A handler callback is not allowed to
+invoke the $p->parse() or $p->parse_file() method.  An exception will
+be raised if it tries.
+
+=end original
+
+ハンドラコールバックルーチン/メソッドからの戻り値は、常に無視されます。
+ハンドラコールバックは、$p->eofメソッドを呼び出すことによって、解析の中止を要求できます。
+ハンドラコールバックは、$p->parse()または$p->parse_file()メソッドを呼び出すことはできません。
+試行すると、例外が発生します。
+(TBR)
+
+=begin original
+
+Examples:
+
+=end original
+
+例:
+(TBR)
+
+    $p->handler(start =>  "start", 'self, attr, attrseq, text' );
+
+=begin original
+
+This causes the "start" method of object $p to be called for 'start' events.
+The callback signature is $p->start(\%attr, \@attr_seq, $text).
+
+=end original
+
+これにより、オブジェクト$pの"start"メソッドが'start'イベントに対して呼び出されます。
+コールバックシグネチャは$p->start(\%attr, \@attr_seq, $text)です。
+(TBR)
+
+    $p->handler(start =>  \&start, 'attr, attrseq, text' );
+
+=begin original
+
+This causes subroutine start() to be called for 'start' events.
+The callback signature is start(\%attr, \@attr_seq, $text).
+
+=end original
+
+これにより、'start'イベントに対してサブルーチンstart()が呼び出されます。
+コールバックシグネチャはstart(\%attr, \@attr_seq, $text)です。
+(TBR)
+
+    $p->handler(start =>  \@accum, '"S", attr, attrseq, text' );
+
+=begin original
+
+This causes 'start' event information to be saved in @accum.
+The array elements will be ['S', \%attr, \@attr_seq, $text].
+
+=end original
+
+これにより、'start'イベント情報が@accumに保存されます。
+配列要素は['S',\%attr, \@attr_seq, $text]となります。
+(TBR)
+
+   $p->handler(start => "");
+
+=begin original
+
+This causes 'start' events to be ignored.  It also suppresses
+invocations of any default handler for start events.  It is in most
+cases equivalent to $p->handler(start => sub {}), but is more
+efficient.  It is different from the empty-sub-handler in that
+C<skipped_text> is not reset by it.
+
+=end original
+
+これにより、「開始」イベントが無視されます。
+また、開始イベントのデフォルトハンドラの呼び出しも抑制されます。
+ほとんどの場合、$p->handler(start=>sub{})と同等ですが、より効率的です。
+空のサブハンドラとは異なり、C<skipped_text>はリセットされません。
+(TBR)
+
+   $p->handler(start => undef);
+
+=begin original
+
+This causes no handler to be associated with start events.
+If there is a default handler it will be invoked.
+
+=end original
+
+これにより、開始イベントにハンドラが関連付けられなくなります。
+デフォルトのハンドラがある場合は、それが呼び出されます。
+(TBR)
+
+=back
+
+=begin original
+
+Filters based on tags can be set up to limit the number of events
+reported.  The main bottleneck during parsing is often the huge number
+of callbacks made from the parser.  Applying filters can improve
+performance significantly.
+
+=end original
+
+タグに基づくフィルタを設定して、報告されるイベントの数を制限できます。
+解析中の主なボトルネックは、多くの場合、パーサーから行われる膨大な数のコールバックです。
+フィルタを適用すると、パフォーマンスを大幅に向上させることができます。
+(TBR)
+
+=begin original
+
+The following methods control filters:
+
+=end original
+
+次のメソッドは、フィルタを制御します。
+(TBR)
+
+=over
+
+=item $p->ignore_elements( @tags )
+
+=begin original
+
+Both the C<start> event and the C<end> event as well as any events that
+would be reported in between are suppressed.  The ignored elements can
+contain nested occurrences of itself.  Example:
+
+=end original
+
+C<start>イベントとC<end>イベントの両方、およびその間に報告されるイベントは抑制されます。
+無視された要素には、それ自体のネストされたオカレンスを含めることができます。
+例:
+(TBR)
+
+   $p->ignore_elements(qw(script style));
+
+=begin original
+
+The C<script> and C<style> tags will always nest properly since their
+content is parsed in CDATA mode.  For most other tags
+C<ignore_elements> must be used with caution since HTML is often not
+I<well formed>.
+
+=end original
+
+C<script>タグとC<style>タグは、その内容がCDATAモードで解析されるため、常に適切にネストされます。
+他のほとんどのタグでは、HTMLがI<well formed>でないことが多いため、C<ignore_elements>は注意して使用する必要があります。
+(TBR)
+
+=item $p->ignore_tags( @tags )
+
+=begin original
+
+Any C<start> and C<end> events involving any of the tags given are
+suppressed.  To reset the filter (i.e. don't suppress any C<start> and
+C<end> events), call C<ignore_tags> without an argument.
+
+=end original
+
+指定されたタグを含むC<start>およびC<end>イベントは抑制されます。
+フィルタをリセットするには(つまり、C<start>およびC<end>イベントを抑制しないには)、引数なしでC<ignore_tags>を呼び出します。
+(TBR)
+
+=item $p->report_tags( @tags )
+
+=begin original
+
+Any C<start> and C<end> events involving any of the tags I<not> given
+are suppressed.  To reset the filter (i.e. report all C<start> and
+C<end> events), call C<report_tags> without an argument.
+
+=end original
+
+指定されたタグ<not>のいずれかを含むC<start>およびC<end>イベントは抑制されます。
+フィルタをリセットする(つまり、すべてのC<start>およびC<end>イベントをレポートする)には、引数なしでC<report_tags>を呼び出します。
+(TBR)
+
+=back
+
+=begin original
+
+Internally, the system has two filter lists, one for C<report_tags>
+and one for C<ignore_tags>, and both filters are applied.  This
+effectively gives C<ignore_tags> precedence over C<report_tags>.
+
+=end original
+
+内部的には、システムにはC<report_tags>用とC<ignore_tags>用の2つのフィルタリストがあり、両方のフィルタが適用されます。
+これにより、C<ignore_tags>がC<report_tags>よりも優先されます。
+(TBR)
+
+=begin original
+
+Examples:
+
+=end original
+
+例:
+(TBR)
+
+   $p->ignore_tags(qw(style));
+   $p->report_tags(qw(script style));
+
+=begin original
+
+results in only C<script> events being reported.
+
+=end original
+
+C<script>イベントのみが報告されます。
+(TBR)
+
+=head2 Argspec
+
+=begin original
+
+Argspec is a string containing a comma-separated list that describes
+the information reported by the event.  The following argspec
+identifier names can be used:
+
+=end original
+
+Argspecは、イベントによって報告される情報を説明するコンマ区切りのリストを含む文字列です。
+次のargspec ID名を使用できます。
+(TBR)
+
+=over
+
+=item C<attr>
+
+=begin original
+
+Attr causes a reference to a hash of attribute name/value pairs to be
+passed.
+
+=end original
+
+Attrは、属性名と値のペアのハッシュへの参照を渡します。
+(TBR)
+
+=begin original
+
+Boolean attributes' values are either the value set by
+$p->boolean_attribute_value, or the attribute name if no value has been
+set by $p->boolean_attribute_value.
+
+=end original
+
+ブール属性の値は、$p->boolean_attribute_valueによって設定された値か、$p->boolean_attribute_valueによって値が設定されていない場合は属性名です。
+(TBR)
+
+=begin original
+
+This passes undef except for C<start> events.
+
+=end original
+
+C<start>イベントを除き、undefを渡します。
+(TBR)
+
+=begin original
+
+Unless C<xml_mode> or C<case_sensitive> is enabled, the attribute
+names are forced to lower case.
+
+=end original
+
+C<xml_mode>またはC<case_sensitive>が有効になっていない限り、属性名は小文字になります。
+(TBR)
+
+=begin original
+
+General entities are decoded in the attribute values and
+one layer of matching quotes enclosing the attribute values is removed.
+
+=end original
+
+一般エンティティは属性値でデコードされ、属性値を囲む一致する引用符の1つのレイヤーが削除される。
+(TBR)
+
+=begin original
+
+The Unicode character set is assumed for entity decoding.  With Perl
+version 5.6 or earlier only the Latin-1 range is supported, and
+entities for characters outside the range 0..255 are left unchanged.
+
+=end original
+
+エンティティのデコードでは、Unicodeキャラクタセットが想定されます。
+Perlバージョン5.6以前では、Latin-1の範囲のみがサポートされ、0.255の範囲外の文字のエンティティは変更されません。
+(TBR)
+
+=item C<@attr>
+
+=begin original
+
+Basically the same as C<attr>, but keys and values are passed as
+individual arguments and the original sequence of the attributes is
+kept.  The parameters passed will be the same as the @attr calculated
+here:
+
+=end original
+
+基本的にはC<attr>と同じですが、キーと値が個々の引数として渡され、属性の元の順序が保持されます。
+渡されるパラメータは、ここで計算される@attrと同じになります。
+(TBR)
+
+   @attr = map { $_ => $attr->{$_} } @$attrseq;
+
+=begin original
+
+assuming $attr and $attrseq here are the hash and array passed as the
+result of C<attr> and C<attrseq> argspecs.
+
+=end original
+
+ここで$attrと$attrseqは、C<attr>とC<attrseq>argspecsの結果として渡されたハッシュと配列であると仮定します。
+(TBR)
+
+=begin original
+
+This passes no values for events besides C<start>.
+
+=end original
+
+これは、C<start>以外のイベントに値を渡しません。
+(TBR)
+
+=item C<attrseq>
+
+=begin original
+
+Attrseq causes a reference to an array of attribute names to be
+passed.  This can be useful if you want to walk the C<attr> hash in
+the original sequence.
+
+=end original
+
+Attrseqを指定すると、アトリビュート名の配列への参照が渡されます。
+これは、元のシーケンスでC<attr>ハッシュをウォークする場合に便利です。
+(TBR)
+
+=begin original
+
+This passes undef except for C<start> events.
+
+=end original
+
+C<start>イベントを除き、undefを渡します。
+(TBR)
+
+=begin original
+
+Unless C<xml_mode> or C<case_sensitive> is enabled, the attribute
+names are forced to lower case.
+
+=end original
+
+C<xml_mode>またはC<case_sensitive>が有効になっていない限り、属性名は小文字になります。
+(TBR)
+
+=item C<column>
+
+=begin original
+
+Column causes the column number of the start of the event to be passed.
+The first column on a line is 0.
+
+=end original
+
+[列]:イベントの開始の列番号が渡されます。
+行の最初の列は0です。
+(TBR)
+
+=item C<dtext>
+
+=begin original
+
+Dtext causes the decoded text to be passed.  General entities are
+automatically decoded unless the event was inside a CDATA section or
+was between literal start and end tags (C<script>, C<style>,
+C<xmp>, C<iframe>, C<title>, C<textarea> and C<plaintext>).
+
+=end original
+
+Dtextを指定すると、デコードされたテキストが渡されます。
+イベントがCDATAセクション内にある場合、またはリテラルの開始タグと終了タグ(C<script>、C<style>、C<xmp>、C<iframe>、C<title>、C<textarea>およびC<plaintext>)の間にある場合を除き、一般エンティティは自動的にデコードされます。
+(TBR)
+
+=begin original
+
+The Unicode character set is assumed for entity decoding.  With Perl
+version 5.6 or earlier only the Latin-1 range is supported, and
+entities for characters outside the range 0..255 are left unchanged.
+
+=end original
+
+エンティティのデコードでは、Unicodeキャラクタセットが想定されます。
+Perlバージョン5.6以前では、Latin-1の範囲のみがサポートされ、0.255の範囲外の文字のエンティティは変更されません。
+(TBR)
+
+=begin original
+
+This passes undef except for C<text> events.
+
+=end original
+
+C<text>イベントを除き、undefを渡します。
+(TBR)
+
+=item C<event>
+
+=begin original
+
+Event causes the event name to be passed.
+
+=end original
+
+Eventを指定すると、イベント名が渡されます。
+(TBR)
+
+=begin original
+
+The event name is one of C<text>, C<start>, C<end>, C<declaration>,
+C<comment>, C<process>, C<start_document> or C<end_document>.
+
+=end original
+
+イベント名は、C<text>、C<start>、C<end>、C<declaration>、C<comment>、C<process>、C<start_document>、またはC<end_document>のいずれかです。
+(TBR)
+
+=item C<is_cdata>
+
+=begin original
+
+Is_cdata causes a TRUE value to be passed if the event is inside a CDATA
+section or between literal start and end tags (C<script>,
+C<style>, C<xmp>, C<iframe>, C<title>, C<textarea> and C<plaintext>).
+
+=end original
+
+Is_cdataは、イベントがCDATAセクション内、またはリテラルの開始タグと終了タグ(C<script>、C<style>、C<xmp>、C<iframe>、C<title>、C<textarea>、C<plaintext>)の間にある場合に、TRUE値が渡されるようにします。
+(TBR)
+
+=begin original
+
+if the flag is FALSE for a text event, then you should normally
+either use C<dtext> or decode the entities yourself before the text is
+processed further.
+
+=end original
+
+テキストイベントのフラグがFALSEの場合、通常はC<dtext>を使用するか、テキストがさらに処理される前にエンティティをデコードする必要があります。
+(TBR)
+
+=item C<length>
+
+=begin original
+
+Length causes the number of bytes of the source text of the event to
+be passed.
+
+=end original
+
+Lengthは、渡されるイベントのソーステキストのバイト数を指定します。
+(TBR)
+
+=item C<line>
+
+=begin original
+
+Line causes the line number of the start of the event to be passed.
+The first line in the document is 1.  Line counting doesn't start
+until at least one handler requests this value to be reported.
+
+=end original
+
+Lineを指定すると、イベントの開始行の行番号が渡されます。
+文書の最初の行は1です。
+少なくとも1つのハンドラがこの値の報告を要求するまで、行カウントは開始されません。
+(TBR)
+
+=item C<offset>
+
+=begin original
+
+Offset causes the byte position in the HTML document of the start of
+the event to be passed.  The first byte in the document has offset 0.
+
+=end original
+
+Offsetを指定すると、イベントの開始位置を示すHTML文書内のバイト位置が渡されます。
+文書内の最初のバイトのオフセットは0です。
+(TBR)
+
+=item C<offset_end>
+
+=begin original
+
+Offset_end causes the byte position in the HTML document of the end of
+the event to be passed.  This is the same as C<offset> + C<length>.
+
+=end original
+
+offset_endを指定すると、HTML文書内のイベント終了位置を示すバイト位置が渡されます。
+これは、C<offset>+C<length>と同じです。
+(TBR)
+
+=item C<self>
+
+=begin original
+
+Self causes the current object to be passed to the handler.  If the
+handler is a method, this must be the first element in the argspec.
+
+=end original
+
+Selfを指定すると、現在のオブジェクトがハンドラに渡されます。
+ハンドラがメソッドの場合、これはargspecの最初の要素である必要があります。
+(TBR)
+
+=begin original
+
+An alternative to passing self as an argspec is to register closures
+that capture $self by themselves as handlers.  Unfortunately this
+creates circular references which prevent the HTML::Parser object
+from being garbage collected.  Using the C<self> argspec avoids this
+problem.
+
+=end original
+
+selfをargspecとして渡す代わりに、$self自身をハンドラとして取得するクロージャを登録することもできます。
+残念ながら、これにより循環参照が作成され、HTML::Parserオブジェクトがガベージコレクションされなくなります。
+C<self>argspecを使用すると、この問題を回避できます。
+(TBR)
+
+=item C<skipped_text>
+
+=begin original
+
+Skipped_text returns the concatenated text of all the events that have
+been skipped since the last time an event was reported.  Events might
+be skipped because no handler is registered for them or because some
+filter applies.  Skipped text also includes marked section markup,
+since there are no events that can catch it.
+
+=end original
+
+Skipped_textは、イベントが最後に報告されてからスキップされたすべてのイベントの連結テキストを返します。
+イベントは、ハンドラが登録されていないか、フィルタが適用されているためにスキップされる可能性があります。
+スキップされたテキストには、マーク区間のマークアップも含まれます。
+これは、スキップされたテキストをキャッチできるイベントがないためです。
+(TBR)
+
+=begin original
+
+If an C<"">-handler is registered for an event, then the text for this
+event is not included in C<skipped_text>.  Skipped text both before
+and after the C<"">-event is included in the next reported
+C<skipped_text>.
+
+=end original
+
+C<"">-ハンドラがイベントに登録されている場合、このイベントのテキストはC<skipped_text>に含まれません。
+C<"">-イベントの前後のスキップされたテキストは、次に報告されるC<skipped_text>に含まれます。
+(TBR)
+
+=item C<tag>
+
+=begin original
+
+Same as C<tagname>, but prefixed with "/" if it belongs to an C<end>
+event and "!" for a declaration.  The C<tag> does not have any prefix
+for C<start> events, and is in this case identical to C<tagname>.
+
+=end original
+
+C<tagname>と同じですが、C<end>イベントに属する場合は接頭辞「/」、宣言の場合は接頭辞「!」が付きます。
+C<tag>にはC<start>イベント用の接頭辞はなく、この場合はC<tagname>と同じです。
+(TBR)
+
+=item C<tagname>
+
+=begin original
+
+This is the element name (or I<generic identifier> in SGML jargon) for
+start and end tags.  Since HTML is case insensitive, this name is
+forced to lower case to ease string matching.
+
+=end original
+
+これは開始タグと終了タグの要素名(SGML用語ではI<generic identifier>)です。
+HTMLは大文字と小文字を区別しないので、文字列のマッチングを容易にするために、この名前は強制的に小文字にされます。
+(TBR)
+
+=begin original
+
+Since XML is case sensitive, the tagname case is not changed when
+C<xml_mode> is enabled.  The same happens if the C<case_sensitive> attribute
+is set.
+
+=end original
+
+XMLでは大文字と小文字が区別されるため、C<xml_mode>が有効になっている場合、tagnameの大文字と小文字は変更されません。
+C<case_sensitive>属性が設定されている場合も同様です。
+(TBR)
+
+=begin original
+
+The declaration type of declaration elements is also passed as a tagname,
+even if that is a bit strange.
+In fact, in the current implementation tagname is
+identical to C<token0> except that the name may be forced to lower case.
+
+=end original
+
+宣言要素の宣言型もtagnameとして渡されますが、これは少し奇妙です。
+実際、現在の実装では、tagnameはC<token0>と同じですが、名前を小文字にすることができる点が異なります。
+(TBR)
+
+=item C<token0>
+
+=begin original
+
+Token0 causes the original text of the first token string to be
+passed.  This should always be the same as $tokens->[0].
+
+=end original
+
+トークン0を指定すると、最初のトークン文字列の元のテキストが渡されます。
+これは常に$tokens->[0]と同じである必要があります。
+(TBR)
+
+=begin original
+
+For C<declaration> events, this is the declaration type.
+
+=end original
+
+C<declaration>イベントの場合、これは宣言型です。
+(TBR)
+
+=begin original
+
+For C<start> and C<end> events, this is the tag name.
+
+=end original
+
+C<start>およびC<end>イベントの場合、これはタグ名です。
+(TBR)
+
+=begin original
+
+For C<process> and non-strict C<comment> events, this is everything
+inside the tag.
+
+=end original
+
+C<process>および非厳密なC<comment>イベントの場合、これはタグ内のすべてです。
+(TBR)
+
+=begin original
+
+This passes undef if there are no tokens in the event.
+
+=end original
+
+イベント内にトークンがない場合はundefを渡します。
+(TBR)
+
+=item C<tokenpos>
+
+=begin original
+
+Tokenpos causes a reference to an array of token positions to be
+passed.  For each string that appears in C<tokens>, this array
+contains two numbers.  The first number is the offset of the start of
+the token in the original C<text> and the second number is the length
+of the token.
+
+=end original
+
+Tokenposにより、トークン位置の配列への参照が渡されます。
+C<tokens>に表示される各文字列に対して、この配列には2つの数値が含まれます。
+最初の数値は元のC<text>のトークンの開始位置のオフセットで、2番目の数値はトークンの長さです。
+(TBR)
+
+=begin original
+
+Boolean attributes in a C<start> event will have (0,0) for the
+attribute value offset and length.
+
+=end original
+
+C<start>イベント内のブール属性は、属性値のオフセットと長さが(0,0)になります。
+(TBR)
+
+=begin original
+
+This passes undef if there are no tokens in the event (e.g., C<text>)
+and for artificial C<end> events triggered by empty element tags.
+
+=end original
+
+イベント内にトークンがない場合(C<text>など)、および空の要素タグによってトリガーされる人工的なC<end>イベントの場合は、undefを渡します。
+(TBR)
+
+=begin original
+
+If you are using these offsets and lengths to modify C<text>, you
+should either work from right to left, or be very careful to calculate
+the changes to the offsets.
+
+=end original
+
+これらのオフセットと長さを使用してC<text>を修正する場合は、右から左に作業するか、オフセットへの変更を慎重に計算する必要があります。
+(TBR)
+
+=item C<tokens>
+
+=begin original
+
+Tokens causes a reference to an array of token strings to be passed.
+The strings are exactly as they were found in the original text,
+no decoding or case changes are applied.
+
+=end original
+
+トークンを使用すると、トークン文字列の配列への参照が渡されます。
+文字列は元のテキストとまったく同じで、デコードや大文字と小文字の変更は適用されません。
+(TBR)
+
+=begin original
+
+For C<declaration> events, the array contains each word, comment, and
+delimited string starting with the declaration type.
+
+=end original
+
+C<declaration>イベントの場合、配列には、宣言型で始まる各単語、コメント、および区切り文字列が含まれます。
+(TBR)
+
+=begin original
+
+For C<comment> events, this contains each sub-comment.  If
+$p->strict_comments is disabled, there will be only one sub-comment.
+
+=end original
+
+C<comment>イベントの場合、これには各サブコメントが含まれます。
+$p->strict_commentsが無効になっている場合、サブコメントは1つだけになります。
+(TBR)
+
+=begin original
+
+For C<start> events, this contains the original tag name followed by
+the attribute name/value pairs.  The values of boolean attributes will
+be either the value set by $p->boolean_attribute_value, or the
+attribute name if no value has been set by
+$p->boolean_attribute_value.
+
+=end original
+
+C<start>イベントの場合、これには元のタグ名とそれに続く属性名/値のペアが含まれます。
+ブール属性の値は、$p->boolean_attribute_valueによって設定された値、または$p->boolean_attribute_valueによって値が設定されていない場合は属性名のいずれかになります。
+(TBR)
+
+=begin original
+
+For C<end> events, this contains the original tag name (always one token).
+
+=end original
+
+C<end>イベントの場合、これには元のタグ名が含まれます(常に1つのトークン)。
+(TBR)
+
+=begin original
+
+For C<process> events, this contains the process instructions (always one
+token).
+
+=end original
+
+C<process>イベントの場合、これにはプロセス命令(常に1つのトークン)が含まれます。
+(TBR)
+
+=begin original
+
+This passes C<undef> for C<text> events.
+
+=end original
+
+これはC<undef>for C<text>イベントを渡します。
+(TBR)
+
+=item C<text>
+
+=begin original
+
+Text causes the source text (including markup element delimiters) to be
+passed.
+
+=end original
+
+Textを指定すると、ソーステキスト(マークアップ要素の区切り文字を含む)が渡されます。
+(TBR)
+
+=item C<undef>
+
+=begin original
+
+Pass an undefined value.  Useful as padding where the same handler
+routine is registered for multiple events.
+
+=end original
+
+未定義の値を渡します。
+複数のイベントに対して同じハンドラルーチンが登録されている場合のパディングとして役立ちます。
+(TBR)
+
+=item C<'...'>
+
+=begin original
+
+A literal string of 0 to 255 characters enclosed
+in single (') or double (") quotes is passed as entered.
+
+=end original
+
+単一引用符(')または二重引用符(")で囲まれた0〜255文字のリテラル文字列は、入力されたとおりに渡されます。
+(TBR)
+
+=back
+
+=begin original
+
+The whole argspec string can be wrapped up in C<'@{...}'> to signal
+that the resulting event array should be flattened.  This only makes a
+difference if an array reference is used as the handler target.
+Consider this example:
+
+=end original
+
+argspec文字列全体をC<'@{...}'>でラップして、結果のイベント配列をフラット化する必要があることを示すことができます。
+これは、配列参照がハンドラターゲットとして使用される場合にのみ違いが生じます。
+次の例を検討してください。
+(TBR)
+
+   $p->handler(text => [], 'text');
+   $p->handler(text => [], '@{text}']);
+
+=begin original
+
+With two text events; C<"foo">, C<"bar">; then the first example will end
+up with [["foo"], ["bar"]] and the second with ["foo", "bar"] in
+the handler target array.
+
+=end original
+
+C<"foo">、C<"bar">という2つのテキストイベントがある場合、最初の例は[["foo"],["bar"]]で終了し、2番目の例はハンドラターゲット配列の["foo","bar"]で終了します。
+(TBR)
+
+=head2 Events
+
+=begin original
+
+Handlers for the following events can be registered:
+
+=end original
+
+次のイベントのハンドラを登録できます。
+(TBR)
+
+=over
+
+=item C<comment>
+
+=begin original
+
+This event is triggered when a markup comment is recognized.
+
+=end original
+
+このイベントは、マークアップコメントが認識されたときにトリガされます。
+(TBR)
+
+=begin original
+
+Example:
+
+=end original
+
+例:
+(TBR)
+
+  <!-- This is a comment -- -- So is this -->
+
+=item C<declaration>
+
+=begin original
+
+This event is triggered when a I<markup declaration> is recognized.
+
+=end original
+
+このイベントは、I<マークアップ宣言>が認識されたときにトリガされます。
+(TBR)
+
+=begin original
+
+For typical HTML documents, the only declaration you are
+likely to find is <!DOCTYPE ...>.
+
+=end original
+
+一般的なHTML文書では、<!DOCTYPE.>のみが使用されます。
+(TBR)
+
+=begin original
+
+Example:
+
+=end original
+
+例:
+(TBR)
+
+  <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+      "http://www.w3.org/TR/html4/strict.dtd">
+
+=begin original
+
+DTDs inside <!DOCTYPE ...> will confuse HTML::Parser.
+
+=end original
+
+<!DOCTYPE.>内のDTDはHTML::Parserを混乱させます。
+(TBR)
+
+=item C<default>
+
+=begin original
+
+This event is triggered for events that do not have a specific
+handler.  You can set up a handler for this event to catch stuff you
+did not want to catch explicitly.
+
+=end original
+
+このイベントは、特定のハンドラを持たないイベントに対してトリガーされます。
+このイベントのハンドラを設定して、明示的にキャッチしたくないものをキャッチできます。
+(TBR)
+
+=item C<end>
+
+=begin original
+
+This event is triggered when an end tag is recognized.
+
+=end original
+
+このイベントは、終了タグが認識されたときにトリガーされます。
+(TBR)
+
+=begin original
+
+Example:
+
+=end original
+
+例:
+(TBR)
+
+  </A>
+
+=item C<end_document>
+
+=begin original
+
+This event is triggered when $p->eof is called and after any remaining
+text is flushed.  There is no document text associated with this event.
+
+=end original
+
+このイベントは、$p->eofが呼び出され、残りのテキストがフラッシュされた後にトリガーされます。
+このイベントに関連付けられた文書テキストはありません。
+(TBR)
+
+=item C<process>
+
+=begin original
+
+This event is triggered when a processing instructions markup is
+recognized.
+
+=end original
+
+このイベントは、処理命令マークアップが認識されたときにトリガされます。
+(TBR)
+
+=begin original
+
+The format and content of processing instructions are system and
+application dependent.
+
+=end original
+
+処理命令のフォーマットおよび内容は、システムおよびアプリケーションに依存する。
+(TBR)
+
+=begin original
+
+Examples:
+
+=end original
+
+例:
+(TBR)
+
+  <? HTML processing instructions >
+  <? XML processing instructions ?>
+
+=item C<start>
+
+=begin original
+
+This event is triggered when a start tag is recognized.
+
+=end original
+
+このイベントは、開始タグが認識されたときにトリガーされます。
+(TBR)
+
+=begin original
+
+Example:
+
+=end original
+
+例:
+(TBR)
+
+  <A HREF="http://www.perl.com/">
+
+=item C<start_document>
+
+=begin original
+
+This event is triggered before any other events for a new document.  A
+handler for it can be used to initialize stuff.  There is no document
+text associated with this event.
+
+=end original
+
+このイベントは、新しい文書に対する他のイベントの前にトリガされます。
+このイベントのハンドラを使用して、スタッフを初期化できます。
+このイベントに関連付けられた文書テキストはありません。
+(TBR)
+
+=item C<text>
+
+=begin original
+
+This event is triggered when plain text (characters) is recognized.
+The text may contain multiple lines.  A sequence of text may be broken
+between several text events unless $p->unbroken_text is enabled.
+
+=end original
+
+このイベントは、プレーンテキスト(文字)が認識されたときにトリガーされます。
+テキストには複数の行が含まれる場合があります。
+$p->unbroken_textが有効になっていない限り、一連のテキストは複数のテキストイベント間で分割される場合があります。
+(TBR)
+
+=begin original
+
+The parser will make sure that it does not break a word or a sequence
+of whitespace between two text events.
+
+=end original
+
+パーサーは、2つのテキストイベント間の単語または一連の空白を分割しないようにします。
+(TBR)
+
+=back
+
+=head2 Unicode
+
+=begin original
+
+C<HTML::Parser> can parse Unicode strings when running under
+perl-5.8 or better.  If Unicode is passed to $p->parse() then chunks
+of Unicode will be reported to the handlers.  The offset and length
+argspecs will also report their position in terms of characters.
+
+=end original
+
+C<HTML::Parser>は、perl-5.8以上で実行されている場合、ユニコード文字列を解析できます。
+ユニコードが$p->parse()に渡されると、ユニコードのチャンクがハンドラに報告されます。
+offsetとlength argspecsも、文字単位での位置を報告します。
+(TBR)
+
+=begin original
+
+It is safe to parse raw undecoded UTF-8 if you either avoid decoding
+entities and make sure to not use I<argspecs> that do, or enable the
+C<utf8_mode> for the parser.  Parsing of undecoded UTF-8 might be
+useful when parsing from a file where you need the reported offsets
+and lengths to match the byte offsets in the file.
+
+=end original
+
+エンティティのデコードを避け、デコードするI<argspecs>を使用しないようにするか、またはパーサーに対してC<utf8_mode>を有効にする場合は、デコードされていない未加工のUTF-8を安全に解析できます。
+デコードされていないUTF-8の解析は、レポートされたオフセットと長さがファイル内のバイトオフセットと一致する必要があるファイルから解析する場合に便利です。
+(TBR)
+
+=begin original
+
+If a filename is passed to $p->parse_file() then the file will be read
+in binary mode.  This will be fine if the file contains only ASCII or
+Latin-1 characters.  If the file contains UTF-8 encoded text then care
+must be taken when decoding entities as described in the previous
+paragraph, but better is to open the file with the UTF-8 layer so that
+it is decoded properly:
+
+=end original
+
+ファイル名が$p->parse_file()に渡された場合、ファイルはバイナリモードで読み込まれます。
+これは、ファイルにASCIIまたはLatin-1文字しか含まれていない場合には問題ありません。
+ファイルにUTF-8でエンコードされたテキストが含まれている場合は、前の段落で説明したように、エンティティをデコードするときに注意が必要ですが、適切にデコードされるように、UTF-8レイヤでファイルを開くことをお勧めします。
+(TBR)
+
+   open(my $fh, "<:utf8", "index.html") || die "...: $!";
+   $p->parse_file($fh);
+
+=begin original
+
+If the file contains text encoded in a charset besides ASCII, Latin-1
+or UTF-8 then decoding will always be needed.
+
+=end original
+
+ASCII、Latin-1、UTF-8以外の文字セットでエンコードされたテキストがファイルに含まれている場合は、常にデコードが必要になります。
+(TBR)
+
+=head1 VERSION 2 COMPATIBILITY
+
+=begin original
+
+When an C<HTML::Parser> object is constructed with no arguments, a set
+of handlers is automatically provided that is compatible with the old
+HTML::Parser version 2 callback methods.
+
+=end original
+
+C<HTML::Parser>オブジェクトが引数なしで構築されると、古いHTML::Parserバージョン2コールバックメソッドと互換性のあるハンドラのセットが自動的に提供されます。
+(TBR)
+
+=begin original
+
+This is equivalent to the following method calls:
+
+=end original
+
+これは、次のメソッド呼び出しと同じです。
+(TBR)
+
+   $p->handler(start   => "start",   "self, tagname, attr, attrseq, text");
+   $p->handler(end     => "end",     "self, tagname, text");
+   $p->handler(text    => "text",    "self, text, is_cdata");
+   $p->handler(process => "process", "self, token0, text");
+   $p->handler(comment =>
+             sub {
+		 my($self, $tokens) = @_;
+		 for (@$tokens) {$self->comment($_);}},
+             "self, tokens");
+   $p->handler(declaration =>
+             sub {
+		 my $self = shift;
+		 $self->declaration(substr($_[0], 2, -1));},
+             "self, text");
+
+=begin original
+
+Setting up these handlers can also be requested with the "api_version =>
+2" constructor option.
+
+=end original
+
+これらのハンドラの設定は、"api_version=>2"コンストラクタオプションで要求することもできる。
+(TBR)
+
+=head1 SUBCLASSING
+
+=begin original
+
+The C<HTML::Parser> class is subclassable.  Parser objects are plain
+hashes and C<HTML::Parser> reserves only hash keys that start with
+"_hparser".  The parser state can be set up by invoking the init()
+method, which takes the same arguments as new().
+
+=end original
+
+C<HTML::Parser>クラスはサブクラス化可能です。
+パーサーオブジェクトはプレーンハッシュであり、C<HTML::Parser>は"_hparser"で始まるハッシュキーのみを予約します。
+パーサーの状態は、new()と同じ引数を取るinit()メソッドを呼び出すことで設定できます。
+(TBR)
+
+=head1 EXAMPLES
+
+=begin original
+
+The first simple example shows how you might strip out comments from
+an HTML document.  We achieve this by setting up a comment handler that
+does nothing and a default handler that will print out anything else:
+
+=end original
+
+最初の簡単な例は、HTML文書からコメントを取り除く方法を示しています。
+これを実現するには、何もしないコメントハンドラと、それ以外のものを出力するデフォルトハンドラを設定します。
+(TBR)
+
+  use HTML::Parser;
+  HTML::Parser->new(default_h => [sub { print shift }, 'text'],
+                    comment_h => [""],
+                   )->parse_file(shift || die) || die $!;
+
+=begin original
+
+An alternative implementation is:
+
+=end original
+
+別の実装は次のとおりです。
+(TBR)
+
+  use HTML::Parser;
+  HTML::Parser->new(end_document_h => [sub { print shift },
+                                       'skipped_text'],
+                    comment_h      => [""],
+                   )->parse_file(shift || die) || die $!;
+
+=begin original
+
+This will in most cases be much more efficient since only a single
+callback will be made.
+
+=end original
+
+これは、単一のコールバックしか行われないので、ほとんどの場合、はるかに効率的です。
+(TBR)
+
+=begin original
+
+The next example prints out the text that is inside the <title>
+element of an HTML document.  Here we start by setting up a start
+handler.  When it sees the title start tag it enables a text handler
+that prints any text found and an end handler that will terminate
+parsing as soon as the title end tag is seen:
+
+=end original
+
+次の例では、HTML文書の<title>要素内のテキストを出力します。
+ここでは、開始ハンドラを設定することから始めます。
+タイトル開始タグが検出されると、検出されたテキストを出力するテキストハンドラと、タイトル終了タグが検出されるとすぐに解析を終了する終了ハンドラが有効になります。
+(TBR)
+
+  use HTML::Parser ();
+
+  sub start_handler
+  {
+    return if shift ne "title";
+    my $self = shift;
+    $self->handler(text => sub { print shift }, "dtext");
+    $self->handler(end  => sub { shift->eof if shift eq "title"; },
+		           "tagname,self");
+  }
+
+  my $p = HTML::Parser->new(api_version => 3);
+  $p->handler( start => \&start_handler, "tagname,self");
+  $p->parse_file(shift || die) || die $!;
+  print "\n";
+
+=begin original
+
+More examples are found in the F<eg/> directory of the C<HTML-Parser>
+distribution: the program C<hrefsub> shows how you can edit all links
+found in a document; the program C<htextsub> shows how to edit the text only; the
+program C<hstrip> shows how you can strip out certain tags/elements
+and/or attributes; and the program C<htext> show how to obtain the
+plain text, but not any script/style content.
+
+=end original
+
+その他の例は、C<HTML-Parser>ディストリビューションのF<eg/>ディレクトリにあります。
+プログラムC<hrefsub>は、文書内のすべてのリンクを編集する方法を示します。
+プログラムC<htextsub>は、テキストのみを編集する方法を示します。
+プログラムC<hstrip>は、特定のタグ/要素および/または属性を取り除く方法を示します。
+プログラムC<htext>は、プレーンテキストを取得する方法を示しますが、スクリプト/スタイルコンテンツは取得しません。
+(TBR)
+
+=begin original
+
+You can browse the F<eg/> directory online from the I<[Browse]> link on
+the http://search.cpan.org/~gaas/HTML-Parser/ page.
+
+=end original
+
+F<eg/>ディレクトリは、http://search.cpan.org/~gaas/HTML-Parser/ページのI<[Browse]>リンクからオンラインで参照できます。
+(TBR)
+
+=head1 BUGS
+
+=begin original
+
+The <style> and <script> sections do not end with the first "</", but
+need the complete corresponding end tag.  The standard behaviour is
+not really practical.
+
+=end original
+
+<style>セクションと<script>セクションは最初の"</"で終わらないが、対応する完全な終了タグが必要である。
+標準的な動作は実際には実用的ではない。
+(TBR)
+
+=begin original
+
+When the I<strict_comment> option is enabled, we still recognize
+comments where there is something other than whitespace between even
+and odd "--" markers.
+
+=end original
+
+I<strict_comment>オプションが有効になっている場合でも、偶数と奇数の「--」マーカーの間に空白以外のものがあるコメントは認識されます。
+(TBR)
+
+=begin original
+
+Once $p->boolean_attribute_value has been set, there is no way to
+restore the default behaviour.
+
+=end original
+
+$p->boolean_attribute_valueが設定されると、デフォルトの動作を復元する方法はありません。
+(TBR)
+
+=begin original
+
+There is currently no way to get both quote characters
+into the same literal argspec.
+
+=end original
+
+現在、両方の引用符文字を同じリテラルargspecに入れる方法はありません。
+(TBR)
+
+=begin original
+
+Empty tags, e.g. "<>" and "</>", are not recognized.  SGML allows them
+to repeat the previous start tag or close the previous start tag
+respectively.
+
+=end original
+
+「<>」や「</>」などの空のタグは認識されません。
+SGMLでは、前の開始タグを繰り返すことも、前の開始タグを閉じることもできます。
+(TBR)
+
+=begin original
+
+NET tags, e.g. "code/.../" are not recognized.  This is SGML
+shorthand for "<code>...</code>".
+
+=end original
+
+"code/./"などのNETタグは認識されません。
+これは"<code>.</code>"のSGMLの省略形です。
+(TBR)
+
+=begin original
+
+Unclosed start or end tags, e.g. "<tt<b>...</b</tt>" are not
+recognized.
+
+=end original
+
+"<tt<b>.</b</tt>"のような閉じていない開始タグや終了タグは認識されません。
+(TBR)
+
+=head1 DIAGNOSTICS
+
+=begin original
+
+The following messages may be produced by HTML::Parser.  The notation
+in this listing is the same as used in L<perldiag>:
+
+=end original
+
+次のメッセージは、HTML::Parserによって生成される場合があります。
+このリストの表記は、L<perldiag>で使用される表記と同じです。
+(TBR)
+
+=over
+
+=item Not a reference to a hash
+
+=begin original
+
+(F) The object blessed into or subclassed from HTML::Parser is not a
+hash as required by the HTML::Parser methods.
+
+=end original
+
+(F)HTML::Parserに祝福された、またはHTML::Parserからサブクラス化されたオブジェクトは、HTML::Parserメソッドで要求されるハッシュではありません。
+(TBR)
+
+=item Bad signature in parser state object at %p
+
+=begin original
+
+(F) The _hparser_xs_state element does not refer to a valid state structure.
+Something must have changed the internal value
+stored in this hash element, or the memory has been overwritten.
+
+=end original
+
+(F)_hparser_xs_state要素が有効な状態構造を参照していません。
+このハッシュ要素に格納されている内部値が何かによって変更されたか、メモリが上書きされた可能性があります。
+(TBR)
+
+=item _hparser_xs_state element is not a reference
+
+=begin original
+
+(F) The _hparser_xs_state element has been destroyed.
+
+=end original
+
+(F)_hparser_xs_state要素が破棄された。
+(TBR)
+
+=item Can't find '_hparser_xs_state' element in HTML::Parser hash
+
+=begin original
+
+(F) The _hparser_xs_state element is missing from the parser hash.
+It was either deleted, or not created when the object was created.
+
+=end original
+
+(F)_hparser_xs_state要素がパーサーハッシュにありません。
+この要素は削除されたか、オブジェクトの作成時に作成されませんでした。
+(TBR)
+
+=item API version %s not supported by HTML::Parser %s
+
+=begin original
+
+(F) The constructor option 'api_version' with an argument greater than
+or equal to 4 is reserved for future extensions.
+
+=end original
+
+(F)4以上の引数を持つコンストラクタオプション'api_version'は、将来の拡張のために予約されています。
+(TBR)
+
+=item Bad constructor option '%s'
+
+=begin original
+
+(F) An unknown constructor option key was passed to the new() or
+init() methods.
+
+=end original
+
+(F)不明なコンストラクタオプションキーがnew()またはinit()メソッドに渡されました。
+(TBR)
+
+=item Parse loop not allowed
+
+=begin original
+
+(F) A handler invoked the parse() or parse_file() method.
+This is not permitted.
+
+=end original
+
+(F)ハンドラがparse()またはparse_file()メソッドを呼び出しました。
+これは許可されていません。
+(TBR)
+
+=item marked sections not supported
+
+=begin original
+
+(F) The $p->marked_sections() method was invoked in a HTML::Parser
+module that was compiled without support for marked sections.
+
+=end original
+
+(F)$p->marked_sections()メソッドが、マーク区間をサポートせずにコンパイルされたHTML::Parserモジュールで呼び出されました。
+(TBR)
+
+=item Unknown boolean attribute (%d)
+
+=begin original
+
+(F) Something is wrong with the internal logic that set up aliases for
+boolean attributes.
+
+=end original
+
+(F)ブール属性の別名を設定する内部ロジックに問題があります。
+(TBR)
+
+=item Only code or array references allowed as handler
+
+=begin original
+
+(F) The second argument for $p->handler must be either a subroutine
+reference, then name of a subroutine or method, or a reference to an
+array.
+
+=end original
+
+(F)$p->handlerの2番目の引数は、サブルーチン参照、サブルーチンまたはメソッドの名前、または配列への参照のいずれかである必要があります。
+(TBR)
+
+=item No handler for %s events
+
+=begin original
+
+(F) The first argument to $p->handler must be a valid event name; i.e. one
+of "start", "end", "text", "process", "declaration" or "comment".
+
+=end original
+
+(F)$p->handlerの最初の引数は、有効なイベント名である必要があります。
+つまり、「start」、「end」、「text」、「process」、「declaration」、「comment」のいずれかです。
+(TBR)
+
+=item Unrecognized identifier %s in argspec
+
+=begin original
+
+(F) The identifier is not a known argspec name.
+Use one of the names mentioned in the argspec section above.
+
+=end original
+
+(F)識別名は既知のargspec名ではありません。
+上記のargspecのセクションに記載されている名前のいずれかを使用してください。
+(TBR)
+
+=item Literal string is longer than 255 chars in argspec
+
+=begin original
+
+(F) The current implementation limits the length of literals in
+an argspec to 255 characters.  Make the literal shorter.
+
+=end original
+
+(F)現在の実装では、argspecのリテラル長は255文字に制限されています。
+リテラルを短くしてください。
+(TBR)
+
+=item Backslash reserved for literal string in argspec
+
+=begin original
+
+(F) The backslash character "\" is not allowed in argspec literals.
+It is reserved to permit quoting inside a literal in a later version.
+
+=end original
+
+(F)バックスラッシュ文字「\」は、argspecリテラルでは使用できません。
+これは、後のバージョンでリテラル内での引用を許可するために予約されています。
+(TBR)
+
+=item Unterminated literal string in argspec
+
+=begin original
+
+(F) The terminating quote character for a literal was not found.
+
+=end original
+
+(F)リテラルの終了引用符文字が見つかりませんでした。
+(TBR)
+
+=item Bad argspec (%s)
+
+=begin original
+
+(F) Only identifier names, literals, spaces and commas
+are allowed in argspecs.
+
+=end original
+
+(F)argspecsでは、識別名、リテラル、スペース、およびカンマのみが許可されます。
+(TBR)
+
+=item Missing comma separator in argspec
+
+=begin original
+
+(F) Identifiers in an argspec must be separated with ",".
+
+=end original
+
+(F)argspecの識別子は、「,」で区切らなければならない。
+(TBR)
+
+=item Parsing of undecoded UTF-8 will give garbage when decoding entities
+
+=begin original
+
+(W) The first chunk parsed appears to contain undecoded UTF-8 and one
+or more argspecs that decode entities are used for the callback
+handlers.
+
+=end original
+
+(W)解析された最初のチャンクには、デコードされていないUTF-8が含まれているように見えます。
+また、エンティティをデコードする1つ以上のargspecsがコールバックハンドラに使用されています。
+(TBR)
+
+=begin original
+
+The result of decoding will be a mix of encoded and decoded characters
+for any entities that expand to characters with code above 127.  This
+is not a good thing.
+
+=end original
+
+デコードの結果は、127を超えるコードを持つ文字に展開されるエンティティのエンコードされた文字とデコードされた文字の混合になります。
+これは良いことではありません。
+(TBR)
+
+=begin original
+
+The solution is to use the Encode::encode_utf8() on the data before
+feeding it to the $p->parse().  For $p->parse_file() pass a file that
+has been opened in ":utf8" mode.
+
+=end original
+
+この問題を解決するには、$p->parse()に渡す前に、データに対してEncode::encode_utf8()を使用します。
+$p->parse_file()には、":utf8"モードで開かれたファイルを渡します。
+(TBR)
+
+=begin original
+
+The parser can process raw undecoded UTF-8 sanely if the C<utf8_mode>
+is enabled or if the "attr", "@attr" or "dtext" argspecs is avoided.
+
+=end original
+
+C<utf8_mode>が有効になっているか、"attr"、"@attr"、または"dtext"argspecsが回避されている場合、パーサーはデコードされていない生のUTF-8を正常に処理できます。
+(TBR)
+
+=item Parsing string decoded with wrong endianness
+
+=begin original
+
+(W) The first character in the document is U+FFFE.  This is not a
+legal Unicode character but a byte swapped BOM.  The result of parsing
+will likely be garbage.
+
+=end original
+
+(W)文書の最初の文字はU+FFFEです。
+これは有効なUnicode文字ではなく、バイトスワップされたBOMです。
+解析の結果はガベージになる可能性があります。
+(TBR)
+
+=item Parsing of undecoded UTF-32
+
+=begin original
+
+(W) The parser found the Unicode UTF-32 BOM signature at the start
+of the document.  The result of parsing will likely be garbage.
+
+=end original
+
+(W)パーサーは文書の先頭にUnicode UTF-32 BOM署名を見つけました。
+構文解析の結果はおそらくゴミになります。
+(TBR)
+
+=item Parsing of undecoded UTF-16
+
+=begin original
+
+(W) The parser found the Unicode UTF-16 BOM signature at the start of
+the document.  The result of parsing will likely be garbage.
+
+=end original
+
+(W)パーサーは文書の先頭にUnicode UTF-16 BOMシグネチャを検出しました。
+解析の結果はガベージになる可能性があります。
+(TBR)
+
+=back
+
+=head1 SEE ALSO
+
+L<HTML::Entities>, L<HTML::PullParser>, L<HTML::TokeParser>, L<HTML::HeadParser>,
+L<HTML::LinkExtor>, L<HTML::Form>
+
+=begin original
+
+L<HTML::TreeBuilder> (part of the I<HTML-Tree> distribution)
+
+=end original
+
+L<HTML::TreeBuilder> (I<HTML-Tree> 配布物の一部)
+
+L<http://www.w3.org/TR/html4/>
+
+=begin original
+
+More information about marked sections and processing instructions may
+be found at L<http://www.is-thought.co.uk/book/sgml-8.htm>.
+
+=end original
+
+マーク区間と処理命令の詳細については、L<http://www.is-thought.co.uk/book/sgml-8.htm>を参照してください。
+(TBR)
+
+=head1 COPYRIGHT
+
+ Copyright 1996-2008 Gisle Aas. All rights reserved.
+ Copyright 1999-2000 Michael A. Chase.  All rights reserved.
+
+This library is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
+
+=begin meta
+
+Translate: SHIRAKATA Kentaro <argrath@ub32.org>
+Status: in progress
+
+=end meta
+
+=cut
+
