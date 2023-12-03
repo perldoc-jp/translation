@@ -356,7 +356,7 @@
 | pattern matching | パターンマッチング |
 | PAUSE |  |
 | Perl mongers |  |
-| permission bits | as is usually the case) the privileges of whoever is running it. Also describes the bit in the mode word |
+| permission bits | 許可ビット |
 | Pern |  |
 | pipe | パイプ |
 | pipeline | パイプライン |
