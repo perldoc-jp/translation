@@ -1,6 +1,6 @@
 # 対訳表
 
-用語はperldocの[perlglossary](https://perldoc.perl.org/perlglossary)を参照しています
+用語はperldocの[perlglossary](https://perldoc.perl.org/perlglossary)を基にしています。
 
 | English | 日本語 |
 | --- | --- |
@@ -15,12 +15,10 @@
 | application |  |
 | architecture | アーキテクチャ |
 | argument | 引数 |
-| ARGV |  |
 | arithmetical operator | 算術演算子 |
 | array | 配列 |
 | array context | 配列コンテキスト |
 | Artistic License |  |
-| ASCII |  |
 | assertion | アサート |
 | assignment | 代入 |
 | assignment operator | 代入演算子 |
@@ -35,8 +33,6 @@
 | autoload | オートロード |
 | autosplit | 自動 split |
 | autovivification | 自動有効化 |
-| AV |  |
-| awk |  |
 | backreference | 後方参照 |
 | backtracking | バックトラッキング |
 | backward compatibility | 後方互換性 |
@@ -57,14 +53,12 @@
 | Boolean context | 真偽値コンテキスト |
 | breakpoint | ブレークポイント |
 | broadcast | ブロードキャスト |
-| BSD |  |
 | bucket | バケツ |
 | buffer | バッファ |
 | built-in | 組み込み |
 | bundle |  |
 | byte | バイト |
 | bytecode | バイトコード |
-| C |  |
 | cache |  |
 | callback | コールバック |
 | call by reference | 参照渡し |
@@ -85,7 +79,6 @@
 | client | クライアント |
 | closure | クロージャ |
 | cluster |  |
-| CODE |  |
 | code generator | コードジェネレータ |
 | codepoint |  |
 | code subpattern |  |
@@ -111,18 +104,15 @@
 | context | コンテキスト |
 | continuation | 継続 |
 | core dump | コアダンプ |
-| CPAN |  |
 | C preprocessor | C プリプロセッサ |
 | cracker | クラッカー |
 | currently selected output channel |  |
 | current package | カレントパッケージ |
 | current working directory |  |
-| CV |  |
 | dangling statement | 曖昧な文 |
 | datagram | データグラム |
 | data structure | データ構造 |
 | data type | データ型 |
-| DBM |  |
 | declaration | 宣言 |
 | declarator |  |
 | decrement | デクリメント |
@@ -154,7 +144,6 @@
 | en passant |  |
 | environment | 環境 |
 | environment variable | 環境変数 |
-| EOF |  |
 | errno |  |
 | error | エラー |
 | escape sequence | エスケープシーケンス |
@@ -170,11 +159,9 @@
 | expression | 式 |
 | extension | エクステンション |
 | FALSE | 偽 |
-| FAQ |  |
 | fatal error | 致命的エラー |
 | feeping creaturism |  |
 | field | フィールド |
-| FIFO |  |
 | file | ファイル |
 | file descriptor | ファイル記述子 |
 | fileglob | ファイルグロブ |
@@ -187,7 +174,6 @@
 | flag | フラグ |
 | floating point | 浮動小数点 |
 | flush |  |
-| FMTEYEWTK |  |
 | foldcase |  |
 | fork |  |
 | formal arguments |  |
@@ -198,7 +184,6 @@
 | function | 関数 |
 | funny character |  |
 | garbage collection | ガベージコレクション |
-| GID |  |
 | glob | グロブ |
 | global | グローバル |
 | global destruction |  |
@@ -208,7 +193,6 @@
 | greedy | 貪欲 |
 | grep |  |
 | group | グループ |
-| GV |  |
 | hacker |  |
 | handler |  |
 | hard reference |  |
@@ -220,7 +204,6 @@
 | home directory |  |
 | host |  |
 | hubris |  |
-| HV |  |
 | identifier | 識別子 |
 | impatience | 短気 |
 | implementation | 実装 |
@@ -243,17 +226,10 @@
 | interpreter | インタプリタ |
 | invocant | 呼び出し元 |
 | invocation |  |
-| I/O |  |
-| IO |  |
 | I/O layer |  |
-| IPA |  |
-| IP |  |
-| IPC |  |
 | is-a |  |
 | iteration | 反復 |
 | iterator | 反復子 |
-| IV |  |
-| JAPH |  |
 | key | キー |
 | keyword | キーワード |
 | label | ラベル |
@@ -266,7 +242,6 @@
 | lexical scoping | レキシカルスコープ |
 | lexical variable | レキシカル変数 |
 | library | ライブラリ |
-| LIFO |  |
 | line | 行 |
 | linebreak |  |
 | line buffering | 行バッファリング |
@@ -320,14 +295,12 @@
 | NaN |  |
 | network address | ネットワークアドレス |
 | newline | 改行 |
-| NFS |  |
 | normalization |  |
 | null character | ヌル文字 |
 | null list | 空リスト |
 | null string | 空文字列 |
 | numeric context | 数値コンテキスト |
 | numification |  |
-| NV |  |
 | nybble | ニブル |
 | object | オブジェクト |
 | octal | 8 進数 |
@@ -350,14 +323,11 @@
 | parse tree | パース木 |
 | parsing | パース |
 | patch | パッチ |
-| PATH |  |
 | pathname | パス名 |
 | pattern | パターン |
 | pattern matching | パターンマッチング |
-| PAUSE |  |
 | Perl mongers |  |
 | permission bits | 許可ビット |
-| Pern |  |
 | pipe | パイプ |
 | pipeline | パイプライン |
 | platform | プラットフォーム |
@@ -369,9 +339,7 @@
 | portable | 移植性のある |
 | porter | 移植者 |
 | possessive |  |
-| POSIX |  |
 | postfix | 接尾辞 |
-| pp |  |
 | pragma | プラグマ |
 | precedence | 優先順位 |
 | prefix | 接頭辞 |
@@ -391,7 +359,6 @@
 | public domain | パブリックドメイン |
 | pumpkin |  |
 | pumpking |  |
-| PV |  |
 | qualified | 修飾された |
 | quantifier | 量指定子 |
 | race condition |  |
@@ -408,15 +375,12 @@
 | relational operator | 比較演算子 |
 | reserved words | 予約語 |
 | return value | 返り値 |
-| RFC |  |
 | right shift | 右シフト |
 | role |  |
 | root |  |
-| RTFM |  |
 | run phase | 実行フェーズ |
 | runtime |  |
 | runtime pattern |  |
-| RV |  |
 | rvalue | 右辺値 |
 | sandbox |  |
 | scalar | スカラ |
@@ -428,14 +392,11 @@
 | scratchpad | スクラッチパッド |
 | script | スクリプト |
 | script kiddie | スクリプトキディ |
-| sed |  |
 | semaphore | セマフォ |
 | separator | セパレータ |
 | serialization | 直列化 |
 | server | サーバ |
 | service | サービス |
-| setgid |  |
-| setuid |  |
 | shared memory | 共有メモリ |
 | shebang |  |
 | shell | シェル |
@@ -464,10 +425,6 @@
 | static variable | 静的変数 |
 | stat structure | stat 構造体 |
 | status | 状態 |
-| STDERR |  |
-| STDIN |  |
-| STDIO |  |
-| STDOUT |  |
 | stream | ストリーム |
 | string | 文字列 |
 | string context | 文字列コンテキスト |
@@ -482,7 +439,6 @@
 | substring | 副文字列 |
 | superclass | スーパークラス |
 | superuser | スーパーユーザ |
-| SV |  |
 | switch |  |
 | switch cluster | まとまったスイッチ |
 | switch statement | switch 文 |
@@ -499,7 +455,6 @@
 | taint checks |  |
 | tainted | 汚染された |
 | taint mode |  |
-| TCP |  |
 | term |  |
 | terminator | 終端子 |
 | ternary | 3 項 |
@@ -507,12 +462,10 @@
 | thread | スレッド |
 | tie |  |
 | titlecase |  |
-| TMTOWTDI |  |
 | token | トークン |
 | tokener | トークン化器 |
 | tokenizing | トークン化 |
 | toolbox approach | ツールボックス手法 |
-| topic |  |
 | transliterate | 文字変換 |
 | trigger | トリガ |
 | trinary | 3 項 |
@@ -521,16 +474,11 @@
 | truncating | 切り詰め |
 | type | 型 |
 | type casting | 型キャスト |
-| typedef |  |
 | typed lexical | 型付きレキシカル |
 | typeglob | 型グロブ |
 | typemap |  |
-| UDP |  |
-| UID |  |
 | umask |  |
 | unary operator | 単項演算子 |
-| Unicode |  |
-| Unix |  |
 | uppercase |  |
 | value | 値 |
 | variable | 変数 |
@@ -547,10 +495,6 @@
 | word | 語 |
 | working directory | ワーキングディレクトリ |
 | wrapper | ラッパ |
-| WYSIWYG |  |
-| XS |  |
-| XSUB |  |
-| yacc |  |
 | zero width | ゼロ幅 |
 | zombie | ゾンビ |
 
