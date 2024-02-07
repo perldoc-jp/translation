@@ -1,0 +1,1006 @@
+=encoding utf-8
+
+=head1 NAME
+
+Data::Dumper - stringified perl data structures, suitable for both printing and C<eval>
+
+データ構造の文字列化。printingとevalの両方に適してます
+
+=head1 SYNOPSIS
+
+    use Data::Dumper;
+
+    # simple procedural interface
+    print Dumper($foo, $bar);
+
+    # extended usage with names
+    print Data::Dumper->Dump([$foo, $bar], [qw(foo *ary)]);
+
+    # configuration variables
+    {
+      local $Data::Dumper::Purity = 1;
+      eval Data::Dumper->Dump([$foo, $bar], [qw(foo *ary)]);
+    }
+
+    # OO usage
+    $d = Data::Dumper->new([$foo, $bar], [qw(foo *ary)]);
+       ...
+    print $d->Dump;
+       ...
+    $d->Purity(1)->Terse(1)->Deepcopy(1);
+    eval $d->Dump;
+
+
+=head1 DESCRIPTION
+
+=begin original
+
+Given a list of scalars or reference variables, writes out their contents in
+perl syntax. The references can also be objects.  The content of each
+variable is output in a single Perl statement.  Handles self-referential
+structures correctly.
+
+=end original
+
+スカラーのリストや、変数へのリファレンスを与えると、Perlの記法でその内容を書き出します。
+リファレンスはオブジェクトであってもよいです。それぞれの変数の内容は、単一のPerl文として
+出力されます。自己言及的構造も正しく扱います。
+
+=begin original
+
+The return value can be C<eval>ed to get back an identical copy of the
+original reference structure.  (Please do consider the security implications
+of eval'ing code from untrusted sources!)
+
+=end original
+
+戻り値は元のリファレンス構造の同一コピーを返すためにC<eval>されることができる。
+（信頼できないソースからのコードをevalすることはセキュリティの問題があることに
+気をつけてください）
+
+=begin original
+
+Any references that are the same as one of those passed in will be named
+C<$VAR>I<n> (where I<n> is a numeric suffix), and other duplicate references
+to substructures within C<$VAR>I<n> will be appropriately labeled using arrow
+notation.  You can specify names for individual values to be dumped if you
+use the C<Dump()> method, or you can change the default C<$VAR> prefix to
+something else.  See C<$Data::Dumper::Varname> and C<$Data::Dumper::Terse>
+below.
+
+=end original
+
+どんなリファレンスも渡されてしまえば等しく扱われ、C<$VAR>I<n> ( I<n> は数的接尾辞)と
+他の重複するC<$VAR>I<n>の中の下部構造へのリファレンスは、適切に矢印記法によって明示されます。 
+C<Dump()> メソッドを使ってダンプの際に個別の名前を指定することもできますし、デフォルトの
+C<$VAR>接頭辞を他のものに変えることもできます。後にある C<$Data::Dumper::Varname> と 
+C<$Data::Dumper::Terse>をみてください。
+
+=begin original
+
+The default output of self-referential structures can be C<eval>ed, but the
+nested references to C<$VAR>I<n> will be undefined, since a recursive
+structure cannot be constructed using one Perl statement.  You should set the
+C<Purity> flag to 1 to get additional statements that will correctly fill in
+these references.  Moreover, if C<eval>ed when strictures are in effect,
+you need to ensure that any variables it accesses are previously declared.
+
+=end original
+
+自己言及構造のデフォルトの出力は、C<eval>されることができますが、ネストした C<$VAR>I<n>
+へのリファレンスは undefined になります。再帰構造は１つのPerl文では構築できないからです。
+これらのリファレンスを正しく埋めるような追加文を得るには、 C<Purity> フラグを 1 にセット
+しなければなりません。
+
+=begin original
+
+In the extended usage form, the references to be dumped can be given
+user-specified names.  If a name begins with a C<*>, the output will
+describe the dereferenced type of the supplied reference for hashes and
+arrays, and coderefs.  Output of names will be avoided where possible if
+the C<Terse> flag is set.
+
+=end original
+
+拡張された使用法においては、ダンプされるリファレンスはユーザーの指定した名前で与えられます。
+もし名前が C<*> で始まる場合、出力はハッシュ・配列・コードレフに対する与えられた
+リファレンスのデリファレンス型を記述します。 C<Terse> フラグがセットされている場合、
+可能な限り名前の出力は回避されます。
+
+=begin original
+
+In many cases, methods that are used to set the internal state of the
+object will return the object itself, so method calls can be conveniently
+chained together.
+
+=end original
+
+多くの場合、オブジェクトの内部状態をセットするために使われるメソッドは、オブジェクトそれ自身
+を返すので、メソッド呼び出しは好都合に連鎖させることが可能です。
+
+=begin original
+
+Several styles of output are possible, all controlled by setting
+the C<Indent> flag.  See L<Configuration Variables or Methods> below
+for details.
+
+=end original
+
+何種類かのスタイルで出力が可能で、いずれも C<Indent> フラグをセットすることで
+制御できます。 詳細は以下の L<Configuration Variables or Methods> をみてください。
+
+
+=head2 Methods
+
+=over 4
+
+=item I<PACKAGE>->new(I<ARRAYREF [>, I<ARRAYREF]>)
+
+=begin original 
+
+Returns a newly created C<Data::Dumper> object.  The first argument is an
+anonymous array of values to be dumped.  The optional second argument is an
+anonymous array of names for the values.  The names need not have a leading
+C<$> sign, and must be comprised of alphanumeric characters.  You can begin
+a name with a C<*> to specify that the dereferenced type must be dumped
+instead of the reference itself, for ARRAY and HASH references.
+
+=end original
+
+新たに生成された C<Data::Dumper> オブジェクトを返します。第一引数は、ダンプしたい
+変数の無名配列です。第二引数は省略可能で、変数名の無名配列です。変数は C<$> 記号を先頭に
+持っている必要はありませんが、英数文字で構成されている必要があります。名前を C<*> ではじめることで
+デリファレンス型がダンプされるべきことを指定できる。
+
+=begin original 
+
+The prefix specified by C<$Data::Dumper::Varname> will be used with a
+numeric suffix if the name for a value is undefined.
+
+=end original
+
+変数に対する名前（変数名）が undefined の場合、C<$Data::Dumper::Varname> によって指定される
+接頭辞が数的接尾辞と共に使われます。
+
+=begin original 
+
+Data::Dumper will catalog all references encountered while dumping the
+values. Cross-references (in the form of names of substructures in perl
+syntax) will be inserted at all possible points, preserving any structural
+interdependencies in the original set of values.  Structure traversal is
+depth-first,  and proceeds in order from the first supplied value to
+the last.
+
+=end original
+
+Data::Dumper は変数をダンプする際に遭遇したすべてのリファレンスをカタログ化します。
+（Perl文法における下部構造の名前の形式における）クロスリファレンスは、あらゆる
+可能性のある点に挿入され、変数のオリジナルの集合におけるいかなる構造的相互依存性も
+保持します。構造の探索は最初に階層について行い、それから最初に提供された値から最後のものへ
+と進行します。
+
+=item I<$OBJ>->Dump  I<or>  I<PACKAGE>->Dump(I<ARRAYREF [>, I<ARRAYREF]>)
+
+=begin original
+
+Returns the stringified form of the values stored in the object (preserving
+the order in which they were supplied to C<new>), subject to the
+configuration options below.  In a list context, it returns a list
+of strings corresponding to the supplied values.
+
+The second form, for convenience, simply calls the C<new> method on its
+arguments before dumping the object immediately.
+
+=end original
+
+オブジェクト内に格納されている値を文字列化して返し（ C<new> の際に与えられた順番を保持）、
+以下の設定オプションに従います。リストコンテキスト（引数が二つ）では、与えられた値に対応する
+文字列のリストを返します。
+
+第二の形式は、便利さのためで、与えられた引数で C<new> メソッドを呼び出して、即、ダンプする。
+
+=item I<$OBJ>->Seen(I<[HASHREF]>)
+
+=begin original
+
+Queries or adds to the internal table of already encountered references.
+You must use C<Reset> to explicitly clear the table if needed.  Such
+references are not dumped; instead, their names are inserted wherever they
+are encountered subsequently.  This is useful especially for properly
+dumping subroutine references.
+
+=end original
+
+すでに遭遇したリファレンスの内部テーブルへクエリーするあるいはそこに追加します。明示的な
+テーブルの消去が必要ならば、 C<Reset> を使わねばなりません。そのようなリファレンスは
+ダンプされず、代わりにその名前はその後に遭遇された場所ならどこにでも挿入されます。
+これは、適切にサブルーチンリファレンスをダンプするのに特に有用です。
+
+=begin original
+
+Expects an anonymous hash of name => value pairs.  Same rules apply for names
+as in C<new>.  If no argument is supplied, will return the "seen" list of
+name => value pairs, in a list context.  Otherwise, returns the object
+itself.
+
+=end original
+
+'name => value' ペアの無名ハッシュを引数にとります。 C<new> の中と同じルールを名前に対して
+適用します。引数がない場合は、'name => value' ペアの "seen" リストをリスト
+コンテキストにおいて返します。そうでなければオブジェクト自体を返します。
+
+=item I<$OBJ>->Values(I<[ARRAYREF]>)
+
+=begin original
+
+Queries or replaces the internal array of values that will be dumped.  When
+called without arguments, returns the values as a list.  When called with a
+reference to an array of replacement values, returns the object itself.  When
+called with any other type of argument, dies.
+
+=end original
+
+ダンプされる予定の値の内部配列を呼び出すか置換します。引数なしで呼ばれた時は、
+リストとして値たちを返します。置換する値の配列へのリファレンスと共に呼ばれた時は、
+オブジェクト自体を返します。他の型が引数に与えられた場合は die します。
+
+
+=item I<$OBJ>->Names(I<[ARRAYREF]>)
+
+=begin original
+
+Queries or replaces the internal array of user supplied names for the values
+that will be dumped.  When called without arguments, returns the names.  When
+called with an array of replacement names, returns the object itself.  If the
+number of replacement names exceeds the number of values to be named, the
+excess names will not be used.  If the number of replacement names falls short
+of the number of values to be named, the list of replacement names will be
+exhausted and remaining values will not be renamed.  When
+called with any other type of argument, dies.
+
+=end original
+
+ダンプされる予定の値に対してユーザーが指定した変数名の内部配列を呼び出すか置換します。
+引数無しの場合は、変数名を返します。置換する変数名の配列で呼ばれた場合は、オブジェクト自体を返します。
+置換する変数名の数が名付けられる変数の数より多い場合、余った変数名は使用されません。
+変数名が足りない場合は、足りない部分の変数名はそのままになります。他の方の引数で
+呼ばれた場合は die します。
+
+
+=item I<$OBJ>->Reset
+
+=begin original
+
+Clears the internal table of "seen" references and returns the object
+itself.
+
+=end original
+
+"seen"リファレンスの内部テーブルをクリアして、オブジェクト自身を返します。
+
+
+=back
+
+=head2 Functions
+
+=over 4
+
+=item Dumper(I<LIST>)
+
+=begin original
+
+Returns the stringified form of the values in the list, subject to the
+configuration options below.  The values will be named C<$VAR>I<n> in the
+output, where I<n> is a numeric suffix.  Will return a list of strings
+in a list context.
+
+=end original
+
+リスト内の値を文字列化して返します。変数は、出力の中で C<$VAR>I<n> と名前をつけられ、
+ I<n> は数的接尾辞です。リストコンテキストで文字列のリストを返します。 
+
+
+=back
+
+=head2 Configuration Variables or Methods
+
+（設定変数とそのメソッド）
+
+=begin original
+
+Several configuration variables can be used to control the kind of output
+generated when using the procedural interface.  These variables are usually
+C<local>ized in a block so that other parts of the code are not affected by
+the change.
+
+These variables determine the default state of the object created by calling
+the C<new> method, but cannot be used to alter the state of the object
+thereafter.  The equivalent method names should be used instead to query
+or set the internal state of the object.
+
+The method forms return the object itself when called with arguments,
+so that they can be chained together nicely.
+
+=end original
+
+いくつかの設定変数は、手続的インターフェースを使って生成される出力の種類を制御するのに
+使われます。これらの変数は、通常はブロックの中で C<local> されて、プログラムの他の
+部分に影響を与えないようになっています。
+
+これらの変数は、 C<new> メソッドが呼ばれて作られるオブジェクトのデフォルト状態を
+決定しますが、その後のオブジェクトの状態を変化させるのには使うことができません。
+等価なメソッド名を通じて、オブジェクトの内部状態を参照あるいは適用されるべきです。
+
+メソッド形式は引数ありで呼ばれるとオブジェクト自身を返すので、きれいに連鎖させることが
+できます。
+
+=over 4
+
+=item *
+
+$Data::Dumper::Indent  I<or>  I<$OBJ>->Indent(I<[NEWVAL]>)
+
+=begin original
+
+Controls the style of indentation.  It can be set to 0, 1, 2 or 3.  Style 0
+spews output without any newlines, indentation, or spaces between list items.
+It is the most compact format possible that can still be called valid perl.
+Style 1 outputs a readable form with newlines but no fancy indentation (each
+level in the structure is simply indented by a fixed amount of whitespace).
+Style 2 (the default) outputs a very readable form which lines up the hash
+keys.  Style 3 is like style 2, but also annotates the elements of arrays with
+their index (but the comment is on its own line, so array output consumes
+twice the number of lines).  Style 2 is the default.
+
+=end original
+
+インデントのスタイルを制御します。0, 1, 2, 3を指定できます。スタイル0はリストの
+項目間に改行、インデント、スペースを一切含めずに出力します。もっともコンパクトな形式ですが、
+perlとして実行可能です。スタイル1は改行ありで読みやすい形ですが、見やすいインデントが
+ありません（それぞれの構造におけるレベルは、単に固定長のスペースでインデントされています）。
+スタイル2（デフォルト）はとても読みやすい形式で、ハッシュキーが揃っています。
+スタイル3はスタイル2に似ていますが、配列の要素にインデックス数が付記されます（ただし、
+付記は独立した行なので、配列の出力は２倍の行を消費します）。スタイル2がデフォルトです。
+
+=item *
+
+$Data::Dumper::Trailingcomma  I<or>  I<$OBJ>->Trailingcomma(I<[NEWVAL]>)
+
+=begin original
+
+Controls whether a comma is added after the last element of an array or
+hash. Even when true, no comma is added between the last element of an array
+or hash and a closing bracket when they appear on the same line. The default
+is false.
+
+=end original
+
+配列またはハッシュの最後の要素のあとにカンマを付加するかどうかを制御します。
+値が真(true)の時であっても、配列またはハッシュの最後の要素と閉じ括弧が同じ行に現れるときは、
+それらの間にはカンマは付加されません。デフォルトは偽(false)です。
+
+=item *
+
+$Data::Dumper::Purity  I<or>  I<$OBJ>->Purity(I<[NEWVAL]>)
+
+=begin original
+
+Controls the degree to which the output can be C<eval>ed to recreate the
+supplied reference structures.  Setting it to 1 will output additional perl
+statements that will correctly recreate nested references.  The default is
+0.
+
+=end original
+
+与えられたリファレンス構造を再生成するために、出力の C<eval> がどの程度できるかを制御
+します。設定が 1 のとき、追加のPerl文を出力し、ネストされたリファレンスを正しく再生成
+できるようにします。デフォルトは 0 です。
+
+=item *
+
+$Data::Dumper::Pad  I<or>  I<$OBJ>->Pad(I<[NEWVAL]>)
+
+=begin original
+
+Specifies the string that will be prefixed to every line of the output.
+Empty string by default.
+
+=end original
+
+出力の各行の先頭に付与する文字列を指定します。デフォルトは空文字列です。
+
+=item *
+
+$Data::Dumper::Varname  I<or>  I<$OBJ>->Varname(I<[NEWVAL]>)
+
+=begin original
+
+Contains the prefix to use for tagging variable names in the output. The
+default is "VAR".
+
+=end original
+
+出力の変数名をタグ付けするために使う変数接頭辞を制御します。デフォルトは "VAR" です。
+
+=item *
+
+$Data::Dumper::Useqq  I<or>  I<$OBJ>->Useqq(I<[NEWVAL]>)
+
+=begin original
+
+When set, enables the use of double quotes for representing string values.
+Whitespace other than space will be represented as C<[\n\t\r]>, "unsafe"
+characters will be backslashed, and unprintable characters will be output as
+quoted octal integers.  The default is 0.
+
+=end original
+
+これがセットされると、二重引用符（ " ）を文字列を表現するために使用できます。
+スペース以外の空白文字（Whitespace）は C<[\n\t\r]> として表現され、"unsafe"（安全でない）
+文字はバックスラッシュでエスケープされ、印刷できない文字は8進整数として出力されます。
+
+
+=item *
+
+$Data::Dumper::Terse  I<or>  I<$OBJ>->Terse(I<[NEWVAL]>)
+
+=begin original
+
+When set, Data::Dumper will emit single, non-self-referential values as
+atoms/terms rather than statements.  This means that the C<$VAR>I<n> names
+will be avoided where possible, but be advised that such output may not
+always be parseable by C<eval>.
+
+=end original
+
+これがセットされると、Data::Dumperは単一の自己言及のない変数を、文ではなく
+原子/単語として発します。 これにより C<$VAR>I<n> という名前は可能であれば回避されますが、
+ 出力が C<eval> によって常にパース可能であるわけではなくなることに注意してください。
+
+=item *
+
+$Data::Dumper::Freezer  I<or>  $I<OBJ>->Freezer(I<[NEWVAL]>)
+
+=begin original
+
+Can be set to a method name, or to an empty string to disable the feature.
+Data::Dumper will invoke that method via the object before attempting to
+stringify it.  This method can alter the contents of the object (if, for
+instance, it contains data allocated from C), and even rebless it in a
+different package.  The client is responsible for making sure the specified
+method can be called via the object, and that the object ends up containing
+only perl data types after the method has been called.  Defaults to an empty
+string.
+
+If an object does not support the method specified (determined using
+UNIVERSAL::can()) then the call will be skipped.  If the method dies a
+warning will be generated.
+
+=end original
+
+メソッド名をセットするか機能を無効にする空文字列をセットできます。Data::Dumperは
+文字列化を試みるまえにそのオブジェクトを通じてそのメソッドを呼び出します。このメソッドは
+オブジェクトの内容を変更することができ（例えば、もしC言語から割り当てられたデータを
+含んでいる場合）、異なるパッケージで再blessすることさえできます。呼び出し元は、
+指定されたメソッドがそのオブジェクトを通じて呼び出し可能であることと、
+そのオブジェクトはそのメソッドが呼ばれた後にperlのデータ型だけ含むことを確実にする
+責任があります。
+
+もしオブジェクトが指定されたメソッドをサポートしていない（ UNIVERSAL::can() を使って
+決定される）場合は、呼び出しはスキップされます。もしメソッドが die する場合は、
+warning が生成されます。
+
+=item *
+
+$Data::Dumper::Toaster  I<or>  $I<OBJ>->Toaster(I<[NEWVAL]>)
+
+=begin original
+
+Can be set to a method name, or to an empty string to disable the feature.
+Data::Dumper will emit a method call for any objects that are to be dumped
+using the syntax C<bless(DATA, CLASS)-E<gt>METHOD()>.  Note that this means that
+the method specified will have to perform any modifications required on the
+object (like creating new state within it, and/or reblessing it in a
+different package) and then return it.  The client is responsible for making
+sure the method can be called via the object, and that it returns a valid
+object.  Defaults to an empty string.
+
+=end original
+
+メソッド名をセットするか機能を無効にするために空文字列をセットできます。Data::Dumperは
+C<bless(DATA, CLASS)-E<gt>METHOD()> という文法を使ってダンプされることになる
+いかなるオブジェクトに対してもメソッド呼び出しを発します。これは、指定されたメソッドは
+オブジェクトに対して要求されるなにかしらの修正を実施し（新しい状態をその中につくる
+かつ/あるいは別のパッケージで再ブレスする）、そしてそれを返さなければなりません。
+クライアントは、そのメソッドがオブジェクトを通じて呼び出され、妥当なオブジェクトを
+返すことに確実にする責任を負います。デフォルトは空文字列です。
+
+=item *
+
+$Data::Dumper::Deepcopy  I<or>  $I<OBJ>->Deepcopy(I<[NEWVAL]>)
+
+=begin original
+
+Can be set to a boolean value to enable deep copies of structures.
+Cross-referencing will then only be done when absolutely essential
+(i.e., to break reference cycles).  Default is 0.
+
+=end original
+
+真偽値をセットして構造の深いコピーを可能にすることができます。そうして相互参照は
+絶対的に本質的な時のみなされます（すなわち、循環参照を破る）。
+
+=item *
+
+$Data::Dumper::Quotekeys  I<or>  $I<OBJ>->Quotekeys(I<[NEWVAL]>)
+
+=begin original
+
+Can be set to a boolean value to control whether hash keys are quoted.
+A defined false value will avoid quoting hash keys when it looks like a simple
+string.  Default is 1, which will always enclose hash keys in quotes.
+
+=end original
+
+ハッシュのキーが引用符でくくられるかどうかを真偽地をセットして制御します。偽の場合は、
+キーが単純な文字列に見える時に引用符をつけません。デフォルトは1で、この時は
+常にキーは引用符でくくられます。
+
+=item *
+
+$Data::Dumper::Bless  I<or>  $I<OBJ>->Bless(I<[NEWVAL]>)
+
+=begin original
+
+Can be set to a string that specifies an alternative to the C<bless>
+builtin operator used to create objects.  A function with the specified
+name should exist, and should accept the same arguments as the builtin.
+Default is C<bless>.
+
+=end original
+
+文字列をセットして、組み込みのオブジェクト生成演算子の C<bless> の代替品を指定します。
+関数は指定された名前で存在するべきで、ビルトインと同じ引数を受け入れなければなりません。
+デフォルトは C<bless> です。
+
+=item *
+
+$Data::Dumper::Pair  I<or>  $I<OBJ>->Pair(I<[NEWVAL]>)
+
+=begin original
+
+Can be set to a string that specifies the separator between hash keys
+and values. To dump nested hash, array and scalar values to JavaScript,
+use: C<$Data::Dumper::Pair = ' : ';>. Implementing C<bless> in JavaScript
+is left as an exercise for the reader.
+A function with the specified name exists, and accepts the same arguments
+as the builtin.
+
+Default is: C< =E<gt> >.
+
+=end original
+
+文字列をセットして、ハッシュのキーと値の間のセパレーターを指定します。ネストしたハッシュ、
+配列、スカラー値をJavaScriptへダンプするときは、C<$Data::Dumper::Pair = ' : ';> を
+使ってください。Javascriptのなかで C<bless> を実装するのは読者の練習にとっておきます。
+指定された名前の関数が存在し、ビルトインと同じ引数を受け入れます。
+
+デフォルトは C< =E<gt> > です。
+
+=item *
+
+$Data::Dumper::Maxdepth  I<or>  $I<OBJ>->Maxdepth(I<[NEWVAL]>)
+
+=begin original
+
+Can be set to a positive integer that specifies the depth beyond which
+we don't venture into a structure.  Has no effect when
+C<Data::Dumper::Purity> is set.  (Useful in debugger when we often don't
+want to see more than enough).  Default is 0, which means there is
+no maximum depth.
+
+=end original
+
+正の整数をセットすることで、探索をしないのはどの深さを超えたらかを指定します。
+C<Data::Dumper::Purity> がセットされている時は効果がありません。（デバッガで
+必要以上に見たくない時に有用です）デフォルトは 0 で、この場合最大の深さはありません。
+
+=item *
+
+$Data::Dumper::Maxrecurse  I<or>  $I<OBJ>->Maxrecurse(I<[NEWVAL]>)
+
+=begin original
+
+Can be set to a positive integer that specifies the depth beyond which
+recursion into a structure will throw an exception.  This is intended
+as a security measure to prevent perl running out of stack space when
+dumping an excessively deep structure.  Can be set to 0 to remove the
+limit.  Default is 1000.
+
+=end original
+
+正の整数をセットして、指定された深さを超える再帰構造は例外を投げます。これは
+セキュリティ対策のためで、過度に深い構造をダンプする際に、perlがスタックスペースを
+使い果たさないようにするためです。 デフォルトは 1000 です。 
+
+=item *
+
+$Data::Dumper::Useperl  I<or>  $I<OBJ>->Useperl(I<[NEWVAL]>)
+
+=begin original
+
+Can be set to a boolean value which controls whether the pure Perl
+implementation of C<Data::Dumper> is used. The C<Data::Dumper> module is
+a dual implementation, with almost all functionality written in both
+pure Perl and also in XS ('C'). Since the XS version is much faster, it
+will always be used if possible. This option lets you override the
+default behavior, usually for testing purposes only. Default is 0, which
+means the XS implementation will be used if possible.
+
+=end original
+
+真偽値をセットして、ピュアperl実装の C<Data::Dumper> を使うかどうかを制御できます。
+C<Data::Dumper> はほぼすべての機能がピュアperlとXS(C言語)の二重実装になっています。
+XSバージョンの方が速いので、可能な場合はそちらが使われます。このオプションで、
+デフォルトの挙動を書き換えられますますが、大抵はテストが目的の時だけです。デフォルトは
+0 で、この場合 XS実装が可能な限り使われます。
+
+=item *
+
+$Data::Dumper::Sortkeys  I<or>  $I<OBJ>->Sortkeys(I<[NEWVAL]>)
+
+=begin original
+
+Can be set to a boolean value to control whether hash keys are dumped in
+sorted order. A true value will cause the keys of all hashes to be
+dumped in Perl's default sort order. Can also be set to a subroutine
+reference which will be called for each hash that is dumped. In this
+case C<Data::Dumper> will call the subroutine once for each hash,
+passing it the reference of the hash. The purpose of the subroutine is
+to return a reference to an array of the keys that will be dumped, in
+the order that they should be dumped. Using this feature, you can
+control both the order of the keys, and which keys are actually used. In
+other words, this subroutine acts as a filter by which you can exclude
+certain keys from being dumped. Default is 0, which means that hash keys
+are not sorted.
+
+=end original
+
+真偽値をセットすることで、ハッシュのキーをダンプする際にソートするか制御できます。
+真値を与えると全てのハッシュのキーはPerlのデフォルトのソート順でダンプされます。
+サブルーチンリファレンスをセットすることで、それぞれのハッシュがダンプされるときに
+それが呼び出されるようにすることができます。この場合、 C<Data::Dumper> は
+それぞれのハッシュにつき一度そのサブルーチンを呼び出し、ハッシュのリファレンスを渡します。
+サブルーチンの目的は、ダンプされるキーの配列へのリファレンスを返すことで、その順番で
+ダンプされます。この機能を使うことで、キーの順番とどのキーが実際に使われるのかの両方を
+制御することができます。言い換えると、このサブルーチンはある種のキーをダンプから除外する
+フィルターとして働きます。デフォルトは 0 で、この場合ハッシュのキーはソートされません。
+
+=item *
+
+$Data::Dumper::Deparse  I<or>  $I<OBJ>->Deparse(I<[NEWVAL]>)
+
+=begin original
+
+Can be set to a boolean value to control whether code references are
+turned into perl source code. If set to a true value, C<B::Deparse>
+will be used to get the source of the code reference. In older versions,
+using this option imposed a significant performance penalty when dumping
+parts of a data structure other than code references, but that is no
+longer the case.
+
+Caution : use this option only if you know that your coderefs will be
+properly reconstructed by C<B::Deparse>.
+
+=end original
+
+真偽値をセットすることで、コードリファレンスをperlのソースコードに変換するかどうかを
+制御できます。真がセットされた場合、C<B::Deparse> がコードリファレンスのソースを
+取得するのに使われます。古いバージョンでは、コードリファレンス以外のデータ構造を
+有するものをダンプする時に有意に性能の低下がおこりましたが、現在は解消されています。
+
+注意：このオプションはコードレファレンスが適切に C<B::Deparse> によって再構築される
+とわかっている時にのみ使用してください。
+
+=item *
+
+$Data::Dumper::Sparseseen I<or>  $I<OBJ>->Sparseseen(I<[NEWVAL]>)
+
+=begin original
+
+By default, Data::Dumper builds up the "seen" hash of scalars that
+it has encountered during serialization. This is very expensive.
+This seen hash is necessary to support and even just detect circular
+references. It is exposed to the user via the C<Seen()> call both
+for writing and reading.
+
+If you, as a user, do not need explicit access to the "seen" hash,
+then you can set the C<Sparseseen> option to allow Data::Dumper
+to eschew building the "seen" hash for scalars that are known not
+to possess more than one reference. This speeds up serialization
+considerably if you use the XS implementation.
+
+Note: If you turn on C<Sparseseen>, then you must not rely on the
+content of the seen hash since its contents will be an
+implementation detail!
+
+=end original
+
+デフォルトでは Data::Dumper は 文字列化の際に遭遇したスカラーの"seen"ハッシュを
+構築します。これはとてもコストがかかります。このseenハッシュは、循環参照をサポートし
+ただ検出するためにも必要です。これは C<Seen()> の呼び出しを通じて、書き込みと
+読み出しの両方でユーザーに提供されます。
+
+もしあなたがユーザーとして"seen"ハッシュへの明示的なアクセスが必要ないならば、
+C<Sparseseen> オプションをセットすることで、2つ以上のリファレンスを持たない
+ことがわかっているスカラーについては Data::Dumper が "seen"ハッシュを
+構築するのをさけることができます。これはXS実装を使う場合、かなり文字列化の速度を
+向上します。
+
+注釈：C<Sparseseen> をオンにする場合、seenハッシュを信用してはいけません。詳細は
+実装を参照してください。
+
+=back
+
+=head2 Exports
+
+=over 4
+
+=item Dumper
+
+=back
+
+=head1 EXAMPLES
+
+=begin original
+
+Run these code snippets to get a quick feel for the behavior of this
+module.  When you are through with these examples, you may want to
+add or change the various configuration variables described above,
+to see their behavior.  (See the testsuite in the Data::Dumper
+distribution for more examples.)
+
+=end original
+
+このモジュールの挙動を手早く把握するために以下のコードを実行してください。
+以下の例を試した後、上に述べた様々な設定オプションを加えたり変更してその挙動の
+違いを観察することもできます。（さらに多くの例については、Data::Dumperの
+ディストリビューションに含まれるテストスイートを参照してください。）
+
+    use Data::Dumper;
+
+    package Foo;
+    sub new {bless {'a' => 1, 'b' => sub { return "foo" }}, $_[0]};
+
+    package Fuz;                       # a weird REF-REF-SCALAR object
+    sub new {bless \($_ = \ 'fu\'z'), $_[0]};
+
+    package main;
+    $foo = Foo->new;
+    $fuz = Fuz->new;
+    $boo = [ 1, [], "abcd", \*foo,
+             {1 => 'a', 023 => 'b', 0x45 => 'c'},
+             \\"p\q\'r", $foo, $fuz];
+
+    ########
+    # simple usage
+    ########
+
+    $bar = eval(Dumper($boo));
+    print($@) if $@;
+    print Dumper($boo), Dumper($bar);  # pretty print (no array indices)
+
+    $Data::Dumper::Terse = 1;        # don't output names where feasible
+    $Data::Dumper::Indent = 0;       # turn off all pretty print
+    print Dumper($boo), "\n";
+
+    $Data::Dumper::Indent = 1;       # mild pretty print
+    print Dumper($boo);
+
+    $Data::Dumper::Indent = 3;       # pretty print with array indices
+    print Dumper($boo);
+
+    $Data::Dumper::Useqq = 1;        # print strings in double quotes
+    print Dumper($boo);
+
+    $Data::Dumper::Pair = " : ";     # specify hash key/value separator
+    print Dumper($boo);
+
+
+    ########
+    # recursive structures
+    ########
+
+    @c = ('c');
+    $c = \@c;
+    $b = {};
+    $a = [1, $b, $c];
+    $b->{a} = $a;
+    $b->{b} = $a->[1];
+    $b->{c} = $a->[2];
+    print Data::Dumper->Dump([$a,$b,$c], [qw(a b c)]);
+
+
+    $Data::Dumper::Purity = 1;         # fill in the holes for eval
+    print Data::Dumper->Dump([$a, $b], [qw(*a b)]); # print as @a
+    print Data::Dumper->Dump([$b, $a], [qw(*b a)]); # print as %b
+
+
+    $Data::Dumper::Deepcopy = 1;       # avoid cross-refs
+    print Data::Dumper->Dump([$b, $a], [qw(*b a)]);
+
+
+    $Data::Dumper::Purity = 0;         # avoid cross-refs
+    print Data::Dumper->Dump([$b, $a], [qw(*b a)]);
+
+    ########
+    # deep structures
+    ########
+
+    $a = "pearl";
+    $b = [ $a ];
+    $c = { 'b' => $b };
+    $d = [ $c ];
+    $e = { 'd' => $d };
+    $f = { 'e' => $e };
+    print Data::Dumper->Dump([$f], [qw(f)]);
+
+    $Data::Dumper::Maxdepth = 3;       # no deeper than 3 refs down
+    print Data::Dumper->Dump([$f], [qw(f)]);
+
+
+    ########
+    # object-oriented usage
+    ########
+
+    $d = Data::Dumper->new([$a,$b], [qw(a b)]);
+    $d->Seen({'*c' => $c});            # stash a ref without printing it
+    $d->Indent(3);
+    print $d->Dump;
+    $d->Reset->Purity(0);              # empty the seen cache
+    print join "----\n", $d->Dump;
+
+
+    ########
+    # persistence
+    ########
+
+    package Foo;
+    sub new { bless { state => 'awake' }, shift }
+    sub Freeze {
+        my $s = shift;
+        print STDERR "preparing to sleep\n";
+        $s->{state} = 'asleep';
+        return bless $s, 'Foo::ZZZ';
+    }
+
+    package Foo::ZZZ;
+    sub Thaw {
+        my $s = shift;
+        print STDERR "waking up\n";
+        $s->{state} = 'awake';
+        return bless $s, 'Foo';
+    }
+
+    package main;
+    use Data::Dumper;
+    $a = Foo->new;
+    $b = Data::Dumper->new([$a], ['c']);
+    $b->Freezer('Freeze');
+    $b->Toaster('Thaw');
+    $c = $b->Dump;
+    print $c;
+    $d = eval $c;
+    print Data::Dumper->Dump([$d], ['d']);
+
+
+    ########
+    # symbol substitution (useful for recreating CODE refs)
+    ########
+
+    sub foo { print "foo speaking\n" }
+    *other = \&foo;
+    $bar = [ \&other ];
+    $d = Data::Dumper->new([\&other,$bar],['*other','bar']);
+    $d->Seen({ '*foo' => \&foo });
+    print $d->Dump;
+
+
+    ########
+    # sorting and filtering hash keys
+    ########
+
+    $Data::Dumper::Sortkeys = \&my_filter;
+    my $foo = { map { (ord, "$_$_$_") } 'I'..'Q' };
+    my $bar = { %$foo };
+    my $baz = { reverse %$foo };
+    print Dumper [ $foo, $bar, $baz ];
+
+    sub my_filter {
+        my ($hash) = @_;
+        # return an array ref containing the hash keys to dump
+        # in the order that you want them to be dumped
+        return [
+          # Sort the keys of %$foo in reverse numeric order
+            $hash eq $foo ? (sort {$b <=> $a} keys %$hash) :
+          # Only dump the odd number keys of %$bar
+            $hash eq $bar ? (grep {$_ % 2} keys %$hash) :
+          # Sort keys in default order for all other hashes
+            (sort keys %$hash)
+        ];
+    }
+
+=head1 BUGS
+
+=begin original
+
+Due to limitations of Perl subroutine call semantics, you cannot pass an
+array or hash.  Prepend it with a C<\> to pass its reference instead.  This
+will be remedied in time, now that Perl has subroutine prototypes.
+For now, you need to use the extended usage form, and prepend the
+name with a C<*> to output it as a hash or array.
+
+C<Data::Dumper> cheats with CODE references.  If a code reference is
+encountered in the structure being processed (and if you haven't set
+the C<Deparse> flag), an anonymous subroutine that
+contains the string '"DUMMY"' will be inserted in its place, and a warning
+will be printed if C<Purity> is set.  You can C<eval> the result, but bear
+in mind that the anonymous sub that gets created is just a placeholder.
+Even using the C<Deparse> flag will in some cases produce results that
+behave differently after being passed to C<eval>; see the documentation
+for L<B::Deparse>.
+
+SCALAR objects have the weirdest looking C<bless> workaround.
+
+=end original
+
+Perlのサブルーチン呼び出し文法の制限により、配列またはハッシュを引数に渡すことができません。
+かわりに C<\> を先頭に付け加えて渡してください。いまやPerlはサブルーチンプロトタイプあるので、
+時間の経過とともに解決するでしょう。いまは拡張使用形式を使う必要があり、配列またはハッシュとして
+ C<*> を変数名の前につける必要があります。
+
+=head2 NOTE
+
+=begin original
+
+Different runs of Perl will have different
+ordering of hash keys.  The change was done for greater security,
+see L<perlsec/"Algorithmic Complexity Attacks">.  This means that
+different runs of Perl will have different Data::Dumper outputs if
+the data contains hashes.  If you need to have identical Data::Dumper
+outputs from different runs of Perl, use the environment variable
+PERL_HASH_SEED, see L<perlrun/PERL_HASH_SEED>.  Using this restores
+the old (platform-specific) ordering: an even prettier solution might
+be to use the C<Sortkeys> filter of Data::Dumper.
+
+=end original
+
+Perlの実行のたびに、ハッシュキーの順序が異なったものになります。
+重大なセキュリティ問題のためにされたこの変更については、
+L<perlsec/"Algorithmic Complexity Attacks"> を見てください。
+これは、データにハッシュが含まれる場合、Data::DumperはPerlの実行ごとに
+異なる出力をするということを意味します。実行のたびにData::Dumperが同一の
+結果を返すようにする必要がある場合は、環境変数の PERL_HASH_SEED を使用します。
+（ L<perlrun/PERL_HASH_SEED> 参照）これを使うことで、古い（プラットフォーム
+特異的な）順序を取り戻します：さらによい解決法は、Data::Dumper の C<Sortkeys>
+を使用することかもしれません。
+
+=head1 AUTHOR
+
+Gurusamy Sarathy        gsar@activestate.com
+
+Copyright (c) 1996-2019 Gurusamy Sarathy. All rights reserved.
+This program is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
+
+=head1 VERSION
+
+Version 2.183
+
+=head1 SEE ALSO
+
+perl(1)
+
+
+=cut
+
