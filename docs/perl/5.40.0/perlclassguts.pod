@@ -1,0 +1,1005 @@
+
+=encoding utf8
+
+=head1 NAME
+
+=begin original
+
+perlclassguts - Internals of how C<feature 'class'> and class syntax works
+
+=end original
+
+perlclassguts - C<feature 'class'> とクラス構文の動作の内部
+
+(訳注: (TBR)がついている段落は「みんなの自動翻訳＠TexTra」による
+機械翻訳です。)
+
+=head1 DESCRIPTION
+
+=begin original
+
+This document provides in-depth information about the way in which the perl
+interpreter implements the C<feature 'class'> syntax and overall behaviour.
+It is not intended as an end-user guide on how to use the feature. For that,
+see L<perlclass>.
+
+=end original
+
+この文書は、perl インタプリタが C<feature 'class'> の構文と
+全体的な振る舞いを実装する方法についての詳細な情報を提供します。
+これは、機能の使用方法に関するエンドユーザガイドとして
+意図されたものではありません。
+それについては、L<perlclass> を参照してください。
+
+=begin original
+
+The reader is assumed to be generally familiar with the perl interpreter
+internals overall. For a more general overview of these details, see also
+L<perlguts>.
+
+=end original
+
+読者は一般的に perl インタプリタの内部全体に親しんでいると想定されています。
+これらの詳細のより一般的な概要については、L<perlguts> も参照してください。
+
+=head1 DATA STORAGE
+
+(データの保管先)
+
+=head2 Classes
+
+(クラス)
+
+=begin original
+
+A class is fundamentally a package, and exists in the symbol table as an HV
+with an aux structure in exactly the same way as a non-class package. It is
+distinguished from a non-class package by the fact that the
+C<HvSTASH_IS_CLASS()> macro will return true on it.
+
+=end original
+
+クラスは基本的にパッケージであり、非クラスパッケージとまったく
+同じ方法で補助構造を持つ HV としてシンボルテーブルに存在します。
+C<HvSTASH_IS_CLASS()> マクロが真を返すという事実によって、
+非クラスパッケージと区別されます。
+
+=begin original
+
+Extra information relating to it being a class is stored in the
+C<struct xpvhv_aux> structure attached to the stash, in the following fields:
+
+=end original
+
+クラスであることに関する追加情報は、スタッシュに付加された
+C<struct xpvhv_aux> 構造体の以下のフィールドに格納されます:
+
+    HV          *xhv_class_superclass;
+    CV          *xhv_class_initfields_cv;
+    AV          *xhv_class_adjust_blocks;
+    PADNAMELIST *xhv_class_fields;
+    PADOFFSET    xhv_class_next_fieldix;
+    HV          *xhv_class_param_map;
+
+=over 4
+
+=item *
+
+=begin original
+
+C<xhv_class_superclass> will be C<NULL> for a class with no superclass. It
+will point directly to the stash of the parent class if one has been set with
+the C<:isa()> class attribute.
+
+=end original
+
+スーパークラスのないクラスの場合、C<xhv_class_superclass> は
+C<NULL> になります。
+C<:isa()> クラス属性で親クラスが設定されている場合は、
+親クラスのスタッシュを直接指します。
+
+=item *
+
+=begin original
+
+C<xhv_class_initfields_cv> will contain a C<CV *> pointing to a function to be
+invoked as part of the constructor of this class or any subclass thereof. This
+CV is responsible for initializing all the fields defined by this class for a
+new instance. This CV will be an anonymous real function - i.e. while it has no
+name and no GV, it is I<not> a protosub and may be directly invoked.
+
+=end original
+
+C<xhv_class_initfields_cv> には、このクラスまたはその任意のサブクラスの
+コンストラクタの一部として呼び出される関数を指す C<CV *> が含まれます。
+この CV は、新しいインスタンスに対してこのクラスによって定義された
+すべてのフィールドを初期化する責任があります。
+このCVは匿名の実関数になります。
+つまり、名前も GV もありませんが、protosub ではなく、
+直接呼び出すことができます。
+(TBR)
+
+=item *
+
+=begin original
+
+C<xhv_class_adjust_blocks> may point to an AV containing CV pointers to each of
+the C<ADJUST> blocks defined on the class. If the class has a superclass, this
+array will additionally contain duplicate pointers of the CVs of its parent
+class. The AV is created lazily the first time an element is pushed to it; it
+is valid for there not to be one, and this pointer will be C<NULL> in that
+case.
+
+=end original
+
+C<xhv_class_adjust_blocks> は、クラスで定義された各 C<ADJUST> ブロックへの
+CV ポインタを含む AV を指す場合があります。
+クラスにスーパークラスがある場合、この配列には親クラスの CV の
+重複ポインタも含まれます。
+AV は、エレメントが最初にプッシュされたときに遅延的に作成されます。
+AV が存在しない場合は有効であり、この場合、このポインタは C<NULL> になります。
+(TBR)
+
+=begin original
+
+The CVs are stored directly, not via RVs. Each CV will be an anonymous real
+function.
+
+=end original
+
+CV は RV 経由ではなく直接保存されます。
+各 CV は匿名の実関数になります。
+
+=item *
+
+=begin original
+
+C<xhv_class_fields> will point to a C<PADNAMELIST> containing C<PADNAME>s,
+each being one defined field of the class. They are stored in order of
+declaration. Note however, that the index into this array will not necessarily
+be equal to the C<fieldix> of each field, because in the case of a subclass,
+the array will begin at zero but the index of the first field in it will be
+non-zero if its parent class contains any fields at all.
+
+=end original
+
+C<xhv_class_fields> は、C<PADNAMELIST> を含む C<PADNAME> を指します;
+それぞれがクラスの定義された一つのフィールドです。
+これらは宣言順に格納されます。
+ただし、この配列のインデックスは各フィールドの C<fieldix> と
+必ずしも等しくないことに注意してください;
+サブクラスの場合、配列はゼロから始まりますが、その親クラスに
+フィールドが含まれている場合、配列の最初のフィールドのインデックスは
+ゼロではないからです。
+
+=begin original
+
+For more information on how individual fields are represented, see L</Fields>.
+
+=end original
+
+個々のフィールドの表現方法の詳細については、L</Fields> を参照してください。
+
+=item *
+
+=begin original
+
+C<xhv_class_next_fieldix> gives the field index that will be assigned to the
+next field to be added to the class. It is only useful at compile-time.
+
+=end original
+
+C<xhv_class_next_fieldix> は、クラスに追加される次の
+フィールドに代入されるフィールドインデックスを与えます。
+これはコンパイル時にのみ有効です。
+
+=item *
+
+=begin original
+
+C<xhv_class_param_map> may point to an HV which maps field C<:param> attribute
+names to the field index of the field with that name. This mapping is copied
+from parent classes; each class will contain the sum total of all its parents
+in addition to its own.
+
+=end original
+
+C<xhv_class_param_map> は、フィールド C<:param> 属性名をその名前を持つ
+フィールドのフィールドインデックスにマッピングする HV を指す場合があります。
+このマッピングは親クラスからコピーされます;
+各クラスには、独自のクラスに加えて、すべての親の合計が含まれます。
+
+=back
+
+=head2 Fields
+
+(フィールド)
+
+=begin original
+
+A field is still fundamentally a lexical variable declared in a scope, and
+exists in the C<PADNAMELIST> of its corresponding CV. Methods and other
+method-like CVs can still capture them exactly as they can with regular
+lexicals. A field is distinguished from other kinds of pad entry in that the
+C<PadnameIsFIELD()> macro will return true on it.
+
+=end original
+
+フィールドは基本的にスコープで宣言された字句変数であり、対応する
+CVのC<PADNAMELIST> に存在します。
+メソッドやその他のメソッドのような CV は、通常のlexicalsと
+まったく同じようにそれらをキャプチャできます。
+フィールドは、C<PadnameIsFIELD()> マクロがそれに対して真を
+返すという点で、他の種類のパッドエントリとは区別されます。
+(TBR)
+
+=begin original
+
+Extra information relating to it being a field is stored in an additional
+structure accessible via the C<PadnameFIELDINFO()> macro on the padname. This
+structure has the following fields:
+
+=end original
+
+フィールドであることに関連する追加情報は、パッド名の
+C<PadnameFIELDINFO()> マクロを介してアクセス可能な追加構造体に格納されます。
+この構造体には、次のフィールドがあります:
+
+    PADOFFSET  fieldix;
+    HV        *fieldstash;
+    OP        *defop;
+    SV        *paramname;
+    bool       def_if_undef;
+    bool       def_if_false;
+
+=over 4
+
+=item *
+
+=begin original
+
+C<fieldix> stores the "field index" of the field; that is, the index into the
+instance field array where this field's value will be stored. Note that the
+first index in the array is not specially reserved. The first field in a class
+will start from field index 0.
+
+=end original
+
+C<fieldix> は、フィールドの「フィールドインデックス」を格納します。
+つまり、このフィールドの値が格納されるインスタンスフィールド配列への
+インデックスです。
+配列の最初のインデックスは特別に予約されていないことに注意してください。
+クラスの最初のフィールドは、フィールドインデックス 0 から始まります。
+(TBR)
+
+=item *
+
+=begin original
+
+C<fieldstash> stores a pointer to the stash of the class that defined this
+field. This is necessary in case there are multiple classes defined within the
+same scope; it is used to disambiguate the fields of each.
+
+=end original
+
+C<fieldstash> は、このフィールドを定義したクラスのスタッシュへのポインタを
+格納します。
+これは、同じスコープ内に複数のクラスが定義されている場合に必要です;
+これは、それぞれのフィールドを明確にするために使用されます。
+
+    {
+        class C1; field $x;
+        class C2; field $x;
+    }
+
+=item *
+
+=begin original
+
+C<defop> may store a pointer to a defaulting expression optree for this field.
+Defaulting expressions are optional; this field may be C<NULL>.
+
+=end original
+
+C<defop> は、このフィールドのデフォルト式 op 木へのポインタを格納できます。
+デフォルト式はオプションです;
+このフィールドは C<NULL> である場合があります。
+
+=item *
+
+=begin original
+
+C<paramname> may point to a regular string SV containing the C<:param> name
+attribute given to the field. If none, it will be C<NULL>.
+
+=end original
+
+C<paramname>  は、フィールドに指定された C<:param> 名前属性を含む
+通常の文字列 SV を指す場合があります。
+属性がない場合は、C<NULL> になります。
+
+=item *
+
+=begin original
+
+One of C<def_if_undef> and C<def_if_false> will be true if the defaulting
+expression was set using the C<//=> or C<||=> operators respectively.
+
+=end original
+
+C<def_if_undef> および C<def_if_false> のいずれかは、デフォルトの
+式がそれぞれ C<//=> 演算子また は C<||=> 演算子を使用して
+設定された場合に真になります。
+
+=back
+
+=head2 Methods
+
+(メソッド)
+
+=begin original
+
+A method is still fundamentally a CV, and has the same basic representation as
+one. It has an optree and a pad, and is stored via a GV in the stash of its
+containing package. It is distinguished from a non-method CV by the fact that
+the C<CvIsMETHOD()> macro will return true on it.
+
+=end original
+
+メソッドは基本的には依然として CV であり、CV と同じ基本表現を持ちます。
+op 木とパッドを持ち、GV を介して格納パッケージのスタッシュに格納されます。
+C<CvIsMETHOD()> マクロが真を返すという事実によって、
+メソッド以外の CV と区別されます。
+
+=begin original
+
+(Note: This macro should not be confused with the one that was previously
+called C<CvMETHOD()>. That one does not relate to the class system, and was
+renamed to C<CvNOWARN_AMBIGUOUS()> to avoid this confusion.)
+
+=end original
+
+(注意: このマクロは、以前 C<CvMETHOD()> と呼ばれていたものと
+混同しないようにしてください。
+このマクロはクラスシステムに関連しておらず、
+この混同を避けるために C<CvNOWARN_AMBIGUOUS()> に名前が変更されました。)
+
+=begin original
+
+There is currently no extra information that needs to be stored about a method
+CV, so the structure does not add any new fields.
+
+=end original
+
+現在、メソッド CV に関して格納する必要のある追加情報はないため、
+この構造体では新しいフィールドは追加されません。
+
+=head2 Instances
+
+(実体)
+
+=begin original
+
+Object instances are represented by an entirely new SV type, whose base type
+is C<SVt_PVOBJ>. This should still be blessed into its class stash and wrapped
+in an RV in the usual manner for classical object.
+
+=end original
+
+オブジェクトインスタンスは、ベースタイプが C<SVt_PVOBJ> である
+完全に新しい SV タイプによって表される。
+これは、依然としてそのクラススタッシュによって bless され、
+古典的なオブジェクトのための通常の方法で RV にラップされるべきである。
+(TBR)
+
+=begin original
+
+As these are their own unique container type, distinct from hashes or arrays,
+the core C<builtin::reftype> function returns a new value when asked about
+these. That value is C<"OBJECT">.
+
+=end original
+
+これらはハッシュや配列とは別の独自のコンテナ型なので、
+コア C<builtin::reftype> 関数は問い合わせに対して新しい値を返します。
+その値は C<"OBJECT"> です。
+(TBR)
+
+=begin original
+
+Internally, such an object is an array of SV pointers whose size is fixed at
+creation time (because the number of fields in a class is known after
+compilation). An object instance stores the max field index within it (for
+basic error-checking on access), and a fixed-size array of SV pointers storing
+the individual field values.
+
+=end original
+
+内部的には、このようなオブジェクトは SV ポインタの配列であり、
+そのサイズは作成時に固定されています(クラスのフィールド数は
+コンパイル後にわかるため)。
+オブジェクトインスタンスには、最大フィールドインデックス
+(アクセス時の基本的なエラーチェック用)と、個々のフィールド値を
+格納する SV ポインタの固定サイズの配列が格納されます。
+(TBR)
+
+=begin original
+
+Fields of array and hash type directly store AV or HV pointers into the array;
+they are not stored via an intervening RV.
+
+=end original
+
+配列およびハッシュ型のフィールドは、AV または HV のポインタを
+配列に直接格納します。
+これらのポインタは、介在する RV を介して格納されません。
+
+=head1 API
+
+=begin original
+
+The data structures described above are supported by the following API
+functions.
+
+=end original
+
+前述のデータ構造は、次の API 関数で対応しています。
+
+=head2 Class Manipulation
+
+(クラス操作)
+
+=head3 class_setup_stash
+
+    void class_setup_stash(HV *stash);
+
+=begin original
+
+Called by the parser on encountering the C<class> keyword. It upgrades the
+stash into being a class and prepares it for receiving class-specific items
+like methods and fields.
+
+=end original
+
+C<class> キーワードを検出したときにパーサーによって呼び出されます。
+スタッシュをクラスにアップグレードし、メソッドやフィールドなどの
+クラス固有の項目を受信できるように準備します。
+
+=head3 class_seal_stash
+
+    void class_seal_stash(HV *stash);
+
+=begin original
+
+Called by the parser at the end of a C<class> block, or for unit classes its
+containing scope. This function performs various finalisation activities that
+are required before instances of the class can be constructed, but could not
+have been done until all the information about the members of the class is
+known.
+
+=end original
+
+C<class> ブロックの最後、またはユニットクラスの場合はそれを含む
+スコープでパーサによって呼び出されます。
+この関数は、クラスのインスタンスを構築する前に必要なさまざまな
+終了アクティビティを実行しますが、クラスのメンバに関するすべての
+情報がわかるまでは実行できません。
+
+=begin original
+
+Any additions to or modifications of the class under compilation must be
+performed between these two function calls. Classes cannot be modified once
+they have been sealed.
+
+=end original
+
+コンパイル中のクラスへの追加または変更は、これら二つの関数呼び出しの間に
+実行する必要があります。
+クラスは、封印(seal)された後は変更できません。
+
+=head3 class_add_field
+
+    void class_add_field(HV *stash, PADNAME *pn);
+
+=begin original
+
+Called by F<pad.c> as part of defining a new field name in the current pad.
+Note that this function does I<not> create the padname; that must already be
+done by F<pad.c>. This API function simply informs the class that the new
+field name has been created and is now available for it.
+
+=end original
+
+現在のパッドで新しいフィールド名を定義する一環として、
+F<pad.c> によって呼び出されます。
+この関数は padname を作成 I<しない> ことに注意してください;
+作成は F<pad.c> によってすでに行われている必要があります。
+この API 関数は、新しいフィールド名が作成され、使用可能になったことを
+クラスに通知するだけです。
+
+=head3 class_add_ADJUST
+
+    void class_add_ADJUST(HV *stash, CV *cv);
+
+=begin original
+
+Called by the parser once it has parsed and constructed a CV for a new
+C<ADJUST> block. This gets added to the list stored by the class.
+
+=end original
+
+新しい C<ADJUST> ブロックの CV を解析して構築した後に、パーサに
+よって呼び出されます。
+これは、クラスによって格納されるリストに追加されます。
+
+=head2 Field Manipulation
+
+(フィールド操作)
+
+=head3 class_prepare_initfield_parse
+
+    void class_prepare_initfield_parse();
+
+=begin original
+
+Called by the parser just before parsing an initializing expression for a
+field variable. This makes use of a suspended compcv to combine all the field
+initializing expressions into the same CV.
+
+=end original
+
+フィールド変数の初期化式を解析する直前にパーサによって
+呼び出されます。
+これは、すべてのフィールド初期化式を同じ CV に結合するために、
+一時停止された compcv を使用します。
+
+=head3 class_set_field_defop
+
+    void class_set_field_defop(PADNAME *pn, OPCODE defmode, OP *defop);
+
+=begin original
+
+Called by the parser after it has parsed an initializing expression for the
+field. Sets the defaulting expression and mode of application. C<defmode>
+should either be zero, or one of C<OP_ORASSIGN> or C<OP_DORASSIGN> depending
+on the defaulting mode.
+
+=end original
+
+フィールドの初期化式をパースした後に、パーサによって呼び出されます。
+デフォルト式およびアプリケーションのモードを設定します。
+C<defmode> は、ゼロであるか、デフォルトのモードに応じて
+C<OP_ORASSIGN> または C<OP_DORASSIGN> のいずれかである必要があります。
+
+=head3 padadd_FIELD
+
+    #define padadd_FIELD
+
+=begin original
+
+This flag constant tells the C<pad_add_name_*> family of functions that the
+new name should be added as a field. There is no need to call
+C<class_add_field()>; this will be done automatically.
+
+=end original
+
+このフラグ定数は、C<pad_add_name_*> ファミリの関数に、新しい名前を
+フィールドとして追加するように指示します。
+C<class_add_field()> を呼び出す必要はありません;
+これは自動的に行われます。
+
+=head2 Method Manipulation
+
+(メソッド操作)
+
+=head3 class_prepare_method_parse
+
+    void class_prepare_method_parse(CV *cv);
+
+=begin original
+
+Called by the parser after C<start_subparse()> but immediately before doing
+anything else. This prepares the C<PL_compcv> for parsing a method; arranging
+for the C<CvIsMETHOD> test to be true, adding the C<$self> lexical, and any
+other activities that may be required.
+
+=end original
+
+C<start_subparse()> の後、他の処理を行う直前にパーサによって
+呼び出されます。
+これにより、メソッドを解析するための C<PL_compcv> が準備されます;
+C<CvIsMETHOD> テストが真になるように調整され、C<$self> の字句が追加され、
+その他の必要なアクティビティが追加されます。
+
+=head3 class_wrap_method_body
+
+    OP *class_wrap_method_body(OP *o);
+
+=begin original
+
+Called by the parser at the end of parsing a method body into an optree but
+just before wrapping it in the eventual CV. This function inserts extra ops
+into the optree to make the method work correctly.
+
+=end original
+
+メソッド本体をoptreeに解析する最後に、ただし最終的なCVに
+ラップする直前に、パーサーによって呼び出されます。
+この関数は、メソッドを正しく動作させるために、optreeに
+追加の操作を挿入します。
+(TBR)
+
+=head2 Object Instances
+
+(オブジェクトインスタンス)
+
+=head3 SVt_PVOBJ
+
+    #define SVt_PVOBJ
+
+=begin original
+
+An SV type constant used for comparison with the C<SvTYPE()> macro.
+
+=end original
+
+C<SvTYPE()> マクロとの比較に使用する SV 型の定数。
+
+=head3 ObjectMAXFIELD
+
+    SSize_t ObjectMAXFIELD(sv);
+
+=begin original
+
+A function-like macro that obtains the maximum valid field index that can be
+accessed from the C<ObjectFIELDS> array.
+
+=end original
+
+C<ObjectFIELDS> 配列からアクセスできる最大有効フィールドインデックスを
+取得する関数型マクロ。
+
+=head3 ObjectFIELDS
+
+    SV **ObjectFIELDS(sv);
+
+=begin original
+
+A function-like macro that obtains the fields array directly out of an object
+instance. Fields can be accessed by their field index, from 0 up to the maximum
+valid index given by C<ObjectMAXFIELD>.
+
+=end original
+
+オブジェクトインスタンスから直接フィールド配列を取得する
+関数型のマクロ。
+フィールドは、0 から C<ObjectMAXFIELD> で指定された
+最大有効インデックスまでのフィールドインデックスによってアクセスできます。
+
+=head1 OPCODES
+
+=head2 OP_METHSTART
+
+    newUNOP_AUX(OP_METHSTART, ...);
+
+=begin original
+
+An C<OP_METHSTART> is an C<UNOP_AUX> which must be present at the start of a
+method CV in order to make it work properly. This is inserted by
+C<class_wrap_method_body()>, and even appears before any optree fragment
+associated with signature argument checking or extraction.
+
+=end original
+
+C<OP_METHSTART>はC<UNOP_AUX>であり、適切に動作させるために
+メソッドCVの先頭に存在する必要があります。
+これはC<class_wrap_method_body()>によって挿入され、
+シグニチャ引数のチェックまたは抽出に関連付けられた
+optreeフラグメントの前にも表示されます。
+(TBR)
+
+=begin original
+
+This op is responsible for shifting the value of C<$self> out of the arguments
+list and binding any field variables that the method requires access to into
+the pad. The AUX vector will contain details of the field/pad index pairings
+required.
+
+=end original
+
+この操作は、C<$self>の値を引数リストからシフトし、メソッドが
+アクセスする必要のあるフィールド変数をパッドにバインドする
+役割を果たします。
+AUXベクトルには、必要なフィールド/パッドインデックスのペアの
+詳細が含まれます。
+(TBR)
+
+=begin original
+
+This op also performs sanity checking on the invocant value. It checks that it
+is definitely an object reference of a compatible class type. If not, an
+exception is thrown.
+
+=end original
+
+この操作では、invocant値の健全性チェックも実行されます。
+互換性のあるクラス型のオブジェクト参照であることが
+確実であるかどうかがチェックされます。
+そうでない場合は、例外がスローされます。
+(TBR)
+
+=begin original
+
+If the C<op_private> field includes the C<OPpINITFIELDS> flag, this indicates
+that the op begins the special C<xhv_class_initfields_cv> CV. In this case it
+should additionally take the second value from the arguments list, which
+should be a plain HV pointer (I<directly>, not via RV). and bind it to the
+second pad slot, where the generated optree will expect to find it.
+
+=end original
+
+C<op_private>フィールドにC<OPpINITFIELDS>フラグが含まれている場合は、
+opが特殊なC<xhv_optree_initfields_cv>CVを開始することを示します。
+この場合は、引数リストから2番目の値を追加で取得する必要があります。
+これは、プレーンHVポインタ(RV経由ではなくI<directly>)である
+必要があります。
+生成されたクラスがそれを見つけることを期待する2番目の
+パッドスロットにバインドします。
+(TBR)
+
+=head2 OP_INITFIELD
+
+=begin original
+
+An C<OP_INITFIELD> is only invoked as part of the C<xhv_class_initfields_cv>
+CV during the construction phase of an instance. This is the time that the
+individual SVs that make up the mutable fields of the instance (including AVs
+and HVs) are actually assigned into the C<ObjectFIELDS> array. The
+C<OPpINITFIELD_AV> and C<OPpINITFIELD_HV> private flags indicate whether it is
+creating an AV or HV; if neither is set then an SV is created.
+
+=end original
+
+C<OP_INITFIELD>は、インスタンスの構築フェーズ中に
+C<xhv_class_initfields_cv>CVの一部としてのみ起動されます。
+これは、インスタンスの可変フィールドを構成する個々の
+SV(AVおよびHVを含む)が実際にC<ObjectFIELDS>配列に割り当てられる
+時間です。
+C<OPpINITFIELD_AV>およびC<OPpINITFIELD_HV>プライベートフラグは、
+AVまたはHVを作成しているかどうかを示します。
+どちらも設定されていない場合は、SVが作成されます。
+(TBR)
+
+=begin original
+
+If the op has the C<OPf_STACKED> flag it expects to find an initializing value
+on the stack. For SVs this is the topmost SV on the data stack. For AVs and
+HVs it expects a marked list.
+
+=end original
+
+OPにC<OPf_STACKED>フラグが設定されている場合は、スタックで初期化値が
+検出されることを想定しています。
+SVの場合、これはデータスタックの最上位のSVです。
+AVおよびHVの場合は、マーク付きリストを想定しています。
+(TBR)
+
+=head1 COMPILE-TIME BEHAVIOUR
+
+(コンパイル時の振る舞い)
+
+=head2 C<ADJUST> Phasers
+
+(C<ADJUST> フェーズ処理)
+
+=begin original
+
+During compiletime, parsing of an C<ADJUST> phaser is handled in a
+fundamentally different way to the existing perl phasers (C<BEGIN>, etc...)
+
+=end original
+
+コンパイル時には、C<ADJUST> フェイザーの構文解析は、既存の
+perlフェイザー(C<BEGIN>など)とは根本的に異なる方法で処理されます。
+(TBR)
+
+=begin original
+
+Rather than taking the usual route, the tokenizer recognises that the
+C<ADJUST> keyword introduces a phaser block. The parser then parses the body
+of this block similarly to how it would parse an (anonymous) method body,
+creating a CV that has no name GV. This is then inserted directly into the
+class information by calling C<class_add_ADJUST>, entirely bypassing the
+symbol table.
+
+=end original
+
+通常のルートを取るのではなく、トークナイザは、C<ADJUST>キーワードが
+フェイザーブロックを導入することを認識します。
+次に、パーサーは、(匿名の)メソッド本体を解析する方法と同様に、
+このブロックの本体を解析し、GVという名前のないCVを作成します。
+これは、C<class_add_ADJUST>を呼び出すことによってクラス情報に直接挿入され、
+シンボルテーブルを完全にバイパスします。
+(TBR)
+
+=head2 Attributes
+
+(属性)
+
+=begin original
+
+During compilation, attributes of both classes and fields are handled in a
+different way to existing perl attributes on subroutines and lexical
+variables.
+
+=end original
+
+コンパイル中、クラスとフィールドの両方の属性は、サブルーチンおよび
+字句変数の既存の perl 属性とは異なる方法で処理されます。
+
+=begin original
+
+The parser still forms an C<OP_LIST> optree of C<OP_CONST> nodes, but these
+are passed to the C<class_apply_attributes> or C<class_apply_field_attributes>
+functions. Rather than using a class lookup for a method in the class being
+parsed, a fixed internal list of known attributes is used to find functions to
+apply the attribute to the class or field. In future this may support
+user-supplied extension attribute, though at present it only recognises ones
+defined by the core itself.
+
+=end original
+
+パーサーは依然としてC<OP_CONST>ノードのC<OP_LIST>optreeを形成しますが、
+これらはC<class_apply_attributes>または
+C<class_apply_field_attributes>関数に渡されます。
+解析されるクラス内のメソッドのクラスルックアップを使用するのではなく、
+既知の属性の固定された内部リストを使用して、クラスまたはフィールドに属性を
+適用する関数を検索します。
+現在はコア自体によって定義されたもののみを認識しますが、将来的には
+ユーザ提供の拡張属性をサポートする可能性があります。
+(TBR)
+
+=head2 Field Initializing Expressions
+
+(フィールド初期化式)
+
+=begin original
+
+During compilation, the parser makes use of a suspended compcv when parsing
+the defaulting expression for a field. All the expressions for all the fields
+in the class share the same suspended compcv, which is then compiled up into
+the same internal CV called by the constructor to initialize all the fields
+provided by that class.
+
+=end original
+
+コンパイル時に、パーサーは、フィールドのデフォルト式を解析するときに、
+中断されたcompcvを使用します。
+クラス内のすべてのフィールドのすべての式は、同じ中断されたcompcvを
+共有します。
+このCVは、コンストラクタによって呼び出される同じ内部CVにコンパイルされ、
+そのクラスによって提供されるすべてのフィールドを初期化します。
+(TBR)
+
+=head1 RUNTIME BEHAVIOUR
+
+(実行時の振る舞い)
+
+=head2 Constructor
+
+(コンストラクタ)
+
+=begin original
+
+The generated constructor for a class itself is an XSUB which performs three
+tasks in order: it creates the instance SV itself, invokes the field
+initializers, then invokes the ADJUST block CVs. The constructor for any class
+is always the same basic shape, regardless of whether the class has a
+superclass or not.
+
+=end original
+
+クラス自体に対して生成されたコンストラクタは、3 つのタスクを順番に
+実行する XSUB です。
+インスタン スSV 自体を作成し、フィールドイニシャライザを呼び出し、
+次に ADJUST ブロック CV を呼び出します。
+クラスにスーパークラスがあるかどうかにかかわらず、クラスの
+コンストラクタは常に同じ基本シェイプです。
+(TBR)
+
+=begin original
+
+The field initializers are collected into a generated optree-based CV called
+the field initializer CV. This is the CV which contains all the optree
+fragments for the field initializing expressions. When invoked, the field
+initializer CV might make a chained call to the superclass initializer if one
+exists, before invoking all of the individual field initialization ops. The
+field initializer CV is invoked with two items on the stack; being the
+instance SV and a direct HV containing the constructor parameters. Note
+carefully: this HV is passed I<directly>, not via an RV reference. This is
+permitted because both the caller and the callee are directly generated code
+and not arbitrary pure-perl subroutines.
+
+=end original
+
+フィールドイニシャライザは、フィールドイニシャライザ CV と呼ばれる
+生成された optree ベースのCVに収集されます。
+これは、フィールド初期化式のすべての optree フラグメントを含む CV です。
+呼び出されると、フィールドイニシャライザ CV は、個々のフィールド初期化操作を
+呼び出す前に、スーパークラスイニシャライザが存在する場合は、
+スーパークラスイニシャライザへのチェーンコールを行う可能性があります。
+フィールドイニシャライザ CV は、スタック上の二つの項目で呼び出されます。
+インスタンス SV と、コンストラクタパラメータを含む直接HVです。
+注意:この HV は、RV 参照を経由するのではなく、I<直接> を渡されます。
+これが許可されるのは、呼び出し元と呼び出し先の両方が直接生成された
+コードであり、任意の純粋な perl サブルーチンではないためです。
+(TBR)
+
+=begin original
+
+The ADJUST block CVs are all collected into a single flat list, merging all of
+the ones defined by the superclass as well. They are all invoked in order,
+after the field initializer CV.
+
+=end original
+
+ADJUST ブロックの CV はすべて単一のフラットリストに収集され、
+スーパークラスによって定義されたすべての CV もマージされます。
+これらはすべて、フィールド初期化子 CV の後に順番に呼び出されます。
+(TBR)
+
+=head2 C<$self> Access During Methods
+
+(メソッド内での C<$self> へのアクセス)
+
+=begin original
+
+When C<class_prepare_method_parse()> is called, it arranges that the pad of
+the new CV body will begin with a lexical called C<$self>. Because the pad
+should be freshly-created at this point, this will have the pad index of 1.
+The function checks this and aborts if that is not true.
+
+=end original
+
+C<class_prepare_method_parse()> が呼び出されると、新しい CV の本体のパッドが
+C<$self> と呼ばれるレキシカルで始まるように配置されます。
+パッドはこの時点で新たに作成される必要があるため、パッドのインデックスは
+1 になります。
+この関数はこれをチェックし、これが真でない場合は中止します。
+
+=begin original
+
+Because of this fact, code within the body of a method or method-like CV can
+reliably use pad index 1 to obtain the invocant reference. The C<OP_INITFIELD>
+opcode also relies on this fact.
+
+=end original
+
+このため、メソッドまたはメソッド風 CV の本体内のコードでは、
+パッドインデックス 1 を使用して invocant 参照を確実に取得できます。
+C<OP_INITFIELD> オペコードもこの事実に依存しています。
+
+=begin original
+
+In similar fashion, during the C<xhv_class_initfields_cv> the next pad slot is
+relied on to store the constructor parameters HV, at pad index 2.
+
+=end original
+
+同様に、C<xhv_class_initfields_cv> の間、次のパッドスロットは、
+パッドインデックス 2 でコンストラクタ引数 HV を格納することに
+依存します。
+
+=head1 AUTHORS
+
+Paul Evans
+
+=begin meta
+
+Translate: SHIRAKATA Kentaro <argrath@ub32.org>
+Status: in progress
+
+=end meta
+
+=cut
+
