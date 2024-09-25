@@ -1,0 +1,3919 @@
+=encoding utf8
+
+=head1 NAME
+
+=begin original
+
+Mojolicious::Guides::Cookbook - Cooking with Mojolicious
+
+=end original
+
+Mojolicious::Guides::Cookbook - Mojoliciousのクックブック
+
+=head1 OVERVIEW
+
+(説明)
+
+=begin original
+
+This document contains many fun recipes for cooking with L<Mojolicious>.
+
+=end original
+
+L<Mojolicious>で料理できる楽しいレシピが満載。
+
+=head1 CONCEPTS
+
+(概念)
+
+=begin original
+
+Essentials every L<Mojolicious> developer should know.
+
+=end original
+
+すべてのL<Mojolicious>開発者が知るべき本質
+
+=head2 Blocking and non-blocking operations
+
+(ブロッキング / ノンブロッキング処理)
+
+=begin original
+
+A I<blocking> operation is a subroutine that blocks the execution of the
+calling subroutine until the subroutine is finished.
+
+=end original
+
+I<blocking>処理は、サブルーチンが終了するまで呼び出し元サブルーチンの実行をブロックするサブルーチンです。
+
+  sub foo {
+    my $result = blocking_subroutine();
+    ...
+  }
+
+=begin original
+
+A I<non-blocking> operation on the other hand lets the calling subroutine
+continue execution even though the subroutine is not yet finished. Instead of
+waiting, the calling subroutine passes along a callback to be executed once the
+subroutine is finished, this is called continuation-passing style.
+
+=end original
+
+一方、I<non-blocking>処理は、サブルーチンがまだ終了していない場合でも呼び出しサブルーチンの実行が継続できるようにします。待機する代わりに、呼び出し元のサブルーチンは、サブルーチンが終了すると実行されるコールバックを渡します。これは、継続渡しスタイルと呼ばれます。
+
+  sub foo {
+    non_blocking_subroutine(sub {
+      my $result = shift;
+      ...
+    });
+    ...
+  }
+
+=begin original
+
+While L<Mojolicious> has been designed from the ground up for non-blocking I/O
+and event loops, it is not possible to magically make Perl code non-blocking.
+You have to use specialized non-blocking code available through modules like
+L<Mojo::IOLoop> and L<Mojo::UserAgent>, or third-party event loops. You can wrap
+your blocking code in L<subprocesses|Mojo::IOLoop/"subprocess"> though to
+prevent it from interfering with your non-blocking code.
+
+=end original
+
+L<Mojolicious>はノンブロッキングI/Oおよびイベントループのためにゼロから設計されていますが、魔法のごとくPerlコードをノンブロッキングにはできません。 そのためには、L<Mojo::IOLoop>やL<Mojo::UserAgent>、またはサードパーティのイベントループのようなモジュールを介して利用可能な特殊なノンブロッキングコードを使用する必要があります。ただし、L<subprocesses|Mojo::IOLoop/"subprocess">でブロッキングコードをラップして、ノンブロッキングコードを妨害することを防げます。
+
+=head2 Event loops
+
+(イベントループ)
+
+=begin original
+
+An event loop is basically a loop that continually tests for external events
+and executes the appropriate callbacks to handle them, it is often the main
+loop in a program. Non-blocking tests for readability/writability of file
+descriptors and timers are commonly used events for highly scalable network
+servers, because they allow a single process to handle thousands of client
+connections concurrently.
+
+=end original
+
+イベントループは基本的に、外部イベントを継続的にテストし、適切なコールバックを実行してそれらを処理するループです。多くの場合、これがプログラムのメインループとなります。ファイル記述子とタイマーの読み取り/書き込みのノンブロッキングテストは、単一のプロセスで同時に数千のクライアント接続を処理できるため、非常にスケーラブルなネットワークサーバーでよく使用されるイベントです。
+
+  while (1) {
+    my @readable = test_fds_for_readability();
+    handle_readable_fds(@readable);
+
+    my @writable = test_fds_for_writability();
+    handle_writable_fds(@writable);
+
+    my @expired = test_timers();
+    handle_timers(@expired);
+  }
+
+=begin original
+
+In L<Mojolicious> this event loop is L<Mojo::IOLoop>.
+
+=end original
+
+L<Mojolicious>では、このイベントループはL<Mojo::IOLoop>が行います。
+
+=head2 Reverse proxy
+
+(リバースプロキシ)
+
+=begin original
+
+A reverse proxy architecture is a deployment technique used in many production
+environments, where a I<reverse proxy> server is put in front of your
+application to act as the endpoint accessible by external clients. It can
+provide a lot of benefits, like terminating SSL connections from the outside,
+limiting the number of concurrent open sockets towards the Mojolicious
+application (or even using Unix sockets), balancing load across multiple
+instances, or supporting several applications through the same IP/port.
+
+=end original
+
+リバースプロキシアーキテクチャは、多くの運用環境で使用されるデプロイ手法です。I<reverse proxy>サーバーはアプリケーションの前に配置され、外部クライアントからアクセス可能なエンドポイントとして機能します。これには次のような多くの利点があります。外部からのSSL接続の終了、Mojoliciousアプリケーションへの同時オープンソケット数の制限（またはUnixソケットの使用についても）、複数インスタンス間での負荷分散、または複数アプリケーション間での同一IP/ポートの共有。
+
+=begin original
+
+                   ..........................................
+                   :                                        :
+   +--------+      :  +-----------+      +---------------+  :
+   |        |-------->|           |      |               |  :
+   | client |      :  |  reverse  |----->|  Mojolicious  |  :
+   |        |<--------|   proxy   |      |  application  |  :
+   +--------+      :  |           |<-----|               |  :
+                   :  +-----------+      +---------------+  :
+                   :                                        :
+                   .. system boundary (e.g. same host) ......
+
+=end original
+
+                   ..........................................
+                   :                                        :
+   +--------+      :  +-----------+      +---------------+  :
+   |        |-------->|           |      |               |  :
+   | client |      :  |  reverse  |----->|  Mojolicious  |  :
+   |        |<--------|   proxy   |      |  application  |  :
+   +--------+      :  |           |<-----|               |  :
+                   :  +-----------+      +---------------+  :
+                   :                                        :
+                   .. システム境界（例. 同一ホスト） ......
+
+=begin original
+
+This setup introduces some problems, though: the application will receive
+requests from the reverse proxy instead of the original client; the
+address/hostname where your application lives internally will be different from
+the one visible from the outside; and if terminating SSL, the reverse proxy
+exposes services via HTTPS while using HTTP towards the Mojolicious application.
+
+=end original
+
+ただし、このセットアップではいくつかの問題が発生します。アプリケーションは、オリジナルのクライアントではなくリバースプロキシからリクエストを受け取ります。アプリケーション内部のアドレス/ホスト名は、外部から見えるものとは異なります。また、SSLを終了すると、リバースプロキシはHTTPS経由でサービスを公開し、Mojoliciousアプリケーションに対してはHTTPを使用します。
+
+=begin original
+
+As an example, compare a sample request from the client and what the Mojolicious
+application receives:
+
+=end original
+
+例として、クライアントからのサンプルリクエストとMojoliciousアプリケーションが受け取るリクエストを比べてみましょう。
+
+=begin original
+
+   client                       reverse proxy                Mojolicious app
+    __|__              _______________|______________             ____|____
+   /     \            /                              \           /         \
+   1.2.3.4 --HTTPS--> api.example.com      10.20.30.39 --HTTP--> 10.20.30.40
+
+=end original
+
+   クライアント                       リバースプロクシ                Mojoliciousアプリ
+    __|__              _______________|______________             ____|____
+   /     \            /                              \           /         \
+   1.2.3.4 --HTTPS--> api.example.com      10.20.30.39 --HTTP--> 10.20.30.40
+
+   GET /foo/1 HTTP/1.1                |    GET /foo/1 HTTP/1.1
+   Host: api.example.com              |    Host: 10.20.30.40
+   User-Agent: Firefox                |    User-Agent: ShinyProxy/1.2
+   ...                                |    ...
+
+=begin original
+
+However, now the client address is no longer available (which might be useful
+for analytics, or Geo-IP) and URLs generated via
+L<Mojolicious::Controller/"url_for"> will look like this:
+
+=end original
+
+ただし、クライアントアドレスは使用できなくなり（分析やGeo-IPに役立つ可能性があります）、L<Mojolicious::Controller/"url_for">によって生成されたURLは次のようになります。
+
+   http://10.20.30.40/bar/2
+
+=begin original
+
+instead of something meaningful for the client, like this:
+
+=end original
+
+以下のようであればクライアントにとってわかりやすいのですが。
+
+   https://api.example.com/bar/2
+
+=begin original
+
+To solve these problems, you can configure your reverse proxy to send the
+missing data (see L</Nginx> and L</"Apache/mod_proxy">) and tell your
+application about it by setting the environment variable C<MOJO_REVERSE_PROXY>.
+For finer control, L</Rewriting> includes examples of how the changes could be
+implemented manually.
+
+=end original
+
+これらの問題を解決するには、不足しているデータを送信するようにリバースプロキシを構成します（C</Nginx>およびC</"Apache/mod_proxy">）。そして、環境変数C<MOJO_REVERSE_PROXY> を設定して、アプリケーションに通知します。 きめ細かく制御するために、C</Rewriting>には変更を手動で実装する方法のサンプルが含まれています。
+
+=head1 DEPLOYMENT
+
+(デプロイメント)
+
+=begin original
+
+Getting L<Mojolicious> and L<Mojolicious::Lite> applications running on
+different platforms. Note that many real-time web features are based on the
+L<Mojo::IOLoop> event loop, and therefore require one of the built-in web
+servers to be able to use them to their full potential.
+
+=end original
+
+L<Mojolicious> と L<Mojolicious::Lite> アプリケーションをさまざまなプラットフォームで実行させます。多くのリアルタイムWeb機能がL<Mojo::IOLoop>のイベントループに基づいているので、 イベントループの機能を完全に引き出すためには、組み込みウェブサーバーのひとつ以上がリアルタイム機能を使用できる必要があります。
+
+=head2 Built-in web server
+
+(組み込みサーバ)
+
+=begin original
+
+L<Mojolicious> contains a very portable non-blocking I/O HTTP and WebSocket
+server with L<Mojo::Server::Daemon>. It is usually used during development and
+in the construction of more advanced web servers, but is solid and fast enough
+for small to mid sized applications.
+
+=end original
+
+L<Mojolicious> には、とてもポータブルな HTTP 1.1 準拠のウェブサーバが含まれます。通常これらは開発用に利用されますが、小中規模のアプリケーションであれば、十分に堅牢かつ高速に動きます。
+
+  $ ./script/my_app daemon
+  Server available at http://127.0.0.1:3000
+
+=begin original
+
+It is available to every application through the command
+L<Mojolicious::Command::daemon>, which has many configuration options and is
+known to work on every platform Perl works on with its single-process
+architecture.
+
+=end original
+
+コマンドL<Mojolicious::Command::daemon>を介してすべてのアプリケーションで使用できます。多くの設定オプションがあり、Perlが動作するすべてのプラットフォームにおいて単一プロセスアーキテクチャで動きます。
+
+=begin original
+
+  $ ./script/my_app daemon -h
+  ...List of available options...
+
+=end original
+
+  $ ./script/my_app daemon -h
+  ...利用可能オプションのリスト...
+
+=begin original
+
+Another huge advantage is that it supports TLS and WebSockets out of the box, a
+development certificate for testing purposes is built right in, so it just
+works, but you can specify all listen locations supported by
+L<Mojo::Server::Daemon/"listen">.
+
+=end original
+
+もうひとつの大きな利点は、そのままで TLS と WebSoket をサポートして いることです。テスト目的のための開発証明書が適切に組み込まれているので、うまく動きます。ただし、すべての位置からリッスン先を L<Mojo::Server::Daemon/"listen">のサポートによって指定できます。
+
+  $ ./script/my_app daemon -l https://[::]:3000
+  Server available at https://[::]:3000
+
+=begin original
+
+To manage the web server with systemd, you can use a unit configuration file
+like this.
+
+=end original
+
+systemdを使用してWebサーバーを管理するには、次のようなユニット構成ファイルを使用できます。
+
+  [Unit]
+  Description=My Mojolicious application
+  After=network.target
+
+  [Service]
+  Type=simple
+  ExecStart=/home/sri/myapp/script/my_app daemon -m production -l http://*:8080
+
+  [Install]
+  WantedBy=multi-user.target
+
+=head2 Pre-forking
+
+(プリフォーク)
+
+=begin original
+
+On UNIX platforms you can also add pre-forking to the built-in web server and
+switch to a multi-process architecture with L<Mojolicious::Command::prefork>, to
+take advantage of multiple CPU cores and copy-on-write memory management.
+
+=end original
+
+UNIXプラットフォームでは、L<Mojolicious::Command::prefork>によって組み込みWebサーバにプリフォークが追加でき、複数プロセスアークテクチャに切り替えることができます。複数CPUコアとコピーオンライトメモリ管理を利用できるという利点があります。
+
+  $ ./script/my_app prefork
+  Server available at http://127.0.0.1:3000
+
+=begin original
+
+Since all built-in web servers are based on the L<Mojo::IOLoop> event loop,
+they scale best with non-blocking operations. But if your application for some
+reason needs to perform many blocking operations, you can improve performance
+by increasing the number of worker processes and decreasing the number of
+concurrent connections each worker is allowed to handle (often as low as C<1>).
+
+=end original
+
+組み込みのWebサーバーはL<Mojo::IOLoop>のイベントループに基づいているため、ノンブロッキング処理を利用するときに一番スケールします。しかし、何らかの理由によって多数のブロッキング処理をアプリケーションで実行する必要がある場合は、ワーカープロセスの数を増やしつつ、ワーカーあたりの同時接続数を減らすことでパフォーマンスを向上できます(多くの場合C<1>とする)。
+
+  $ ./script/my_app prefork -m production -w 10 -c 1
+  Server available at http://127.0.0.1:3000
+
+=begin original
+
+During startup your application is preloaded in the manager process, which does
+not run an event loop, so you can use L<Mojo::IOLoop/"next_tick"> to run code
+whenever a new worker process has been forked and its event loop gets started.
+
+=end original
+
+スタートアップの間にマネージャプロセスにおいてアプリケーションが事前ロードされます。このときイベントループは開始しないので、新しいワーカープロセスがフォークされ、イベントループが開始されるときはいつでも、L<Mojo::IOLoop/"next_tick">を使ってコードを実行できます。
+
+  use Mojolicious::Lite;
+
+  Mojo::IOLoop->next_tick(sub {
+    app->log->info("Worker $$ star...ALL GLORY TO THE HYPNOTOAD!");
+  });
+
+  get '/' => {text => 'Hello Wor...ALL GLORY TO THE HYPNOTOAD!'};
+
+  app->start;
+
+=begin original
+
+And to manage the pre-forking web server with systemd, you can use a unit
+configuration file like this.
+
+=end original
+
+また、systemdを使用してプリフォーク前のWebサーバーを管理するには、次のようなユニット構成ファイルを使用できます。
+
+  [Unit]
+  Description=My Mojolicious application
+  After=network.target
+
+  [Service]
+  Type=simple
+  ExecStart=/home/sri/myapp/script/my_app prefork -m production -l http://*:8080
+
+  [Install]
+  WantedBy=multi-user.target
+
+=head2 Morbo
+
+=begin original
+
+After reading the L<Mojolicious::Guides::Tutorial>, you should already be
+familiar with L<Mojo::Server::Morbo>.
+
+=end original
+
+L<Mojolicious::Guides::Tutorial>を読んだ後なら、L<Mojo::Server::Morbo>をすでに知っていることでしょう。
+
+  Mojo::Server::Morbo
+  +- Mojo::Server::Daemon
+
+=begin original
+
+It is basically a restarter that forks a new L<Mojo::Server::Daemon> web server
+whenever a file in your project changes, and should therefore only be used
+during development. To start applications with it you can use the L<morbo>
+script.
+
+=end original
+
+基本的には、プロジェクト内の変更されたファイルを検知して、 新しいL<Mojo::Server::Daemon>Webサーバーをフォークするリスターターです。よって、これは開発用途でのみ使用してください。Morboでアプリケーションを起動するには、L<morbo>スクリプトを使用します。
+
+  $ morbo ./script/my_app
+  Server available at http://127.0.0.1:3000
+
+=head2 Hypnotoad
+
+=begin original
+
+For bigger applications L<Mojolicious> contains the UNIX optimized pre-forking
+web server L<Hypnotoad|Mojo::Server::Hypnotoad>, which can take advantage of
+multiple CPU cores and copy-on-write memory management to scale up to thousands
+of concurrent client connections.
+
+=end original
+
+もっと大きいアプリケーションのために、L<Mojolicious> には UNIX に最適化されたプレフォーキングウェブサーバ L<Hypnotoad|Mojo::Server::Hypnotoad> が含まれています。複数のCPUコアと書き込み時コピー (copy-on-write)が活用でき、スケールアップして数千の並列クライアントに対応できます。
+
+  Mojo::Server::Hypnotoad
+  |- Mojo::Server::Daemon [1]
+  |- Mojo::Server::Daemon [2]
+  |- Mojo::Server::Daemon [3]
+  +- Mojo::Server::Daemon [4]
+
+=begin original
+
+It is based on the L<Mojo::Server::Prefork> web server, which adds pre-forking
+to L<Mojo::Server::Daemon>, but optimized specifically for production
+environments out of the box. To start applications with it you can use the
+L<hypnotoad> script, which listens on port C<8080>, automatically daemonizes
+the server process and defaults to C<production> mode for L<Mojolicious> and
+L<Mojolicious::Lite> applications.
+
+=end original
+
+サーバーはL<Mojo::Server::Prefork> Webサーバーをベースにしています。これはL<Mojo::Server::Daemon>にプリフォーク機能を追加するものですが、運用環境ですぐに使えるよう最適化されています。アプリケーションを開始するには、L<hypnotoad>スクリプトを使用します。ポートC<8080>でリッスンし、サーバープロセスを自動的にデーモン化し、L<Mojolicious>とL<Mojolicious::Lite>アプリケーションのモードを既定でC<production>にします。
+
+  $ hypnotoad ./script/my_app
+
+=begin original
+
+Many configuration settings can be tweaked right from within your application
+with L<Mojolicious/"config">, for a full list see
+L<Mojo::Server::Hypnotoad/"SETTINGS">.
+
+=end original
+
+多くの構成設定はアプリケーションからL<Mojolicious/"config">を使って調整できます。すべての設定のリストはL<Mojo::Server::Hypnotoad/"SETTINGS">の項目を見てください.
+
+  use Mojolicious::Lite;
+
+  app->config(hypnotoad => {listen => ['http://*:80']});
+
+  get '/' => {text => 'Hello Wor...ALL GLORY TO THE HYPNOTOAD!'};
+
+  app->start;
+
+=begin original
+
+Or just add a C<hypnotoad> section to your L<Mojolicious::Plugin::Config> or
+L<Mojolicious::Plugin::JSONConfig> configuration file.
+
+=end original
+
+L<Mojolicious::Plugin::Config>かL<Mojolicious::Plugin::JSONConfig>の設定ファイルにC<hypnotoad>セクションを追加することもできます。
+
+  # myapp.conf
+  {
+    hypnotoad => {
+      listen  => ['https://*:443?cert=/etc/server.crt&key=/etc/server.key'],
+      workers => 10
+    }
+  };
+
+=begin original
+
+But one of its biggest advantages is the support for effortless zero downtime
+software upgrades (hot deployment). That means you can upgrade L<Mojolicious>,
+Perl or even system libraries at runtime without ever stopping the server or
+losing a single incoming connection, just by running the command above again.
+
+=end original
+
+しかし、最大の利点の一つは、ダウンタイムなしのソフトウェア更新(ホットデプロイメント)をサポートしていることです。つまり、サーバーを止めたり、受信接続をひとつも失うことなく、上記のコマンドを実行するだけで L<Mojolicious> や Perl、そして実行中のシステムライブラリでさえ更新できます。
+
+=begin original
+
+  $ hypnotoad ./script/my_app
+  Starting hot deployment for Hypnotoad server 31841.
+
+=end original
+
+  $ hypnotoad ./script/my_app
+  Starting hot deployment for Hypnotoad server 31841.（Hypnotoadサーバー31841のホットデプロイメントを開始しています。）
+
+=begin original
+
+You might also want to enable proxy support if you're using
+L<Hypnotoad|Mojo::Server::Hypnotoad> behind a reverse proxy. This allows
+L<Mojolicious> to automatically pick up the C<X-Forwarded-For> and
+C<X-Forwarded-Proto> headers.
+
+=end original
+
+リバースプロキシの後ろでL<Hypnotoad|Mojo::Server::Hypnotoad>を使用している場合は、プロキシサポートを有効にすることもできます。L<Mojolicious>がC<X-Forwarded-For>やC<X-Forwarded-Proto>ヘッダーを自動的に検知できるようになります。
+
+  # myapp.conf
+  {hypnotoad => {proxy => 1}};
+
+=begin original
+
+To manage L<Hypnotoad|Mojo::Server::Hypnotoad> with systemd, you can use a unit
+configuration file like this.
+
+=end original
+
+L<Hypnotoad|Mojo::Server::Hypnotoad>をsystemdで管理するには、次のようなユニット構成ファイルを使用できます。
+
+  [Unit]
+  Description=My Mojolicious application
+  After=network.target
+
+  [Service]
+  Type=forking
+  PIDFile=/home/sri/myapp/script/hypnotoad.pid
+  ExecStart=/path/to/hypnotoad /home/sri/myapp/script/my_app
+  ExecReload=/path/to/hypnotoad /home/sri/myapp/script/my_app
+  KillMode=process
+
+  [Install]
+  WantedBy=multi-user.target
+
+=head2 Zero downtime software upgrades
+
+(ゼロダウンタイム・ソフトウェア更新)
+
+=begin original
+
+L<Hypnotoad|Mojo::Server::Hypnotoad> makes zero downtime software upgrades (hot
+deployment) very simple, as you can see above, but on modern operating systems
+that support the C<SO_REUSEPORT> socket option, there is also another method
+available that works with all built-in web servers.
+
+=end original
+
+L<Hypnotoad|Mojo::Server::Hypnotoad>は、上記のように、ダウンタイムのないソフトウェアアップグレード（ホットデプロイメント）を非常に簡単にします。しかし、C<SO_REUSEPORT>をサポートするモダンなオペレーティングシステムでは、すべての組み込みWebサーバーで使える別の方法もあります。
+
+  $ ./script/my_app prefork -P /tmp/first.pid -l http://*:8080?reuse=1
+  Server available at http://127.0.0.1:8080
+
+=begin original
+
+All you have to do, is to start a second web server listening to the same port,
+and stop the first web server gracefully afterwards.
+
+=end original
+
+すべきことは、同じポートで二つ目のWebサーバーを起動し、 その後に一つ目のWebサーバーをGraceful Shutdownさせることです。
+
+  $ ./script/my_app prefork -P /tmp/second.pid -l http://*:8080?reuse=1
+  Server available at http://127.0.0.1:8080
+  $ kill -s TERM `cat /tmp/first.pid`
+
+=begin original
+
+Just remember that both web servers need to be started with the C<reuse>
+parameter.
+
+=end original
+
+両方のWebサーバーはC<reuse>パラメーターを付けて起動する必要があります。
+
+=head2 Nginx
+
+=begin original
+
+One of the most popular setups these days is
+L<Hypnotoad|Mojo::Server::Hypnotoad> behind an L<Nginx|http://nginx.org> reverse
+proxy, which even supports WebSockets in newer versions.
+
+=end original
+
+この頃、最も人気のある構成のひとつは、L<Hypnotoad|Mojo::Server::Hypnotoad>をL<Nginx|http://nginx.org>のリバースプロキシの後ろに置くものです。Nginxの新しいバージョンはWebSocketもサポートしています。
+
+  upstream myapp {
+    server 127.0.0.1:8080;
+  }
+  server {
+    listen 80;
+    server_name localhost;
+    location / {
+      proxy_pass http://myapp;
+      proxy_http_version 1.1;
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+    }
+  }
+
+=head2 Apache/mod_proxy
+
+=begin original
+
+Another good reverse proxy is L<Apache|http://httpd.apache.org> with
+C<mod_proxy>, the configuration looks quite similar to the Nginx one above. And
+if you need WebSocket support, newer versions come with C<mod_proxy_wstunnel>.
+
+=end original
+
+その他ですぐれたリバースプロキシといえばL<Apache|http://httpd.apache.org>のC<mod_proxy>でしょう。設定は先ほどのNginxにとてもよく似ています。また、WebSocketサポートが必要な場合、新しいバージョンにはC<mod_proxy_wstunnel>が付属します。
+
+  <VirtualHost *:80>
+    ServerName localhost
+    <Proxy *>
+      Require all granted
+    </Proxy>
+    ProxyRequests Off
+    ProxyPreserveHost On
+    ProxyPass /echo ws://localhost:8080/echo
+    ProxyPass / http://localhost:8080/ keepalive=On
+    ProxyPassReverse / http://localhost:8080/
+    RequestHeader set X-Forwarded-Proto "http"
+  </VirtualHost>
+
+=head2 Apache/CGI
+
+=begin original
+
+C<CGI> is supported out of the box and your L<Mojolicious> application will
+automatically detect that it is executed as a C<CGI> script. Its use in
+production environments is discouraged though, because as a result of how
+C<CGI> works, it is very slow and many web servers are making it exceptionally
+hard to configure properly. Additionally, many real-time web features, such as
+WebSockets, are not available.
+
+=end original
+
+C<CGI>はそのままですぐにサポートされ、L<Mojolicious>アプリケーションは、C<CGI>スクリプトとして実行されていることを自動的に検出します。ただし、本番環境での使用は推奨されません。C<CGI>の動作の仕組みがゆえに、非常に遅く、Webサーバーの種類が多いことから適切な設定が非常に難しくなっています。また、WebSocketなどの多くのリアルタイムWeb機能が使用できません。
+
+  ScriptAlias / /home/sri/my_app/script/my_app/
+
+=head2 PSGI/Plack
+
+=begin original
+
+L<PSGI> is an interface between Perl web frameworks and web servers, and
+L<Plack> is a Perl module and toolkit that contains L<PSGI> middleware, helpers
+and adapters to web servers. L<PSGI> and L<Plack> are inspired by Python's WSGI
+and Ruby's Rack. L<Mojolicious> applications are ridiculously simple to deploy
+with L<Plack>, but be aware that many real-time web features, such as
+WebSockets, are not available.
+
+=end original
+
+L<PSGI>は、Perl WebフレームワークとWebサーバー間のインターフェースです。L<Plack>は、Perlモジュールおよびツールキットであり、L<PSGI>のミドルウェア、ヘルパー、およびWebサーバーへのアダプターを含みます。L<PSGI> と L<Plack> は Python の WSGI と Ruby の Rack に触発されています。L<Plack>を使用したL<Mojolicious>アプリケーションのデプロイはあっけないほど簡単です。ただし、WebSocketなどの多くのリアルタイムWeb機能は使用できないことに注意してください。
+
+  $ plackup ./script/my_app
+
+=begin original
+
+L<Plack> provides many server and protocol adapters for you to choose from,
+such as C<FCGI>, C<uWSGI> and C<mod_perl>.
+
+=end original
+
+L<Plack> は、C<FCGI>、C<uWSGI>、C<mod_perl> など、多くのサーバーやプロトコルのためのアダプタを提供します。
+
+  $ plackup ./script/my_app -s FCGI -l /tmp/myapp.sock
+
+=begin original
+
+The C<MOJO_REVERSE_PROXY> environment variable can be used to enable proxy
+support, this allows L<Mojolicious> to automatically pick up the
+C<X-Forwarded-For> and C<X-Forwarded-Proto> headers.
+
+=end original
+
+C<MOJO_REVERSE_PROXY>環境変数は、プロキシのサポートのために利用できます。L<Mojolicious>が自動的にC<X-Forwarded-For>とC<X-Forwarded-Proto>ヘッダーを取得できるようになります。
+
+  $ MOJO_REVERSE_PROXY=1 plackup ./script/my_app
+
+=begin original
+
+If an older server adapter is unable to correctly detect the application home
+directory, you can simply use the C<MOJO_HOME> environment variable.
+
+=end original
+
+古いサーバーのアダプタがアプリケーションのホームディレクトリを正しく検知できなかった場合は、単純にC<MOJO_HOME>環境変数を使用できます。
+
+  $ MOJO_HOME=/home/sri/my_app plackup ./script/my_app
+
+=begin original
+
+There is no need for a C<.psgi> file, just point the server adapter at your
+application script, it will automatically act like one if it detects the
+presence of a C<PLACK_ENV> environment variable.
+
+=end original
+
+C<.psgi> ファイルは必要ありません。サーバーアダプターをアプリケーションスクリプトにて指定しておけば、C<PLACK_ENV> 環境変数を検知したときに、自動的にC<.psgi>ファイルであるかのように振舞います。
+
+=head2 Plack middleware
+
+(Plackミドルウェア)
+
+=begin original
+
+Wrapper scripts like C<myapp.fcgi> are a great way to separate deployment and
+application logic.
+
+=end original
+
+C<myapp.fcgi>などのラッパースクリプトを使うのは、デプロイメントとアプリケーションロジックを分離するとてもよい方法です。
+
+  #!/usr/bin/env plackup -s FCGI
+  use Plack::Builder;
+
+  builder {
+    enable 'Deflater';
+    require './script/my_app';
+  };
+
+=begin original
+
+L<Mojo::Server::PSGI> can be used directly to load and customize applications
+in the wrapper script.
+
+=end original
+
+L<Mojo::Server::PSGI>を直接使うと、ラッパースクリプトのなかでアプリケーションを読み込んだりカスタマイズしたりできます。
+
+  #!/usr/bin/env plackup -s FCGI
+  use Mojo::Server::PSGI;
+  use Plack::Builder;
+
+  builder {
+    enable 'Deflater';
+    my $server = Mojo::Server::PSGI->new;
+    $server->load_app('./script/my_app');
+    $server->app->config(foo => 'bar');
+    $server->to_psgi_app;
+  };
+
+=begin original
+
+But you could even use middleware right in your application.
+
+=end original
+
+アプリケーションの中でミドルウェアを使うことさえできます。
+
+  use Mojolicious::Lite;
+  use Plack::Builder;
+
+  get '/welcome' => sub {
+    my $c = shift;
+    $c->render(text => 'Hello Mojo!');
+  };
+
+  builder {
+    enable 'Deflater';
+    app->start;
+  };
+
+=head2 Rewriting
+
+(書き換え)
+
+=begin original
+
+Sometimes you might have to deploy your application in a blackbox environment
+where you can't just change the server configuration or behind a reverse proxy
+that passes along additional information with C<X-Forwarded-*> headers. In such
+cases you can use the hook L<Mojolicious/"before_dispatch"> to rewrite incoming
+requests.
+
+=end original
+
+ときとして、アプリケーションを、自分でサーバの設定を変えることができないブラックボックス環境、または、C<X-Forwarded-*> ヘッダーで補助情報を伝えるリバースプロキシの背後でデプロイする必要があるかもしれません。そのような場合、L<Mojolicious/"before_dispatch"> フックを使用して受信リクエストを書き換えられます。
+
+=begin original
+
+  # Change scheme if "X-Forwarded-HTTPS" header is set
+  $app->hook(before_dispatch => sub {
+    my $c = shift;
+    $c->req->url->base->scheme('https')
+      if $c->req->headers->header('X-Forwarded-HTTPS');
+  });
+
+=end original
+
+  # "X-Forwarded-HTTPS"ヘッダーが"https"に設定されていた場合にスキーマを変更
+  $app->hook(before_dispatch => sub {
+    my $c = shift;
+    $c->req->url->base->scheme('https')
+      if $c->req->headers->header('X-Forwarded-HTTPS');
+  });
+
+=begin original
+
+Since reverse proxies generally don't pass along information about path
+prefixes your application might be deployed under, rewriting the base path of
+incoming requests is also quite common. This allows
+L<Mojolicious::Controller/"url_for"> for example, to generate portable URLs
+based on the current environment.
+
+=end original
+
+一般的にリバースプロキシはアプリケーションがデプロイされたパスの前部分を渡さないので、受信するリクエストのベースパスの書き換えがよく行われます。これにより、たとえばL<Mojolicious::Controller/"url_for">を使って現在の環境に合わせたURLを生成できます。
+
+=begin original
+
+  # Move first part and slash from path to base path in production mode
+  $app->hook(before_dispatch => sub {
+    my $c = shift;
+    push @{$c->req->url->base->path->trailing_slash(1)},
+      shift @{$c->req->url->path->leading_slash(0)};
+  }) if $app->mode eq 'production';
+
+=end original
+
+  # productionモードではパスの最初の部分とスラッシュをベースパスに移動
+  $app->hook(before_dispatch => sub {
+    my $c = shift;
+    push @{$c->req->url->base->path->trailing_slash(1)},
+      shift @{$c->req->url->path->leading_slash(0)};
+  }) if $app->mode eq 'production';
+
+=begin original
+
+L<Mojo::URL> objects are very easy to manipulate, just make sure that the URL
+(C<foo/bar?baz=yada>), which represents the routing destination, is always
+relative to the base URL (C<http://example.com/myapp/>), which represents the
+deployment location of your application.
+
+=end original
+
+L<Mojo::URL>オブジェクトの操作はとても簡単です。常に、ルーティングの行き先を表すURL (C<foo/bar?baz=yada>)を、アプリケーションのデプロイメント場所を示すベースURL (C<http://example.com/myapp/>)からの相対パスとなるようにします。
+
+=head2 Application embedding
+
+(アプリケーションの埋め込み)
+
+=begin original
+
+From time to time you might want to reuse parts of L<Mojolicious> applications
+like configuration files, database connection or helpers for other scripts,
+with this little L<Mojo::Server> based mock server you can just embed them.
+
+=end original
+
+時によって、設定ファイル、データベース接続、その他スクリプトのためのヘルパーなど、L<Mojolicious>アプリケーションのパーツを再利用したい場合があるかもしれません。次のようなL<Mojo::Server>をベースにしたモックサーバーでそれらを埋め込むことができます。
+
+  use Mojo::Server;
+
+=begin original
+
+  # Load application with mock server
+  my $server = Mojo::Server->new;
+  my $app = $server->load_app('./myapp.pl');
+
+=end original
+
+  # モックサーバーでアプリケーションをロード
+  my $server = Mojo::Server->new;
+  my $app = $server->load_app('./myapp.pl');
+
+=begin original
+
+  # Access fully initialized application
+  say for @{$app->static->paths};
+  say $app->config->{secret_identity};
+  say $app->dumper({just => 'a helper test'});
+  say $app->build_controller->render_to_string(template => 'foo');
+
+=end original
+
+  # 完全に初期化されたアプリケーションにアクセス
+  say for @{$app->static->paths};
+  say $app->config->{secret_identity};
+  say $app->dumper({just => 'a helper test'});
+  say $app->build_controller->render_to_string(template => 'foo');
+
+=begin original
+
+The plugin L<Mojolicious::Plugin::Mount> uses this functionality to allow you
+to combine multiple applications into one and deploy them together.
+
+=end original
+
+L<Mojolicious::Plugin::Mount>は、この機能を使って複数のアプリケーションをひとつに結合し、まとめてデプロイできるようにします。
+
+  use Mojolicious::Lite;
+
+  app->config(hypnotoad => {listen => ['http://*:80']});
+
+  plugin Mount => {'test1.example.com' => '/home/sri/myapp1.pl'};
+  plugin Mount => {'test2.example.com' => '/home/sri/myapp2.pl'};
+
+  app->start;
+
+=head2 Web server embedding
+
+(Webサーバーの埋め込み)
+
+=begin original
+
+You can also use L<Mojo::IOLoop/"one_tick"> to embed the built-in web server
+L<Mojo::Server::Daemon> into alien environments like foreign event loops that
+for some reason can't just be integrated with a new reactor backend.
+
+=end original
+
+L<Mojo::IOLoop/"one_tick">を使用して、組み込みWebサーバーL<Mojo::Server::Daemon>を、なんらかの理由で新しいリアクターのバックエンドに統合できない外部イベントループのような異なった環境に埋め込むことができます。
+
+  use Mojolicious::Lite;
+  use Mojo::IOLoop;
+  use Mojo::Server::Daemon;
+
+=begin original
+
+  # Normal action
+  get '/' => {text => 'Hello World!'};
+
+=end original
+
+  # 通常のアクション
+  get '/' => {text => 'Hello World!'};
+
+=begin original
+
+  # Connect application with web server and start accepting connections
+  my $daemon
+    = Mojo::Server::Daemon->new(app => app, listen => ['http://*:8080']);
+  $daemon->start;
+
+=end original
+
+  # アプリケーションをWebサーバーと接続して、接続の受付を開始する
+  my $daemon
+    = Mojo::Server::Daemon->new(app => app, listen => ['http://*:8080']);
+  $daemon->start;
+
+=begin original
+
+  # Call "one_tick" repeatedly from the alien environment
+  Mojo::IOLoop->one_tick while 1;
+
+=end original
+
+  # 外部の環境から"one_tick"を繰り返し呼び出す
+  Mojo::IOLoop->one_tick while 1;
+
+=head1 REAL-TIME WEB
+
+(リアルタイムWeb)
+
+=begin original
+
+The real-time web is a collection of technologies that include Comet (long
+polling), EventSource and WebSockets, which allow content to be pushed to
+consumers with long-lived connections as soon as it is generated, instead of
+relying on the more traditional pull model. All built-in web servers use
+non-blocking I/O and are based on the L<Mojo::IOLoop> event loop, which
+provides many very powerful features that allow real-time web applications to
+scale up to thousands of concurrent client connections.
+
+=end original
+
+リアルタイムWebとは、Comet（ロングポーリング）、EventSource、WebSockeといったテクノロジーの集まりのことです。伝統的なプルモデルに頼る代わりに長時間接続を用いることで、コンテンツが生成されるとすぐにクライアントにプッシュすることができます。すべての組み込みサーバーはノンブロッキングI/Oを使っていて、L<Mojo::IOLoop>のリアクターをベースにしています。多くの強力な機能によって、リアルタイムWebアプリケーションをスケールアップすることができ、数千の並列のクライアントを処理できます。
+
+=head2 Backend web services
+
+(Webサービスのバックエンド)
+
+=begin original
+
+Since L<Mojo::UserAgent> is also based on the L<Mojo::IOLoop> event loop, it
+won't block the built-in web servers when used non-blocking, even for high
+latency backend web services.
+
+=end original
+
+L<Mojo::UserAgent>はL<Mojo::IOLoop>のリアクターをベースに作られているため、ノンブロッキングで利用されるとき、高レイテンシのバックエンドWebサービスであっても、組み込みWebサーバーをブロックしません。
+
+  use Mojolicious::Lite;
+
+=begin original
+
+  # Search MetaCPAN for "mojolicious"
+  get '/' => sub {
+    my $c = shift;
+    $c->ua->get('fastapi.metacpan.org/v1/module/_search?q=mojolicious' => sub {
+      my ($ua, $tx) = @_;
+      $c->render('metacpan', hits => $tx->result->json->{hits}{hits});
+    });
+  };
+
+=end original
+
+  # MetaCPANで"mojolicious"を検索
+  get '/' => sub {
+    my $c = shift;
+    $c->ua->get('fastapi.metacpan.org/v1/module/_search?q=mojolicious' => sub {
+      my ($ua, $tx) = @_;
+      $c->render('metacpan', hits => $tx->result->json->{hits}{hits});
+    });
+  };
+
+  app->start;
+  __DATA__
+
+  @@ metacpan.html.ep
+  <!DOCTYPE html>
+  <html>
+    <head><title>MetaCPAN results for "mojolicious"</title></head>
+    <body>
+      % for my $hit (@$hits) {
+        <p><%= $hit->{_source}{release} %></p>
+      % }
+    </body>
+  </html>
+
+=begin original
+
+The callback passed to L<Mojo::UserAgent/"get"> will be executed once the
+request to the backend web service has been finished, this is called
+continuation-passing style.
+
+=end original
+
+L<Mojo::UserAgent/"get">に渡されるコールバックは、バックエンドWebサービスへのリクエストが完了すると実行されます。これは継続渡しスタイルと呼ばれます。
+
+=head2 Synchronizing non-blocking operations
+
+(ノンブロッキング処理の同期)
+
+=begin original
+
+Multiple non-blocking operations, such as concurrent requests, can be easily
+synchronized with promises and L<Mojo::Promise/"all">. You create
+L<Mojo::Promise> objects manually or use methods like L<Mojo::UserAgent/"get_p">
+that create them for you.
+
+=end original
+
+同時リクエストなどの複数のノンブロッキング処理は、promiseおよびL<Mojo::Promise/"all">を使って簡単に同期できます。L<Mojo::Promise>オブジェクトを手動で作成するか、L<Mojo::UserAgent/"get_p">などのメソッドを使用してそれらが作成されるようにします。
+
+  use Mojolicious::Lite;
+  use Mojo::Promise;
+  use Mojo::URL;
+
+=begin original
+
+  # Search MetaCPAN for "mojo" and "minion"
+  get '/' => sub {
+    my $c = shift;
+
+=end original
+
+  # MetaCPANで"mojo"と"minion"を検索
+  get '/' => sub {
+    my $c = shift;
+
+=begin original
+
+    # Create two promises
+    my $url   = Mojo::URL->new('fastapi.metacpan.org/v1/module/_search');
+    my $mojo   = $c->ua->get_p($url->clone->query({q => 'mojo'}));
+    my $minion = $c->ua->get_p($url->clone->query({q => 'minion'}));
+
+=end original
+
+    # promiseをふたつ作成
+    my $url   = Mojo::URL->new('fastapi.metacpan.org/v1/module/_search');
+    my $mojo   = $c->ua->get_p($url->clone->query({q => 'mojo'}));
+    my $minion = $c->ua->get_p($url->clone->query({q => 'minion'}));
+
+=begin original
+
+    # Render a response once both promises have been resolved
+    Mojo::Promise->all($mojo, $minion)->then(sub {
+      my ($mojo, $minion) = @_;
+      $c->render(json => {
+        mojo   => $mojo->[0]->result->json('/hits/hits/0/_source/release'),
+        minion => $minion->[0]->result->json('/hits/hits/0/_source/release')
+      });
+    })->catch(sub {
+      my $err = shift;
+      $c->reply->exception($err);
+    })->wait;
+  };
+
+=end original
+
+    # promiseがふたつとも完了したらレスポンスを描画
+    Mojo::Promise->all($mojo, $minion)->then(sub {
+      my ($mojo, $minion) = @_;
+      $c->render(json => {
+        mojo   => $mojo->[0]->result->json('/hits/hits/0/_source/release'),
+        minion => $minion->[0]->result->json('/hits/hits/0/_source/release')
+      });
+    })->catch(sub {
+      my $err = shift;
+      $c->reply->exception($err);
+    })->wait;
+  };
+
+  app->start;
+
+=begin original
+
+To create promises manually you just wrap your continuation-passing style APIs
+in functions that return promises. Here's an example for how
+L<Mojo::UserAgent/"get_p"> works internally.
+
+=end original
+
+promiseを手動で作成するには、継続渡しスタイルのAPIをpromiseを返す関数でラップするだけです。ここで、L<Mojo::UserAgent/"get_p">が内部でどのように動作するかを例にして説明します。
+
+  use Mojo::UserAgent;
+  use Mojo::Promise;
+
+=begin original
+
+  # Wrap a user agent method with a promise
+  my $ua = Mojo::UserAgent->new;
+  sub get_p {
+    my $promise = Mojo::Promise->new;
+    $ua->get(@_ => sub {
+      my ($ua, $tx) = @_;
+      my $err = $tx->error;
+      $promise->resolve($tx) if !$err || $err->{code};
+      $promise->reject($err->{message});
+    });
+    return $promise;
+  }
+
+=end original
+
+  # ユーザーエージェントメソッドをpromiseでラップする
+  my $ua = Mojo::UserAgent->new;
+  sub get_p {
+    my $promise = Mojo::Promise->new;
+    $ua->get(@_ => sub {
+      my ($ua, $tx) = @_;
+      my $err = $tx->error;
+      $promise->resolve($tx) if !$err || $err->{code};
+      $promise->reject($err->{message});
+    });
+    return $promise;
+  }
+
+=begin original
+
+  # Use our new promise generating function
+  get_p('https://mojolicious.org')->then(sub {
+    my $tx = shift;
+    say $tx->result->dom->at('title')->text;
+  })->wait;
+
+=end original
+
+  # 作成したpromiseを生成する関数を使う
+  get_p('https://mojolicious.org')->then(sub {
+    my $tx = shift;
+    say $tx->result->dom->at('title')->text;
+  })->wait;
+
+=begin original
+
+Promises have three states, they start out as C<pending> and you call
+L<Mojo::Promise/"resolve"> to transition them to C<fulfilled>, or
+L<Mojo::Promise/"reject"> to transition them to C<rejected>.
+
+=end original
+
+promiseは3つの状態を持ちます。はじめはC<pending>となり、L<Mojo::Promise/"resolve">をコールするとC<fulfilled>に遷移し、あるいは、L<Mojo::Promise/"reject">をコールするとC<rejected>に遷移します。
+
+=head2 Timers
+
+(タイマー)
+
+=begin original
+
+Timers, another primary feature of the event loop, are created with
+L<Mojo::IOLoop/"timer"> and can, for example, be used to delay rendering of a
+response, and unlike C<sleep>, won't block any other requests that might be
+processed concurrently.
+
+=end original
+
+イベントループのもう1つの主要な機能であるタイマーは、L<Mojo::IOLoop/"timer">で作成します。タイマーは、たとえばレスポンスの描画を遅らせるために使用できます。C<sleep>とは異なり、並列に処理される他のリクエストをブロックしません。
+
+  use Mojolicious::Lite;
+  use Mojo::IOLoop;
+
+=begin original
+
+  # Wait 3 seconds before rendering a response
+  get '/' => sub {
+    my $c = shift;
+    Mojo::IOLoop->timer(3 => sub {
+      $c->render(text => 'Delayed by 3 seconds!');
+    });
+  };
+
+=end original
+
+  # 3秒待ってレスポンスを描画する
+  get '/' => sub {
+    my $c = shift;
+    Mojo::IOLoop->timer(3 => sub {
+      $c->render(text => '3秒遅れています！');
+    });
+  };
+
+  app->start;
+
+=begin original
+
+Recurring timers created with L<Mojo::IOLoop/"recurring"> are slightly more
+powerful, but need to be stopped manually, or they would just keep getting
+emitted.
+
+=end original
+
+L<Mojo::IOLoop/"recurring">で作成した繰り返しタイマーは、もう少し強力ですが、手動で停止する必要があります。そうしないと、ひたすら動作し続けます。
+
+  use Mojolicious::Lite;
+  use Mojo::IOLoop;
+
+=begin original
+
+  # Count to 5 in 1 second steps
+  get '/' => sub {
+    my $c = shift;
+
+=end original
+
+  # 1秒刻みで5まで数える
+  get '/' => sub {
+    my $c = shift;
+
+=begin original
+
+    # Start recurring timer
+    my $i = 1;
+    my $id = Mojo::IOLoop->recurring(1 => sub {
+      $c->write_chunk($i);
+      $c->finish if $i++ == 5;
+    });
+
+=end original
+
+    # 繰り返しタイマーを開始
+    my $i = 1;
+    my $id = Mojo::IOLoop->recurring(1 => sub {
+      $c->write_chunk($i);
+      $c->finish if $i++ == 5;
+    });
+
+=begin original
+
+    # Stop recurring timer
+    $c->on(finish => sub { Mojo::IOLoop->remove($id) });
+  };
+
+=end original
+
+    # 繰り返しタイマーを停止
+    $c->on(finish => sub { Mojo::IOLoop->remove($id) });
+  };
+
+  app->start;
+
+=begin original
+
+Timers are not tied to a specific request or connection, and can even be
+created at startup time.
+
+=end original
+
+タイマーは特定のリクエストや接続に関連付けられてはいないため、スタートアップ時に生成することもできます。
+
+  use Mojolicious::Lite;
+  use Mojo::IOLoop;
+
+=begin original
+
+  # Check title in the background every 10 seconds
+  my $title = 'Got no title yet.';
+  Mojo::IOLoop->recurring(10 => sub {
+    app->ua->get('https://mojolicious.org' => sub {
+      my ($ua, $tx) = @_;
+      $title = $tx->result->dom->at('title')->text;
+    });
+  });
+
+=end original
+
+  # 10秒ごとにバックグラウンドでタイトルをチェック
+  my $title = 'Got no title yet.';
+  Mojo::IOLoop->recurring(10 => sub {
+    app->ua->get('https://mojolicious.org' => sub {
+      my ($ua, $tx) = @_;
+      $title = $tx->result->dom->at('title')->text;
+    });
+  });
+
+=begin original
+
+  # Show current title
+  get '/' => sub {
+    my $c = shift;
+    $c->render(json => {title => $title});
+  };
+
+=end original
+
+  # 現在のタイトルを表示
+  get '/' => sub {
+    my $c = shift;
+    $c->render(json => {title => $title});
+  };
+
+  app->start;
+
+=begin original
+
+Just remember that all these non-blocking operations are processed
+cooperatively, so your callbacks shouldn't block for too long.
+
+=end original
+
+これらのノンブロッキング処理はすべて協調して処理されるため、コールバック関数が長時間ブロックされることはありません。
+
+=head2 Subprocesses
+
+(サブプロセス)
+
+=begin original
+
+You can also use subprocesses, created with L<Mojo::IOLoop/"subprocess">, to
+perform computationally expensive operations without blocking the event loop.
+
+=end original
+
+サブプロセスをL<Mojo::IOLoop/"subprocess">で作成して使用することで、イベントループをブロックせずに計算負荷の高い操作を実行できます。
+
+  use Mojolicious::Lite;
+  use Mojo::IOLoop;
+
+=begin original
+
+  # Operation that would block the event loop for 5 seconds
+  get '/' => sub {
+    my $c = shift;
+    Mojo::IOLoop->subprocess(
+      sub {
+        my $subprocess = shift;
+        sleep 5;
+        return '♥', 'Mojolicious';
+      },
+      sub {
+        my ($subprocess, $err, @results) = @_;
+        $c->reply->exception($err) and return if $err;
+        $c->render(text => "I $results[0] $results[1]!");
+      }
+    );
+  };
+
+=end original
+
+  # イベントループを5秒間ブロックする処理
+  get '/' => sub {
+    my $c = shift;
+    Mojo::IOLoop->subprocess(
+      sub {
+        my $subprocess = shift;
+        sleep 5;
+        return '♥', 'Mojolicious';
+      },
+      sub {
+        my ($subprocess, $err, @results) = @_;
+        $c->reply->exception($err) and return if $err;
+        $c->render(text => "I $results[0] $results[1]!");
+      }
+    );
+  };
+
+  app->start;
+
+=begin original
+
+The first callback will be executed in a child process, without blocking the
+event loop of the parent process. The results of the first callback will then be
+shared between both processes, and the second callback executed in the parent
+process.
+
+=end original
+
+最初のコールバックは、親プロセスのイベントループをブロックせずに、子プロセスとして実行されます。最初のコールバックの結果は両方のプロセス間で共有され、2番目のコールバックが親プロセスで実行されます。
+
+=head2 Exceptions in non-blocking operations
+
+(ノンブロッキング処理における例外)
+
+=begin original
+
+Since timers and other non-blocking operations are running solely in the event
+loop, outside of the application, exceptions that get thrown in callbacks can't
+get caught and handled automatically. But you can handle them manually by
+subscribing to the event L<Mojo::Reactor/"error"> or catching them inside the
+callback.
+
+=end original
+
+タイマーと他のノンブロッキング処理は、アプリケーション外部において単一のイベントループの中のみで実行されているため、コールバックの中で発生した例外は自動的にはキャッチできません。しかし、L<Mojo::Reactor/"error">イベントを購読することによって手動で処理することができます。また、コールバックの中でキャッチすることもできます。
+
+  use Mojolicious::Lite;
+  use Mojo::IOLoop;
+
+=begin original
+
+  # Forward error messages to the application log
+  Mojo::IOLoop->singleton->reactor->on(error => sub {
+    my ($reactor, $err) = @_;
+    app->log->error($err);
+  });
+
+=end original
+
+  # エラーメッセージをアプリケーションのログに転送する
+  Mojo::IOLoop->singleton->reactor->on(error => sub {
+    my ($reactor, $err) = @_;
+    app->log->error($err);
+  });
+
+=begin original
+
+  # Exception only gets logged (and connection times out)
+  get '/connection_times_out' => sub {
+    my $c = shift;
+    Mojo::IOLoop->timer(2 => sub {
+      die 'This request will not be getting a response';
+    });
+  };
+
+=end original
+
+  # 例外（と接続タイムアウト）だけをロギング
+  get '/connection_times_out' => sub {
+    my $c = shift;
+    Mojo::IOLoop->timer(2 => sub {
+      die 'このリクエストにはレスポンスが返ってこない。';
+    });
+  };
+
+=begin original
+
+  # Exception gets caught and handled
+  get '/catch_exception' => sub {
+    my $c = shift;
+    Mojo::IOLoop->timer(2 => sub {
+      eval { die 'This request will be getting a response' };
+      $c->reply->exception($@) if $@;
+    });
+  };
+
+=end original
+
+  # 例外をキャッチして処理する
+  get '/catch_exception' => sub {
+    my $c = shift;
+    Mojo::IOLoop->timer(2 => sub {
+      eval { die 'このリクエストにはレスポンスが返る' };
+      $c->reply->exception($@) if $@;
+    });
+  };
+
+  app->start;
+
+=begin original
+
+A default subscriber that turns all errors into warnings will usually be added
+by L<Mojo::IOLoop> as a fallback.
+
+=end original
+
+通常、デフォルトですべてのエラーを警告に変換するサブスクライバーが、L<Mojo::IOLoop>によってフォールバックとして追加されます。
+
+  Mojo::IOLoop->singleton->reactor->unsubscribe('error');
+
+=begin original
+
+During development or for applications where crashing is simply preferable, you
+can also make every exception that gets thrown in a callback fatal by removing
+all of its subscribers.
+
+=end original
+
+開発時またはクラッシュするのが望ましいアプリケーションのためには、サブスクライバーをすべて取り除くことによって、コールバックで発生するすべての例外が致命的なものになります。
+
+=head2 WebSocket web service
+
+(WebSocketによるWebサービス)
+
+=begin original
+
+The WebSocket protocol offers full bi-directional low-latency communication
+channels between clients and servers. Receive messages just by subscribing to
+events such as L<Mojo::Transaction::WebSocket/"message"> with
+L<Mojolicious::Controller/"on"> and return them with
+L<Mojolicious::Controller/"send">.
+
+=end original
+
+WebSocketプロトコルは、サーバーとクライアントの間を双方向で、低レイテンシでつなぐ通信チャンネルです。メッセージはL<Mojo::Transaction::WebSocket/"message">などのイベントをL<Mojolicious::Controller/"on">でサブスクライブするだけで受信できます。そして、L<Mojolicious::Controller/"send">でメッセージを返します 。
+
+  use Mojolicious::Lite;
+
+=begin original
+
+  # Template with browser-side code
+  get '/' => 'index';
+
+=end original
+
+  # ブラウザ側コードを含むテンプレート
+  get '/' => 'index';
+
+=begin original
+
+  # WebSocket echo service
+  websocket '/echo' => sub {
+    my $c = shift;
+
+=end original
+
+  # WebSocketのエコーサービス
+  websocket '/echo' => sub {
+    my $c = shift;
+
+=begin original
+
+    # Opened
+    $c->app->log->debug('WebSocket opened');
+
+=end original
+
+    # 接続を開く
+    $c->app->log->debug('WebSocket opened');
+
+=begin original
+
+    # Increase inactivity timeout for connection a bit
+    $c->inactivity_timeout(300);
+
+=end original
+
+    # 接続のタイムアウト時間を少し増やす
+    $c->inactivity_timeout(300);
+
+=begin original
+
+    # Incoming message
+    $c->on(message => sub {
+      my ($c, $msg) = @_;
+      $c->send("echo: $msg");
+    });
+
+=end original
+
+    # 受信メッセージ
+    $c->on(message => sub {
+      my ($c, $msg) = @_;
+      $c->send("echo: $msg");
+    });
+
+=begin original
+
+    # Closed
+    $c->on(finish => sub {
+      my ($c, $code, $reason) = @_;
+      $c->app->log->debug("WebSocket closed with status $code");
+    });
+  };
+
+=end original
+
+    # 接続を閉じる
+    $c->on(finish => sub {
+      my ($c, $code, $reason) = @_;
+      $c->app->log->debug("WebSocket closed with status $code");
+    });
+  };
+
+  app->start;
+  __DATA__
+
+  @@ index.html.ep
+  <!DOCTYPE html>
+  <html>
+    <head><title>Echo</title></head>
+    <body>
+      <script>
+        var ws = new WebSocket('<%= url_for('echo')->to_abs %>');
+
+=begin original
+
+        // Incoming messages
+        ws.onmessage = function (event) {
+          document.body.innerHTML += event.data + '<br/>';
+        };
+
+=end original
+
+        // 受信メッセージ
+        ws.onmessage = function (event) {
+          document.body.innerHTML += event.data + '<br/>';
+        };
+
+=begin original
+
+        // Outgoing messages
+        ws.onopen = function (event) {
+          window.setInterval(function () { ws.send('Hello Mojo!') }, 1000);
+        };
+      </script>
+    </body>
+  </html>
+
+=end original
+
+        // 送信メッセージ
+        ws.onopen = function (event) {
+          window.setInterval(function () { ws.send('Hello Mojo!') }, 1000);
+        };
+      </script>
+    </body>
+  </html>
+
+=begin original
+
+The event L<Mojo::Transaction::WebSocket/"finish"> will be emitted right after
+the WebSocket connection has been closed.
+
+=end original
+
+L<Mojo::Transaction::WebSocket/"finish">イベントは、WebSocket接続が閉じるとすぐに発行されます。
+
+  $c->tx->with_compression;
+
+=begin original
+
+You can activate C<permessage-deflate> compression with
+L<Mojo::Transaction::WebSocket/"with_compression">, this can result in much
+better performance, but also increases memory usage by up to 300KiB per
+connection.
+
+=end original
+
+L<Mojo::Transaction::WebSocket/"with_compression">を使って、C<permessage-deflate> 圧縮を有効にすることができます。これはパフォーマンスを大きく改善しますが、接続あたりのメモリ使用量が最大で300KB増えます。
+
+  my $proto = $c->tx->with_protocols('v2.proto', 'v1.proto');
+
+=begin original
+
+You can also use L<Mojo::Transaction::WebSocket/"with_protocols"> to negotiate a
+subprotocol.
+
+=end original
+
+L<Mojo::Transaction::WebSocket/"with_protocols">を使ってサブプロトコルをネゴシエートすることもできます。
+
+=head2 EventSource web service
+
+(EventSourceによるWebサービス)
+
+=begin original
+
+EventSource is a special form of long polling where you can use
+L<Mojolicious::Controller/"write"> to directly send DOM events from servers to
+clients. It is uni-directional, that means you will have to use Ajax requests
+for sending data from clients to servers, the advantage however is low
+infrastructure requirements, since it reuses the HTTP protocol for transport.
+
+=end original
+
+HTML5のEventSourceは、特別な形式のロングポーリング（L<Mojolicious::Controller/"write">を使うなど）です。サーバーからクライアントへDOMイベントを直接送信できます。送信は一方行なので、クライアントからサーバーへのデータの送信にはAjaxリクエストを使う必要があります。しかしながら、データ送信にHTTPプロトコルを再利用しており、インフラ要件が少ないという利点があります。
+
+  use Mojolicious::Lite;
+
+=begin original
+
+  # Template with browser-side code
+  get '/' => 'index';
+
+=end original
+
+  # ブラウザ側コードを含むテンプレート
+  get '/' => 'index';
+
+=begin original
+
+  # EventSource for log messages
+  get '/events' => sub {
+    my $c = shift;
+
+=end original
+
+  # ログメッセージのためのEventSource
+  get '/events' => sub {
+    my $c = shift;
+
+=begin original
+
+    # Increase inactivity timeout for connection a bit
+    $c->inactivity_timeout(300);
+
+=end original
+
+    # 接続のタイムアウト時間を少し増やす
+    $c->inactivity_timeout(300);
+
+=begin original
+
+    # Change content type and finalize response headers
+    $c->res->headers->content_type('text/event-stream');
+    $c->write;
+
+=end original
+
+    # コンテンツタイプを変更して、レスポンスヘッダをファイナライズ
+    $c->res->headers->content_type('text/event-stream');
+    $c->write;
+
+=begin original
+
+    # Subscribe to "message" event and forward "log" events to browser
+    my $cb = $c->app->log->on(message => sub {
+      my ($log, $level, @lines) = @_;
+      $c->write("event:log\ndata: [$level] @lines\n\n");
+    });
+
+=end original
+
+    # "message"イベントをサブスクライブし、"log"イベントをブラウザに送る
+    my $cb = $c->app->log->on(message => sub {
+      my ($log, $level, @lines) = @_;
+      $c->write("event:log\ndata: [$level] @lines\n\n");
+    });
+
+=begin original
+
+    # Unsubscribe from "message" event again once we are done
+    $c->on(finish => sub {
+      my $c = shift;
+      $c->app->log->unsubscribe(message => $cb);
+    });
+  };
+
+=end original
+
+    # 終わったら、"message"イベントのサブスクライブを解除する
+    $c->on(finish => sub {
+      my $c = shift;
+      $c->app->log->unsubscribe(message => $cb);
+    });
+  };
+
+  app->start;
+  __DATA__
+
+  @@ index.html.ep
+  <!DOCTYPE html>
+  <html>
+    <head><title>LiveLog</title></head>
+    <body>
+      <script>
+        var events = new EventSource('<%= url_for 'events' %>');
+
+=begin original
+
+        // Subscribe to "log" event
+        events.addEventListener('log', function (event) {
+          document.body.innerHTML += event.data + '<br/>';
+        }, false);
+      </script>
+    </body>
+  </html>
+
+=end original
+
+        // "log"イベントをサブスクライブする
+        events.addEventListener('log', function (event) {
+          document.body.innerHTML += event.data + '<br/>';
+        }, false);
+      </script>
+    </body>
+  </html>
+
+=begin original
+
+The event L<Mojo::Log/"message"> will be emitted for every new log message and
+the event L<Mojo::Transaction/"finish"> right after the transaction has been
+finished.
+
+=end original
+
+L<Mojo::Log/"message">イベントは、ログメッセージが発生するごと放出され、L<Mojo::Transaction/"finish">イベントはトランザクションが完了した直後に放出されます。
+
+=head2 Streaming multipart uploads
+
+(マルチパートアップロードのストリーミング)
+
+=begin original
+
+L<Mojolicious> contains a very sophisticated event system based on
+L<Mojo::EventEmitter>, with ready-to-use events on almost all layers, and which
+can be combined to solve some of the hardest problems in web development.
+
+=end original
+
+L<Mojolicious>は、L<Mojo::EventEmitter>を基盤とするとても洗練されたイベントシステムをもち、ほとんどすべての層でイベントがすぐに使えます。そして、このイベントシステムを組み合わせることで、WEB開発のなかで難易度が高い問題を解決することができるでしょう。
+
+  use Mojolicious::Lite;
+  use Scalar::Util 'weaken';
+
+=begin original
+
+  # Intercept multipart uploads and log each chunk received
+  hook after_build_tx => sub {
+    my $tx = shift;
+
+=end original
+
+  # マルチパートアップロードの間に割り入って、チャンクを受け取るごとにログを出力する
+  hook after_build_tx => sub {
+    my $tx = shift;
+
+=begin original
+
+    # Subscribe to "upgrade" event to identify multipart uploads
+    weaken $tx;
+    $tx->req->content->on(upgrade => sub {
+      my ($single, $multi) = @_;
+      return unless $tx->req->url->path->contains('/upload');
+
+=end original
+
+    # "upgrade"イベントをサブスクライブして、マルチパートアップロードを識別する
+    weaken $tx;
+    $tx->req->content->on(upgrade => sub {
+      my ($single, $multi) = @_;
+      return unless $tx->req->url->path->contains('/upload');
+
+=begin original
+
+      # Subscribe to "part" event to find the right one
+      $multi->on(part => sub {
+        my ($multi, $single) = @_;
+
+=end original
+
+      # "part"イベントをサブスクライブして、目当てのモノを探す
+      $multi->on(part => sub {
+        my ($multi, $single) = @_;
+
+=begin original
+
+        # Subscribe to "body" event of part to make sure we have all headers
+        $single->on(body => sub {
+          my $single = shift;
+
+=end original
+
+        # "body"イベントをサブスクライブして、ヘッダがすべてあることを確認する
+        $single->on(body => sub {
+          my $single = shift;
+
+=begin original
+
+          # Make sure we have the right part and replace "read" event
+          return unless $single->headers->content_disposition =~ /example/;
+          $single->unsubscribe('read')->on(read => sub {
+            my ($single, $bytes) = @_;
+
+=end original
+
+          # 正しいパーツを持っていることを確認し、"read"イベントを置き換える
+          return unless $single->headers->content_disposition =~ /example/;
+          $single->unsubscribe('read')->on(read => sub {
+            my ($single, $bytes) = @_;
+
+=begin original
+
+            # Log size of every chunk we receive
+            app->log->debug(length($bytes) . ' bytes uploaded');
+          });
+        });
+      });
+    });
+  };
+
+=end original
+
+            # 受け取ったチャンクごとにサイズをログに出力する
+            app->log->debug(length($bytes) . ' bytes uploaded');
+          });
+        });
+      });
+    });
+  };
+
+=begin original
+
+  # Upload form in DATA section
+  get '/' => 'index';
+
+=end original
+
+  # DATAセクションにあるアップロードフォーム
+  get '/' => 'index';
+
+=begin original
+
+  # Streaming multipart upload
+  post '/upload' => {text => 'Upload was successful.'};
+
+=end original
+
+  # マルチパートアップロードをストリーミング
+  post '/upload' => {text => 'アップロードが成功しました。'};
+
+  app->start;
+  __DATA__
+
+  @@ index.html.ep
+  <!DOCTYPE html>
+  <html>
+    <head><title>Streaming multipart upload</title></head>
+    <body>
+      %= form_for upload => (enctype => 'multipart/form-data') => begin
+        %= file_field 'example'
+        %= submit_button 'Upload'
+      % end
+    </body>
+  </html>
+
+=head2 More event loops
+
+(その他のイベントループ)
+
+=begin original
+
+Internally, the L<Mojo::IOLoop> event loop can use multiple reactor backends,
+L<EV> for example, will be automatically used if possible. Which in turn allows
+other event loops like L<AnyEvent> to just work.
+
+=end original
+
+内部的にL<Mojo::IOLoop>リアクターは複数のイベントループのバックエンドを利用できます。たとえばL<EV>は、インストールされていれば自動的に使用されます。したがって、L<AnyEvent>のようなイベントループも正しく動かすことができます。
+
+  use Mojolicious::Lite;
+  use EV;
+  use AnyEvent;
+
+=begin original
+
+  # Wait 3 seconds before rendering a response
+  get '/' => sub {
+    my $c = shift;
+    my $w;
+    $w = AE::timer 3, 0, sub {
+      $c->render(text => 'Delayed by 3 seconds!');
+      undef $w;
+    };
+  };
+
+=end original
+
+  # 3秒待ってレスポンスを描画する
+  get '/' => sub {
+    my $c = shift;
+    my $w;
+    $w = AE::timer 3, 0, sub {
+      $c->render(text => '3秒遅れています！');
+      undef $w;
+    };
+  };
+
+  app->start;
+
+=begin original
+
+Who actually controls the event loop backend is not important.
+
+=end original
+
+バックエンドで実際に誰がイベントループを制御するかは重要ではありません。
+
+  use Mojo::UserAgent;
+  use EV;
+  use AnyEvent;
+
+=begin original
+
+  # Search MetaCPAN for "mojolicious"
+  my $cv = AE::cv;
+  my $ua = Mojo::UserAgent->new;
+  $ua->get('fastapi.metacpan.org/v1/module/_search?q=mojolicious' => sub {
+    my ($ua, $tx) = @_;
+    $cv->send($tx->result->json('/hits/hits/0/_source/release'));
+  });
+  say $cv->recv;
+
+=end original
+
+  # MetaCPANで"mojolicious"を検索
+  my $cv = AE::cv;
+  my $ua = Mojo::UserAgent->new;
+  $ua->get('fastapi.metacpan.org/v1/module/_search?q=mojolicious' => sub {
+    my ($ua, $tx) = @_;
+    $cv->send($tx->result->json('/hits/hits/0/_source/release'));
+  });
+  say $cv->recv;
+
+=begin original
+
+You could, for example, just embed the built-in web server into an L<AnyEvent>
+application.
+
+=end original
+
+たとえば、組み込みのWebサーバーをL<AnyEvent>アプリケーションに組み込むこともできます。
+
+  use Mojolicious::Lite;
+  use Mojo::Server::Daemon;
+  use EV;
+  use AnyEvent;
+
+=begin original
+
+  # Normal action
+  get '/' => {text => 'Hello World!'};
+
+=end original
+
+  # 通常のアクション
+  get '/' => {text => 'Hello World!'};
+
+=begin original
+
+  # Connect application with web server and start accepting connections
+  my $daemon
+    = Mojo::Server::Daemon->new(app => app, listen => ['http://*:8080']);
+  $daemon->start;
+
+=end original
+
+  # アプリケーションをWebサーバーと接続して、接続の受付を開始する
+  my $daemon
+    = Mojo::Server::Daemon->new(app => app, listen => ['http://*:8080']);
+  $daemon->start;
+
+=begin original
+
+  # Let AnyEvent take control
+  AE::cv->recv;
+
+=end original
+
+  # AnyEventにコントロールさせる
+  AE::cv->recv;
+
+=head1 USER AGENT
+
+(ユーザーエージェント)
+
+=begin original
+
+When we say L<Mojolicious> is a web framework we actually mean it, with
+L<Mojo::UserAgent> there's a full featured HTTP and WebSocket user agent built
+right in.
+
+=end original
+
+わたしたちが L<Mojolicious> はウェブフレームワークだと言うとき、それは本気です。L<Mojo::UserAgent>には、フル機能を備えたHTTPとWebSocketのユーザーエージェントが組み込まれています。
+
+=head2 REST web services
+
+(RESTウェブサービス)
+
+=begin original
+
+Requests can be performed very comfortably with methods like
+L<Mojo::UserAgent/"get">, and always result in a L<Mojo::Transaction::HTTP>
+object, which has many useful attributes and methods. You can check for
+connection errors with L<Mojo::Transaction/"result">, or access HTTP request and
+response information directly through L<Mojo::Transaction/"req"> and
+L<Mojo::Transaction/"res">.
+
+=end original
+
+リクエストは、L<Mojo::UserAgent/"get">などのメソッドによって快適に実行できます。返り値は常にL<Mojo::Transaction::HTTP>オブジェクトになります。このオブジェクトには多くの便利な属性とメソッドがあります。L<Mojo::Transaction/"result">で接続エラーが確認できます。または、<Mojo::Transaction/"req">や<Mojo::Transaction/"res">からHTTPリクエストおよびレスポンス情報に直接アクセスできます。
+
+  use Mojo::UserAgent;
+
+=begin original
+
+  # Request a resource and make sure there were no connection errors
+  my $ua = Mojo::UserAgent->new;
+  my $tx = $ua->get('mojolicious.org/perldoc/Mojo' => {Accept => 'text/plain'});
+  my $res = $tx->result;
+
+=end original
+
+  ＃リソースをリクエストし、接続エラーがないことを確認する
+  my $ua = Mojo::UserAgent->new;
+  my $tx = $ua->get('mojolicious.org/perldoc/Mojo' => {Accept => 'text/plain'});
+  my $res = $tx->result;
+
+=begin original
+
+  # Decide what to do with its representation
+  if    ($res->is_success)  { say $res->body }
+  elsif ($res->is_error)    { say $res->message }
+  elsif ($res->code == 301) { say $res->headers->location }
+  else                      { say 'Whatever...' }
+
+=end original
+
+  # 応答に合わせて何をするかを決める
+  if    ($res->is_success)  { say $res->body }
+  elsif ($res->is_error)    { say $res->message }
+  elsif ($res->code == 301) { say $res->headers->location }
+  else                      { say 'Whatever...' }
+
+=begin original
+
+While methods like L<Mojo::Message::Response/"is_success"> and
+L<Mojo::Message::Response/"is_error"> serve as building blocks for more
+sophisticated REST clients.
+
+=end original
+
+L<Mojo::Message::Response/"is_success">とL<Mojo::Message::Response/"is_error">のようなメソッドが、RESTクライアントをより洗練されたものにしています。
+
+=head2 Web scraping
+
+(ウェブスクレイピング)
+
+=begin original
+
+Scraping information from websites has never been this much fun before. The
+built-in HTML/XML parser L<Mojo::DOM> is accessible through
+L<Mojo::Message/"dom"> and supports all CSS selectors that make sense for a
+standalone parser, it can be a very powerful tool especially for testing web
+application.
+
+=end original
+
+過去、ウェブサイトから情報をスクレイピングするのがこれほど面白かったことはありません。組み込みの HTML/XML パーサ L<Mojo::DOM> は、L<Mojo::Message/"dom">を通して利用でき、スタンドアロンパーサが理解できる全ての CSS セレクタをサポートします。とくにWebアプリケーションをテストするためのツールとしてとても強力です。
+
+  use Mojo::UserAgent;
+
+=begin original
+
+  # Fetch website
+  my $ua = Mojo::UserAgent->new;
+  my $res = $ua->get('mojolicious.org/perldoc')->result;
+
+=end original
+
+  # ウェブサイトを取得
+  my $ua = Mojo::UserAgent->new;
+  my $res = $ua->get('mojolicious.org/perldoc')->result;
+
+=begin original
+
+  # Extract title
+  say 'Title: ', $res->dom->at('head > title')->text;
+
+=end original
+
+  # タイトルを抽出
+  say 'Title: ', $res->dom->at('head > title')->text;
+
+=begin original
+
+  # Extract headings
+  $res->dom('h1, h2, h3')->each(sub { say 'Heading: ', shift->all_text });
+
+=end original
+
+  # 見出しを抽出
+  $res->dom('h1, h2, h3')->each(sub { say 'Heading: ', shift->all_text });
+
+=begin original
+
+  # Visit all nodes recursively to extract more than just text
+  for my $n ($res->dom->descendant_nodes->each) {
+
+=end original
+
+  # すべてのノードを再帰的にたどって、テキストとその他のものを抽出する
+  for my $n ($res->dom->descendant_nodes->each) {
+
+=begin original
+
+    # Text or CDATA node
+    print $n->content if $n->type eq 'text' || $n->type eq 'cdata';
+
+=end original
+
+    # テキストまたはCDATAノード
+    print $n->content if $n->type eq 'text' || $n->type eq 'cdata';
+
+=begin original
+
+    # Also include alternate text for images
+    print $n->{alt} if $n->type eq 'tag' && $n->tag eq 'img';
+  }
+
+=end original
+
+    # 画像のAltテキストを含める
+    print $n->{alt} if $n->type eq 'tag' && $n->tag eq 'img';
+  }
+
+=begin original
+
+For a full list of available CSS selectors see L<Mojo::DOM::CSS/"SELECTORS">.
+
+=end original
+
+利用可能なCSSセレクタの完全なリストについては、L<Mojo::DOM::CSS/"SELECTORS"> を見てください。
+
+=head2 JSON web services
+
+(JSON ウェブサービス)
+
+=begin original
+
+Most web services these days are based on the JSON data-interchange format.
+That's why L<Mojolicious> comes with the possibly fastest pure-Perl
+implementation L<Mojo::JSON> built right in, which is accessible through
+L<Mojo::Message/"json">.
+
+=end original
+
+最近ではウェブサービスのほとんどが、データ交換フォーマットとしてJSONを使っています。 なのでL<Mojolicious>には、ピュアPerl実装としてはおそらく最速であるL<Mojo::JSON>が組み込まれています。ここにはL<Mojo::Message/"json">からアクセスできます。
+
+  use Mojo::UserAgent;
+  use Mojo::URL;
+
+=begin original
+
+  # Fresh user agent
+  my $ua = Mojo::UserAgent->new;
+
+=end original
+
+  # 新しいユーザーエージェント
+  my $ua = Mojo::UserAgent->new;
+
+=begin original
+
+  # Search MetaCPAN for "mojolicious" and list latest releases
+  my $url = Mojo::URL->new('http://fastapi.metacpan.org/v1/release/_search');
+  $url->query({q => 'mojolicious', sort => 'date:desc'});
+  for my $hit (@{$ua->get($url)->result->json->{hits}{hits}}) {
+    say "$hit->{_source}{name} ($hit->{_source}{author})";
+  }
+
+=end original
+
+  # MetaCPANで"mojolicious"を検索して、最新のリリースを表示する
+  my $url = Mojo::URL->new('http://fastapi.metacpan.org/v1/release/_search');
+  $url->query({q => 'mojolicious', sort => 'date:desc'});
+  for my $hit (@{$ua->get($url)->result->json->{hits}{hits}}) {
+    say "$hit->{_source}{name} ($hit->{_source}{author})";
+  }
+
+=head2 Basic authentication
+
+(ベーシック認証)
+
+=begin original
+
+You can just add username and password to the URL, an C<Authorization> header
+will be automatically generated.
+
+=end original
+
+ユーザ名とパスワードを URL に追加するだけで、C<Authorization>ヘッダーが自動的に生成されます。
+
+  use Mojo::UserAgent;
+
+  my $ua = Mojo::UserAgent->new;
+  say $ua->get('https://sri:secret@example.com/hideout')->result->body;
+
+=head2 Decorating follow-up requests
+
+(追加リクエストの装飾)
+
+=begin original
+
+L<Mojo::UserAgent> can automatically follow redirects, the event
+L<Mojo::UserAgent/"start"> allows you direct access to each transaction right
+after they have been initialized and before a connection gets associated with
+them.
+
+=end original
+
+L<Mojo::UserAgent>は自動的にリダイレクトを辿り、L<Mojo::UserAgent/"start">イベントが、トランザクションが初期化された後かつそれが接続と関連付けられる前に、それぞれのトランザクションへの直接アクセスを可能にします。
+
+  use Mojo::UserAgent;
+
+=begin original
+
+  # User agent following up to 10 redirects
+  my $ua = Mojo::UserAgent->new(max_redirects => 10);
+
+=end original
+
+  # 最大10回までリダイレクトを追跡するユーザーエージェント
+  my $ua = Mojo::UserAgent->new(max_redirects => 10);
+
+=begin original
+
+  # Add a witty header to every request
+  $ua->on(start => sub {
+    my ($ua, $tx) = @_;
+    $tx->req->headers->header('X-Bender' => 'Bite my shiny metal ass!');
+    say 'Request: ', $tx->req->url->clone->to_abs;
+  });
+
+=end original
+
+  # 各リクエストに気の利いたヘッダを追加
+  $ua->on(start => sub {
+    my ($ua, $tx) = @_;
+    $tx->req->headers->header('X-Bender' => 'Bite my shiny metal ass!');
+    say 'Request: ', $tx->req->url->clone->to_abs;
+  });
+
+=begin original
+
+  # Request that will most likely get redirected
+  say 'Title: ', $ua->get('google.com')->result->dom->at('head > title')->text;
+
+=end original
+
+  # リダイレクトされるであろうリクエスト
+  say 'Title: ', $ua->get('google.com')->result->dom->at('head > title')->text;
+
+=begin original
+
+This even works for proxy C<CONNECT> requests.
+
+=end original
+
+これはプロキシへの C<CONNECT> リクエストに対しても使えます。
+
+=head2 Content generators
+
+(コンテンツジェネレーター)
+
+=begin original
+
+Content generators can be registered with
+L<Mojo::UserAgent::Transactor/"add_generator"> to generate the same type of
+content repeatedly for multiple requests.
+
+=end original
+
+コンテンツジェネレーターは、L<Mojo::UserAgent::Transactor/"add_generator">で登録できます。こうすると、複数のリクエストに対して同じタイプのコンテンツを繰り返し生成することができます。
+
+  use Mojo::UserAgent;
+  use Mojo::Asset::File;
+
+=begin original
+
+  # Add "stream" generator
+  my $ua = Mojo::UserAgent->new;
+  $ua->transactor->add_generator(stream => sub {
+    my ($transactor, $tx, $path) = @_;
+    $tx->req->content->asset(Mojo::Asset::File->new(path => $path));
+  });
+
+=end original
+
+  # "stream"ジェネレーターを追加
+  my $ua = Mojo::UserAgent->new;
+  $ua->transactor->add_generator(stream => sub {
+    my ($transactor, $tx, $path) = @_;
+    $tx->req->content->asset(Mojo::Asset::File->new(path => $path));
+  });
+
+=begin original
+
+  # Send multiple files streaming via PUT and POST
+  $ua->put('http://example.com/upload'  => stream => '/home/sri/mojo.png');
+  $ua->post('http://example.com/upload' => stream => '/home/sri/minion.png');
+
+=end original
+
+  # PUTとPOSTを通して複数のファイルのストリーミングを送信
+  $ua->put('http://example.com/upload'  => stream => '/home/sri/mojo.png');
+  $ua->post('http://example.com/upload' => stream => '/home/sri/minion.png');
+
+=begin original
+
+The C<json>, C<form> and C<multipart> content generators are always available.
+
+=end original
+
+C<json> 、C<form>およびC<multipart>コンテンツジェネレーターが常に利用可能です。
+
+  use Mojo::UserAgent;
+
+=begin original
+
+  # Send "application/json" content via PATCH
+  my $ua = Mojo::UserAgent->new;
+  my $tx = $ua->patch('http://api.example.com' => json => {foo => 'bar'});
+
+=end original
+
+  # PATCHを使って"application/json"コンテンツを送信
+  my $ua = Mojo::UserAgent->new;
+  my $tx = $ua->patch('http://api.example.com' => json => {foo => 'bar'});
+
+=begin original
+
+  # Send query parameters via GET
+  my $tx2 = $ua->get('search.example.com' => form => {q => 'test'});
+
+=end original
+
+  # GETを使ってクエリパラメーターを送信
+  my $tx2 = $ua->get('search.example.com' => form => {q => 'test'});
+
+=begin original
+
+  # Send "application/x-www-form-urlencoded" content via POST
+  my $tx3 = $ua->post('http://search.example.com' => form => {q => 'test'});
+
+=end original
+
+  # POSTを使って"application/x-www-form-urlencoded"コンテンツを送信
+  my $tx3 = $ua->post('http://search.example.com' => form => {q => 'test'});
+
+=begin original
+
+  # Send "multipart/form-data" content via PUT
+  my $tx4 = $ua->put(
+    'upload.example.com' => form => {test => {content => 'Hello World!'}});
+
+=end original
+
+  # PUTを使って"multipart/form-data"コンテンツを送信
+  my $tx4 = $ua->put(
+    'upload.example.com' => form => {test => {content => 'Hello World!'}});
+
+=begin original
+
+  # Send custom multipart content via PUT
+  my $tx5 = $ua->put('api.example.com' => multipart => ['Hello', 'World!']);
+
+=end original
+
+  # PUTを使ってカスタムマルチパートを送信
+  my $tx5 = $ua->put('api.example.com' => multipart => ['Hello', 'World!']);
+
+=begin original
+
+For more information about available content generators see also
+L<Mojo::UserAgent::Transactor/"tx">.
+
+=end original
+
+コンテンツジェネレーターについて、より詳しい情報はL<Mojo::UserAgent::Transactor/"tx">を見てください。
+
+=head2 Large file downloads
+
+(大きなファイルのダウンロード)
+
+=begin original
+
+When downloading large files with L<Mojo::UserAgent> you don't have to worry
+about memory usage at all, because it will automatically stream everything
+above 250KiB into a temporary file, which can then be moved into a permanent
+file with L<Mojo::Message/"save_to">.
+
+=end original
+
+L<Mojo::UserAgent>で大きなファイルをダウンロードする場合、メモリ使用量を心配する必要はまったくありません。250KB以上のものはすべてが自動的に一時ファイルにストリーミングされ、L<Mojo::Message/"save_to">で永続ファイルに移動できるからです。
+
+  use Mojo::UserAgent;
+
+=begin original
+
+  # Fetch the latest Mojolicious tarball
+  my $ua = Mojo::UserAgent->new(max_redirects => 5);
+  my $tx = $ua->get('https://www.github.com/mojolicious/mojo/tarball/master');
+  $tx->result->save_to('mojo.tar.gz');
+
+=end original
+
+  # 最新のMojolicious tarballを取得する
+  my $ua = Mojo::UserAgent->new(max_redirects => 5);
+  my $tx = $ua->get('https://www.github.com/mojolicious/mojo/tarball/master');
+  $tx->result->save_to('mojo.tar.gz');
+
+=begin original
+
+To protect you from excessively large files there is also a limit of 2GiB by
+default, which you can tweak with the attribute
+L<Mojo::UserAgent/"max_response_size">.
+
+=end original
+
+極端に大きいファイルから保護するために、デフォルトで2GBの制限もあります。上限サイズはL<Mojo::UserAgent/"max_response_size">属性で調整できます。
+
+=begin original
+
+  # Increase limit to 10GiB
+  $ua->max_response_size(10737418240);
+
+=end original
+
+  # 上限を10GBに増やす
+  $ua->max_response_size(10737418240);
+
+=head2 Large file upload
+
+(大きなファイルのアップロード)
+
+=begin original
+
+Uploading a large file is even easier.
+
+=end original
+
+大きなファイルのアップロードはさらに簡単です。
+
+  use Mojo::UserAgent;
+
+=begin original
+
+  # Upload file via POST and "multipart/form-data"
+  my $ua = Mojo::UserAgent->new;
+  $ua->post('example.com/upload' =>
+    form => {image => {file => '/home/sri/hello.png'}});
+
+=end original
+
+  # POST と "multipart/form-data" 経由でファイルをアップロード
+  my $ua = Mojo::UserAgent->new;
+  $ua->post('example.com/upload' =>
+    form => {image => {file => '/home/sri/hello.png'}});
+
+=begin original
+
+And once again you don't have to worry about memory usage, all data will be
+streamed directly from the file.
+
+=end original
+
+ここでもメモリ使用量を心配する必要はなく、すべてのデータがファイルから直接ストリーミングされます。
+
+=head2 Streaming response
+
+(ストリーミングレスポンス)
+
+=begin original
+
+Receiving a streaming response can be really tricky in most HTTP clients, but
+L<Mojo::UserAgent> makes it actually easy.
+
+=end original
+
+ストリーミングレスポンスの受信は、多くのHTTPクライアントで非常に難しくなりがちですが、L<Mojo::UserAgent>では実に簡単です。
+
+  use Mojo::UserAgent;
+
+=begin original
+
+  # Accept responses of indefinite size
+  my $ua = Mojo::UserAgent->new(max_response_size => 0);
+
+=end original
+
+  # 不定サイズのレスポンスを受け入れる
+  my $ua = Mojo::UserAgent->new(max_response_size => 0);
+
+=begin original
+
+  # Build a normal transaction
+  my $tx = $ua->build_tx(GET => 'http://example.com');
+
+=end original
+
+  # 通常のトランザクションを立てる
+  my $tx = $ua->build_tx(GET => 'http://example.com');
+
+=begin original
+
+  # Replace "read" events to disable default content parser
+  $tx->res->content->unsubscribe('read')->on(read => sub {
+    my ($content, $bytes) = @_;
+    say "Streaming: $bytes";
+  });
+
+=end original
+
+  # "read"イベントを置き換えて、デフォルトのコンテントパーサーを無効にする
+  $tx->res->content->unsubscribe('read')->on(read => sub {
+    my ($content, $chunk) = @_;
+    say "Streaming: $chunk";
+  });
+
+=begin original
+
+  # Process transaction
+  $tx = $ua->start($tx);
+
+=end original
+
+  # トランザクションの処理
+  $tx = $ua->start($tx);
+
+=begin original
+
+The event L<Mojo::Content/"read"> will be emitted for every chunk of data that
+is received, even chunked transfer encoding and gzip content encoding will be
+handled transparently if necessary.
+
+=end original
+
+L<Mojo::Content/"read">イベントが受信されるすべてのデータチャンクに対して発行されます。チャンク転送エンコードやgzipコンテンツエンコードも、必要に応じて透過的に処理されます。
+
+=head2 Streaming request
+
+(ストリーミングリクエスト)
+
+=begin original
+
+Sending a streaming request is almost just as easy.
+
+=end original
+
+ストリーミングリクエストを送るのもほとんど同じくらい簡単です。
+
+  use Mojo::UserAgent;
+
+=begin original
+
+  # Build a normal transaction
+  my $ua = Mojo::UserAgent->new;
+  my $tx = $ua->build_tx(GET => 'http://example.com');
+
+=end original
+
+  # 通常のトランザクションを立てる
+  my $ua = Mojo::UserAgent->new;
+  my $tx = $ua->build_tx(GET => 'http://example.com');
+
+=begin original
+
+  # Prepare body
+  my $body = 'Hello World!';
+  $tx->req->headers->content_length(length $body);
+
+=end original
+
+  # ボディを準備する
+  my $body = 'Hello World!';
+  $tx->req->headers->content_length(length $body);
+
+=begin original
+
+  # Start writing directly with a drain callback
+  my $drain;
+  $drain = sub {
+    my $content = shift;
+    my $chunk = substr $body, 0, 1, '';
+    $drain = undef unless length $body;
+    $content->write($chunk, $drain);
+  };
+  $tx->req->content->$drain;
+
+=end original
+
+  # 排出コールバックに直接書き込みを開始する
+  my $drain;
+  $drain = sub {
+    my $content = shift;
+    my $chunk = substr $body, 0, 1, '';
+    $drain = undef unless length $body;
+    $content->write($chunk, $drain);
+  };
+  $tx->req->content->$drain;
+
+=begin original
+
+  # Process transaction
+  $tx = $ua->start($tx);
+
+=end original
+
+  # トランザクションの処理
+  $tx = $ua->start($tx);
+
+=begin original
+
+The drain callback passed to L<Mojo::Content/"write"> will be executed whenever
+the entire previous chunk of data has actually been written.
+
+=end original
+
+L<Mojo::Content/"write">に渡されるドレインコールバックは、前のデータチャンク全体が実際に書き込まれるたびに実行されます。
+
+=head2 Non-blocking
+
+(ノンブロッキング)
+
+=begin original
+
+L<Mojo::UserAgent> has been designed from the ground up to be non-blocking, the
+whole blocking API is just a simple convenience wrapper. Especially for high
+latency tasks like web crawling this can be extremely useful, because you can
+keep many concurrent connections active at the same time.
+
+=end original
+
+L<Mojo::UserAgent>はノンブロッキングとしてゼロから設計されており、ブロッキングAPI全体は単に便宜的なラッパーです。特に、ウェブクローリングのような待ち時間が大きな処理では、同時に多くの並列接続をアクティブに保つことができて非常に便利です。
+
+  use Mojo::UserAgent;
+  use Mojo::IOLoop;
+
+=begin original
+
+  # Concurrent non-blocking requests
+  my $ua = Mojo::UserAgent->new;
+  $ua->get('https://metacpan.org/search?q=mojo' => sub {
+    my ($ua, $mojo) = @_;
+    say $mojo->result->dom->at('title')->text;
+  });
+  $ua->get('https://metacpan.org/search?q=minion' => sub {
+    my ($ua, $minion) = @_;
+    say $minion->result->dom->at('title')->text;
+  });
+
+=end original
+
+  # 並列のノンブロッキングリクエスト
+  my $ua = Mojo::UserAgent->new;
+  $ua->get('https://metacpan.org/search?q=mojo' => sub {
+    my ($ua, $mojo) = @_;
+    say $mojo->result->dom->at('title')->text;
+  });
+  $ua->get('https://metacpan.org/search?q=minion' => sub {
+    my ($ua, $minion) = @_;
+    say $minion->result->dom->at('title')->text;
+  });
+
+=begin original
+
+  # Start event loop if necessary
+  Mojo::IOLoop->start unless Mojo::IOLoop->is_running;
+
+=end original
+
+  # 必要であればイベントループを開始
+  Mojo::IOLoop->start unless Mojo::IOLoop->is_running;
+
+=begin original
+
+But don't try to open too many connections to one server at the same time, it
+might get overwhelmed. Better use a queue to process requests in smaller
+batches.
+
+=end original
+
+ただし、1つのサーバーに対して同時に多くの接続を開かないでください。接続過多になる可能性があります。キューを使用して、リクエストを小さなバッチで処理する方が適切です。
+
+  use Mojo::UserAgent;
+  use Mojo::IOLoop;
+
+  my @urls = (
+    'mojolicious.org/perldoc/Mojo/DOM',  'mojolicious.org/perldoc/Mojo',
+    'mojolicious.org/perldoc/Mojo/File', 'mojolicious.org/perldoc/Mojo/URL'
+  );
+
+=begin original
+
+  # User agent with a custom name, following up to 5 redirects
+  my $ua = Mojo::UserAgent->new(max_redirects => 5);
+  $ua->transactor->name('MyParallelCrawler 1.0');
+
+=end original
+
+  # 最大5つのリダイレクトに追跡するカスタム名を持つユーザーエージェント
+  my $ua = Mojo::UserAgent->new(max_redirects => 5);
+  $ua->transactor->name('MyParallelCrawler 1.0');
+
+=begin original
+
+  # Use a delay to keep the event loop running until we are done
+  my $delay = Mojo::IOLoop->delay;
+  my $fetch;
+  $fetch = sub {
+
+=end original
+
+  # 遅延を使用して、完了するまでイベントループを回し続ける
+  my $delay = Mojo::IOLoop->delay;
+  my $fetch;
+  $fetch = sub {
+
+=begin original
+
+    # Stop if there are no more URLs
+    return unless my $url = shift @urls;
+
+=end original
+
+    # URLがなくなったら停止
+    return unless my $url = shift @urls;
+
+=begin original
+
+    # Fetch the next title
+    my $end = $delay->begin;
+    $ua->get($url => sub {
+      my ($ua, $tx) = @_;
+      say "$url: ", $tx->result->dom->at('title')->text;
+
+=end original
+
+    # 次のタイトルを取得
+    my $end = $delay->begin;
+    $ua->get($url => sub {
+      my ($ua, $tx) = @_;
+      say "$url: ", $tx->result->dom->at('title')->text;
+
+=begin original
+
+      # Next request
+      $fetch->();
+      $end->();
+    });
+  };
+
+=end original
+
+      # 次のリクエスト
+      $fetch->();
+      $end->();
+    });
+  };
+
+=begin original
+
+  # Process two requests at a time
+  $fetch->() for 1 .. 2;
+  $delay->wait;
+
+=end original
+
+  # 一度に2つのリクエストを処理する
+  $fetch->() for 1 .. 2;
+  $delay->wait;
+
+=begin original
+
+It is also strongly recommended to respect every sites C<robots.txt> file as
+well as terms of service, and to wait a little before reopening connections to
+the same host, or the operators might be forced to block your access.
+
+=end original
+
+また、どんなときもサイトのC<robots.txt>ファイルと利用規約を尊重し、同じホストへの接続を再度開く前には少し待つようにしましょう。そうでないと、管理者はアクセスをブロックせざるを得なくなるかもしれません。
+
+=head2 Concurrent blocking requests
+
+(並列のブロッキングリクエスト)
+
+=begin original
+
+You might have seen L<Mojo::Promise/"wait"> already in some examples
+above. It is used to make non-blocking operations portable, allowing them to
+work inside an already running event loop or start one on demand.
+
+=end original
+
+これまでのサンプルですでにL<Mojo::Promise/"wait">を見たことがあるかもしれません。これはノンブロッキング処理を移植可能にするために使用され、これらの処理を既に実行中のイベントループ内で動かしたり、必要に応じて開始したりできます。
+
+  use Mojo::UserAgent;
+  use Mojo::Promise;
+
+=begin original
+
+  # Synchronize non-blocking requests with promises
+  my $ua = Mojo::UserAgent->new;
+  my $mojo   = $ua->get_p('https://metacpan.org/search?q=mojo');
+  my $minion = $ua->get_p('https://metacpan.org/search?q=minion');
+  Mojo::Promise->all($mojo, $minion)->then(sub {
+    my ($mojo, $minion) = @_;
+    say $mojo->[0]->result->dom->at('title')->text;
+    say $minion->[0]->result->dom->at('title')->text;
+  })->wait;
+
+=end original
+
+  # ノンブロッキングリクエストをプロミスと同期する
+  my $ua = Mojo::UserAgent->new;
+  my $mojo   = $ua->get_p('https://metacpan.org/search?q=mojo');
+  my $minion = $ua->get_p('https://metacpan.org/search?q=minion');
+  Mojo::Promise->all($mojo, $minion)->then(sub {
+    my ($mojo, $minion) = @_;
+    say $mojo->[0]->result->dom->at('title')->text;
+    say $minion->[0]->result->dom->at('title')->text;
+  })->wait;
+
+=head2 WebSockets
+
+(WebSocket)
+
+=begin original
+
+WebSockets are not just for the server-side, you can use
+L<Mojo::UserAgent/"websocket_p"> to open new connections, which are always
+non-blocking. The WebSocket handshake uses HTTP, and is a normal C<GET> request
+with a few additional headers. It can even contain cookies, and is followed by
+a C<101> response from the server, notifying our user agent that the connection
+has been established and it can start using the bi-directional WebSocket
+protocol.
+
+=end original
+
+WebSocketはサーバー側だけのものではなく、L<Mojo::UserAgent/"websocket_p">を使って、常にノンブロッキングで動く新しい接続を開くことができます。WebSocketハンドシェイクはHTTPを使用しています。また、通常のC<GET>メソッドにいくつかヘッダーが追加されたリクエストです。ここにクッキーを含むこともできます。ハンドシェイクに続いて、サーバーからのC<101>レスポンスによって、接続が確立したことがユーザーエージェントに通知されます。するとWebSocketプロトコルを使った双方向通信が開始します。
+
+  use Mojo::UserAgent;
+  use Mojo::Promise;
+
+=begin original
+
+  # Open WebSocket to echo service
+  my $ua = Mojo::UserAgent->new;
+  $ua->websocket_p('ws://echo.websocket.org')->then(sub {
+    my $tx = shift;
+
+=end original
+
+  # エコーサービスのためにWebSocketを開く
+  my $ua = Mojo::UserAgent->new;
+  $ua->websocket_p('ws://echo.websocket.org')->then(sub {
+    my $tx = shift;
+
+=begin original
+
+    # Prepare a followup promise so we can wait for messages
+    my $promise = Mojo::Promise->new;
+
+=end original
+
+    # メッセージを待つことができるようにフォローアップ用のプロミスを準備する
+    my $promise = Mojo::Promise->new;
+
+=begin original
+
+    # Wait for WebSocket to be closed
+    $tx->on(finish => sub {
+      my ($tx, $code, $reason) = @_;
+      say "WebSocket closed with status $code.";
+      $promise->resolve;
+    });
+
+=end original
+
+    # WebSocketが閉じるのを待つ
+    $tx->on(finish => sub {
+      my ($tx, $code, $reason) = @_;
+      say "WebSocket closed with status $code.";
+      $promise->resolve;
+    });
+
+=begin original
+
+    # Close WebSocket after receiving one message
+    $tx->on(message => sub {
+      my ($tx, $msg) = @_;
+      say "WebSocket message: $msg";
+      $tx->finish;
+    });
+
+=end original
+
+    # ひとつのメッセージを受け取った後にWebSocketを閉じる
+    $tx->on(message => sub {
+      my ($tx, $msg) = @_;
+      say "WebSocket message: $msg";
+      $tx->finish;
+    });
+
+=begin original
+
+    # Send a message to the server
+    $tx->send('Hi!');
+
+=end original
+
+    # サーバーにメッセージを送信
+    $tx->send('Hi!');
+
+=begin original
+
+    # Insert a new promise into the promise chain
+    return $promise;
+  })->catch(sub {
+    my $err = shift;
+
+=end original
+
+    # 新しいプロミスをプロミスチェーンに挿入する
+    return $promise;
+  })->catch(sub {
+    my $err = shift;
+
+=begin original
+
+    # Handle failed WebSocket handshakes and other exceptions
+    warn "WebSocket error: $err";
+  })->wait;
+
+=end original
+
+    # 失敗したWebSocketハンドシェイクおよびその他の例外を処理する
+    warn "WebSocket error: $err";
+  })->wait;
+
+=head2 UNIX domain sockets
+
+(UNIXドメインソケット)
+
+=begin original
+
+Not just TCP/IP sockets are supported, but also UNIX domain sockets, which can
+have significant security and performance benefits when used for inter-process
+communication. Instead of C<http://> and C<ws://> you can use the
+C<http+unix://> and C<ws+unix://> schemes, and pass along a percent encoded path
+(C</> becomes C<%2F>) instead of a hostname.
+
+=end original
+
+TCP/IPソケットだけでなく、UNIXドメインソケットもサポートされています。これはプロセス間通信に使用すると、セキュリティとパフォーマンスの面で大きなメリットがあります。C<http://>およびC<ws://>の代わりにC<http+unix://>とC<ws+unix://>スキーマを使用できます。パーセントエンコードパス（C</>はC<％2F>になる）をホストネームの代わりに渡します。
+
+  use Mojo::UserAgent;
+  use Mojo::Promise;
+
+=begin original
+
+  # GET request via UNIX domain socket "/tmp/foo.sock"
+  my $ua = Mojo::UserAgent->new;
+  say $ua->get('http+unix://%2Ftmp%2Ffoo.sock/index.html')->result->body;
+
+=end original
+
+  # UNIXドメインソケット"/tmp/foo.sock"を介したGETリクエスト
+  my $ua = Mojo::UserAgent->new;
+  say $ua->get('http+unix://%2Ftmp%2Ffoo.sock/index.html')->result->body;
+
+=begin original
+
+  # GET request with HOST header via UNIX domain socket "/tmp/bar.sock"
+  my $tx = $ua->get('http+unix://%2Ftmp%2Fbar.sock' => {Host => 'example.com'});
+  say $tx->result->body;
+
+=end original
+
+  # UNIXドメインソケット "/tmp/bar.sock"を介したHOSTヘッダー付きのGETリクエスト
+  my $tx = $ua->get('http+unix://%2Ftmp%2Fbar.sock' => {Host => 'example.com'});
+  say $tx->result->body;
+
+=begin original
+
+  # WebSocket connection via UNIX domain socket "/tmp/baz.sock"
+  $ua->websocket_p('ws+unix://%2Ftmp%2Fbaz.sock/echo')->then(sub {
+    my $tx = shift;
+
+=end original
+
+  # UNIXドメインソケット "/tmp/baz.sock" を介したWebSocket接続
+  $ua->websocket_p('ws+unix://%2Ftmp%2Fbaz.sock/echo')->then(sub {
+    my $tx = shift;
+
+    my $promise = Mojo::Promise->new;
+    $tx->on(finish => sub { $promise->resolve });
+
+    $tx->on(message => sub {
+      my ($tx, $msg) = @_;
+      say "WebSocket message: $msg";
+      $tx->finish;
+    });
+    $tx->send('Hi!');
+
+    return $promise;
+  })->catch(sub {
+    my $err = shift;
+    warn "WebSocket error: $err";
+  })->wait;
+
+=begin original
+
+You can set the C<Host> header manually to pass along a hostname.
+
+=end original
+
+C<Host>ヘッダーを手動で設定してホスト名を渡すことができます。
+
+=head2 Command line
+
+(コマンドライン)
+
+=begin original
+
+Don't you hate checking huge HTML files from the command line? Thanks to the
+command L<Mojolicious::Command::get> that is about to change. You can just pick
+the parts that actually matter with the CSS selectors from L<Mojo::DOM> and
+JSON Pointers from L<Mojo::JSON::Pointer>.
+
+=end original
+
+コマンドラインから巨大な HTML ファイルをチェックするのは嫌ですよね？コマンドL<Mojolicious::Command::get>のおかげでそれは変わろうとしています。実際に重要な部分だけをL<Mojo::DOM>のCSSセレクターやL<Mojo::JSON::Pointer>のJSONポインターで取り出せます。
+
+  $ mojo get https://mojolicious.org 'head > title'
+
+=begin original
+
+How about a list of all id attributes?
+
+=end original
+
+すべての id 属性のリストを見るには？
+
+  $ mojo get https://mojolicious.org '*' attr id
+
+=begin original
+
+Or the text content of all heading tags?
+
+=end original
+
+または、すべての見出しタグのテキスト内容は?
+
+  $ mojo get https://mojolicious.org 'h1, h2, h3' text
+
+=begin original
+
+Maybe just the text of the third heading?
+
+=end original
+
+三番目の見出しのテキストは?
+
+  $ mojo get https://mojolicious.org 'h1, h2, h3' 3 text
+
+=begin original
+
+You can also extract all text from nested child elements.
+
+=end original
+
+ネストした子要素からもテキストをすべて抽出できます。
+
+  $ mojo get https://mojolicious.org '#mojobar' all
+
+=begin original
+
+The request can be customized as well.
+
+=end original
+
+リクエストはカスタマイズすることもできます。
+
+  $ mojo get -M POST -H 'X-Bender: Bite my shiny metal ass!' http://google.com
+
+=begin original
+
+Store response data by redirecting C<STDOUT>.
+
+=end original
+
+レスポンスデータをC<STDOUT> にリダイレクトして保存します。
+
+  $ mojo get mojolicious.org > example.html
+
+=begin original
+
+Pass request data by redirecting C<STDIN>.
+
+=end original
+
+リクエストデータをC<STDIN>にリダイレクトして渡します。
+
+  $ mojo get -M PUT mojolicious.org < example.html
+
+=begin original
+
+Or use the output of another program.
+
+=end original
+
+または、別のプログラムの出力を使用します。
+
+  $ echo 'Hello World' | mojo get -M PUT https://mojolicious.org
+
+=begin original
+
+Submit forms as C<application/x-www-form-urlencoded> content.
+
+=end original
+
+C<application/x-www-form-urlencoded>コンテンツとしてフォームを送信します。
+
+  $ mojo get -M POST -f 'q=Mojo' -f 'size=5' https://metacpan.org/search
+
+=begin original
+
+And upload files as C<multipart/form-data> content.
+
+=end original
+
+さらに、C<multipart/form-data>コンテンツとしてファイルをアップロードします。
+
+  $ mojo get -M POST -f 'upload=@example.html' mojolicious.org
+
+=begin original
+
+You can follow redirects and view the headers for all messages.
+
+=end original
+
+リダイレクトを辿ってすべての (HTTP) ヘッダメッセージを見ることができます。
+
+  $ mojo get -r -v http://google.com 'head > title'
+
+=begin original
+
+Extract just the information you really need from JSON data structures.
+
+=end original
+
+JSONデータ構造から本当に必要な情報を抽出できます。
+
+  $ mojo get https://fastapi.metacpan.org/v1/author/SRI /name
+
+=begin original
+
+This can be an invaluable tool for testing your applications.
+
+=end original
+
+アプリケーションのテストに真価を発揮するツールとなることでしょう。
+
+  $ ./myapp.pl get /welcome 'head > title'
+
+=head2 One-liners
+
+(ワンライナー)
+
+=begin original
+
+For quick hacks and especially testing, L<ojo> one-liners are also a great
+choice.
+
+=end original
+
+手早くハックしたいとき、とくにテストのためには、L<ojo>ワンライナーはすぐれた選択です。
+
+  $ perl -Mojo -E 'say g("mojolicious.org")->dom->at("title")->text'
+
+=head1 APPLICATIONS
+
+(アプリケーション)
+
+=begin original
+
+Fun L<Mojolicious> application hacks for all occasions.
+
+=end original
+
+楽しい L<Mojolicious> アプリケーションはどんな場面でもハックが満載です。
+
+=head2 Basic authentication
+
+(ベーシック認証)
+
+=begin original
+
+Basic authentication data will be automatically extracted from the
+C<Authorization> header.
+
+=end original
+
+ベーシック認証のデータは、C<Authorization>ヘッダから自動的に抽出されます。
+
+  use Mojolicious::Lite;
+  use Mojo::Util 'secure_compare';
+
+  get '/' => sub {
+    my $c = shift;
+
+=begin original
+
+    # Check for username "Bender" and password "rocks"
+    return $c->render(text => 'Hello Bender!')
+      if secure_compare $c->req->url->to_abs->userinfo, 'Bender:rocks';
+
+=end original
+
+    # ユーザー名"Bender"とパスワード"rocks"をチェック
+    return $c->render(text => 'Hello Bender!')
+      if secure_compare $c->req->url->to_abs->userinfo, 'Bender:rocks';
+
+=begin original
+
+    # Require authentication
+    $c->res->headers->www_authenticate('Basic');
+    $c->render(text => 'Authentication required!', status => 401);
+  };
+
+=end original
+
+    # 認証を要求
+    $c->res->headers->www_authenticate('Basic');
+    $c->render(text => 'Authentication required!', status => 401);
+  };
+
+  app->start;
+
+=begin original
+
+This can be combined with TLS for a secure authentication mechanism.
+
+=end original
+
+TLSを一緒に使って安全に認証することもできます。
+
+  $ ./myapp.pl daemon -l 'https://*:3000?cert=./server.crt&key=./server.key'
+
+=head2 Adding a configuration file
+
+(設定ファイルの追加)
+
+=begin original
+
+Adding a configuration file to your application is as easy as adding a file to
+its home directory and loading the plugin L<Mojolicious::Plugin::Config>. The
+default name is based on the value of L<Mojolicious/"moniker"> (C<myapp>),
+appended with a C<.conf> extension (C<myapp.conf>).
+
+=end original
+
+構成ファイルをアプリケーションに追加するのは、ファイルをホームディレクトリに追加してL<Mojolicious::Plugin::Config>プラグインをロードするのと同じくらい簡単です。デフォルト名はL<Mojolicious/"moniker">（C <myapp> ）にC<.conf>拡張子を付け足したものになります（C<myapp.conf> ）。
+
+  $ mkdir myapp
+  $ cd myapp
+  $ touch myapp.pl
+  $ chmod 744 myapp.pl
+  $ echo '{name => "my Mojolicious application"};' > myapp.conf
+
+=begin original
+
+Configuration files themselves are just Perl scripts that return a hash
+reference with configuration settings of your choice. All those settings are
+then available through the method L<Mojolicious/"config"> and the helper
+L<Mojolicious::Plugin::DefaultHelpers/"config">.
+
+=end original
+
+構成ファイル自体は、選択した構成設定を含むハッシュ参照を返す単なるPerlスクリプトです。これらの設定はすべて、メソッドL<Mojolicious/"config">とL<Mojolicious::Plugin::DefaultHelpers/"config"> で利用できます。
+
+  use Mojolicious::Lite;
+
+  plugin 'Config';
+
+  my $name = app->config('name');
+  app->log->debug("Welcome to $name");
+
+  get '/' => 'with_config';
+
+  app->start;
+  __DATA__
+  @@ with_config.html.ep
+  <!DOCTYPE html>
+  <html>
+    <head><title><%= config 'name' %></title></head>
+    <body>Welcome to <%= config 'name' %></body>
+  </html>
+
+=begin original
+
+Alternatively you can also use configuration files in the JSON format with
+L<Mojolicious::Plugin::JSONConfig>.
+
+=end original
+
+または、L<Mojolicious::Plugin::JSONConfig>でJSON形式の設定ファイルを使用することもできます。
+
+=head2 Adding a plugin to your application
+
+(アプリケーションにプラグインを追加)
+
+=begin original
+
+To organize your code better and to prevent helpers from cluttering your
+application, you can use application specific plugins.
+
+=end original
+
+コードをよく整理し、アプリケーションがヘルパーでごちゃごちゃになるのを防ぐために、アプリケーションを指定してプラグインを作成できます。
+
+  $ mkdir -p lib/MyApp/Plugin
+  $ touch lib/MyApp/Plugin/MyHelpers.pm
+
+=begin original
+
+They work just like normal plugins and are also subclasses of
+L<Mojolicious::Plugin>. Nested helpers with a prefix based on the plugin name
+are an easy way to avoid conflicts.
+
+=end original
+
+通常のプラグインと同じように動き、L<Mojolicious::Plugin>のサブクラスにもなっています。プラグインの名前にプレフィックスを付け、ヘルパーをネストさせると、簡単に衝突を避けることができます。
+
+  package MyApp::Plugin::MyHelpers;
+  use Mojo::Base 'Mojolicious::Plugin';
+
+  sub register {
+    my ($self, $app) = @_;
+    $app->helper('my_helpers.render_with_header' => sub {
+      my ($c, @args) = @_;
+      $c->res->headers->header('X-Mojo' => 'I <3 Mojolicious!');
+      $c->render(@args);
+    });
+  }
+
+  1;
+
+=begin original
+
+You can have as many application specific plugins as you like, the only
+difference to normal plugins is that you load them using their full class name.
+
+=end original
+
+アプリケーション固有のプラグインはいくつでも使用できますが、通常のプラグインとの唯一の違いは、ロードするために完全なクラス名を使用するところです。
+
+  use Mojolicious::Lite;
+
+  use lib 'lib';
+
+  plugin 'MyApp::Plugin::MyHelpers';
+
+  get '/' => sub {
+    my $c = shift;
+    $c->my_helpers->render_with_header(text => 'I ♥ Mojolicious!');
+  };
+
+  app->start;
+
+=begin original
+
+Of course these plugins can contain more than just helpers, take a look at
+L<Mojolicious::Plugins/"PLUGINS"> for a few ideas.
+
+=end original
+
+もちろん、これらのプラグインにはヘルパー以外のものを含めることができます。L<Mojolicious::Plugins/"PLUGINS">にいくつかサンプルがあります。
+
+=head2 Adding commands to Mojolicious
+
+(Mojoliciousにコマンドを追加)
+
+=begin original
+
+By now you've probably used many of the built-in commands described in
+L<Mojolicious::Commands>, but did you know that you can just add new ones and
+that they will be picked up automatically by the command line interface if they
+are placed in a directory from C<@INC>?
+
+=end original
+
+おそらくこれまでに、L<Mojolicious::Commands>にある組み込みコマンドを多く使ったことでしょう。でも、新しいコマンドを追加するだけで、自動的にコマンドラインインターフェイスから使えるようになることは知っていましたか？ そのためにはコマンドをC<@INC>が参照するディレクトリに追加します。
+
+  package Mojolicious::Command::spy;
+  use Mojo::Base 'Mojolicious::Command';
+
+  has description => 'Spy on application';
+  has usage       => "Usage: APPLICATION spy [TARGET]\n";
+
+  sub run {
+    my ($self, @args) = @_;
+
+=begin original
+
+    # Leak secret passphrases
+    if ($args[0] eq 'secrets') { say for @{$self->app->secrets} }
+
+=end original
+
+    # シークレットパスフレーズを漏らす
+    if ($args[0] eq 'secrets') { say for @{$self->app->secrets} }
+
+=begin original
+
+    # Leak mode
+    elsif ($args[0] eq 'mode') { say $self->app->mode }
+  }
+
+=end original
+
+    # モードを漏らす
+    elsif ($args[0] eq 'mode') { say $self->app->mode }
+  }
+
+  1;
+
+=begin original
+
+Command line arguments are passed right through and there are many useful
+attributes and methods in L<Mojolicious::Command> that you can use or overload.
+
+=end original
+
+コマンドライン引数はそのまま渡され、L<Mojolicious::Command>には、使用したりオーバーロードでる多くの便利な属性とメソッドがあります。
+
+  $ mojo spy secrets
+  HelloWorld
+
+  $ ./script/myapp spy secrets
+  secr3t
+
+=begin original
+
+And to make your commands application specific, just add a custom namespace to
+L<Mojolicious::Commands/"namespaces"> and use a class name like
+C<MyApp::Command::spy> instead of C<Mojolicious::Command::spy>.
+
+=end original
+
+また、指定のアプリケーションでコマンドを使うようには、L<Mojolicious::Commands/"namespaces">にカスタム名前空間を追加するだけです。このとき、C<MyApp::Command::spy>の代わりにC<Mojolicious::Command::spy>のように名前を付けてください。
+
+=begin original
+
+  # Application
+  package MyApp;
+  use Mojo::Base 'Mojolicious';
+
+=end original
+
+  # アプリケーション
+  package MyApp;
+  use Mojo::Base 'Mojolicious';
+
+  sub startup {
+    my $self = shift;
+
+=begin original
+
+    # Add another namespace to load commands from
+    push @{$self->commands->namespaces}, 'MyApp::Command';
+  }
+
+=end original
+
+    # コマンドを読み込む名前空間を追加
+    push @{$self->commands->namespaces}, 'MyApp::Command';
+  }
+
+  1;
+
+=begin original
+
+The options C<-h>/C<--help>, C<--home> and C<-m>/C<--mode> are handled
+automatically by L<Mojolicious::Commands> and are shared by all commands.
+
+=end original
+
+オプションC<-h> / C<--help>、C<--home>およびC<-m> / C<--mode>は、L<Mojolicious::Commands>によって自動的に処理され、すべてのコマンドで共有されます。
+
+  $ ./script/myapp spy -m production mode
+  production
+
+=begin original
+
+For a full list of shared options see L<Mojolicious::Commands/"SYNOPSIS">.
+
+=end original
+
+共有オプションの全一覧は、L<Mojolicious::Commands/"SYNOPSIS">を見てください。
+
+=head2 Running code against your application
+
+(アプリケーションに対してコードを実行する)
+
+=begin original
+
+Ever thought about running a quick one-liner against your L<Mojolicious>
+application to test something? Thanks to the command
+L<Mojolicious::Command::eval> you can do just that, the application object
+itself can be accessed via C<app>.
+
+=end original
+
+あなたのL<Mojolicious>アプリケーションをテストするために、ささっとワンライナーを走らせたいと思ったことはありますか？コマンドL<Mojolicious::Command::eval>を使うと、まさにこれが実現できます。アプリケーションオブジェクト自体にはC<app>を通じてアクセスできます。
+
+  $ mojo generate lite_app myapp.pl
+  $ ./myapp.pl eval 'say for @{app->static->paths}'
+  $ ./myapp.pl eval 'say for sort keys %{app->renderer->helpers}'
+
+=begin original
+
+The C<verbose> options will automatically print the return value or returned
+data structure to C<STDOUT>.
+
+=end original
+
+C<verbose>オプションで、返り値またはPerlのデータ構造をC<STDOUT>に自動的に出力できます。
+
+  $ ./myapp.pl eval -v 'app->static->paths->[0]'
+  $ ./myapp.pl eval -V 'app->static->paths'
+
+=head2 Making your application installable
+
+(アプリケーションをインストール可能できるようにする)
+
+=begin original
+
+Ever thought about releasing your L<Mojolicious> application to CPAN? It's
+actually much easier than you might think.
+
+=end original
+
+L<Mojolicious>アプリケーションをCPANにリリースしたいと思ったことはありますか？これは思ったよりも簡単にできます。
+
+  $ mojo generate app MyApp
+  $ cd my_app
+  $ mv public lib/MyApp/
+  $ mv templates lib/MyApp/
+
+=begin original
+
+The trick is to move the C<public> and C<templates> directories so they can get
+automatically installed with the modules. Additionally author commands from the
+C<Mojolicious::Command::Author> namespace are not usually wanted by an
+installed application so they can be excluded.
+
+=end original
+
+コツはC<public>とC<templates>ディレクトリを移動させ、モジュールとともに自動的にインストールされるようにすることです。C<Mojolicious::Command::Author>名前空間から追加される作成者コマンドは、通常、インストールされたアプリケーションには不要なので、除外できます。
+
+=begin original
+
+  # Application
+  package MyApp;
+  use Mojo::Base 'Mojolicious';
+
+=end original
+
+  # アプリケーション
+  package MyApp;
+  use Mojo::Base 'Mojolicious';
+
+  use Mojo::File 'path';
+  use Mojo::Home;
+
+=begin original
+
+  # Every CPAN module needs a version
+  our $VERSION = '1.0';
+
+=end original
+
+  # CPANモジュールには常にバージョンが必要です
+  our $VERSION = '1.0';
+
+  sub startup {
+    my $self = shift;
+
+=begin original
+
+    # Switch to installable home directory
+    $self->home(Mojo::Home->new(path(__FILE__)->sibling('MyApp')));
+
+=end original
+
+    # インストール可能なホームディレクトリへ切替
+    $self->home(Mojo::Home->new(path(__FILE__)->sibling('MyApp')));
+
+=begin original
+
+    # Switch to installable "public" directory
+    $self->static->paths->[0] = $self->home->child('public');
+
+=end original
+
+    # インストール可能な "public" ディレクトリへ切替
+    $self->static->paths->[0] = $self->home->child('public');
+
+=begin original
+
+    # Switch to installable "templates" directory
+    $self->renderer->paths->[0] = $self->home->child('templates');
+
+=end original
+
+    # インストール可能な "templates" ディレクトリへ切替
+    $self->renderer->paths->[0] = $self->home->child('templates');
+
+=begin original
+
+    # Exclude author commands
+    $self->commands->namespaces(['Mojolicious::Commands']);
+
+=end original
+
+    # 作成者コマンドを除外
+    $self->commands->namespaces(['Mojolicious::Commands']);
+
+    my $r = $self->routes;
+    $r->get('/welcome')->to('example#welcome');
+  }
+
+  1;
+
+=begin original
+
+Finally there is just one small change to be made to the application script. The
+shebang line becomes the recommended C<#!perl>, which the toolchain can rewrite
+to the proper shebang during installation.
+
+=end original
+
+最後に、アプリケーションスクリプトに小さな変更を1つ加えるだけです。シェバン行は、推奨されるC<#!perl>になり、これはインストール中にツールチェーンによって適切なshebangに書き換えることができます。
+
+  #!perl
+
+  use strict;
+  use warnings;
+
+  use FindBin;
+  BEGIN { unshift @INC, "$FindBin::Bin/../lib" }
+  use Mojolicious::Commands;
+
+=begin original
+
+  # Start command line interface for application
+  Mojolicious::Commands->start_app('MyApp');
+
+=end original
+
+  # アプリケーションのためにコマンドラインインターフェイスを開始
+  Mojolicious::Commands->start_app('MyApp');
+
+=begin original
+
+That's really everything, now you can package your application like any other
+CPAN module.
+
+=end original
+
+これが本当に全部です。これで他のCPAN モジュールのようにアプリケーションをパッケージすることができます。
+
+  $ ./script/my_app generate makefile
+  $ perl Makefile.PL
+  $ make test
+  $ make manifest
+  $ make dist
+
+=begin original
+
+And if you have a PAUSE account (which can be requested at
+L<http://pause.perl.org>) even upload it.
+
+=end original
+
+また、PAUSEアカウントを持っている場合（L<http://pause.perl.org>でリクエストできます）アップロードすることもできます。
+
+  $ mojo cpanify -u USER -p PASS MyApp-0.01.tar.gz
+
+=head2 Hello World
+
+=begin original
+
+If every byte matters this is the smallest C<Hello World> application you can
+write with L<Mojolicious::Lite>.
+
+=end original
+
+1バイトも無駄にしたくないのであれば、これがL<Mojolicious::Lite>で作ることのできる最小のC<Hello World>アプリケーションです。
+
+  use Mojolicious::Lite;
+  any {text => 'Hello World!'};
+  app->start;
+
+=begin original
+
+It works because all routes without a pattern default to C</> and automatic
+rendering kicks in even if no actual code gets executed by the router. The
+renderer just picks up the C<text> value from the stash and generates a
+response.
+
+=end original
+
+パターンがない場合、ルートはすべてデフォルトで C</> となり、ルータによって コードが実際には実行されなくとも自動レンダリングが開始します。レンダラは、スタッシュから C<text> の値を拾い、レスポンスを生成します。
+
+=head2 Hello World one-liners
+
+(Hello World ワンライナー)
+
+=begin original
+
+The C<Hello World> example above can get even a little bit shorter in an L<ojo>
+one-liner.
+
+=end original
+
+上記のC<Hello World>の例は、L<ojo>ワンライナーを使うともう少し短くできます。
+
+  $ perl -Mojo -E 'a({text => "Hello World!"})->start' daemon
+
+=begin original
+
+And you can use all the commands from L<Mojolicious::Commands>.
+
+=end original
+
+そしてすべてのコマンドが L<Mojolicious::Commands>から使用できます。
+
+  $ perl -Mojo -E 'a({text => "Hello World!"})->start' get -v /
+
+=head1 MORE
+
+(もっと学ぶには)
+
+=begin original
+
+You can continue with L<Mojolicious::Guides> now or take a look at the
+L<Mojolicious wiki|http://github.com/mojolicious/mojo/wiki>, which contains a
+lot more documentation and examples by many different authors.
+
+=end original
+
+さあ、L<Mojolicious::Guides> を続けるか、L<Mojolicious wiki|http://github.com/mojolicious/mojo/wiki>を見てみましょう。多くの著者がドキュメントやサンプルをたくさん書いています。
+
+=head1 SUPPORT
+
+(サポート)
+
+=begin original
+
+If you have any questions the documentation might not yet answer, don't
+hesitate to ask on the
+L<mailing list|http://groups.google.com/group/mojolicious> or the official IRC
+channel C<#mojo> on C<irc.freenode.net> (L<chat
+now!|https://kiwiirc.com/nextclient/#irc://irc.freenode.net/mojo?nick=guest-?>).
+
+=end original
+
+このドキュメントでわからない部分があれば、 L<mailing list|http://groups.google.com/group/mojolicious> かC<irc.freenode.net> (L<chat
+now!|https://kiwiirc.com/nextclient/#irc://irc.freenode.net/mojo?nick=guest-?>)の公式IRCチャンネル C<#mojo> まで気軽に質問してください。
+
+=begin meta
+
+Translate: 木本裕紀
+Translate: 前山将人
+Update: SHIRAKATA Kentaro <argrath@ub32.org> (8.12)
+
+=end meta
+
+=cut
+
+
+
+
