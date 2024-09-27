@@ -1,0 +1,2366 @@
+=encoding utf8
+
+=head1 NAME
+
+=begin original
+
+Mojolicious::Guides::Routing - Routing requests
+
+=end original
+
+Mojolicious::Guides::Routing - ルーティングリクエスト
+
+=head1 OVERVIEW
+
+(説明)
+
+=begin original
+
+This document contains a simple and fun introduction to the L<Mojolicious>
+router and its underlying concepts.
+
+=end original
+
+このドキュメントはL<Mojolicious>のルータ(router)のシンプルで楽しい入門と基本的なコンセプトを含んでいます。
+
+=head1 CONCEPTS
+
+(概念)
+
+=begin original
+
+Essentials every L<Mojolicious> developer should know.
+
+=end original
+
+すべてのL<Mojolicious>開発者が知るべき本質
+
+=head2 Dispatcher
+
+(ディスパッチャ)
+
+=begin original
+
+The foundation of every web framework is a tiny black box connecting incoming
+requests with code generating the appropriate response.
+
+=end original
+
+すべてのWebフレームワークの基盤は、受信したリクエストを適切なレスポンスを生成するコードを結びつける小さなブラックボックスです。
+
+  GET /user/show/1 -> $c->render(text => 'Daniel');
+
+=begin original
+
+This black box is usually called a dispatcher. There are many implementations
+using different strategies to establish these connections, but pretty much all
+are based around mapping the path part of the request URL to some kind of
+response generator.
+
+=end original
+
+このブラックボックスは普通ディスパッチャと呼ばれます。これらの接続を確立するため、いろいろな戦略を使う多くの実装がありますが、その大部分はリクエストのパスとある種のレスポンスジェネレータとの対応付けが基盤になっています。
+
+  /user/show/2 -> $c->render(text => 'Isabell');
+  /user/show/3 -> $c->render(text => 'Sara');
+  /user/show/4 -> $c->render(text => 'Stefan');
+  /user/show/5 -> $c->render(text => 'Fynn');
+
+=begin original
+
+While it is very well possible to make all these connections static, it is also
+rather inefficient. That's why regular expressions are commonly used to make
+the dispatch process more dynamic.
+
+=end original
+
+これらすべてのコネクションを静的なものにすることは可能ですが、かなり非効率になります。このため、ディスパッチ処理をより動的にするために正規表現がよく利用されるわけです。
+
+  qr!/user/show/(\d+)! -> $c->render(text => $users{$1});
+
+=begin original
+
+Modern dispatchers have pretty much everything HTTP has to offer at their
+disposal and can use many more variables than just the request path, such as
+request method and headers like C<Host>, C<User-Agent> and C<Accept>.
+
+=end original
+
+モダンなディスパッチャは、HTTPが持つ機能の大部を自前で用意していて、リクエストパスにくわえてC<Host>, C<User-Agent>, C<Accept>といったその他さまざまな変数を利用できます。
+
+  GET /user/show/23 HTTP/1.1
+  Host: mojolicious.org
+  User-Agent: Mojolicious (Perl)
+  Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
+
+=head2 Routes
+
+(ルーティング(Routes))
+
+=begin original
+
+While regular expressions are quite powerful they also tend to be unpleasant to
+look at and are generally overkill for ordinary path matching.
+
+=end original
+
+正規表現はとても強力である一方、あまり読みやすいとは言えません。それに、一般的に通常のパスのマッチングにはオーバースペックなところがあります。
+
+  qr!/user/show/(\d+)! -> $c->render(text => $users{$1});
+
+=begin original
+
+This is where routes come into play, they have been designed from the ground up
+to represent paths with placeholders.
+
+=end original
+
+ここでルーティングが役立ちます。これは、プレースホルダーを使ってパスを表すために一からデザインされています。
+
+  /user/show/:id -> $c->render(text => $users{$id});
+
+=begin original
+
+The only difference between a static path and the route above is the C<:id>
+placeholder. One or more placeholders can be anywhere in the route.
+
+=end original
+
+上記の例において、静的なパスとルーティングの違いはC<:id>プレースホルダーだけです。一つ以上のプレースホルダーをルーティングの中のどこにでも置くことができます。
+
+  /user/:action/:id
+
+=begin original
+
+A fundamental concept of the L<Mojolicious> router is that extracted
+placeholder values are turned into a hash.
+
+=end original
+
+L<Mojolicious>のルータの基本的コンセプトとして、抽出されたプレースホルダーの値はハッシュに変換されます。
+
+  /user/show/23 -> /user/:action/:id -> {action => 'show', id => 23}
+
+=begin original
+
+This hash is basically the center of every L<Mojolicious> application, you will
+learn more about this later on. Internally, routes get compiled to regular
+expressions, so you can get the best of both worlds with a little bit of
+experience.
+
+=end original
+
+このハッシュは、ほとんどの場合ですべてのL<Mojolicious>アプリケーションの中心になります。これについては後で学びます。内部では、ルーティングは正規表現にコンパイルされます。少し経験すれば両方のやり方の良いところがわかるでしょう。
+
+  /user/show/:id -> qr/(?-xism:^\/user\/show\/([^\/.]+))/
+
+=begin original
+
+A trailing slash in the path is always optional.
+
+=end original
+
+パスの末尾のスラッシュは任意です。
+
+  /user/show/23/ -> /user/:action/:id -> {action => 'show', id => 23}
+
+=head2 Reversibility
+
+(可逆性)
+
+=begin original
+
+One more huge advantage routes have over regular expressions is that they are
+easily reversible, extracted placeholders can be turned back into a path at any
+time.
+
+=end original
+
+ルーティングが正規表現に対して優れている点のひとつは、ルーティングは簡単に元に戻すことができることです。抽出されたプレースホルダーはいつでもパスに戻すことができます。
+
+  /sebastian -> /:name -> {name => 'sebastian'}
+  {name => 'sebastian'} -> /:name -> /sebastian
+
+=begin original
+
+Every placeholder has a name, even if it's just an empty string.
+
+=end original
+
+たとえ空文字列であっても、すべてのプレースホルダーは名前を持ちます。
+
+=head2 Standard placeholders
+
+(標準プレースホルダー)
+
+=begin original
+
+Standard placeholders are the simplest form of placeholders, they use a colon
+prefix and match all characters except C</> and C<.>, similar to the regular
+expression C<([^/.]+)>.
+
+=end original
+
+標準プレースホルダーは、もっとも簡単なプレースホルダーです。コロンをプレフィックスに取り、C</>とC<.>を除くすべての文字にマッチします。正規表現のC<([^/.]+)>に似ています。
+
+  /hello              -> /:name/hello -> undef
+  /sebastian/23/hello -> /:name/hello -> undef
+  /sebastian.23/hello -> /:name/hello -> undef
+  /sebastian/hello    -> /:name/hello -> {name => 'sebastian'}
+  /sebastian23/hello  -> /:name/hello -> {name => 'sebastian23'}
+  /sebastian 23/hello -> /:name/hello -> {name => 'sebastian 23'}
+
+=begin original
+
+All placeholders can be surrounded by C<E<lt>> and C<E<gt>> to separate them
+from the surrounding text.
+
+=end original
+
+プレースホルダーは、C<E<lt>> と C<E<gt>> で囲むことによって周囲の文字列と区別できます。
+
+  /hello             -> /<:name>hello -> undef
+  /sebastian/23hello -> /<:name>hello -> undef
+  /sebastian.23hello -> /<:name>hello -> undef
+  /sebastianhello    -> /<:name>hello -> {name => 'sebastian'}
+  /sebastian23hello  -> /<:name>hello -> {name => 'sebastian23'}
+  /sebastian 23hello -> /<:name>hello -> {name => 'sebastian 23'}
+
+=begin original
+
+The colon prefix is optional for standard placeholders that are surrounded by
+C<E<lt>> and C<E<gt>>.
+
+=end original
+
+コロンのプレフィックスは、C<E<lt>>とC<E<gt>>で囲まれた標準プレースホルダには付けても付けなくても構いません。
+
+  /i♥mojolicious -> /<one>♥<two> -> {one => 'i', two => 'mojolicious'}
+
+=head2 Relaxed placeholders
+
+(リラックスプレースホルダー)
+
+=begin original
+
+Relaxed placeholders are just like standard placeholders, but use a hash prefix
+and match all characters except C</>, similar to the regular expression
+C<([^/]+)>.
+
+=end original
+
+リラックスプレースホルダーは、上記のふたつのプレースホルダーに似ていますが、C</>を除いたすべての文字にマッチする点が異なります。正規表現のC<([^/]+)>に似ています。
+
+  /hello              -> /#name/hello -> undef
+  /sebastian/23/hello -> /#name/hello -> undef
+  /sebastian.23/hello -> /#name/hello -> {name => 'sebastian.23'}
+  /sebastian/hello    -> /#name/hello -> {name => 'sebastian'}
+  /sebastian23/hello  -> /#name/hello -> {name => 'sebastian23'}
+  /sebastian 23/hello -> /#name/hello -> {name => 'sebastian 23'}
+
+=begin original
+
+They can be especially useful for manually matching file names with extensions,
+rather than using L<format detection|/"Formats">.
+
+=end original
+
+とくに拡張子付きのファイル名を手動でマッチングさせるときに、フォーマット検知を使うよりも便利です。
+
+  /music/song.mp3 -> /music/#filename -> {filename => 'song.mp3'}
+
+=head2 Wildcard placeholders
+
+(ワイルドカードプレースホルダー)
+
+=begin original
+
+Wildcard placeholders are just like the two types of placeholders above, but use
+an asterisk prefix and match absolutely everything, including C</> and C<.>,
+similar to the regular expression C<(.+)>.
+
+=end original
+
+ワイルドカードプレースホルダーは、先に紹介したふたつのプレースホルダーに似ていますが、 アスタリスクをプレフィックスに取りC</>とC<.>を含むすべてにマッチします。正規表現のC<(.+)>に似ています。
+
+  /hello              -> /*name/hello -> undef
+  /sebastian/23/hello -> /*name/hello -> {name => 'sebastian/23'}
+  /sebastian.23/hello -> /*name/hello -> {name => 'sebastian.23'}
+  /sebastian/hello    -> /*name/hello -> {name => 'sebastian'}
+  /sebastian23/hello  -> /*name/hello -> {name => 'sebastian23'}
+  /sebastian 23/hello -> /*name/hello -> {name => 'sebastian 23'}
+
+=begin original
+
+They can be useful for manually matching entire file paths.
+
+=end original
+
+ファイルパスの全体に手動でマッチさせたいときに便利です。
+
+  /music/rock/song.mp3 -> /music/*filepath -> {filepath => 'rock/song.mp3'}
+
+=head1 BASICS
+
+(基礎)
+
+=begin original
+
+Most commonly used features every L<Mojolicious> developer should know about.
+
+=end original
+
+すべてのL<Mojolicious>開発者が知っておくべきもっとも一般的に利用される機能
+
+=head2 Minimal route
+
+(最小限のルーティング)
+
+=begin original
+
+The attribute L<Mojolicious/"routes"> contains a router you can use to generate
+route structures.
+
+=end original
+
+L<Mojolicious/"routes">属性はルーティング構造を生成するために使用できるルーターを含みます。
+
+=begin original
+
+  # Application
+  package MyApp;
+  use Mojo::Base 'Mojolicious';
+
+=end original
+
+  # アプリケーション
+  package MyApp;
+  use Mojo::Base 'Mojolicious';
+
+  sub startup {
+    my $self = shift;
+
+=begin original
+
+    # Router
+    my $r = $self->routes;
+
+=end original
+
+    # ルーター
+    my $r = $self->routes;
+
+=begin original
+
+    # Route
+    $r->get('/welcome')->to(controller => 'foo', action => 'welcome');
+  }
+
+=end original
+
+    # ルーティング
+    $r->get('/welcome')->to(controller => 'foo', action => 'welcome');
+  }
+
+  1;
+
+=begin original
+
+The minimal route above will load and instantiate the class
+C<MyApp::Controller::Foo> and call its C<welcome> method. Routes are usually
+configured in the C<startup> method of the application class, but the router can
+be accessed from everywhere (even at runtime).
+
+=end original
+
+上記の最小のルーティングでは、C<MyApp::Controller::Foo>というクラスをロードし、そのインスタンスを生成してC<welcome>メソッドを呼び出しています。ルーティングは普通はアプリケーションクラスのC<startup>メソッドの中で設定されますが、すべての場所(たとえ実行中であっても)からアクセスできます。
+
+=begin original
+
+  # Controller
+  package MyApp::Controller::Foo;
+  use Mojo::Base 'Mojolicious::Controller';
+
+=end original
+
+  # コントローラー
+  package MyApp::Controller::Foo;
+  use Mojo::Base 'Mojolicious::Controller';
+
+=begin original
+
+  # Action
+  sub welcome {
+    my $self = shift;
+
+=end original
+
+  # アクション
+  sub welcome {
+    my $self = shift;
+
+=begin original
+
+    # Render response
+    $self->render(text => 'Hello there.');
+  }
+
+=end original
+
+    # レスポンスの描画
+    $self->render(text => 'Hello there.');
+  }
+
+  1;
+
+=begin original
+
+All routes match in the same order in which they were defined, and matching
+stops as soon as a suitable route has been found. So you can improve the routing
+performance by declaring your most frequently accessed routes first. A routing
+cache will also be used automatically to handle sudden traffic spikes more
+gracefully.
+
+=end original
+
+すべてのルーティングは、定義されたのと同じ順序でマッチし、適切なルーティングが見つかるとすぐにマッチングが停止します。そのため、最も頻繁にアクセスされるルーティングを最初に宣言することで、ルーティングのパフォーマンスを向上させることができます。突然のトラフィックの急増をより適切に処理するために、ルーティングキャッシュも自動的に使用されます。
+
+=head2 Routing destination
+
+(ルーティングの行き先)
+
+=begin original
+
+After you start a new route with methods like
+L<Mojolicious::Routes::Route/"get">, you can also give it a destination in the
+form of a hash using the chained method L<Mojolicious::Routes::Route/"to">.
+
+=end original
+
+L<Mojolicious::Routes::Route/"get">メソッドで新しいルーティングを開始した後、 L<Mojolicious::Routes::Route/"to">メソッドをチェーンして、行き先をハッシュ形式で与えることができます。
+
+  # /welcome -> {controller => 'foo', action => 'welcome'}
+  $r->get('/welcome')->to(controller => 'foo', action => 'welcome');
+
+=begin original
+
+Now if the route matches an incoming request it will use the content of this
+hash to try and find appropriate code to generate a response.
+
+=end original
+
+L<Mojolicious::Routes::Route/"route">メソッドで、受信したリクエストにルーティングがマッチすれば、 L<Mojolicious::Routes::Route/"to">メソッドを使ったハッシュの内容を使って レスポンスを生成するために適切なコードを見つけようとします。
+
+=head2 HTTP methods
+
+(HTTPメソッド)
+
+=begin original
+
+There are already shortcuts for the most common HTTP request methods like
+L<Mojolicious::Routes::Route/"post">, and for more control
+L<Mojolicious::Routes::Route/"any"> accepts an optional array reference with
+arbitrary request methods as first argument.
+
+=end original
+
+よく使われるほとんどのHTTPリクエストメソッドにはショートカットがあらかじめ用意されていて、そのひとつにL<Mojolicious::Routes::Route/"post">があります。もっとコントロールしたい場合は、 L<Mojolicious::Routes::Route/"any">を使えば、第一引数に配列レファレンスを渡すことによって、任意のリクエストメソッドを指定できます。
+
+  # PUT /hello  -> undef
+  # GET /hello  -> {controller => 'foo', action => 'hello'}
+  $r->get('/hello')->to(controller => 'foo', action => 'hello');
+
+  # PUT /hello -> {controller => 'foo', action => 'hello'}
+  $r->put('/hello')->to(controller => 'foo', action => 'hello');
+
+  # POST /hello -> {controller => 'foo', action => 'hello'}
+  $r->post('/hello')->to(controller => 'foo', action => 'hello');
+
+  # GET|POST /bye  -> {controller => 'foo', action => 'bye'}
+  $r->any(['GET', 'POST'] => '/bye')->to(controller => 'foo', action => 'bye');
+
+  # * /whatever -> {controller => 'foo', action => 'whatever'}
+  $r->any('/whatever')->to(controller => 'foo', action => 'whatever');
+
+=begin original
+
+There is one small exception, C<HEAD> requests are considered equal to C<GET>,
+but content will not be sent with the response even if it is present.
+
+=end original
+
+ひとつの小さな例外として、C<HEAD>リクエストはC<GET>リクエストと同じものとみなされますが、 コンテンツはたとえ存在したとしてもレスポンスで送信されません。
+
+  # GET /test  -> {controller => 'bar', action => 'test'}
+  # HEAD /test -> {controller => 'bar', action => 'test'}
+  $r->get('/test')->to(controller => 'bar', action => 'test');
+
+=begin original
+
+You can also use the C<_method> query parameter to override the request method.
+This can be very useful when submitting forms with browsers that only support
+C<GET> and C<POST>.
+
+=end original
+
+C<_method>クエリパラメータを使用してリクエストメソッドをオーバーライドすることもできます。 C<GET>とC<POST>のみをサポートするブラウザでフォームを送信するとき、これは非常に役に立ちます。
+
+  # PUT  /stuff             -> {controller => 'baz', action => 'stuff'}
+  # POST /stuff?_method=PUT -> {controller => 'baz', action => 'stuff'}
+  $r->put('/stuff')->to(controller => 'baz', action => 'stuff');
+
+=head2 IRIs
+
+=begin original
+
+IRIs are handled transparently, that means paths are guaranteed to be unescaped
+and decoded from bytes to characters.
+
+=end original
+
+IRIsは透過的に扱うことができます。これは、パスがアンエスケープされ、Perlの文字にデコードされることが保証されるということです。
+
+  # GET /☃ (Unicode snowman) -> {controller => 'foo', action => 'snowman'}
+  $r->get('/☃')->to(controller => 'foo', action => 'snowman');
+
+=head2 Stash
+
+(スタッシュ)
+
+=begin original
+
+The generated hash of a matching route is actually the center of the whole
+L<Mojolicious> request cycle. We call it the stash, and it persists until a
+response has been generated.
+
+=end original
+
+生成されるマッチしたルーティングのハッシュは、実はL<Mojolicious>のリクエストサイクル全体の中心です。私たちはそれをスタッシュと呼び、これはレスポンスが生成されるまで存続します。
+
+  # /bye -> {controller => 'foo', action => 'bye', mymessage => 'Bye'}
+  $r->get('/bye')
+    ->to(controller => 'foo', action => 'bye', mymessage => 'Bye');
+
+=begin original
+
+There are a few stash values with special meaning, such as C<controller> and
+C<action>, but you can generally fill it with whatever data you need to
+generate a response. Once dispatched the whole stash content can be changed at
+any time.
+
+=end original
+
+C<controller>やC<action>などのスタッシュの値のいくつかは特別な意味を持ちますが、一般的にはレスポンスを生成するために必要なデータをなんでも入れることができます。いったんディスパッチされれば、スタッシュのすべての内容はいつでも変更できます。
+
+  sub bye {
+    my $self = shift;
+
+=begin original
+
+    # Get message from stash
+    my $msg = $self->stash('mymessage');
+
+=end original
+
+    # スタッシュからメッセージを得る
+    my $msg = $self->stash('mymessage');
+
+=begin original
+
+    # Change message in stash
+    $self->stash(mymessage => 'Welcome');
+  }
+
+=end original
+
+    # スタッシュのメッセージを変更
+    $self->stash(mymessage => 'Welcome');
+  }
+
+=begin original
+
+For a full list of reserved stash values see
+L<Mojolicious::Controller/"stash">.
+
+=end original
+
+すべての予約された値を見るにはL<Mojolicious::Controller/"stash">を参考にしてください。
+
+=head2 Nested routes
+
+(ネストされたルーティング)
+
+=begin original
+
+It is also possible to build tree structures from routes to remove repetitive
+code. A route with children can't match on its own though, only the actual
+endpoints of these nested routes can.
+
+=end original
+
+重複するコードを取り除くために、ルーティングから木構造を構築することも可能です。子を持つルーティングは自身にはマッチしません。それらのネストしたルーティング の実際のエンドポイントだけがマッチします。
+
+  # /foo     -> undef
+  # /foo/bar -> {controller => 'foo', action => 'bar'}
+  my $foo = $r->any('/foo')->to(controller => 'foo');
+  $foo->get('/bar')->to(action => 'bar');
+
+=begin original
+
+The stash is simply inherited from route to route and newer values override old
+ones.
+
+=end original
+
+スタッシュは単にルーティングからルーティングに受け継がれ、古い値は新しい値でオーバーライドされます。
+
+  # /cats      -> {controller => 'cats', action => 'index'}
+  # /cats/nyan -> {controller => 'cats', action => 'nyan'}
+  # /cats/lol  -> {controller => 'cats', action => 'default'}
+  my $cats = $r->any('/cats')->to(controller => 'cats', action => 'default');
+  $cats->get('/')->to(action => 'index');
+  $cats->get('/nyan')->to(action => 'nyan');
+  $cats->get('/lol');
+
+=begin original
+
+With a few common prefixes you can also greatly improve the routing performance
+of applications with many routes, because children are only tried if the prefix
+matched first.
+
+=end original
+
+よく使うプレフィックスを設定することで、多くのルートを持つアプリケーションのルーティングパフォーマンスを大幅に向上させることができます。これは、プレフィックスが最初にマッチした場合にのみ子が試行されるためです。
+
+=head2 Special stash values
+
+(特別なスタッシュの値)
+
+=begin original
+
+When the dispatcher sees C<controller> and C<action> values in the stash it
+will always try to turn them into a class and method to dispatch to. The
+C<controller> value gets converted from C<snake_case> to C<CamelCase> using
+L<Mojo::Util/"camelize"> and appended to one or more namespaces, defaulting to
+a controller namespace based on the application class (C<MyApp::Controller>),
+as well as the bare application class (C<MyApp>), and these namespaces are
+searched in that order. The action value is not changed at all, so both values
+are case-sensitive.
+
+=end original
+
+ディスパチャはスタッシュの中のC<controller>とC<action>の値を見るとき、いつでもそれらをディスパッチ先のクラスとメソッドに変換しようとします。C<controller>の値はL<Mojo::Util/"camelize">によってC<snake_case>からC<CamelCase>に変換され、ひとつかそれ以上のネームスペースの後ろに追加されます。デフォルトで追加先となるのは、アプリケーションクラス（C<MyApp::Controller>）に基づくコントローラーネームスペースと素のアプリケーションクラス（C<MyApp>）です。これらのネームスペースが順番に検索されます。このため両方の値は大文字と小文字が区別されます。
+
+=begin original
+
+  # Application
+  package MyApp;
+  use Mojo::Base 'Mojolicious';
+
+=end original
+
+  # アプリケーション
+  package MyApp;
+  use Mojo::Base 'Mojolicious';
+
+  sub startup {
+    my $self = shift;
+
+    # /bye -> MyApp::Controller::Foo->bye
+    $self->routes->get('/bye')->to(controller => 'foo', action => 'bye');
+  }
+
+  1;
+
+=begin original
+
+  # Controller
+  package MyApp::Controller::Foo;
+  use Mojo::Base 'Mojolicious::Controller';
+
+=end original
+
+  # コントローラー
+  package MyApp::Controller::Foo;
+  use Mojo::Base 'Mojolicious::Controller';
+
+=begin original
+
+  # Action
+  sub bye {
+    my $self = shift;
+
+=end original
+
+  # アクション
+  sub bye {
+    my $self = shift;
+
+=begin original
+
+    # Render response
+    $self->render(text => 'Good bye.');
+  }
+
+=end original
+
+    # レスポンスの描画
+    $self->render(text => 'Good bye.');
+  }
+
+  1;
+
+=begin original
+
+Controller classes are perfect for organizing code in larger projects. There
+are more dispatch strategies, but because controllers are the most commonly
+used ones they also got a special shortcut in the form of C<controller#action>.
+
+=end original
+
+コントローラクラスは大きなプロジェクトでコードを体系化するのにぴったりです。たくさんのディスパッチ戦略がありますが、コントローラはもっとも一般的に使用されるものなので、C<controller#action>という形式の専用ショートカットが用意されています。
+
+  # /bye -> {controller => 'foo', action => 'bye', mymessage => 'Bye'}
+  $r->get('/bye')->to('foo#bye', mymessage => 'Bye');
+
+=begin original
+
+During camelization C<-> characters get replaced with C<::>, this allows
+multi-level C<controller> hierarchies.
+
+=end original
+
+C<->はキャメルケース化の際にC<::>へ置き換えられます。これによって複数の階層をC<controller>に持たせることができます。
+
+  # / -> MyApp::Controller::Foo::Bar->hi
+  $r->get('/')->to('foo-bar#hi');
+
+=begin original
+
+You can also just specify the C<controller> in CamelCase form instead of
+snake_case.
+
+=end original
+
+スネークケースの代わりに、C<controller>をキャメルケースで指定することもできます。
+
+  # / -> MyApp::Controller::Foo::Bar->hi
+  $r->get('/')->to('Foo::Bar#hi');
+
+=begin original
+
+For security reasons the dispatcher will always check if the C<controller> is
+actually a subclass of L<Mojolicious::Controller> or L<Mojo> before dispatching
+to it.
+
+=end original
+
+セキュリティ上の理由から、ディスパッチャは常にC<controller>が本当にL<Mojolicious::Controller>のサブクラスまたはL<Mojo>であるかどうかをディスパッチ前に調べます。
+
+=head2 Namespaces
+
+(名前空間)
+
+=begin original
+
+You can use the C<namespace> stash value to change the namespace of a whole
+route with all its children.
+
+=end original
+
+C<namespace>スタッシュ値を使って、子ルーティングを含んだルーティング全体のネームスペースを変えることができます。
+
+  # /bye -> MyApp::MyController::Foo::Bar->bye
+  $r->get('/bye')
+    ->to(namespace => 'MyApp::MyController::Foo::Bar', action => 'bye');
+
+=begin original
+
+The C<controller> is always converted from C<snake_case> to C<CamelCase> with
+L<Mojo::Util/"camelize">, and then appended to this C<namespace>.
+
+=end original
+
+C<controller>は、常にC<snake_case>からC<CamelCase>にL<Mojo::Util/"camelize">によって変換され、このC<namespace>の後ろに追加されます。
+
+  # /bye -> MyApp::MyController::Foo::Bar->bye
+  $r->get('/bye')->to('foo-bar#bye', namespace => 'MyApp::MyController');
+
+  # /hey -> MyApp::MyController::Foo::Bar->hey
+  $r->get('/hey')->to('Foo::Bar#hey', namespace => 'MyApp::MyController');
+
+=begin original
+
+You can also change the default namespaces for all routes in the application
+with the router attribute L<Mojolicious::Routes/"namespaces">, which usually
+defaults to a namespace based on the application class (C<MyApp::Controller>),
+as well as the bare application class (C<MyApp>).
+
+=end original
+
+ルーター属性L<Mojolicious::Routes/"namespaces">を使用して、アプリケーション内のすべてのルーティングは、デフォルトの名前空間を変更することもできます。通常、デフォルトはアプリケーションクラス（C<MyApp::Controller>）および素のアプリケーションクラス（C<MyApp>）に基づく名前空間になります。
+
+  $r->namespaces(['MyApp::MyController']);
+
+=head2 Route to callback
+
+(コールバックへのルーティング(<code>cb</code>))
+
+=begin original
+
+The C<cb> stash value, which won't be inherited by nested routes, can be used
+to bypass controllers and execute a callback instead.
+
+=end original
+
+コントローラをバイパスして、代わりにコールバックを実行するためにスタッシュのC<cb>を使うことができます。
+
+  $r->get('/bye')->to(cb => sub {
+    my $c = shift;
+    $c->render(text => 'Good bye.');
+  });
+
+=begin original
+
+But just like in L<Mojolicious::Lite> you can also pass the callback directly,
+which usually looks much better.
+
+=end original
+
+L<Mojolicious::Lite>と同じようにコールバックを直接渡すこともできます。通常、こちらの方が見た目が良くなります。
+
+  $r->get('/bye' => sub {
+    my $c = shift;
+    $c->render(text => 'Good bye.');
+  });
+
+=head2 Named routes
+
+(名前つきルーティング)
+
+=begin original
+
+Naming your routes will allow backreferencing in many methods and helpers
+throughout the whole framework, most of which internally rely on
+L<Mojolicious::Controller/"url_for"> for this.
+
+=end original
+
+ルーティングに名前をつければフレームワーク全体をとおして、多くのメソッドとヘルパー関数から逆引きできるようになります。ほとんどの場合、この機能は内部的にL<Mojolicious::Controller/"url_for">を頼りにしています。
+
+  # /foo/marcus -> {controller => 'foo', action => 'bar', user => 'marcus'}
+  $r->get('/foo/:user')->to('foo#bar')->name('baz');
+
+=begin original
+
+  # Generate URL "/foo/marcus" for route "baz"
+  my $url = $c->url_for('baz');
+
+=end original
+
+  # URL "/foo/marcus" for route "baz" を生成
+  my $url = $c->url_for('baz');
+
+=begin original
+
+  # Generate URL "/foo/jan" for route "baz"
+  my $url = $c->url_for('baz', user => 'jan');
+
+=end original
+
+  # URL "/foo/jan" for route "baz" を生成
+  my $url = $c->url_for('baz', user => 'jan');
+
+=begin original
+
+  # Generate URL "http://127.0.0.1:3000/foo/jan" for route "baz"
+  my $url = $c->url_for('baz', user => 'jan')->to_abs;
+
+=end original
+
+  # URL "http://127.0.0.1:3000/foo/jan" for route "baz" を生成
+  my $url = $c->url_for('baz', user => 'jan')->to_abs;
+
+=begin original
+
+You can assign a name with L<Mojolicious::Routes::Route/"name">, or let the
+router generate one automatically, which would be equal to the route itself
+without non-word characters, custom names have a higher precedence though.
+
+=end original
+
+L<Mojolicious::Routes::Route/"name">で名前をつけることができます。または、ルーターが自動的に名前を生成するようにします。これはノンワード文字を含まないルート自体と同じになりますが、カスタム名の方が優先されます。
+
+  # /foo/bar ("foobar")
+  $r->get('/foo/bar')->to('test#stuff');
+
+=begin original
+
+  # Generate URL "/foo/bar"
+  my $url = $c->url_for('foobar');
+
+=end original
+
+  # URL "/foo/bar"を生成
+  my $url = $c->url_for('foobar');
+
+=begin original
+
+To refer to the current route you can use the reserved name C<current> or no
+name at all.
+
+=end original
+
+現在のルーティングを参照するためには、予約語のC<current>を使うか、名前の指定を省きます。
+
+  # Generate URL for current route
+  my $url = $c->url_for('current');
+  my $url = $c->url_for;
+
+=begin original
+
+To check or get the name of the current route you can use the helper
+L<Mojolicious::Plugin::DefaultHelpers/"current_route">.
+
+=end original
+
+L<Mojolicious::Plugin::DefaultHelpers/"current_route">で 現在のルーティング名をチェックあるいは取得できます。
+
+=begin original
+
+  # Name for current route
+  my $name = $c->current_route;
+
+=end original
+
+  # 現在のルーティング名
+  my $name = $c->current_route;
+
+=begin original
+
+  # Check route name in code shared by multiple routes
+  $c->stash(button => 'green') if $c->current_route('login');
+
+=end original
+
+  # 複数のルーティングで共有されるコードにおいてルーティング名をチェック
+  $c->stash(button => 'green') if $c->current_route('login');
+
+=head2 Optional placeholders
+
+(プレースホルダーのオプション)
+
+=begin original
+
+Extracted placeholder values will simply redefine older stash values if they
+already exist.
+
+=end original
+
+抽出されたプレースホルダーの値は、古いスタッシュの値が存在していればそれを上書きします。
+
+  # /bye -> {controller => 'foo', action => 'bar', mymessage => 'bye'}
+  # /hey -> {controller => 'foo', action => 'bar', mymessage => 'hey'}
+  $r->get('/:mymessage')->to('foo#bar', mymessage => 'hi');
+
+=begin original
+
+One more interesting effect, a placeholder automatically becomes optional if
+there is already a stash value of the same name present, this works similar to
+the regular expression C<([^/.]+)?>.
+
+=end original
+
+さらにもうひとつの興味深い効果として、プレースホルダーは、同じ名前のスタッシュの値がすでに存在していれば、自動的にオプショナルになります。これは正規表現C<([^/.]+)?>に似ています。
+
+  # / -> {controller => 'foo', action => 'bar', mymessage => 'hi'}
+  $r->get('/:mymessage')->to('foo#bar', mymessage => 'hi');
+
+  # /test/123     -> {controller => 'foo', action => 'bar', mymessage => 'hi'}
+  # /test/bye/123 -> {controller => 'foo', action => 'bar', mymessage => 'bye'}
+  $r->get('/test/:mymessage/123')->to('foo#bar', mymessage => 'hi');
+
+=begin original
+
+And if two optional placeholders are only separated by a slash, that slash can
+become optional as well.
+
+=end original
+
+ふたつのオプショナルなプレースホルダーが、スラッシュによって分割されている場合だけ、 スラッシュはオプショナルなものになります。
+
+  # /           -> {controller => 'foo',   action => 'bar'}
+  # /users      -> {controller => 'users', action => 'bar'}
+  # /users/list -> {controller => 'users', action => 'list'}
+  $r->get('/:controller/:action')->to('foo#bar');
+
+=begin original
+
+Special stash values like C<controller> and C<action> can also be placeholders,
+which is very convenient especially during development, but should only be used
+very carefully, because every controller method becomes a potential route. All
+uppercase methods as well as those starting with an underscore are
+automatically hidden from the router and you can use
+L<Mojolicious::Routes/"hide"> to add additional ones.
+
+=end original
+
+C<controller>やC<action>などの特別なスタッシュの値もまたプレースホルダーとなりえます。これによってきわめて柔軟なルーティングの構築が可能になります。これは開発の間は特にとても便利ですが、すべてのコントローラーメソッドがルーティングになる可能性があるので、注意深く利用すべきです。アンダースコアで始まるこれらのメソッドと同じように、すべての大文字のメソッドは自動的にルーターから隠されます。隠す対象を追加するためにはL<Mojolicious::Routes/"hide">を使うこともできます。
+
+=begin original
+
+  # Hide "create" method in all controllers
+  $r->hide('create');
+
+=end original
+
+  # すべてのコントローラーで"create"メソッドを隠す
+  $r->hide('create');
+
+=begin original
+
+This has already been done for all attributes and methods from
+L<Mojolicious::Controller>.
+
+=end original
+
+L<Mojolicious::Controller>のすべての属性とメソッドでは、これがすでに行われています。
+
+=head2 Restrictive placeholders
+
+(制約的なプレースホルダー)
+
+=begin original
+
+A very easy way to make placeholders more restrictive are alternatives, you
+just make a list of possible values, which then work similar to the regular
+expression C<(bender|leela)>.
+
+=end original
+
+プレースホルダーにより多くの制約を加えるには、選択リストを使うのが簡単です。候補となる値のリストを作るだけでOKです。これは正規表現C<(bender|leela)>に似ています。
+
+  # /fry    -> undef
+  # /bender -> {controller => 'foo', action => 'bar', name => 'bender'}
+  # /leela  -> {controller => 'foo', action => 'bar', name => 'leela'}
+  $r->get('/:name' => [name => ['bender', 'leela']])->to('foo#bar');
+
+=begin original
+
+You can also adjust the regular expressions behind placeholders directly, just
+make sure not to use C<^> and C<$> or capturing groups C<(...)>, because
+placeholders become part of a larger regular expression internally,
+non-capturing groups C<(?:...)> are fine though.
+
+=end original
+
+必要であればプレースホルダーの正規表現を調節できます。ただし、C<^>とC<$>を使うことや、グループC<(...)>のキャプチャは避けてください。これは、プレースホルダーが内部の大きな正規表現の一部だからです。けれどもキャプチャしないC<(?:...)>は使っても大丈夫です。
+
+  # /23   -> {controller => 'foo', action => 'bar', number => 23}
+  # /test -> undef
+  $r->get('/:number' => [number => qr/\d+/])->to('foo#bar');
+
+  # /23   -> undef
+  # /test -> {controller => 'foo', action => 'bar', name => 'test'}
+  $r->get('/:name' => [name => qr/[a-zA-Z]+/])->to('foo#bar');
+
+=begin original
+
+This way you get easily readable routes and the raw power of regular
+expressions.
+
+=end original
+
+このようにして読みやすいルーティングと正規表現の素の力を簡単に得ることができます。
+
+=head2 Placeholder types
+
+(プレースホルダーの種類)
+
+=begin original
+
+And if you have multiple routes using restrictive placeholders you can also turn
+them into placeholder types with L<Mojolicious::Routes/"add_type">.
+
+=end original
+
+また、制限的なプレースホルダを使用するルーティングが複数ある場合は、それらをL<Mojolicious::Routes/"add_type">でプレースホルダ型に変えることもできます。
+
+=begin original
+
+  # A type with alternatives
+  $r->add_type(futurama_name => ['bender', 'leela']);
+
+=end original
+
+  # リストを使った型
+  $r->add_type(futurama_name => ['bender', 'leela']);
+
+  # /fry    -> undef
+  # /bender -> {controller => 'foo', action => 'bar', name => 'bender'}
+  # /leela  -> {controller => 'foo', action => 'bar', name => 'leela'}
+  $r->get('/<name:futurama_name>')->to('foo#bar');
+
+=begin original
+
+Placeholder types work just like restrictive placeholders, they are just
+reusable with the C<E<lt>placeholder:typeE<gt>> notation.
+
+=end original
+
+プレースホルダ型は制限的なプレースホルダと同じように機能します。それらはC<E<lt>プレースホルダー:typeE<gt>>表記で再利用できます。
+
+=begin original
+
+  # A type adjusting the regular expression
+  $r->add_type(upper => qr/[A-Z]+/);
+
+=end original
+
+  # 正規表現を適応させる型
+  $r->add_type(upper => qr/[A-Z]+/);
+
+  # /user/ROOT -> {controller => 'users', action => 'show', name => 'ROOT'}
+  # /user/root -> undef
+  # /user/23   -> undef
+  $r->get('/user/<name:upper>')->to('users#show');
+
+=begin original
+
+Some types like C<num> are used so commonly that they are available by default.
+
+=end original
+
+C<num>のようないくつかの型は非常に一般的に使われているので、デフォルトで利用可能です。
+
+  # /article/12   -> {controller => 'article', action => 'show', id => 12}
+  # /article/test -> undef
+  $r->get('/article/<id:num>')->to('articles#show');
+
+=begin original
+
+For a full list of available placeholder types see also
+L<Mojolicious::Routes/"TYPES">.
+
+=end original
+
+利用可能なプレースホルダタイプの全リストについてはL<Mojolicious::Routes/"TYPES">も見てください 。
+
+=head2 Introspection
+
+(内観)
+
+=begin original
+
+The command L<Mojolicious::Command::routes> can be used from the command line
+to list all available routes together with names and underlying regular
+expressions.
+
+=end original
+
+利用可能なすべてルーティングを名前と背後の正規表現と一緒に列挙するには、コマンドラインからL<Mojolicious::Command::routes>のコマンドが利用できます。
+
+  $ ./myapp.pl routes -v
+  /foo/:name  ....  POST  fooname  ^/foo/([^/.]+)/?(?:\.([^/]+))?$
+  /bar        ..U.  *     bar      ^/bar
+    +/baz     ...W  GET   baz      ^/baz/?(?:\.([^/]+))?$
+  /yada       ....  *     yada     ^/yada/?(?:\.([^/]+))?$
+
+=head2 Under
+
+(アンダー (Under))
+
+=begin original
+
+To share code with multiple nested routes you can use
+L<Mojolicious::Routes::Route/"under">, because unlike normal nested routes, the
+routes generated with it have their own intermediate destination and result in
+additional dispatch cycles when they match.
+
+=end original
+
+複数階層にネストしたルーティングのコードを共有するには、L<Mojolicious::Routes::Route/"under">メソッドが利用できます。通常のネストしたルーティングとは異なり、この方法で生成されたルーティングはそれぞれが中間目的地を持ち、マッチしたときに追加のディスパッチサイクルが開始します。
+
+  # /foo     -> undef
+  # /foo/bar -> {controller => 'foo', action => 'baz'}
+  #             {controller => 'foo', action => 'bar'}
+  my $foo = $r->under('/foo')->to('foo#baz');
+  $foo->get('/bar')->to('#bar');
+
+=begin original
+
+The actual action code for this destination needs to return a true value or the
+dispatch chain will be broken, this can be a very powerful tool for
+authentication.
+
+=end original
+
+この目的地の実際のブリッジのコードは真の値を返す必要があります。そうでなければ、ディスパッチのチェーンは壊れます。このためにブリッジは認証のためのとても強力なツールになっています。
+
+  # /blackjack -> {cb => sub {...}}
+  #               {controller => 'hideout', action => 'blackjack'}
+  my $auth = $r->under('/' => sub {
+    my $c = shift;
+
+=begin original
+
+    # Authenticated
+    return 1 if $c->req->headers->header('X-Bender');
+
+=end original
+
+    # 認証済み
+    return 1 if $c->req->headers->header('X-Bender');
+
+=begin original
+
+    # Not authenticated
+    $c->render(text => "You're not Bender.", status => 401);
+    return undef;
+  });
+  $auth->get('/blackjack')->to('hideout#blackjack');
+
+=end original
+
+    # 未認証
+    $c->render(text => "You're not Bender.", status => 401);
+    return undef;
+  });
+  $auth->get('/blackjack')->to('hideout#blackjack');
+
+=begin original
+
+Broken dispatch chains can be continued by calling
+L<Mojolicious::Plugin::DefaultHelpers/"continue">, this allows for example,
+non-blocking operations to finish before reaching the next dispatch cycle.
+
+=end original
+
+壊れたディスパッチチェーンは L<Mojolicious::Plugin::DefaultHelpers/"continue">メソッドを呼び出すことによって続けることができます。これによって、たとえば、ノンブロッキング処理を次のディスパッチサイクルに到達する前に終了させることができます。
+
+  my $maybe = $r->under('/maybe' => sub {
+    my $c = shift;
+
+=begin original
+
+    # Wait 3 seconds and then give visitors a 50% chance to continue
+    Mojo::IOLoop->timer(3 => sub {
+
+=end original
+
+    # 3秒まって、50%の確率で継続する
+    Mojo::IOLoop->timer(3 => sub {
+
+=begin original
+
+      # Loser
+      return $c->render(text => 'No luck.') unless int rand 2;
+
+=end original
+
+      # 負け
+      return $c->render(text => 'No luck.') unless int rand 2;
+
+=begin original
+
+      # Winner
+      $c->continue;
+    });
+
+=end original
+
+      # 勝ち
+      $c->continue;
+    });
+
+    return undef;
+  });
+  $maybe->get('/')->to('maybe#winner');
+
+=begin original
+
+Every destination is just a snapshot of the stash at the time the route
+matched, and only the C<format> value is shared by all of them. For a little
+more power you can introspect the preceding and succeeding destinations with
+L<Mojolicious::Controller/"match">.
+
+=end original
+
+それぞれの目的地は、単にルートがマッチした時点でのスタッシュのスナップショットで、C<format> の値のみがこれら全てで共有されます。もう少し強力にするには、L<Mojolicious::Controller/"match"> で前後の目的地を詳しく調べてください。
+
+=begin original
+
+  # Action of the fourth dispatch cycle
+  my $action = $c->match->stack->[3]{action};
+
+=end original
+
+  # 4回目のディスパッチサイクルのアクション
+  my $action = $c->match->stack->[3]{action};
+
+=head2 Formats
+
+(フォーマット)
+
+=begin original
+
+File extensions like C<.html> and C<.txt> at the end of a route are
+automatically detected and stored in the stash value C<format>.
+
+=end original
+
+ルートの終わりにあるC<.html>やC<.txt>のようなファイル拡張子は自動的に検出され、C<format>スタッシュ値に格納されます。
+
+  # /foo      -> {controller => 'foo', action => 'bar'}
+  # /foo.html -> {controller => 'foo', action => 'bar', format => 'html'}
+  # /foo.txt  -> {controller => 'foo', action => 'bar', format => 'txt'}
+  $r->get('/foo')->to('foo#bar');
+
+=begin original
+
+This for example, allows multiple templates in different formats to share the
+same action code. Restrictive placeholders can also be used to limit the
+allowed formats.
+
+=end original
+
+これにより、たとえば、異なるフォーマットの複数のテンプレートが同じアクションコードを共有できます。制限付きプレースホルダを使用して、許可されるフォーマットを制限することもできます。
+
+  # /foo.txt -> undef
+  # /foo.rss -> {controller => 'foo', action => 'bar', format => 'rss'}
+  # /foo.xml -> {controller => 'foo', action => 'bar', format => 'xml'}
+  $r->get('/foo' => [format => ['rss', 'xml']])->to('foo#bar');
+
+=begin original
+
+A C<format> value can also be passed to L<Mojolicious::Controller/"url_for">.
+
+=end original
+
+C<format>値はL<Mojolicious::Controller/"url_for"> にも渡すことができます。
+
+  # /foo/bar.txt -> {controller => 'foo', action => 'bar', format => 'txt'}
+  $r->get('/foo/:action')->to('foo#')->name('baz');
+
+  # Generate URL "/foo/bar.txt" for route "baz"
+  my $url = $c->url_for('baz', action => 'bar', format => 'txt');
+
+=begin original
+
+Or you can just disable format detection with a special type of restrictive
+placeholder, which gets inherited by nested routes, and then re-enable it on
+demand.
+
+=end original
+
+あるいは、ネストしたルートによって継承される特別な種類の制限的なプレースホルダを使用してフォーマット検出を無効にしてから、必要に応じて再度有効にすることもできます。
+
+  # /foo      -> {controller => 'foo', action => 'bar'}
+  # /foo.html -> undef
+  $r->get('/foo' => [format => 0])->to('foo#bar');
+
+  # /foo      -> {controller => 'foo', action => 'bar'}
+  # /foo.html -> undef
+  # /baz      -> undef
+  # /baz.txt  -> {controller => 'baz', action => 'yada', format => 'txt'}
+  # /baz.html -> {controller => 'baz', action => 'yada', format => 'html'}
+  # /baz.xml  -> undef
+  my $inactive = $r->under([format => 0]);
+  $inactive->get('/foo')->to('foo#bar');
+  $inactive->get('/baz' => [format => ['txt', 'html']])->to('baz#yada');
+
+=head2 WebSockets
+
+(WebSocket)
+
+=begin original
+
+With the method L<Mojolicious::Routes::Route/"websocket"> you can restrict
+access to WebSocket handshakes, which are normal C<GET> requests with some
+additional information.
+
+=end original
+
+L<Mojolicious::Routes::Route/"websocket">メソッドを使ってWebSocketハンドシェイクへのアクセスを制限できます。WebSocketハンドシェイクとは、普通のC<GET>リクエストに追加の情報がついたものです。
+
+  # /echo (WebSocket handshake)
+  $r->websocket('/echo')->to('foo#echo');
+
+=begin original
+
+  # Controller
+  package MyApp::Controller::Foo;
+  use Mojo::Base 'Mojolicious::Controller';
+
+=end original
+
+  # コントローラー
+  package MyApp::Controller::Foo;
+  use Mojo::Base 'Mojolicious::Controller';
+
+=begin original
+
+  # Action
+  sub echo {
+    my $self = shift;
+    $self->on(message => sub {
+      my ($self, $msg) = @_;
+      $self->send("echo: $msg");
+    });
+  }
+
+=end original
+
+  # アクション
+  sub echo {
+    my $self = shift;
+    $self->on(message => sub {
+      my ($self, $msg) = @_;
+      $self->send("echo: $msg");
+    });
+  }
+
+  1;
+
+=begin original
+
+The connection gets established when you respond to the WebSocket handshake
+request with a C<101> response status, which happens automatically if you
+subscribe to an event with L<Mojolicious::Controller/"on"> or send a message
+with L<Mojolicious::Controller/"send"> right away.
+
+=end original
+
+WebSocketハンドシェイクリクエストに、C<101>レスポンスで応答したときに、コネクションは確立されます。このレスポンスは、L<Mojolicious::Controller/"on">でイベントを定期受信したとき、またL<Mojolicious::Controller/"send">でメッセージを送ったときに、自動的に発生します。
+
+  GET /echo HTTP/1.1
+  Host: mojolicious.org
+  User-Agent: Mojolicious (Perl)
+  Connection: Upgrade
+  Upgrade: websocket
+  Sec-WebSocket-Key: IDM3ODE4NDk2MjA1OTcxOQ==
+  Sec-WebSocket-Version: 13
+
+  HTTP/1.1 101 Switching Protocols
+  Server: Mojolicious (Perl)
+  Date: Tue, 03 Feb 2015 17:08:24 GMT
+  Connection: Upgrade
+  Upgrade: websocket
+  Sec-WebSocket-Accept: SWsp5N2iNxPbHlcOTIw8ERvyVPY=
+
+=head2 Catch-all route
+
+(キャッチオールルート)
+
+=begin original
+
+Since routes match in the order in which they were defined, you can catch all
+requests that did not match in your last route with an optional wildcard
+placeholder.
+
+=end original
+
+定義された順番でルートはマッチするので、 オプショナルなワイルドカードプレースホルダーによって、 最後のルートにおいてマッチしなかった すべてのリクエストをキャッチできます。
+
+  # * /*
+  $r->any('/*whatever' => {whatever => ''} => sub {
+    my $c        = shift;
+    my $whatever = $c->param('whatever');
+    $c->render(text => "/$whatever did not match.", status => 404);
+  });
+
+=head2 Conditions
+
+(条件)
+
+=begin original
+
+Conditions such as C<headers>, C<agent> and C<host> from
+L<Mojolicious::Plugin::HeaderCondition> can be applied to any route with the
+method L<Mojolicious::Routes::Route/"over">, and allow even more powerful route
+constructs.
+
+=end original
+
+L<Mojolicious::Plugin::HeaderCondition>のC<headers>、C<agent>、C<host>メソッドなどは、L<Mojolicious::Routes::Route/"over">メソッドを使って任意のルーティングに適用できます。これによって、さらに強力なルートを構成できるようになります。
+
+  # / (Origin: http://perl.org)
+  $r->get('/')->over(headers => {Origin => qr/perl\.org/})->to('foo#bar');
+
+  # / (Firefox)
+  $r->get('/')->over(agent => qr/Firefox/)->to('browser-test#firefox');
+
+  # / (Internet Explorer)
+  $r->get('/')->over(agent => qr/Internet Explorer/)->to('browser-test#ie');
+
+  # http://mojolicious.org/perldoc
+  $r->get('/perldoc')->over(host => 'mojolicious.org')->to('perldoc#index');
+
+=begin original
+
+Just be aware that conditions are too complex for the routing cache, which
+normally speeds up recurring requests, and can therefore reduce performance.
+
+=end original
+
+ルーティングキャッシュは通常、繰り返しのリクエストを高速化しますが、条件は複雑すぎるため、パフォーマンスが低下する可能性があります。
+
+=head2 Hooks
+
+(フック)
+
+=begin original
+
+Hooks operate outside the routing system and allow you to extend the framework
+itself by sharing code with all requests indiscriminately through
+L<Mojolicious/"hook">, which makes them a very powerful tool especially for
+plugins.
+
+=end original
+
+フックはルーティングシステムの外側で実行され、 L<Mojolicious/"hook">を使って、 すべてのリクエストでコードを共有することによって フレームワーク自体を拡張することを可能にします。これはプラグインのためのとても強力なツールです。
+
+=begin original
+
+  # Application
+  package MyApp;
+  use Mojo::Base 'Mojolicious';
+
+=end original
+
+  # アプリケーション
+  package MyApp;
+  use Mojo::Base 'Mojolicious';
+
+  sub startup {
+    my $self = shift;
+
+=begin original
+
+    # Check all requests for a "/test" prefix
+    $self->hook(before_dispatch => sub {
+      my $c = shift;
+      $c->render(text => 'This request did not reach the router.')
+        if $c->req->url->path->contains('/test');
+    });
+
+=end original
+
+    # "/test"プレフィックスを含んでいるすべてのリクエストをチェック
+    $self->hook(before_dispatch => sub {
+      my $c = shift;
+      $c->render(text => 'This request did not reach the router.')
+        if $c->req->url->path->contains('/test');
+    });
+
+=begin original
+
+    # These will not be reached if the hook above renders a response
+    my $r = $self->routes;
+    $r->get('/welcome')->to('foo#welcome');
+    $r->post('/bye')->to('foo#bye');
+  }
+
+=end original
+
+    # 上のフックがレスポンスを描画すれば、ここには到達しない。
+    my $r = $self->routes;
+    $r->get('/welcome')->to('foo#welcome');
+    $r->post('/bye')->to('foo#bye');
+  }
+
+  1;
+
+=begin original
+
+Post-processing the response to add or remove headers is a very common use.
+
+=end original
+
+追加のレスポンスヘッダを設定するような後処理の仕事などは一般的な使用方法でしょう。
+
+=begin original
+
+  # Make sure static files are cached
+  $app->hook(after_static => sub {
+    my $c = shift;
+    $c->res->headers->cache_control('max-age=3600, must-revalidate');
+  });
+
+=end original
+
+  # 静的ファイルがキャッシュされるようにする
+  $app->hook(after_static => sub {
+    my $c = shift;
+    $c->res->headers->cache_control('max-age=3600, must-revalidate');
+  });
+
+=begin original
+
+  # Remove a default header
+  $app->hook(after_dispatch => sub {
+    my $c = shift;
+    $c->res->headers->remove('Server');
+  });
+
+=end original
+
+  # デフォルトヘッダを削除
+  $app->hook(after_dispatch => sub {
+    my $c = shift;
+    $c->res->headers->remove('Server');
+  });
+
+=begin original
+
+Same for pre-processing the request.
+
+=end original
+
+リクエストの前処理において同じことをする。
+
+=begin original
+
+  # Choose template variant based on request headers
+  $app->hook(before_dispatch => sub {
+    my $c = shift;
+    return unless my $agent = $c->req->headers->user_agent;
+    $c->stash(variant => 'ie') if $agent =~ /Internet Explorer/;
+  });
+
+=end original
+
+  # リクエストヘッダーに基づいてテンプレートバリアントを選択
+  $app->hook(before_dispatch => sub {
+    my $c = shift;
+    return unless my $agent = $c->req->headers->user_agent;
+    $c->stash(variant => 'ie') if $agent =~ /Internet Explorer/;
+  });
+
+=begin original
+
+Or more advanced extensions to add monitoring to your application.
+
+=end original
+
+モニタリングをアプリケーションに加える発展的な拡張
+
+=begin original
+
+  # Forward exceptions to a web service
+  $app->hook(after_dispatch => sub {
+    my $c = shift;
+    return unless my $e = $c->stash('exception');
+    $c->ua->post('https://example.com/bugs' => form => {exception => $e});
+  });
+
+=end original
+
+  # Webサービスに例外を通知する
+  $app->hook(after_dispatch => sub {
+    my $c = shift;
+    return unless my $e = $c->stash('exception');
+    $c->ua->post('https://example.com/bugs' => form => {exception => $e});
+  });
+
+=begin original
+
+You can even extend much of the core functionality.
+
+=end original
+
+コアの機能の多くを拡張することも可能です。
+
+=begin original
+
+  # Make controller object available to actions as $_
+  $app->hook(around_action => sub {
+    my ($next, $c, $action, $last) = @_;
+    local $_ = $c;
+    return $next->();
+  });
+
+=end original
+
+  # コントローラーオブジェクトをアクションの中で$_で利用できるようにする
+  $app->hook(around_action => sub {
+    my ($next, $c, $action, $last) = @_;
+    local $_ = $c;
+    return $next->();
+  });
+
+=begin original
+
+  # Pass route name as argument to actions
+  $app->hook(around_action => sub {
+    my ($next, $c, $action, $last) = @_;
+    return $c->$action($c->current_route);
+  });
+
+=end original
+
+  # ルーティング名をアクションへの引数として渡す
+  $app->hook(around_action => sub {
+    my ($next, $c, $action, $last) = @_;
+    return $c->$action($c->current_route);
+  });
+
+=begin original
+
+For a full list of available hooks see L<Mojolicious/"HOOKS">.
+
+=end original
+
+すべてのフックの一覧は L<Mojolicious/"HOOKS">を見てください。
+
+=head1 ADVANCED
+
+(発展)
+
+=begin original
+
+Less commonly used and more powerful features.
+
+=end original
+
+一般的ではないが、より強力な機能
+
+=head2 Shortcuts
+
+(ショートカット)
+
+=begin original
+
+To make route generation more expressive, you can also add your own shortcuts
+with L<Mojolicious::Routes/"add_shortcut">.
+
+=end original
+
+ルート生成の表現力を高めるためにはL<Mojolicious::Routes/"add_shortcut">を使って独自のショートカットを加えることができます。
+
+=begin original
+
+  # Simple "resource" shortcut
+  $r->add_shortcut(resource => sub {
+    my ($r, $name) = @_;
+
+=end original
+
+  # 簡単な"resource"ショートカット
+  $r->add_shortcut(resource => sub {
+    my ($r, $name) = @_;
+
+=begin original
+
+    # Prefix for resource
+    my $resource = $r->any("/$name")->to("$name#");
+
+=end original
+
+    # リソースのプレフィックス
+    my $resource = $r->any("/$name")->to("$name#");
+
+=begin original
+
+    # Render a list of resources
+    $resource->get->to('#index')->name($name);
+
+=end original
+
+    # リソースのリストの描画
+    $resource->get->to('#index')->name($name);
+
+=begin original
+
+    # Render a form to create a new resource (submitted to "store")
+    $resource->get('/create')->to('#create')->name("create_$name");
+
+=end original
+
+    # 新しいリソースを作成するために、フォームを描画する("store"へのサブミット)
+    $resource->get('/create')->to('#create')->name("create_$name");
+
+=begin original
+
+    # Store newly created resource (submitted by "create")
+    $resource->post->to('#store')->name("store_$name");
+
+=end original
+
+    # 新しく作成したリソースを保存する ("create"によってサブミット)
+    $resource->post->to('#store')->name("store_$name");
+
+=begin original
+
+    # Render a specific resource
+    $resource->get('/:id')->to('#show')->name("show_$name");
+
+=end original
+
+    # 特別なリソースを描画する
+    $resource->get('/:id')->to('#show')->name("show_$name");
+
+=begin original
+
+    # Render a form to edit a resource (submitted to "update")
+    $resource->get('/:id/edit')->to('#edit')->name("edit_$name");
+
+=end original
+
+    # リソースを編集するためにフォームを描画する ("update"へのサブミット)
+    $resource->get('/:id/edit')->to('#edit')->name("edit_$name");
+
+=begin original
+
+    # Store updated resource (submitted by "edit")
+    $resource->put('/:id')->to('#update')->name("update_$name");
+
+=end original
+
+    # リソースをアップデートする("edit"によってサブミット)
+    $resource->put('/:id')->to('#update')->name("update_$name");
+
+=begin original
+
+    # Remove a resource
+    $resource->delete('/:id')->to('#remove')->name("remove_$name");
+
+=end original
+
+    # リソースを削除する
+    $resource->delete('/:id')->to('#remove')->name("remove_$name");
+
+    return $resource;
+  });
+
+  # GET /users         -> {controller => 'users', action => 'index'}
+  # GET /users/create  -> {controller => 'users', action => 'create'}
+  # POST /users        -> {controller => 'users', action => 'store'}
+  # GET /users/23      -> {controller => 'users', action => 'show', id => 23}
+  # GET /users/23/edit -> {controller => 'users', action => 'edit', id => 23}
+  # PUT /users/23      -> {controller => 'users', action => 'update', id => 23}
+  # DELETE /users/23   -> {controller => 'users', action => 'remove', id => 23}
+  $r->resource('users');
+
+=head2 Rearranging routes
+
+(ルーティングのリアレンジ)
+
+=begin original
+
+From application startup until the first request has arrived, all routes can
+still be moved around or even removed with methods like
+L<Mojolicious::Routes::Route/"add_child"> and
+L<Mojolicious::Routes::Route/"remove">.
+
+=end original
+
+アプリケーションが立ち上げってから最初のリクエストが処理されるまでは、すべてのルーティングは、 L<Mojolicious::Routes::Route/"add_child">や L<Mojolicious::Routes::Route/"remove">などによって 移動させたり、削除できます。
+
+  # GET /example/show -> {controller => 'example', action => 'show'}
+  my $show = $r->get('/show')->to('example#show');
+  $r->any('/example')->add_child($show);
+
+=begin original
+
+  # Nothing
+  $r->get('/secrets/show')->to('secrets#show')->name('show_secrets');
+  $r->find('show_secrets')->remove;
+
+=end original
+
+  # なし
+  $r->get('/secrets/show')->to('secrets#show')->name('show_secrets');
+  $r->find('show_secrets')->remove;
+
+=begin original
+
+Especially for rearranging routes created by plugins this can be very useful,
+to find routes by their name you can use L<Mojolicious::Routes::Route/"find">.
+
+=end original
+
+特にプラグインによって生成されたルーティングを再構成するためにとても便利でしょう。 L<Mojolicious::Routes::Route/"find">を使って名前によってルーティングを探すことができます。
+
+  # GET /example/test -> {controller => 'example', action => 'test'}
+  $r->get('/something/else')->to('something#else')->name('test');
+  my $test = $r->find('test');
+  $test->pattern->parse('/example/test');
+  $test->pattern->defaults({controller => 'example', action => 'test'});
+
+=begin original
+
+Even the route pattern and destination can still be changed with
+L<Mojolicious::Routes::Pattern/"parse"> and
+L<Mojolicious::Routes::Pattern/"defaults">.
+
+=end original
+
+さらにルーティングパターンと目的地は、L<Mojolicious::Routes::Pattern/"parse">や L<Mojolicious::Routes::Pattern/"defaults">を使ってまだ変更できます。
+
+=head2 Adding conditions
+
+(条件の追加)
+
+=begin original
+
+You can also add your own conditions with the method
+L<Mojolicious::Routes/"add_condition">. All conditions are basically router
+plugins that run every time a new request arrives, and which need to return a
+true value for the route to match.
+
+=end original
+
+独自の条件をL<Mojolicious::Routes/"add_condition">を使って追加できます。すべての条件は基本的には、新しいリクエストが到着するたびに実行されるルータープラグインです。条件は、 ルーティングとマッチしたときに真を返す必要があります。
+
+=begin original
+
+  # A condition that randomly allows a route to match
+  $r->add_condition(random => sub {
+    my ($route, $c, $captures, $num) = @_;
+
+=end original
+
+  # ランダムでルーティングにマッチする条件
+  $r->add_condition(random => sub {
+    my ($route, $c, $captures, $num) = @_;
+
+=begin original
+
+    # Loser
+    return undef if int rand $num;
+
+=end original
+
+    # 負け
+    return undef if int rand $num;
+
+=begin original
+
+    # Winner
+    return 1;
+  });
+
+=end original
+
+    # 勝ち
+    return 1;
+  });
+
+=begin original
+
+  # /maybe (25% chance)
+  $r->get('/maybe')->over(random => 4)->to('foo#bar');
+
+=end original
+
+  # /maybe（25% の確率）
+  $r->get('/maybe')->over(random => 4)->to('foo#bar');
+
+=begin original
+
+Use whatever request information you need.
+
+=end original
+
+必要なリクエスト情報を使う
+
+=begin original
+
+  # A condition to check query parameters (useful for mock web services)
+  $r->add_condition(query => sub {
+    my ($route, $c, $captures, $hash) = @_;
+
+=end original
+
+  # クエリパラメーターをチェックする条件（モックウェブサービスに便利）
+  $r->add_condition(query => sub {
+    my ($route, $c, $captures, $hash) = @_;
+
+    for my $key (keys %$hash) {
+      my $param = $c->req->url->query->param($key);
+      return undef unless defined $param && $param eq $hash->{$key};
+    }
+
+    return 1;
+  });
+
+  # /hello?to=world&test=1
+  $r->get('/hello')->over(query => {test => 1, to => 'world'})->to('foo#bar');
+
+=head2 Condition plugins
+
+(条件プラグイン)
+
+=begin original
+
+You can also package your conditions as reusable plugins.
+
+=end original
+
+再利用可能なプラグインとして条件をパッケージ化できます。
+
+=begin original
+
+  # Plugin
+  package Mojolicious::Plugin::WerewolfCondition;
+  use Mojo::Base 'Mojolicious::Plugin';
+
+=end original
+
+  # プラグイン
+  package Mojolicious::Plugin::WerewolfCondition;
+  use Mojo::Base 'Mojolicious::Plugin';
+
+  use Astro::MoonPhase;
+
+  sub register {
+    my ($self, $app) = @_;
+
+=begin original
+
+    # Add "werewolf" condition
+    $app->routes->add_condition(werewolf => sub {
+      my ($route, $c, $captures, $days) = @_;
+
+=end original
+
+    # “おおかみ男（werewolf）”条件を追加
+    $app->routes->add_condition(werewolf => sub {
+      my ($route, $c, $captures, $days) = @_;
+
+=begin original
+
+      # Keep the werewolves out!
+      return undef if abs(14 - (phase(time))[2]) > ($days / 2);
+
+=end original
+
+      # おおかみ男を入れるな！
+      return undef if abs(14 - (phase(time))[2]) > ($days / 2);
+
+=begin original
+
+      # It's ok, no werewolf
+      return 1;
+    });
+  }
+
+=end original
+
+      # 大丈夫だ、おおかみ男ではない
+      return 1;
+    });
+  }
+
+  1;
+
+=begin original
+
+Now just load the plugin and you are ready to use the condition in all your
+applications.
+
+=end original
+
+プラグインをロードして、すべてのアプリケーションで条件を使うことができます。
+
+=begin original
+
+  # Application
+  package MyApp;
+  use Mojo::Base 'Mojolicious';
+
+=end original
+
+  # アプリケーション
+  package MyApp;
+  use Mojo::Base 'Mojolicious';
+
+  sub startup {
+    my $self = shift;
+
+=begin original
+
+    # Plugin
+    $self->plugin('WerewolfCondition');
+
+=end original
+
+    # プラグイン
+    $self->plugin('WerewolfCondition');
+
+=begin original
+
+    # /hideout (keep them out for 4 days after full moon)
+    $self->routes->get('/hideout')->over(werewolf => 4)
+      ->to(controller => 'foo', action => 'bar');
+  }
+
+=end original
+
+    # /hideout（満月から4日間は中に入れない）
+    $self->routes->get('/hideout')->over(werewolf => 4)
+      ->to(controller => 'foo', action => 'bar');
+  }
+
+  1;
+
+=head2 Mount applications
+
+(アプリケーションのマウント)
+
+=begin original
+
+The easiest way to embed one application into another is
+L<Mojolicious::Plugin::Mount>, which allows you to mount whole self-contained
+applications under a domain and/or prefix.
+
+=end original
+
+完全な自分を含んだアプリケーションをあるドメインあるいはプレフィックス(もしくは両方)の下にマウントするのに、L<Mojolicious::Plugin::Mount>を利用できます。
+
+  use Mojolicious::Lite;
+
+=begin original
+
+  # Whole application mounted under "/prefix"
+  plugin Mount => {'/prefix' => '/home/sri/myapp.pl'};
+
+=end original
+
+  # "/prefix"の下に完全なアプリケーションをマウント
+  plugin Mount => {'/prefix' => '/home/sri/myapp.pl'};
+
+=begin original
+
+  # Mount application with subdomain
+  plugin Mount => {'test.example.com' => '/home/sri/myapp2.pl'};
+
+=end original
+
+  # サブドメインでアプリケーションをマウント
+  plugin Mount => {'test.example.com' => '/home/sri/myapp2.pl'};
+
+=begin original
+
+  # Normal route
+  get '/' => sub { shift->render(text => 'Hello World!') };
+
+=end original
+
+  # 普通のルート
+  get '/' => sub { shift->render(text => 'Hello World!') };
+
+  app->start;
+
+=head2 Embed applications
+
+(埋め込みアプリケーション)
+
+=begin original
+
+For a little more power you can also embed applications by using them instead of
+a controller. This allows for example, the use of the L<Mojolicious::Lite>
+domain specific language in normal L<Mojolicious> controllers.
+
+=end original
+
+コントローラの代わりに、アプリケーション全体を簡単に埋め込むことができます。これによって、たとえば、L<Mojolicious>のコントローラの中で、L<Mojolicious::Lite>のドメイン固有言語を使用できるようになります。
+
+=begin original
+
+  # Controller
+  package MyApp::Controller::Bar;
+  use Mojolicious::Lite;
+
+=end original
+
+  # コントローラー
+  package MyApp::Controller::Bar;
+  use Mojolicious::Lite;
+
+  # /hello
+  get '/hello' => sub {
+    my $c    = shift;
+    my $name = $c->param('name');
+    $c->render(text => "Hello $name.");
+  };
+
+  1;
+
+=begin original
+
+With the method L<Mojolicious::Routes::Route/"detour"> which is very similar to
+L<Mojolicious::Routes::Route/"to">, you can allow the route to partially match
+and use only the remaining path in the embedded application, the base path will
+be passed along in the C<path> stash value.
+
+=end original
+
+L<Mojolicious::Routes::Route/"to">にとてもよく似ているL<Mojolicious::Routes::Route/"detour">を使えば、 埋め込みのアプリケーションの中で、ルーティングを部分的にマッチさせ、残ったパスだけを使用できます。ベースパスはC<path>スタッシュ値として引き渡されます。
+
+  # /foo/*
+  $r->any('/foo')->detour('bar#', name => 'Mojo');
+
+=begin original
+
+A minimal embeddable application is nothing more than a subclass of
+L<Mojolicious>, containing a C<handler> method accepting
+L<Mojolicious::Controller> objects.
+
+=end original
+
+最小の埋め込みアプリケーションは、L<Mojolicious::Controller>オブジェクトを受け入れるためのC<handler>メソッドを持つ、ただのL<Mojolicious>のサブクラスです。
+
+  package MyApp::Controller::Bar;
+  use Mojo::Base 'Mojolicious';
+
+  sub handler {
+    my ($self, $c) = @_;
+    $c->res->code(200);
+    my $name = $c->param('name');
+    $c->res->body("Hello $name.");
+  }
+
+  1;
+
+=begin original
+
+The host application will only share very little information with the embedded
+application through the stash. So you cannot currently use route placeholders in
+routes leading to embedded applications, since that would cause problems with
+L<Mojolicious::Controller/"url_for">.
+
+=end original
+
+ホストアプリケーションはスタッシュを通して組み込みアプリケーションとほとんど情報を共有しません。そのため、L<Mojolicious::Controller/"url_for">で問題が発生する可能性があるため、現在組み込みアプリケーションに至るルーティングにおいてルーティングプレースホルダーを使用することはできません。
+
+=head2 Application plugins
+
+(アプリケーションプラグイン)
+
+=begin original
+
+You can even package applications as self-contained reusable plugins.
+
+=end original
+
+再利用可能なプラグインとしてアプリケーションをパッケージ化することだってできます。
+
+=begin original
+
+  # Plugin
+  package Mojolicious::Plugin::MyEmbeddedApp;
+  use Mojo::Base 'Mojolicious::Plugin';
+
+=end original
+
+  # プラグイン
+  package Mojolicious::Plugin::MyEmbeddedApp;
+  use Mojo::Base 'Mojolicious::Plugin';
+
+  sub register {
+    my ($self, $app) = @_;
+
+=begin original
+
+    # Automatically add route
+    $app->routes->any('/foo')->detour(app => EmbeddedApp::app());
+  }
+
+=end original
+
+    # ルートを自動的に追加
+    $app->routes->any('/foo')->detour(app => EmbeddedApp::app());
+  }
+
+  package EmbeddedApp;
+  use Mojolicious::Lite;
+
+  get '/bar' => 'bar';
+
+  1;
+  __DATA__
+  @@ bar.html.ep
+  Hello World!
+
+=begin original
+
+The C<app> stash value, which won't be inherited by nested routes, can be used
+for already instantiated applications. Now just load the plugin and you're
+done.
+
+=end original
+
+スタッシュのC<app>の値は、すでにインスタンス化されたアプリケーションで利用できます。単にプラグインをロードするだけです。
+
+=begin original
+
+  # Application
+  package MyApp;
+  use Mojo::Base 'Mojolicious';
+
+=end original
+
+  # アプリケーション
+  package MyApp;
+  use Mojo::Base 'Mojolicious';
+
+  sub startup {
+    my $self = shift;
+
+=begin original
+
+    # Plugin
+    $self->plugin('MyEmbeddedApp');
+  }
+
+=end original
+
+    # プラグイン
+    $self->plugin('MyEmbeddedApp');
+  }
+
+  1;
+
+=head1 MORE
+
+(より学ぶには)
+
+=begin original
+
+You can continue with L<Mojolicious::Guides> now or take a look at the
+L<Mojolicious wiki|http://github.com/mojolicious/mojo/wiki>, which contains a
+lot more documentation and examples by many different authors.
+
+=end original
+
+さあ、L<Mojolicious::Guides> を続けるか、L<Mojolicious wiki|http://github.com/mojolicious/mojo/wiki>を見てみましょう。多くの著者がドキュメントやサンプルをたくさん書いています。
+
+=head1 SUPPORT
+
+(サポート)
+
+=begin original
+
+If you have any questions the documentation might not yet answer, don't
+hesitate to ask on the
+L<mailing list|http://groups.google.com/group/mojolicious> or the official IRC
+channel C<#mojo> on C<irc.freenode.net> (L<chat
+now!|https://kiwiirc.com/nextclient/#irc://irc.freenode.net/mojo?nick=guest-?>).
+
+=end original
+
+このドキュメントでわからない部分があれば、 L<mailing list|http://groups.google.com/group/mojolicious> かC<irc.freenode.net> (L<chat
+now!|https://kiwiirc.com/nextclient/#irc://irc.freenode.net/mojo?nick=guest-?>)の公式IRCチャンネル C<#mojo> まで気軽に質問してください。
+
+=begin meta
+
+Translate: 木本裕紀
+Translate: 前山将人
+Update: SHIRAKATA Kentaro <argrath@ub32.org> (8.12)
+
+=end meta
+
+=cut
+
