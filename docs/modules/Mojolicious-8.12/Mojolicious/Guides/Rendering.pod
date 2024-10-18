@@ -1,0 +1,2854 @@
+=encoding utf8
+
+=head1 NAME
+
+=begin original
+
+Mojolicious::Guides::Rendering - Rendering content
+
+=end original
+
+Mojolicious::Guides::Rendering - コンテンツのレンダリング
+
+=head1 OVERVIEW
+
+(説明)
+
+=begin original
+
+This document explains content generation with the L<Mojolicious> renderer.
+
+=end original
+
+本書は、Mojoliciousレンダラを使ったコンテンツ生成について説明します。
+
+=head1 CONCEPTS
+
+(概念)
+
+=begin original
+
+Essentials every L<Mojolicious> developer should know.
+
+=end original
+
+すべてのL<Mojolicious>開発者が知るべき本質
+
+=head2 Renderer
+
+(レンダラ)
+
+=begin original
+
+The renderer is a tiny black box turning stash data into actual responses
+utilizing multiple template systems and data encoding modules.
+
+=end original
+
+レンダラは、複数のテンプレートシステムとデータエンコードモジュールを利用して、スタッシュデータを実際のレスポンスに変換する小さなブラックボックスです。
+
+  {text => 'Hello.'}                 -> 200 OK, text/html, 'Hello.'
+  {json => {x => 3}}                 -> 200 OK, application/json, '{"x":3}'
+  {text => 'Oops.', status => '410'} -> 410 Gone, text/html, 'Oops.'
+
+=begin original
+
+Templates can be automatically detected if enough information is provided by
+the developer or routes. Template names are expected to follow the
+C<template.format.handler> scheme, with C<template> defaulting to
+C<controller/action> or the route name, C<format> defaulting to C<html> and
+C<handler> to C<ep>.
+
+=end original
+
+開発者またはルーティングから十分な情報が提供されれば、テンプレートは自動的に検出されます。テンプレート名はC<template.format.handler>命名規則に従うことが期待されています。C<template>はデフォルトではC<controller/action>またはルート名です。デフォルトのC<format>はC<html>、C<handler>はC<ep> です。
+
+  {controller => 'users', action => 'list'} -> 'users/list.html.ep'
+  {template => 'foo', format => 'txt'}      -> 'foo.txt.ep'
+  {template => 'foo', handler => 'epl'}     -> 'foo.html.epl'
+
+=begin original
+
+The C<controller> value gets converted from C<CamelCase> to C<snake_case> using
+L<Mojo::Util/"decamelize"> and C<-> characters replaced with C</>.
+
+=end original
+
+C<controller>値は、L<Mojo::Util/"decamelize">によってC<CamelCase>からC<snake_case>に変換されます。C<->文字はC</> に置き換えられます。
+
+  {controller => 'My::Users', action => 'add'} -> 'my/users/add.html.ep'
+  {controller => 'my-users', action => 'show'} -> 'my/users/show.html.ep'
+
+=begin original
+
+All templates should be in the C<templates> directories of the application,
+which can be customized with L<Mojolicious::Renderer/"paths">, or one of the
+the C<DATA> sections from L<Mojolicious::Renderer/"classes">.
+
+=end original
+
+テンプレートはすべてアプリケーションのC<templates>ディレクトリに置いてください。このパスはL<Mojolicious::Renderer/"paths">で変更できます。または、L<Mojolicious::Renderer/"classes">のうちいずれかのC<DATA>セクションに記述してください。
+
+  __DATA__
+
+  @@ time.html.ep
+  % use Time::Piece;
+  % my $now = localtime;
+  <!DOCTYPE html>
+  <html>
+    <head><title>Time</title></head>
+    <body>The time is <%= $now->hms %>.</body>
+  </html>
+
+  @@ hello.txt.ep
+  ...
+
+=begin original
+
+The renderer can be easily extended to support additional template systems with
+plugins, but more about that later.
+
+=end original
+
+レンダラは、プラグインを使用して追加のテンプレートシステムをサポートするように簡単に拡張できますが、それについては後で詳しく説明します。
+
+=head2 Embedded Perl
+
+(埋め込みPerl)
+
+=begin original
+
+L<Mojolicious> includes a minimalistic but very powerful template system out of
+the box called Embedded Perl or C<ep> for short. It is based on
+L<Mojo::Template> and allows the embedding of Perl code right into actual
+content using a small set of special tags and line start characters. For all
+templates L<strict>, L<warnings>, L<utf8> and Perl 5.10 L<features|feature> are
+automatically enabled.
+
+=end original
+
+L<Mojolicious>には埋め込みPerlまたはC<ep>と呼ばれる、すぐに使える最小限でありながら非常に強力なテンプレートシステムが含まれています。それはL<Mojo::Template>に基づいています。そして、少数の特別なタグと改行文字を使ってPerlコードを実際のコンテンツに埋め込むことができます。すべてのテンプレートに対してL<strict>、L<warnings>、L<utf8>とPerl 5.10 L<features|feature>が自動的に有効になります。
+
+=begin original
+
+  <% Perl code %>
+  <%= Perl expression, replaced with XML escaped result %>
+  <%== Perl expression, replaced with result %>
+  <%# Comment, useful for debugging %>
+  <%% Replaced with "<%", useful for generating templates %>
+  % Perl code line, treated as "<% line =%>" (explained later)
+  %= Perl expression line, treated as "<%= line %>"
+  %== Perl expression line, treated as "<%== line %>"
+  %# Comment line, useful for debugging
+  %% Replaced with "%", useful for generating templates
+
+=end original
+
+  <% Perlコード %>
+  <%= Perl式、XML文字がエスケープされた結果が返されます %>
+  <%== Perl式、評価結果が返されます %>
+  <%# デバッグに役立つコメント %>
+  <%% "<%"に置換されます。テンプレートの生成に使えます %>
+  % Perlコード行、"<% line =%>"（説明は後ほど）として扱われます
+  %= Perl式行、"<%= line %>"として扱われます
+  %== Perl式行、"<%== line %>"として扱われます
+  %# コメント行、デバッグに役立ちます
+  %% "%"に置き換えられ、テンプレートを生成するのに便利です
+
+=begin original
+
+Tags and lines work pretty much the same, but depending on context one will
+usually look a bit better. Semicolons get automatically appended to all
+expressions.
+
+=end original
+
+タグと行はほとんど同じように機能しますが、コンテキストによって使い分けると見た目が少し良くなるでしょう。セミコロンは、すべての式に自動で追加されます。
+
+  <% my $i = 10; %>
+  <ul>
+    <% for my $j (1 .. $i) { %>
+      <li>
+        <%= $j %>
+      </li>
+    <% } %>
+  </ul>
+
+  % my $i = 10;
+  <ul>
+    % for my $j (1 .. $i) {
+      <li>
+        %= $j
+      </li>
+    % }
+  </ul>
+
+=begin original
+
+Aside from differences in whitespace handling, both examples generate similar
+Perl code, a naive translation could look like this.
+
+=end original
+
+空白文字の扱いが異なることを別にすれば、両方のサンプルは似たPerlのコードを生成します。そのまま変換すると次のようになるでしょう。
+
+  my $output = '';
+  my $i = 10;
+  $output .= '<ul>';
+  for my $j (1 .. $i) {
+    $output .= '<li>';
+    $output .= xml_escape scalar + $j;
+    $output .= '</li>';
+  }
+  $output .= '</ul>';
+  return $output;
+
+=begin original
+
+An additional equal sign can be used to disable escaping of the characters
+C<E<lt>>, C<E<gt>>, C<&>, C<'> and C<"> in results from Perl expressions, which
+is the default to prevent XSS attacks against your application.
+
+=end original
+
+イコールサインを追加すると、Perl式の結果に含まれる文字列C<E<lt>>、C<E<gt>>、C<&>、C<'>、C<">のエスケープを無効にできます。エスケープは、アプリケーションに対するXSS攻撃を防ぐためにデフォルトでおこなわれます。
+
+  <%= 'I ♥ Mojolicious!' %>
+  <%== '<p>I ♥ Mojolicious!</p>' %>
+
+=begin original
+
+Only L<Mojo::ByteStream> objects are excluded from automatic escaping.
+
+=end original
+
+L<Mojo::ByteStream>オブジェクトだけは自動エスケープの対象外です。
+
+  <%= b('<p>I ♥ Mojolicious!</p>') %>
+
+=begin original
+
+Whitespace characters around tags can be trimmed by adding an additional equal
+sign to the end of a tag.
+
+=end original
+
+タグの前後にある文字列は、追加のイコール記号をタグの最後につけることによって、除去できます。
+
+=begin original
+
+  <% for (1 .. 3) { %>
+    <%= 'Trim all whitespace characters around this expression' =%>
+  <% } %>
+
+=end original
+
+  <% for (1 .. 3) { %>
+    <%= 'この式の前後にある空白文字はトリムされます' =%>
+  <% } %>
+
+=begin original
+
+Newline characters can be escaped with a backslash.
+
+=end original
+
+改行はバックスラッシュでエスケープできます。
+
+=begin original
+
+  This is <%= 1 + 1 %> a\
+  single line
+
+=end original
+
+  これは <%= 1 + 1 %> \
+  1行になります
+
+=begin original
+
+And a backslash in front of a newline character can be escaped with another
+backslash.
+
+=end original
+
+改行の直前のバックスラッシュはもう一つのバックスラッシュ によってエスケープできます。
+
+=begin original
+
+  This will <%= 1 + 1 %> result\\
+  in multiple\\
+  lines
+
+=end original
+
+  これは <%= 1 + 1 %> \\
+  複数行に \\
+  なります
+
+=begin original
+
+A newline character gets appended automatically to every template, unless the
+last character is a backslash. And empty lines at the end of a template are
+ignored.
+
+=end original
+
+最後の文字がバックスラッシュでない限り、改行文字はすべてのテンプレートに自動的に追加されます。また、テンプレートの末尾の空行は無視されます。
+
+=begin original
+
+  There is <%= 1 + 1 %> no newline at the end here\
+
+=end original
+
+  末尾に改行文字が付きません <%= 1 + 1 %> \
+
+=begin original
+
+At the beginning of the template, stash values that don't have invalid
+characters in their name get automatically initialized as normal variables, and
+the controller object as both C<$self> and C<$c>.
+
+=end original
+
+テンプレートの最初で、名前に無効な文字を含まないスタッシュ値は通常の変数として自動的に初期化され、コントローラオブジェクトはC<$self>とC<$c>の両方が自動的に初期化されます。
+
+  $c->stash(name => 'tester');
+
+  Hello <%= $name %> from <%= $c->tx->remote_address %>.
+
+=begin original
+
+A prefix like C<myapp.*> is commonly used for stash values that you don't want
+to expose in templates.
+
+=end original
+
+C<myapp.*>のようなプレフィックスは、通常はテンプレートの中で見せたくないスタッシュ値に使います。
+
+  $c->stash('myapp.name' => 'tester');
+
+=begin original
+
+There are also many helper functions available, but more about that later.
+
+=end original
+
+たくさんのヘルパー関数が利用可能ですが、後ほど紹介します。
+
+  <%= dumper {foo => 'bar'} %>
+
+=head1 BASICS
+
+(基礎)
+
+=begin original
+
+Most commonly used features every L<Mojolicious> developer should know about.
+
+=end original
+
+すべてのL<Mojolicious>開発者が知っておくべきもっとも一般的に利用される機能
+
+=head2 Automatic rendering
+
+(自動的な描画)
+
+=begin original
+
+The renderer can be manually started by calling the method
+L<Mojolicious::Controller/"render">, but that's usually not necessary, because
+it will get automatically called if nothing has been rendered after the router
+finished its work. This also means you can have routes pointing only to
+templates without actual actions.
+
+=end original
+
+L<Mojolicious::Controller/"render">メソッドを呼び出すことで、レンダラを手動で起動できます。しかし、通常は必要ありません。なぜならルータの処理が終わったとき、何もレンダリングされていない場合はレンダラが自動的に呼び出されるからです。これは、何もアクションを実行しない、テンプレートだけを指し示すルーティングを作成できるということです。
+
+  $c->render;
+
+=begin original
+
+There is one big difference though, by calling it manually you can make sure
+that templates use the current controller object, and not the default
+controller specified with the attribute L<Mojolicious/"controller_class">.
+
+=end original
+
+ただし、大きな違いがひとつあります。C<render>を手動で呼ぶことによって、テンプレートが現在のコントローラオブジェクトを使用し、アプリケーションクラスのL<Mojolicious/"controller_class">属性で指定されたデフォルトコントローラを使用しないことを保証できます。
+
+  $c->render_later;
+
+=begin original
+
+You can also disable automatic rendering with the method
+L<Mojolicious::Controller/"render_later">, which can be very useful to delay
+rendering when a non-blocking operation has to be performed first.
+
+=end original
+
+L<Mojolicious::Controller/"render_later">メソッドを使って自動レンダリングを無効にすることもできます。 これは、ノンブロッキング操作を先に実行したい場合にレンダリングを遅らせるのに非常に便利です。
+
+=head2 Rendering templates
+
+(テンプレートの描画)
+
+=begin original
+
+The renderer will always try to detect the right template, but you can also use
+the C<template> stash value to render a specific one. Everything before the
+last slash will be interpreted as the subdirectory path in which to find the
+template.
+
+=end original
+
+レンダラはいつも正しいテンプレートを検知しようとしますが、スタッシュのC<template>の値を使って描画するテンプレートを指定することもできます。最後のスラッシュより前の部分は、テンプレートを探すサブディレクトリとして解釈されます。
+
+  # foo/bar/baz.*.*
+  $c->render(template => 'foo/bar/baz');
+
+=begin original
+
+Choosing a specific C<format> and C<handler> is just as easy.
+
+=end original
+
+特定のC<format>やC<handler>を選択することも同様に簡単です。
+
+  # foo/bar/baz.txt.epl
+  $c->render(template => 'foo/bar/baz', format => 'txt', handler => 'epl');
+
+=begin original
+
+Because rendering a specific template is the most common task it also has a
+shortcut.
+
+=end original
+
+特定のテンプレートの描画は、とてもよくあるタスクなのでショートカットが用意されています。
+
+  $c->render('foo/bar/baz');
+
+=begin original
+
+If you're not sure in advance if a template actually exists, you can also use
+the method L<Mojolicious::Controller/"render_maybe"> to try multiple
+alternatives.
+
+=end original
+
+テンプレートが実際に存在するかどうかわからない場合には、複数ある代わりのテンプレートを試すために L<Mojolicious::Controller/"render_maybe">メソッドを使うこともできます。
+
+  $c->render_maybe('localized/baz') or $c->render('foo/bar/baz');
+
+=head2 Rendering to strings
+
+(文字列への描画)
+
+=begin original
+
+Sometimes you might want to use the rendered result directly instead of
+generating a response, for example, to send emails, this can be done with
+L<Mojolicious::Controller/"render_to_string">.
+
+=end original
+
+描画の結果をレスポンスとして生成するのではなく、直接使いたい場合もあることでしょう。たとえば、Eメールを送る場合などです。L<Mojolicious::Controller/"render_to_string"> を使って行えます。
+
+  my $html = $c->render_to_string('mail');
+
+=begin original
+
+No encoding will be performed, making it easy to reuse the result in other
+templates or to generate binary data.
+
+=end original
+
+エンコーディングは実行されません。結果を他のテンプレートで再利用したり、バイナリデータを生成することが簡単になります。
+
+  my $pdf = $c->render_to_string('invoice', format => 'pdf');
+  $c->render(data => $pdf, format => 'pdf');
+
+=begin original
+
+All arguments passed will get localized automatically and are only available
+during this render operation.
+
+=end original
+
+すべての渡された引数は、自動的にローカライズされ、 描画処理の間だけ利用できます。
+
+=head2 Template variants
+
+(テンプレートバリアント)
+
+=begin original
+
+To make your application look great on many different devices you can also use
+the C<variant> stash value to choose between different variants of your
+templates.
+
+=end original
+
+異なったデバイス間でアプリケーションの見た目をよくするためには、複数あるテンプレートからいずれかを選択するために、C<variant>スタッシュ値が利用できます。
+
+  # foo/bar/baz.html+phone.ep
+  # foo/bar/baz.html.ep
+  $c->render('foo/bar/baz', variant => 'phone');
+
+=begin original
+
+This can be done very liberally since it only applies when a template with the
+correct name actually exists and falls back to the generic one otherwise.
+
+=end original
+
+このスタッシュ値はとても自由に使えます。なぜなら、その名前のテンプレートが実際に存在したときだけ適用され、存在しなければ一般的なテンプレートにフォールバックするからです。
+
+=head2 Rendering inline templates
+
+(インラインテンプレートの描画)
+
+=begin original
+
+Some renderers such as C<ep> allow templates to be passed C<inline>.
+
+=end original
+
+C<ep>のようないくつかのレンダラは、テンプレートをインラインで渡すことができます。
+
+=begin original
+
+  $c->render(inline => 'The result is <%= 1 + 1 %>.');
+
+=end original
+
+  $c->render(inline => 'The result is <%= 1 + 1%>!');
+
+=begin original
+
+Since auto-detection depends on a path you might have to supply a C<handler>
+too.
+
+=end original
+
+自動検知はパスに依存するため、C<handler>を与える必要があるかもしれません。
+
+  $c->render(inline => "<%= shift->param('foo') %>", handler => 'epl');
+
+=head2 Rendering text
+
+(テキストの描画)
+
+=begin original
+
+Characters can be rendered to bytes with the C<text> stash value, the given
+content will be automatically encoded with L<Mojolicious::Renderer/"encoding">.
+
+=end original
+
+文字列はC<text>スタッシュ値を使ってバイトに変換できます。与えた値はL<Mojolicious::Renderer/"encoding">で自動的にエンコードされます。
+
+  $c->render(text => 'I ♥ Mojolicious!');
+
+=head2 Rendering data
+
+(データの描画)
+
+=begin original
+
+Bytes can be rendered with the C<data> stash value, no encoding will be
+performed.
+
+=end original
+
+生のバイトはスタッシュのC<data>の値によって描画できます。エンコーディングは実行されません。
+
+  $c->render(data => $bytes);
+
+=head2 Rendering JSON
+
+(JSONの描画)
+
+=begin original
+
+The C<json> stash value allows you to pass Perl data structures to the renderer
+which get directly encoded to JSON with L<Mojo::JSON>.
+
+=end original
+
+スタッシュのC<json> の値を使用すると、Perlデータ構造がレンダラに渡され、L<Mojo::JSON>を使用してJSONに直接エンコードされます。
+
+  $c->render(json => {foo => [1, 'test', 3]});
+
+=head2 Status code
+
+(ステータスコード)
+
+=begin original
+
+Response status codes can be changed with the C<status> stash value.
+
+=end original
+
+レスポンスのステータスコードを、スタッシュのC<status>の値によって変更できます。
+
+  $c->render(text => 'Oops.', status => 500);
+
+=head2 Content type
+
+(コンテンツタイプ)
+
+=begin original
+
+The C<Content-Type> header of the response is actually based on the MIME type
+mapping of the C<format> stash value.
+
+=end original
+
+レスポンスのC<Content-Type>ヘッダは、実際のスタッシュのC<format>の値に対応するMIMEタイプが元になっています。
+
+  # Content-Type: text/plain
+  $c->render(text => 'Hello.', format => 'txt');
+
+  # Content-Type: image/png
+  $c->render(data => $bytes, format => 'png');
+
+=begin original
+
+These mappings can be easily extended or changed with L<Mojolicious/"types">.
+
+=end original
+
+これらの対応は、L<Mojolicious/"types">を使って、簡単に拡張したり変更したりできます。
+
+=begin original
+
+  # Add new MIME type
+  $app->types->type(md => 'text/markdown');
+
+=end original
+
+  # 新しいMIMEタイプの追加
+  $app->types->type(md => 'text/markdown');
+
+=head2 Stash data
+
+(スタッシュデータ)
+
+=begin original
+
+Any of the native Perl data types can be passed to templates as references
+through the L<Mojolicious::Controller/"stash">.
+
+=end original
+
+データは、どのようなPerlのネイティブなデータ型のものであれ、C<stash>を通してテンプレートにレファレンスとして渡せます。
+
+  $c->stash(description => 'web framework');
+  $c->stash(frameworks  => ['Catalyst', 'Mojolicious']);
+  $c->stash(spinoffs    => {minion => 'job queue'});
+
+=begin original
+
+  %= $description
+  %= $frameworks->[1]
+  %= $spinoffs->{minion}
+
+=end original
+
+  %= $frameworks->[1]
+  %= $spinoffs->{minion}
+
+=begin original
+
+Since everything is just Perl normal control structures just work.
+
+=end original
+
+以下はすべてPerlの通常の制御構造なので、どれもうまく動きます。
+
+  % for my $framework (@$frameworks) {
+    <%= $framework %> is a <%= $description %>.
+  % }
+
+  % if (my $description = $spinoffs->{minion}) {
+    Minion is a <%= $description %>.
+  % }
+
+=begin original
+
+For templates that might get rendered in different ways and where you're not
+sure if a stash value will actually be set, you can just use the helper
+L<Mojolicious::Plugin::DefaultHelpers/"stash">.
+
+=end original
+
+さまざまな方法でレンダリングされる可能性があり、スタッシュ値が実際に設定されるかどうかわからない場合は、単にL<Mojolicious::Plugin::DefaultHelpers/"stash"> を使用します。
+
+  % if (my $spinoffs = stash 'spinoffs') {
+    Minion is a <%= $spinoffs->{minion} %>.
+  % }
+
+=head2 Helpers
+
+(ヘルパー)
+
+=begin original
+
+Helpers are little functions you can use in templates as well as application
+and controller code.
+
+=end original
+
+ヘルパーは、アプリケーション、コントローラー、テンプレートのどこででも使える小さな関数の集まりです。
+
+=begin original
+
+  # Template
+  %= dumper [1, 2, 3]
+
+=end original
+
+  # テンプレート
+  %= dumper [1, 2, 3]
+
+=begin original
+
+  # Application
+  my $serialized = $app->dumper([1, 2, 3]);
+
+=end original
+
+  # アプリケーション
+  my $serialized = $app->dumper([1, 2, 3]);
+
+=begin original
+
+  # Controller
+  my $serialized = $c->dumper([1, 2, 3]);
+
+=end original
+
+  # コントローラー
+  my $serialized = $c->dumper([1, 2, 3]);
+
+=begin original
+
+We differentiate between default helpers, which are more general purpose like
+L<Mojolicious::Plugin::DefaultHelpers/"dumper">, and tag helpers like
+L<Mojolicious::Plugin::TagHelpers/"link_to">, which are template specific and
+mostly used to generate HTML tags.
+
+=end original
+
+デフォルトヘルパーとタグヘルパーは区別されます。デフォルトヘルパーは、L<Mojolicious::Plugin::DefaultHelpers/"dumper">のようにより汎用的なものです。一方、タグヘルパーはL<Mojolicious::Plugin::TagHelpers/"link_to">のようにテンプレート専用であり、主にHTMLタグの生成に使用されます。
+
+  %= link_to Mojolicious => 'https://mojolicious.org'
+
+=begin original
+
+In controllers you can also use the method L<Mojolicious::Controller/"helpers">
+to fully qualify helper calls and ensure that they don't conflict with existing
+methods you may already have.
+
+=end original
+
+コントローラーでは、L<Mojolicious::Controller/"helpers">メソッドを使ってヘルパーだけが呼び出されるように制限し、既存のメソッドとの衝突を防げます。
+
+  my $serialized = $c->helpers->dumper([1, 2, 3]);
+
+=begin original
+
+A list of all built-in helpers can be found in
+L<Mojolicious::Plugin::DefaultHelpers> and L<Mojolicious::Plugin::TagHelpers>.
+
+=end original
+
+すべての組み込みのヘルパーのリストは、L<Mojolicious::Plugin::DefaultHelpers> とL<Mojolicious::Plugin::TagHelpers>にあります。
+
+=head2 Content negotiation
+
+(コンテンツネゴシエーション)
+
+=begin original
+
+For resources with different representations and that require truly RESTful
+content negotiation you can also use
+L<Mojolicious::Plugin::DefaultHelpers/"respond_to"> instead of
+L<Mojolicious::Controller/"render">.
+
+=end original
+
+リソースの表現方法が複数あったり、RESTに忠実なコンテンツネゴーシエーションを行う必要があるときは、L<Mojolicious::Controller/"render">の代わりにL<Mojolicious::Plugin::DefaultHelpers/"respond_to">も使用できます。
+
+  # /hello (Accept: application/json) -> "json"
+  # /hello (Accept: application/xml)  -> "xml"
+  # /hello.json                       -> "json"
+  # /hello.xml                        -> "xml"
+  # /hello?format=json                -> "json"
+  # /hello?format=xml                 -> "xml"
+  $c->respond_to(
+    json => {json => {hello => 'world'}},
+    xml  => {text => '<hello>world</hello>'}
+  );
+
+=begin original
+
+The best possible representation will be automatically selected from the
+C<format> C<GET>/C<POST> parameter, C<format> stash value or C<Accept> request
+header and stored in the C<format> stash value. To change MIME type mappings for
+the C<Accept> request header or the C<Content-Type> response header you can use
+L<Mojolicious/"types">.
+
+=end original
+
+もっとも適切な表現がC<format>、C<GET>/C<POST>パラメーター、スタッシュのC<format>の値またはC<Accept>リクエストヘッダから自動的に選択され、スタッシュのC<format>の値に格納されます。C<Accept>リクエストヘッダまたはC<Content-Type>レスポンスヘッダのMIMEタイプマッピングを変更するには、L<Mojolicious/"types">を使用します。
+
+  $c->respond_to(
+    json => {json => {hello => 'world'}},
+    html => sub {
+      $c->content_for(head => '<meta name="author" content="sri">');
+      $c->render(template => 'hello', message => 'world')
+    }
+  );
+
+=begin original
+
+Callbacks can be used for representations that are too complex to fit into a
+single render call.
+
+=end original
+
+ひとつのレンダー呼び出しに含めるには表現が複雑すぎる場合は、コールバックを使用できます。
+
+  # /hello (Accept: application/json) -> "json"
+  # /hello (Accept: text/html)        -> "html"
+  # /hello (Accept: image/png)        -> "any"
+  # /hello.json                       -> "json"
+  # /hello.html                       -> "html"
+  # /hello.png                        -> "any"
+  # /hello?format=json                -> "json"
+  # /hello?format=html                -> "html"
+  # /hello?format=png                 -> "any"
+  $c->respond_to(
+    json => {json => {hello => 'world'}},
+    html => {template => 'hello', message => 'world'},
+    any  => {text => '', status => 204}
+  );
+
+=begin original
+
+And if no viable representation could be found, the C<any> fallback will be
+used or an empty C<204> response rendered automatically.
+
+=end original
+
+実行可能な表現が見つからない場合は、C<any>によるフォールバックが行われるか、 空のC<204>レスポンスが自動的に描画されます。
+
+  # /hello                      -> "html"
+  # /hello (Accept: text/html)  -> "html"
+  # /hello (Accept: text/xml)   -> "xml"
+  # /hello (Accept: text/plain) -> undef
+  # /hello.html                 -> "html"
+  # /hello.xml                  -> "xml"
+  # /hello.txt                  -> undef
+  # /hello?format=html          -> "html"
+  # /hello?format=xml           -> "xml"
+  # /hello?format=txt           -> undef
+  if (my $format = $c->accepts('html', 'xml')) {
+    ...
+  }
+
+=begin original
+
+For even more advanced negotiation logic you can also use the helper
+L<Mojolicious::Plugin::DefaultHelpers/"accepts">.
+
+=end original
+
+より高度なネゴシエーションのロジックには、L<Mojolicious::Plugin::DefaultHelpers/"accepts">ヘルパーを使うこともできます。
+
+=head2 Rendering C<exception> and C<not_found> pages
+
+(C<例外>とC<not_found>ページの描画)
+
+=begin original
+
+By now you've probably already encountered the built-in C<404> (Not Found) and
+C<500> (Server Error) pages, that get rendered automatically when you make a
+mistake. Those are fallbacks for when your own exception handling fails, which
+can be especially helpful during development. You can also render them manually
+with the helpers L<Mojolicious::Plugin::DefaultHelpers/"reply-E<gt>exception">
+and L<Mojolicious::Plugin::DefaultHelpers/"reply-E<gt>not_found">.
+
+=end original
+
+これまでにすでに組み込みのC<404>（Not Found）やC<500>（Server Error）ページを見たことがあるでしょう。間違いがあるとき自動的に描画されます。これはあなた自身が書いた例外ハンドリングが失敗したときのためのフォールバックです。開発中にとくに役に立つことでしょう。例外ページは、 L<Mojolicious::Plugin::DefaultHelpers/"reply-E<gt>exception">やL<Mojolicious::Plugin::DefaultHelpers/"reply-E<gt>not_found">ヘルパーを使って手動で描画することもできます。
+
+  use Mojolicious::Lite;
+  use Scalar::Util 'looks_like_number';
+
+  get '/divide/:dividend/by/:divisor' => sub {
+    my $c = shift;
+
+    my $dividend = $c->param('dividend');
+    my $divisor  = $c->param('divisor');
+
+    # 404
+    return $c->reply->not_found
+      unless looks_like_number $dividend && looks_like_number $divisor;
+
+    # 500
+    return $c->reply->exception('Division by zero!') if $divisor == 0;
+
+    # 200
+    $c->render(text => $dividend / $divisor);
+  };
+
+  app->start;
+
+=begin original
+
+You can also change the templates of those pages, since you most likely want to
+show your users something more closely related to your application in
+production. The renderer will always try to find C<exception.$mode.$format.*>
+or C<not_found.$mode.$format.*> before falling back to the built-in default
+templates.
+
+=end original
+
+例外ページのテンプレートは自由に変更できます。本番環境では、にアプリケーションにより関連した内容をユーザー表示したいことが多いですからね。レンダラは、組み込みのデフォルトテンプレートにフォールバックする前にC<exception.$mode.$format.*>またはC<not_found.$mode.$format.*>を毎回探します。
+
+  use Mojolicious::Lite;
+
+  get '/dies' => sub { die 'Intentional error' };
+
+  app->start;
+  __DATA__
+
+=begin original
+
+  @@ exception.production.html.ep
+  <!DOCTYPE html>
+  <html>
+    <head><title>Server error</title></head>
+    <body>
+      <h1>Exception</h1>
+      <p><%= $exception->message %></p>
+      <h1>Stash</h1>
+      <pre><%= dumper $snapshot %></pre>
+    </body>
+  </html>
+
+=end original
+
+  @@ exception.production.html.ep
+  <!DOCTYPE html>
+  <html>
+    <head><title>Server error</title></head>
+    <body>
+      <h1>Exception</h1>
+      <p><%= $exception->message %></p>
+      <h1>スタッシュ</h1>
+      <pre><%= dumper $snapshot %></pre>
+  </body>
+</html>
+
+=begin original
+
+The hook L<Mojolicious/"before_render"> makes even more advanced customizations
+possible by allowing you to intercept and modify the arguments passed to the
+renderer.
+
+=end original
+
+L<Mojolicious/"before_render">フックを使えば、 レンダラに渡された引数を処理に割り入って変更できるようになり、より高度なカスタマイズが可能になります。
+
+  use Mojolicious::Lite;
+
+  hook before_render => sub {
+    my ($c, $args) = @_;
+
+=begin original
+
+    # Make sure we are rendering the exception template
+    return unless my $template = $args->{template};
+    return unless $template eq 'exception';
+
+=end original
+
+    # 例外テンプレートが確実に描画されるようにする
+    return unless my $template = $args->{template};
+    return unless $template eq 'exception';
+
+=begin original
+
+    # Switch to JSON rendering if content negotiation allows it
+    $args->{json} = {exception => $args->{exception}} if $c->accepts('json');
+  };
+
+=end original
+
+    # コンテンツネゴシエーションで許可されている場合にJSONレンダリングに切り替える
+    $args->{json} = {exception => $args->{exception}} if $c->accepts('json');
+  };
+
+  get '/' => sub { die "This sho...ALL GLORY TO THE HYPNOTOAD!\n" };
+
+  app->start;
+
+=head2 Layouts
+
+(レイアウト)
+
+=begin original
+
+Most of the time when using C<ep> templates you will want to wrap your
+generated content in an HTML skeleton, thanks to layouts that's absolutely
+trivial.
+
+=end original
+
+C<ep>テンプレートを使うほとんどの場合で、生成したコンテンツをHTMLの雛形の中にラップしたいのではないでしょうか。レイアウト機能のおかげでこれはとても簡単にできます。
+
+  use Mojolicious::Lite;
+
+  get '/' => {template => 'foo/bar'};
+
+  app->start;
+  __DATA__
+
+  @@ foo/bar.html.ep
+  % layout 'mylayout';
+  Hello World!
+
+  @@ layouts/mylayout.html.ep
+  <!DOCTYPE html>
+  <html>
+    <head><title>MyApp</title></head>
+    <body><%= content %></body>
+  </html>
+
+=begin original
+
+You just select the right layout template with the helper
+L<Mojolicious::Plugin::DefaultHelpers/"layout"> and place the result of the
+current template with the helper
+L<Mojolicious::Plugin::DefaultHelpers/"content">. You can also pass along
+normal stash values to the C<layout> helper.
+
+=end original
+
+L<Mojolicious::Plugin::DefaultHelpers/"layout">ヘルパーを使って適切なレイアウトテンプレートを選択し、現在のテンプレートの結果をL<Mojolicious::Plugin::DefaultHelpers/"content">ヘルパーで配置できます。ふつうのスタッシュ値をC<layout>ヘルパーに渡すこともできます。
+
+  use Mojolicious::Lite;
+
+  get '/' => {template => 'foo/bar'};
+
+  app->start;
+  __DATA__
+
+  @@ foo/bar.html.ep
+  % layout 'mylayout', title => 'Hi there';
+  Hello World!
+
+  @@ layouts/mylayout.html.ep
+  <!DOCTYPE html>
+  <html>
+    <head><title><%= $title %></title></head>
+    <body><%= content %></body>
+  </html>
+
+=begin original
+
+Instead of the C<layout> helper you could also just use the C<layout> stash
+value, or call L<Mojolicious::Controller/"render"> with the C<layout> argument.
+
+=end original
+
+C<layout>ヘルパーを使う代わりに、スタッシュのC<layout>の値、または、C<layout>引数を渡してrenderメソッドを呼び出すこともできます。
+
+  $c->render(template => 'mytemplate', layout => 'mylayout');
+
+=begin original
+
+To set a C<layout> stash value application-wide you can use
+L<Mojolicious/"defaults">.
+
+=end original
+
+C<layout>のスタッシュ値をアプリケーション全体で利用できるようにするには、L<Mojolicious/"defaults">が使えます。
+
+  $app->defaults(layout => 'mylayout');
+
+=begin original
+
+Layouts can also be used with L<Mojolicious::Controller/"render_to_string">,
+but the C<layout> value needs to be passed as a render argument (not a stash
+value).
+
+=end original
+
+レイアウトはL<Mojolicious::Controller/"render_to_string">でも利用可能ですが、 C<layout>の値はレンダラの引数(スタッシュの値ではなく)として渡される必要があります。
+
+  my $html = $c->render_to_string('reminder', layout => 'mail');
+
+=head2 Partial templates
+
+(部分テンプレート)
+
+=begin original
+
+You can break up bigger templates into smaller, more manageable chunks. These
+partial templates can also be shared with other templates. Just use the helper
+L<Mojolicious::Plugin::DefaultHelpers/"include"> to include one template into
+another.
+
+=end original
+
+大きなテンプレートは、より小さくて管理しやすいかたまりに分割できます。こうしてできた部分テンプレートは、その他のテンプレートと共有できます。L<Mojolicious::Plugin::DefaultHelpers/"include">ヘルパーを使えば、あるテンプレートを別のテンプレートにインクルードできます。
+
+  use Mojolicious::Lite;
+
+  get '/' => {template => 'foo/bar'};
+
+  app->start;
+  __DATA__
+
+  @@ foo/bar.html.ep
+  <!DOCTYPE html>
+  <html>
+    %= include '_header', title => 'Howdy'
+    <body>Bar</body>
+  </html>
+
+  @@ _header.html.ep
+  <head><title><%= $title %></title></head>
+
+=begin original
+
+You can name partial templates however you like, but a leading underscore is a
+commonly used naming convention.
+
+=end original
+
+部分テンプレートにはなんでも好きな名前が付けられます。でも、名前の先頭にアンダースコアを付けるのが通例になっています。
+
+=head2 Reusable template blocks
+
+(再利用可能なテンプレートブロック)
+
+=begin original
+
+It's never fun to repeat yourself, that's why you can build reusable template
+blocks in C<ep> that work very similar to normal Perl functions, with the
+C<begin> and C<end> keywords. Just be aware that both keywords are part of the
+surrounding tag and not actual Perl code, so there can only be whitespace after
+C<begin> and before C<end>.
+
+=end original
+
+同じことを繰り返すのは楽しくありません。だから、通常のPerlサブルーチンのように動く再利用可能なテンプレートブロックがC<ep>に書けるようになっています。C<begin>とC<end>キーワードを使います。両方のキーワードは囲いタグであって、本物のPerlコードではないことに気を付けてください。そのため、C<begin>とC<end>の後に置けるのは空白文字だけです。
+
+  use Mojolicious::Lite;
+
+  get '/' => 'welcome';
+
+  app->start;
+  __DATA__
+
+  @@ welcome.html.ep
+  <% my $block = begin %>
+    % my $name = shift;
+    Hello <%= $name %>.
+  <% end %>
+  <%= $block->('Wolfgang') %>
+  <%= $block->('Baerbel') %>
+
+=begin original
+
+A naive translation of the template to Perl code could look like this.
+
+=end original
+
+単純にPerlコードに変換すると次のようになるでしょう。
+
+  my $output = '';
+  my $block  = sub {
+    my $name   = shift;
+    my $output = '';
+    $output .= 'Hello ';
+    $output .= xml_escape scalar + $name;
+    $output .= '.';
+    return Mojo::ByteStream->new($output);
+  };
+  $output .= xml_escape scalar + $block->('Wolfgang');
+  $output .= xml_escape scalar + $block->('Baerbel');
+  return $output;
+
+=begin original
+
+While template blocks cannot be shared between templates, they are most
+commonly used to pass parts of a template to helpers.
+
+=end original
+
+テンプレートブロックはテンプレート間で共有できませんが、多くの場合、テンプレートの部品をヘルパーに渡すために使われます。
+
+=head2 Adding helpers
+
+(ヘルパーの追加)
+
+=begin original
+
+You should always try to keep your actions small and reuse as much code as
+possible. Helpers make this very easy, they get passed the current controller
+object as first argument, and you can use them to do pretty much anything an
+action could do.
+
+=end original
+
+アクションは小さく、なるべく多くのコードが再利用できるようにしましょう。ヘルパーはこれをとても簡単にします。ヘルパーは現在のコントローラーオブジェクトを第一引数として渡すので、これを使ってアクションでできるたくさんのことが行えます。
+
+  use Mojolicious::Lite;
+
+  helper debug => sub {
+    my ($c, $str) = @_;
+    $c->app->log->debug($str);
+  };
+
+=begin original
+
+  get '/' => sub {
+    my $c = shift;
+    $c->debug('Hello from an action!');
+  } => 'index';
+
+=end original
+
+  get '/' => sub {
+    my $c = shift;
+    $c->debug('アクションからのHello!');
+  } => 'index';
+
+  app->start;
+  __DATA__
+
+=begin original
+
+  @@ index.html.ep
+  % debug 'Hello from a template!';
+
+=end original
+
+  @@ index.html.ep
+  % debug 'テンプレートからのHello!';
+
+=begin original
+
+Helpers can also accept template blocks as last argument, this for example,
+allows very pleasant to use tag helpers and filters. Wrapping the helper result
+into a L<Mojo::ByteStream> object can prevent accidental double escaping.
+
+=end original
+
+ヘルパーは最後の引数にテンプレートブロックを受け取ることもできます。たとえば、タグヘルパーやフィルターを使うのに最適です。ヘルパーの結果をL<Mojo::ByteStream>オブジェクトにラップすることで、間違えて二重エスケープをすることを防げます。
+
+  use Mojolicious::Lite;
+  use Mojo::ByteStream;
+
+  helper trim_newline => sub {
+    my ($c, $block) = @_;
+    my $result = $block->();
+    $result =~ s/\n//g;
+    return Mojo::ByteStream->new($result);
+  };
+
+  get '/' => 'index';
+
+  app->start;
+  __DATA__
+
+  @@ index.html.ep
+  %= trim_newline begin
+    Some text.
+    %= 1 + 1
+    More text.
+  % end
+
+=begin original
+
+Similar to stash values, you can use a prefix like C<myapp.*> to keep helpers
+from getting exposed in templates as functions, and to organize them into
+namespaces as your application grows. Every prefix automatically becomes a
+helper that returns a proxy object containing the current controller object and
+on which you can call the nested helpers.
+
+=end original
+
+スタッシュ値と同様に、C<myapp.*>のようなプレフィックスを使用することで、テンプレートのなかにむき出しの関数としてヘルパーを書かなくて済みます。また、アプリケーションが大きくなるにつれて、ネームスペース中に整理できるようになります。すべてのプレフィックスは自動的に、 現在のコントローラーオブジェクトを含んだプロキシオブジェクトを返却する ヘルパーになります。また、そこからはネストされたヘルパーを呼び出せます。
+
+  use Mojolicious::Lite;
+
+  helper 'cache_control.no_caching' => sub {
+    my $c = shift;
+    $c->res->headers->cache_control('private, max-age=0, no-cache');
+  };
+
+  helper 'cache_control.five_minutes' => sub {
+    my $c = shift;
+    $c->res->headers->cache_control('public, max-age=300');
+  };
+
+  get '/news' => sub {
+    my $c = shift;
+    $c->cache_control->no_caching;
+    $c->render(text => 'Always up to date.');
+  };
+
+  get '/some_older_story' => sub {
+    my $c = shift;
+    $c->cache_control->five_minutes;
+    $c->render(text => 'This one can be cached for a bit.');
+  };
+
+  app->start;
+
+=begin original
+
+While helpers can also be redefined, this should only be done very carefully to
+avoid conflicts.
+
+=end original
+
+ヘルパーは再定義可能ですが、衝突を避けるために、よく注意してください。
+
+=head2 Content blocks
+
+(コンテンツブロック)
+
+=begin original
+
+The helper L<Mojolicious::Plugin::DefaultHelpers/"content_for"> allows you to
+pass whole blocks of content from one template to another. This can be very
+useful when your layout has distinct sections, such as sidebars, where content
+should be inserted by the template.
+
+=end original
+
+L<Mojolicious::Plugin::DefaultHelpers/"content_for">ヘルパーを使うと、コンテンツのブロック全体をあるテンプレートから別のテンプレートへと渡せます。レイアウトがサイドバー等の独立したセクションをテンプレートに挿入する場合にとても便利です。
+
+  use Mojolicious::Lite;
+
+  get '/' => 'foo';
+
+  app->start;
+  __DATA__
+
+  @@ foo.html.ep
+  % layout 'mylayout';
+  % content_for header => begin
+    <meta http-equiv="Content-Type" content="text/html">
+  % end
+  <div>Hello World!</div>
+  % content_for header => begin
+    <meta http-equiv="Pragma" content="no-cache">
+  % end
+
+  @@ layouts/mylayout.html.ep
+  <!DOCTYPE html>
+  <html>
+    <head><%= content 'header' %></head>
+    <body><%= content %></body>
+  </html>
+
+=head2 Forms
+
+(フォーム)
+
+=begin original
+
+To build HTML forms more efficiently you can use tag helpers like
+L<Mojolicious::Plugin::TagHelpers/"form_for">, which can automatically select a
+request method for you if a route name is provided. And since most browsers
+only allow forms to be submitted with C<GET> and C<POST>, but not request
+methods like C<PUT> or C<DELETE>, they are spoofed with an C<_method> query
+parameter.
+
+=end original
+
+HTMLフォームをより効率的に構築するために、L<Mojolicious::Plugin::TagHelpers/"form_for"> のようなタグヘルパーを使うことができます。ルート名が与えられていれば、リクエストメソッドが自動的に選択されます。ほとんどのブラウザは、フォームをサブミットするメソッドとしてC<GET>とC<POST>だけを許可していて、C<PUT>やC<DELETE>には対応していないので、C<_method>クエリパラメーターで偽装できます。
+
+  use Mojolicious::Lite;
+
+  get '/' => 'form';
+
+  # PUT  /nothing
+  # POST /nothing?_method=PUT
+  put '/nothing' => sub {
+    my $c = shift;
+
+=begin original
+
+    # Prevent double form submission with redirect
+    my $value = $c->param('whatever');
+    $c->flash(confirmation => "We did nothing with your value ($value).");
+    $c->redirect_to('form');
+  };
+
+=end original
+
+    # リダイレクトで二重フォーム送信を防ぐ
+    my $value = $c->param('whatever');
+    $c->flash(confirmation => "We did nothing with your value ($value).");
+    $c->redirect_to('form');
+  };
+
+  app->start;
+  __DATA__
+
+  @@ form.html.ep
+  <!DOCTYPE html>
+  <html>
+    <body>
+      % if (my $confirmation = flash 'confirmation') {
+        <p><%= $confirmation %></p>
+      % }
+      %= form_for nothing => begin
+        %= text_field whatever => 'I ♥ Mojolicious!'
+        %= submit_button
+      % end
+    </body>
+  </html>
+
+=begin original
+
+The helpers L<Mojolicious::Plugin::DefaultHelpers/"flash"> and
+L<Mojolicious::Plugin::DefaultHelpers/"redirect_to"> are often used together to
+prevent double form submission, allowing users to receive a confirmation message
+that will vanish if they decide to reload the page they've been redirected to.
+
+=end original
+
+二重フォーム送信を防ぐためにL<Mojolicious::Plugin::DefaultHelpers/"flash">とL<Mojolicious::Plugin::DefaultHelpers/"redirect_to">は一緒に使用されることが多く、リダイレクトされたページをリロードすると消える確認メッセージをユーザーが受信できるようになります。
+
+=head2 Form validation
+
+(フォーム検証)
+
+=begin original
+
+You can use L<Mojolicious::Plugin::DefaultHelpers/"validation"> to validate
+C<GET> and C<POST> parameters submitted to your application. All unknown fields
+will be ignored by default, so you have to decide which should be
+L<required|Mojolicious::Validator::Validation/"required"> or
+L<optional|Mojolicious::Validator::Validation/"optional"> before you can perform
+checks on their values. Every check is performed right away, so you can use the
+results immediately to build more advanced validation logic with methods like
+L<Mojolicious::Validator::Validation/"is_valid">.
+
+=end original
+
+アプリケーションに送信するC<GET>とC<POST>パラメーターはL<Mojolicious::Plugin::DefaultHelpers/"validation">メソッドを使って検証できます。すべての未知のフィールドはデフォルトで無視されるので、どれをL<required|Mojolicious::Validator::Validation/"required">にして、どれをL<optional|Mojolicious::Validator::Validation/"optional">にするのかを、値のチェックを実行する前に決める必要があります。すべてのチェックはすぐに実行されます。L<Mojolicious::Validator::Validation/"is_valid">のようなメソッドからすぐに結果を得て、より高度な検証ロジックを構築できます。
+
+  use Mojolicious::Lite;
+
+  get '/' => sub {
+    my $c = shift;
+
+=begin original
+
+    # Check if parameters have been submitted
+    my $v = $c->validation;
+    return $c->render('index') unless $v->has_data;
+
+=end original
+
+    # パラメーターが送信されたかをチェック
+    my $v = $c->validation;
+    return $c->render('index') unless $v->has_data;
+
+=begin original
+
+    # Validate parameters ("pass_again" depends on "pass")
+    $v->required('user')->size(1, 20)->like(qr/^[a-z0-9]+$/);
+    $v->required('pass_again')->equal_to('pass')
+      if $v->optional('pass')->size(7, 500)->is_valid;
+
+=end original
+
+    # パラメーターを検証する(「pass」は「pass_again」に依存)
+    $v->required('user')->size(1, 20)->like(qr/^[a-z0-9]+$/);
+    $v->required('pass_again')->equal_to('pass')
+      if $v->optional('pass')->size(7, 500)->is_valid;
+
+=begin original
+
+    # Check if validation failed
+    return $c->render('index') if $v->has_error;
+
+=end original
+
+    # 検証が失敗したかをチェック
+    return $c->render('index') if $v->has_error;
+
+=begin original
+
+    # Render confirmation
+    $c->render('thanks');
+  };
+
+=end original
+
+    # 結果を描画する
+    $c->render('thanks');
+  };
+
+  app->start;
+  __DATA__
+
+  @@ index.html.ep
+  <!DOCTYPE html>
+  <html>
+    <head>
+      <style>
+        label.field-with-error { color: #dd7e5e }
+        input.field-with-error { background-color: #fd9e7e }
+      </style>
+    </head>
+    <body>
+      %= form_for index => begin
+        %= label_for user => 'Username (required, 1-20 characters, a-z/0-9)'
+        <br>
+        %= text_field 'user', id => 'user'
+        %= submit_button
+        <br>
+        %= label_for pass => 'Password (optional, 7-500 characters)'
+        <br>
+        %= password_field 'pass', id => 'pass'
+        <br>
+        %= label_for pass_again => 'Password again (equal to the value above)'
+        <br>
+        %= password_field 'pass_again', id => 'pass_again'
+      % end
+    </body>
+  </html>
+
+  @@ thanks.html.ep
+  <!DOCTYPE html>
+  <html><body>Thank you <%= validation->param('user') %>.</body></html>
+
+=begin original
+
+Form elements generated with tag helpers from
+L<Mojolicious::Plugin::TagHelpers> will automatically remember their previous
+values and add the class C<field-with-error> for fields that failed validation
+to make styling with CSS easier.
+
+=end original
+
+L<Mojolicious::Plugin::TagHelpers>のタグヘルパーによって生成されたフォーム要素は 自動的に以前の値を復元し、検証が失敗したフィールドのclass属性にC<field-with-error>を 追加します。CSSによるスタイリングが簡単になります。
+
+  <label class="field-with-error" for="user">
+    Username (required, only characters e-t)
+  </label>
+  <input class="field-with-error" type="text" name="user" value="sri">
+
+=begin original
+
+For a full list of available checks see also
+L<Mojolicious::Validator/"CHECKS">.
+
+=end original
+
+利用可能なチェックの完全なリストは、 L<Mojolicious::Validator/"CHECKS">を参照してください。
+
+=head2 Adding form validation checks
+
+(フォーム検証チェックの追加)
+
+=begin original
+
+Validation checks can be registered with L<Mojolicious::Validator/"add_check">
+and return a false value if they were successful. A true value may be used to
+pass along additional information which can then be retrieved with
+L<Mojolicious::Validator::Validation/"error">.
+
+=end original
+
+検証チェックはL<Mojolicious::Validator/"add_check">を使って登録できます。成功した場合はfalse値を返します。true値を使用して追加情報を渡すことができます。追加情報はL<Mojolicious::Validator::Validation/"error">で取得できます。
+
+  use Mojolicious::Lite;
+
+=begin original
+
+  # Add "range" check
+  app->validator->add_check(range => sub {
+    my ($v, $name, $value, $min, $max) = @_;
+    return $value < $min || $value > $max;
+  });
+
+=end original
+
+  # 「range（範囲）」チェックを追加する
+  app->validator->add_check(range => sub {
+    my ($v, $name, $value, $min, $max) = @_;
+    return $value < $min || $value > $max;
+  });
+
+  get '/' => 'form';
+
+  post '/test' => sub {
+    my $c = shift;
+
+=begin original
+
+    # Validate parameters with custom check
+    my $v = $c->validation;
+    $v->required('number')->range(3, 23);
+
+=end original
+
+    # カスタムチェックでパラメーターを検証する
+    my $v = $c->validation;
+    $v->required('number')->range(3, 23);
+
+=begin original
+
+    # Render form again if validation failed
+    return $c->render('form') if $v->has_error;
+
+=end original
+
+    # 検証が失敗したときフォームを再描画する
+    return $c->render('form') if $v->has_error;
+
+=begin original
+
+    # Prevent double form submission with redirect
+    $c->flash(number => $v->param('number'));
+    $c->redirect_to('form');
+  };
+
+=end original
+
+    # リダイレクトで二重フォーム送信を防ぐ
+    $c->flash(number => $v->param('number'));
+    $c->redirect_to('form');
+  };
+
+  app->start;
+  __DATA__
+
+=begin original
+
+  @@ form.html.ep
+  <!DOCTYPE html>
+  <html>
+    <body>
+      % if (my $number = flash 'number') {
+        <p>Thanks, the number <%= $number %> was valid.</p>
+      % }
+      %= form_for test => begin
+        % if (my $err = validation->error('number')) {
+          <p>
+            %= 'Value is required.' if $err->[0] eq 'required'
+            %= 'Value needs to be between 3 and 23.' if $err->[0] eq 'range'
+          </p>
+        % }
+        %= text_field 'number'
+        %= submit_button
+      % end
+    </body>
+  </html>
+
+=end original
+
+  @@ form.html.ep
+  <!DOCTYPE html>
+  <html>
+    <body>
+      % if (my $number = flash 'number') {
+        <p>ありがとう。数値 <%= $number %> は有効です。</p>
+      % }
+      %= form_for test => begin
+        % if (my $err = validation->error('number')) {
+          <p>
+            %= '値が必要です。' if $err->[0] eq 'required'
+            %= '値は3から23の範囲で入力してください。' if $err->[0] eq 'range'
+          </p>
+        % }
+        %= text_field 'number'
+        %= submit_button
+      % end
+    </body>
+  </html>
+
+=head2 Cross-site request forgery
+
+(クロスサイトリクエストフォージェリー(CSRF))
+
+=begin original
+
+CSRF is a very common attack on web applications that trick your logged in
+users to submit forms they did not intend to send, with something as mundane as
+a link. All you have to do, to protect your users from this, is to add an
+additional hidden field to your forms with
+L<Mojolicious::Plugin::TagHelpers/"csrf_field">, and validate it with
+L<Mojolicious::Validator::Validation/"csrf_protect">.
+
+=end original
+
+CSRFはWebアプリケーションに対する非常に一般的な攻撃であり、普通のリンクなどを介して、ログインしているユーザーが送信するつもりのないフォームを送信するように仕掛けます。この攻撃からユーザー守るためにすべきことは、L<Mojolicious::Plugin::TagHelpers/"csrf_field">を使って隠しフィールドをフォームに追加し、L<Mojolicious::Validator::Validation/"csrf_protect">で 検証することだけです。
+
+  use Mojolicious::Lite;
+
+  get '/' => {template => 'target'};
+
+  post '/' => sub {
+    my $c = shift;
+
+=begin original
+
+    # Check CSRF token
+    my $v = $c->validation;
+    return $c->render(text => 'Bad CSRF token!', status => 403)
+      if $v->csrf_protect->has_error('csrf_token');
+
+=end original
+
+    # CSRFトークンのチェック
+    my $v = $c->validation;
+    return $c->render(text => '不正なCSRFトークンです！', status => 403)
+      if $v->csrf_protect->has_error('csrf_token');
+
+=begin original
+
+    my $city = $v->required('city')->param('city');
+    $c->render(text => "Low orbit ion cannon pointed at $city!")
+      unless $v->has_error;
+  } => 'target';
+
+=end original
+
+    my $city = $v->required('city')->param('city');
+    $c->render(text => "低軌道イオン砲が$cityに向けられている！")
+      unless $v->has_error;
+  } => 'target';
+
+  app->start;
+  __DATA__
+
+=begin original
+
+  @@ target.html.ep
+  <!DOCTYPE html>
+  <html>
+    <body>
+      %= form_for target => begin
+        %= csrf_field
+        %= label_for city => 'Which city to point low orbit ion cannon at?'
+        %= text_field 'city', id => 'city'
+        %= submit_button
+      %= end
+    </body>
+  </html>
+
+=end original
+
+  @@ target.html.ep
+  <!DOCTYPE html>
+  <html>
+    <body>
+      %= form_for target => begin
+        %= csrf_field
+        %= label_for city => 'どの街に低軌道イオン砲を向ける？'
+        %= text_field 'city', id => 'city'
+        %= submit_button
+      %= end
+    </body>
+  </html>
+
+=begin original
+
+For Ajax requests and the like, you can also generate a token directly with the
+helper L<Mojolicious::Plugin::DefaultHelpers/"csrf_token">, and then pass it
+along with the C<X-CSRF-Token> request header.
+
+=end original
+
+Ajaxリクエストなどの場合、L<Mojolicious::Plugin::DefaultHelpers/"csrf_token">ヘルパーを使用してトークンを直接生成することもできます。それから、トークンをC<X-CSRF-Token>リクエストヘッダーと一緒に渡します。
+
+=head1 ADVANCED
+
+(発展)
+
+=begin original
+
+Less commonly used and more powerful features.
+
+=end original
+
+一般的ではないが、より強力な機能。
+
+=head2 Template inheritance
+
+(テンプレートの継承)
+
+=begin original
+
+Inheritance takes the layout concept above one step further, the helpers
+L<Mojolicious::Plugin::DefaultHelpers/"content"> and
+L<Mojolicious::Plugin::DefaultHelpers/"extends"> allow you to build skeleton
+templates with named blocks that child templates can override.
+
+=end original
+
+継承はレイアウトの概念を一歩進めます。L<Mojolicious::Plugin::DefaultHelpers/"content">ヘルパーと L<Mojolicious::Plugin::DefaultHelpers/"extends">ヘルパーを使って、名前付きブロックを含むテンプレートスケルトンを構築できます。スケルトンテンプレートは、子テンプレートによってオーバーライドできます。
+
+  use Mojolicious::Lite;
+
+  # first > mylayout
+  get '/first' => {template => 'first', layout => 'mylayout'};
+
+  # third > second > first > mylayout
+  get '/third' => {template => 'third', layout => 'mylayout'};
+
+  app->start;
+  __DATA__
+
+  @@ layouts/mylayout.html.ep
+  <!DOCTYPE html>
+  <html>
+    <head><title>Hello</title></head>
+    <body><%= content %></body>
+  </html>
+
+=begin original
+
+  @@ first.html.ep
+  %= content header => begin
+    Default header
+  % end
+  <div>Hello World!</div>
+  %= content footer => begin
+    Default footer
+  % end
+
+=end original
+
+  @@ first.html.ep
+  %= content header => begin
+    デフォルトヘッダ―
+  % end
+  <div>Hello World!</div>
+  %= content footer => begin
+    デフォルトフッター
+  % end
+
+=begin original
+
+  @@ second.html.ep
+  % extends 'first';
+  % content header => begin
+    New header
+  % end
+
+=end original
+
+  @@ second.html.ep
+  % extends 'first';
+  % content header => begin
+    新しいヘッダー
+  % end
+
+=begin original
+
+  @@ third.html.ep
+  % extends 'second';
+  % content footer => begin
+    New footer
+  % end
+
+=end original
+
+  @@ third.html.ep
+  % extends 'second';
+  % content footer => begin
+    新しいフッター
+  % end
+
+=begin original
+
+This chain could go on and on to allow a very high level of template reuse.
+
+=end original
+
+この連鎖を進めれば、とてもハイレベルなテンプレートの再利用が可能になります。
+
+=head2 Serving static files
+
+(静的ファイルのサーブ)
+
+=begin original
+
+Static files are automatically served from the C<public> directories of the
+application, which can be customized with L<Mojolicious::Static/"paths">, or one
+of the C<DATA> sections from L<Mojolicious::Static/"classes">. And if that's not
+enough you can also serve them manually with
+L<Mojolicious::Plugin::DefaultHelpers/"reply-E<gt>static"> and
+L<Mojolicious::Plugin::DefaultHelpers/"reply-E<gt>file">.
+
+=end original
+
+静的ファイルは、アプリケーションのC<public>ディレクトリから自動的にサーブされます。サーブ対象のディレクトリはL<Mojolicious::Static/"paths">またはL<Mojolicious::Static/"classes">におけるC<DATA>セクションによってカスタマイズできます。これで十分でない場合、L<Mojolicious::Plugin::DefaultHelpers/"reply-E<gt>static"> や L<Mojolicious::Plugin::DefaultHelpers/"reply-E<gt>file">を使って手動でサーブすることもできます。
+
+  use Mojolicious::Lite;
+
+  get '/' => sub {
+    my $c = shift;
+    $c->reply->static('index.html');
+  };
+
+  get '/some_download' => sub {
+    my $c = shift;
+    $c->res->headers->content_disposition('attachment; filename=bar.png;');
+    $c->reply->static('foo/bar.png');
+  };
+
+  get '/leak' => sub {
+    my $c = shift;
+    $c->reply->file('/etc/passwd');
+  };
+
+  app->start;
+
+=head2 Custom responses
+
+(カスタムレスポンス)
+
+=begin original
+
+Most response content, static as well as dynamic, gets served through
+L<Mojo::Asset::File> and L<Mojo::Asset::Memory> objects. For somewhat static
+content, like cached JSON data or temporary files, you can create your own and
+use the helper L<Mojolicious::Plugin::DefaultHelpers/"reply-E<gt>asset"> to
+serve them while allowing content negotiation to be performed with C<Range>,
+C<If-Modified-Since> and C<If-None-Match> headers.
+
+=end original
+
+多くのレスポンス内容は、静的であれ動的であれ、L<Mojo::Asset::File> と L<Mojo::Asset::Memory> オブジェクトによってサーブされます。キャッシュされたJSONデータや一時ファイルなどの静的コンテンツ のために、L<Mojolicious::Plugin::DefaultHelpers/"reply-E<gt>asset"> を使って、コンテンツネゴシエーションをC<Range>、C<If-Modified-Since>、C<If-None-Match>ヘッダーで行いつつコンテンツをサーブできます。
+
+  use Mojolicious::Lite;
+  use Mojo::Asset::File;
+
+  get '/leak' => sub {
+    my $c = shift;
+    $c->res->headers->content_type('text/plain');
+    $c->reply->asset(Mojo::Asset::File->new(path => '/etc/passwd'));
+  };
+
+  app->start;
+
+=begin original
+
+For even more control you can also just skip the helper and use
+L<Mojolicious::Controller/"rendered"> to tell the renderer when you're done
+generating a response.
+
+=end original
+
+さらに強力なコントロールを得るために、ヘルパーを無視して L<Mojolicious::Controller/"rendered">メソッドを使い、レスポンスの生成が完了した時点をレンダラに知らせることもできます。
+
+  use Mojolicious::Lite;
+  use Mojo::Asset::File;
+
+  get '/leak' => sub {
+    my $c = shift;
+    $c->res->headers->content_type('text/plain');
+    $c->res->content->asset(Mojo::Asset::File->new(path => '/etc/passwd'));
+    $c->rendered(200);
+  };
+
+  app->start;
+
+=head2 Helper plugins
+
+(ヘルパープラグイン)
+
+=begin original
+
+Some helpers might be useful enough for you to share them between multiple
+applications, plugins make that very simple.
+
+=end original
+
+便利なヘルパーは、複数のアプリケーション間で共有したいこともあることでしょう。プラグインを使えば簡単です。
+
+  package Mojolicious::Plugin::DebugHelper;
+  use Mojo::Base 'Mojolicious::Plugin';
+
+  sub register {
+    my ($self, $app) = @_;
+    $app->helper(debug => sub {
+      my ($c, $str) = @_;
+      $c->app->log->debug($str);
+    });
+  }
+
+  1;
+
+=begin original
+
+The C<register> method will be called when you load the plugin. And to add your
+helper to the application, you can use L<Mojolicious/"helper">.
+
+=end original
+
+C<register> メソッドがプラグインを読み込んだ時点でコールされます。そして、アプリケーションにヘルパーを追加するためには、 L<Mojolicious/"helper">を使います。
+
+  use Mojolicious::Lite;
+
+  plugin 'DebugHelper';
+
+  get '/' => sub {
+    my $c = shift;
+    $c->debug('It works!');
+    $c->render(text => 'Hello!');
+  };
+
+  app->start;
+
+=begin original
+
+A skeleton for a full CPAN compatible plugin distribution can be automatically
+generated.
+
+=end original
+
+CPAN完全互換の配布用プラグインのためのスケルトンを自動的に生成できます。
+
+  $ mojo generate plugin DebugHelper
+
+=begin original
+
+And if you have a C<PAUSE> account (which can be requested at
+L<http://pause.perl.org>), you are only a few commands away from releasing it
+to CPAN.
+
+=end original
+
+もしC<PAUSE>アカウントを持っていれば(L<http://pause.perl.org>でリクエストできます)、わずか数コマンドでCPANにリリースできます。
+
+  $ perl Makefile.PL
+  $ make test
+  $ make manifest
+  $ make dist
+  $ mojo cpanify -u USER -p PASS Mojolicious-Plugin-DebugHelper-0.01.tar.gz
+
+=head2 Bundling assets with plugins
+
+(プラグインへのコンテンツのバンドル)
+
+=begin original
+
+Assets such as templates and static files can be easily bundled with your
+plugins, even if you plan to release them to CPAN.
+
+=end original
+
+テンプレートや静的ファイルなどのアセットは、プラグインにバンドルできます。CPANにリリースする場合でも大丈夫です。
+
+  $ mojo generate plugin AlertAssets
+  $ mkdir Mojolicious-Plugin-AlertAssets/lib/Mojolicious/Plugin/AlertAssets
+  $ cd Mojolicious-Plugin-AlertAssets/lib/Mojolicious/Plugin/AlertAssets
+  $ mkdir public
+  $ echo 'alert("Hello World!");' > public/alertassets.js
+  $ mkdir templates
+  $ echo '%= javascript "/alertassets.js"' > templates/alertassets.html.ep
+
+=begin original
+
+Just give them reasonably unique names, ideally based on the name of your
+plugin, and append their respective directories to the list of search paths
+when C<register> is called.
+
+=end original
+
+プラグインの名前に基づいた 合理的なユニークな名前を付けましょう。そして、C<register>が呼ばれるとき、対応するディレクトリを検索パスの一覧に追加します。
+
+  package Mojolicious::Plugin::AlertAssets;
+  use Mojo::Base 'Mojolicious::Plugin';
+
+  use Mojo::File 'path';
+
+  sub register {
+    my ($self, $app) = @_;
+
+=begin original
+
+    # Append "templates" and "public" directories
+    my $base = path(__FILE__)->sibling('AlertAssets');
+    push @{$app->renderer->paths}, $base->child('templates')->to_string;
+    push @{$app->static->paths},   $base->child('public')->to_string;
+  }
+
+=end original
+
+    # "templates"と"public"ディレクトリを追加する
+    my $base = path(__FILE__)->sibling('AlertAssets');
+    push @{$app->renderer->paths}, $base->child('templates')->to_string;
+    push @{$app->static->paths},   $base->child('public')->to_string;
+  }
+
+  1;
+
+=begin original
+
+Both will work just like normal C<templates> and C<public> directories once
+you've installed and loaded the plugin, with slightly lower precedence.
+
+=end original
+
+プラグインをいったんインストールし、読み込めば、両方とも通常のC<templates>とC<public>ディレクトリのように機能します。優先順位は少し低くなります。
+
+  use Mojolicious::Lite;
+
+  plugin 'AlertAssets';
+
+  get '/alert_me';
+
+  app->start;
+  __DATA__
+
+  @@ alert_me.html.ep
+  <!DOCTYPE html>
+  <html>
+    <head>
+      <title>Alert me!</title>
+      %= include 'alertassets'
+    </head>
+    <body>You've been alerted.</body>
+  </html>
+
+=begin original
+
+And it works just the same for assets bundled in the C<DATA> section of your
+plugin.
+
+=end original
+
+すると、バンドルしたプラグインのC<DATA>セクションにあるアセットと同じように使用できます。
+
+  package Mojolicious::Plugin::AlertAssets;
+  use Mojo::Base 'Mojolicious::Plugin';
+
+  sub register {
+    my ($self, $app) = @_;
+
+=begin original
+
+    # Append class
+    push @{$app->renderer->classes}, __PACKAGE__;
+    push @{$app->static->classes},   __PACKAGE__;
+  }
+
+=end original
+
+    # クラスを追加する
+    push @{$app->renderer->classes}, __PACKAGE__;
+    push @{$app->static->classes},   __PACKAGE__;
+  }
+
+  1;
+  __DATA__
+
+  @@ alertassets.js
+  alert("Hello World!");
+
+  @@ alertassets.html.ep
+  %= javascript "/alertassets.js"
+
+=head2 Post-processing dynamic content
+
+(動的コンテンツの後処理)
+
+=begin original
+
+While post-processing tasks are generally very easy with the hook
+L<Mojolicious/"after_dispatch">, for content generated by the renderer it is a
+lot more efficient to use L<Mojolicious/"after_render">.
+
+=end original
+
+一般的にL<Mojolicious/"after_dispatch">フックによる後処理はとても簡単ですが、レンダラによって生成されたコンテンツのためには、L<Mojolicious/"after_render">を使うのがより効率的です。
+
+  use Mojolicious::Lite;
+  use IO::Compress::Gzip 'gzip';
+
+  hook after_render => sub {
+    my ($c, $output, $format) = @_;
+
+=begin original
+
+    # Check if "gzip => 1" has been set in the stash
+    return unless $c->stash->{gzip};
+
+=end original
+
+    # "gzip => 1" がスタッシュにセットされているかを確認する
+    return unless $c->stash->{gzip};
+
+=begin original
+
+    # Check if user agent accepts gzip compression
+    return unless ($c->req->headers->accept_encoding // '') =~ /gzip/i;
+    $c->res->headers->append(Vary => 'Accept-Encoding');
+
+=end original
+
+    # ユーザーエージェントがgzip圧縮を許可するかどうかを確認する
+    return unless ($c->req->headers->accept_encoding // '') =~ /gzip/i;
+    $c->res->headers->append(Vary => 'Accept-Encoding');
+
+=begin original
+
+    # Compress content with gzip
+    $c->res->headers->content_encoding('gzip');
+    gzip $output, \my $compressed;
+    $$output = $compressed;
+  };
+
+=end original
+
+    # gzipでコンテンツを圧縮する
+    $c->res->headers->content_encoding('gzip');
+    gzip $output, \my $compressed;
+    $$output = $compressed;
+  };
+
+  get '/' => {template => 'hello', title => 'Hello', gzip => 1};
+
+  app->start;
+  __DATA__
+
+  @@ hello.html.ep
+  <!DOCTYPE html>
+  <html>
+    <head><title><%= title %></title></head>
+    <body>Compressed content.</body>
+  </html>
+
+=begin original
+
+If you want to compress all dynamically generated content you can also activate
+L<Mojolicious::Renderer/"compress">.
+
+=end original
+
+動的に生成されたコンテンツのすべてを圧縮したい場合は、L<Mojolicious::Renderer/"compress">を有効にすることもできます。
+
+=head2 Streaming
+
+(ストリーミング)
+
+=begin original
+
+You don't have to render all content at once, the method
+L<Mojolicious::Controller/"write"> can also be used to stream a series of
+smaller chunks.
+
+=end original
+
+すべてのコンテンツを一度に描画する必要はありません。L<Mojolicious::Controller/"write">を使って小さなチャンクを連続で流すこともできます。
+
+  use Mojolicious::Lite;
+
+  get '/' => sub {
+    my $c = shift;
+
+=begin original
+
+    # Prepare body
+    my $body = 'Hello World!';
+    $c->res->headers->content_length(length $body);
+
+=end original
+
+    # ボディを準備する
+    my $body = 'Hello World!';
+    $c->res->headers->content_length(length $body);
+
+=begin original
+
+    # Start writing directly with a drain callback
+    my $drain;
+    $drain = sub {
+      my $c = shift;
+      my $chunk = substr $body, 0, 1, '';
+      $drain = undef unless length $body;
+      $c->write($chunk, $drain);
+    };
+    $c->$drain;
+  };
+
+=end original
+
+    # 排出コールバックに直接書き込みを開始する
+    my $drain;
+    $drain = sub {
+      my $c = shift;
+      my $chunk = substr $body, 0, 1, '';
+      $drain = undef unless length $body;
+      $c->write($chunk, $drain);
+    };
+    $c->$drain;
+  };
+
+  app->start;
+
+=begin original
+
+The drain callback will be executed whenever the entire previous chunk of data
+has actually been written.
+
+=end original
+
+前のデータチャンク全部が実際に書き込まれるたびに、排出コールバックが実行されます。
+
+  HTTP/1.1 200 OK
+  Date: Sat, 13 Sep 2014 16:48:29 GMT
+  Content-Length: 12
+  Server: Mojolicious (Perl)
+
+  Hello World!
+
+=begin original
+
+Instead of providing a C<Content-Length> header you can also call
+L<Mojolicious::Controller/"finish"> and close the connection manually once you
+are done.
+
+=end original
+
+C<Content-Length>ヘッダーを提供する代わりに、L<Mojolicious::Controller/"finish">を使用して、完了したときに接続を手動で閉じることもできます。
+
+  use Mojolicious::Lite;
+
+  get '/' => sub {
+    my $c = shift;
+
+=begin original
+
+    # Prepare body
+    my $body = 'Hello World!';
+
+=end original
+
+    # ボディを準備する
+    my $body = 'Hello World!';
+
+=begin original
+
+    # Start writing directly with a drain callback
+    my $drain;
+    $drain = sub {
+      my $c = shift;
+      my $chunk = substr $body, 0, 1, '';
+      length $chunk ? $c->write($chunk, $drain) : $c->finish;
+    };
+    $c->$drain;
+  };
+
+=end original
+
+    # 排出コールバックに直接書き込みを開始する
+    my $drain;
+    $drain = sub {
+      my $c = shift;
+      my $chunk = substr $body, 0, 1, '';
+      length $chunk ?$c->write($chunk, $drain) : $c->finish;
+    };
+    $c->$drain;
+  };
+
+  app->start;
+
+=begin original
+
+While this is rather inefficient, as it prevents keep-alive, it is sometimes
+necessary for EventSource and similar applications.
+
+=end original
+
+Keep-aliveを妨げるため、この方法はかなり非効率的ですが、EventSourceおよび同様のアプリケーションのために必要な場合があります。
+
+  HTTP/1.1 200 OK
+  Date: Sat, 13 Sep 2014 16:48:29 GMT
+  Connection: close
+  Server: Mojolicious (Perl)
+
+  Hello World!
+
+=head2 Chunked transfer encoding
+
+(チャンク化されたトランスファーエンコーディング)
+
+=begin original
+
+For very dynamic content you might not know the response content length in
+advance, that's where the chunked transfer encoding and
+L<Mojolicious::Controller/"write_chunk"> come in handy. A common use would be
+to send the C<head> section of an HTML document to the browser in advance and
+speed up preloading of referenced images and stylesheets.
+
+=end original
+
+コンテンツがとても動的な場合は、レスポンスコンテンツのC<Content-Length>が前もってわからないかもしれません。そのような場合は、チャンク化されたトランスファーエンコーディングや L<Mojolicious::Controller/"write_chunk">が便利です。一般的な用途として、HTMLドキュメントのC<head>セクションを事前にブラウザに送信し、参照する画像やスタイルシートの事前ロードを高速化できます。
+
+  use Mojolicious::Lite;
+
+  get '/' => sub {
+    my $c = shift;
+    $c->write_chunk('<html><head><title>Example</title></head>' => sub {
+      my $c = shift;
+      $c->finish('<body>Example</body></html>');
+    });
+  };
+
+  app->start;
+
+=begin original
+
+The optional drain callback ensures that all previous chunks have been written
+before processing continues. To end the stream you can call
+L<Mojolicious::Controller/"finish"> or write an empty chunk of data.
+
+=end original
+
+オプションの排出コールバックは、処理を継続する前に、すべての以前のチャンクが書き込まれることを保障します。ストリームを終了するためには、L<Mojolicious::Controller/"finish"> を呼び出すか、空データのチャンクを書き込みます。
+
+  HTTP/1.1 200 OK
+  Date: Sat, 13 Sep 2014 16:48:29 GMT
+  Transfer-Encoding: chunked
+  Server: Mojolicious (Perl)
+
+  29
+  <html><head><title>Example</title></head>
+  1b
+  <body>Example</body></html>
+  0
+
+=begin original
+
+Especially in combination with long inactivity timeouts this can be very useful
+for Comet (long polling). Due to limitations in some web servers this might not
+work perfectly in all deployment environments.
+
+=end original
+
+とくに、長時間応答がないときのタイムアウトと組み合わせるとき、Comet（ロングポーリング）をするのに便利でしょう。Webサーバーによっては制限のために、完璧には動作しないデプロイ環境があるかもしれません。
+
+=head2 Encoding
+
+(エンコーディング)
+
+=begin original
+
+Templates stored in files are expected to be C<UTF-8> by default, but that can
+be easily changed with L<Mojolicious::Renderer/"encoding">.
+
+=end original
+
+ファイルに保存されたテンプレートは、デフォルトではC<UTF-8>であると期待されますが、 L<Mojolicious::Renderer/"encoding">を使って簡単に変更できます。
+
+  $app->renderer->encoding('koi8-r');
+
+=begin original
+
+All templates from the C<DATA> section are bound to the encoding of the Perl
+script.
+
+=end original
+
+C<DATA>セクションからのすべてのテンプレートは、必ずPerlスクリプトのエンコーディングになります。
+
+  use Mojolicious::Lite;
+
+  get '/heart';
+
+  app->start;
+  __DATA__
+
+  @@ heart.html.ep
+  I ♥ Mojolicious!
+
+=head2 Base64 encoded DATA files
+
+(Base64エンコードDATAファイル)
+
+=begin original
+
+Base64 encoded static files such as images can be easily stored in the C<DATA>
+section of your application, similar to templates.
+
+=end original
+
+画像などのBase64でエンコードされた静的ファイルは、テンプレートと同じように、簡単にアプリケーションのC<DATA>セクションに保存できます。
+
+  use Mojolicious::Lite;
+
+  get '/' => {text => 'I ♥ Mojolicious!'};
+
+  app->start;
+  __DATA__
+
+  @@ favicon.ico (base64)
+  ...base64 encoded image...
+
+=head2 Inflating DATA templates
+
+(DATA テンプレートのインフレ―ト)
+
+=begin original
+
+Templates stored in files get preferred over files from the C<DATA> section,
+this allows you to include a default set of templates in your application that
+the user can later customize. The command
+L<Mojolicious::Command::Author::inflate> will write all templates and static
+files from the C<DATA> section into actual files in the C<templates> and
+C<public> directories.
+
+=end original
+
+ファイルとして保存されているテンプレートは、C<DATA>セクションのファイルよりも優先されます。ファイルテンプレートはアプリケーションのデフォルトセットとして含めることができ、ユーザーは後にこれをカスタマイズできます。L<Mojolicious::Command::Author::inflate>コマンドでC<DATA>セクションにあるすべてのテンプレートと静的ファイルを、実際のファイルとしてC<templates>およびC<public> ディレクトリに書き込みます。
+
+  $ ./myapp.pl inflate
+
+=head2 Customizing the template syntax
+
+(テンプレート文法のカスタマイズ)
+
+=begin original
+
+You can easily change the whole template syntax by loading
+L<Mojolicious::Plugin::EPRenderer> with a custom configuration.
+
+=end original
+
+EPRendererプラグインをカスタム設定と一緒にロードすることによって、簡単にテンプレートの文法全体を変更できます。
+
+  use Mojolicious::Lite;
+
+  plugin EPRenderer => {
+    name     => 'mustache',
+    template => {
+      tag_start => '{{',
+      tag_end   => '}}'
+    }
+  };
+
+  get '/:name' => {name => 'Anonymous'} => 'index';
+
+  app->start;
+  __DATA__
+
+  @@ index.html.mustache
+  Hello {{= $name }}.
+
+=begin original
+
+L<Mojo::Template> contains the whole list of available options.
+
+=end original
+
+L<Mojo::Template>は利用できるすべてのオプションを含んでいます。
+
+=head2 Adding your favorite template system
+
+(お気に入りテンプレートシステムの追加)
+
+=begin original
+
+Maybe you would prefer a different template system than C<ep>, which is provided
+by L<Mojolicious::Plugin::EPRenderer>, and there is not already a plugin on CPAN
+for your favorite one. All you have to do, is to add a new C<handler> with
+L<Mojolicious::Renderer/"add_handler"> when C<register> is called.
+
+=end original
+
+L<Mojolicious::Plugin::EPRenderer>が提供するC<ep>ではないテンプレートシステムがお好みのこともあるでしょう。また、CPANに登録されているプラグインのなかにお気に入りが見つからないかもしれません。そんなときは、新しいC<handler> を C<register>が呼び出されるとき、L<Mojolicious::Renderer/"add_handler">で追加すれば大丈夫です。
+
+  package Mojolicious::Plugin::MyRenderer;
+  use Mojo::Base 'Mojolicious::Plugin';
+
+  sub register {
+    my ($self, $app) = @_;
+
+=begin original
+
+    # Add "mine" handler
+    $app->renderer->add_handler(mine => sub {
+      my ($renderer, $c, $output, $options) = @_;
+
+=end original
+
+    # "mine"ハンドラーの追加
+    $app->renderer->add_handler(mine => sub {
+      my ($renderer, $c, $output, $options) = @_;
+
+=begin original
+
+      # Check for one-time use inline template
+      my $inline_template = $options->{inline};
+
+=end original
+
+      # ワンタイム使用インラインテンプレートのチェック
+      my $inline_template = $options->{inline};
+
+=begin original
+
+      # Check for appropriate template in "templates" directories
+      my $template_path = $renderer->template_path($options);
+
+=end original
+
+      # "templates"ディレクトリに適切なテンプレートがあるかをチェック
+      my $template_path = $renderer->template_path($options);
+
+=begin original
+
+      # Check for appropriate template in DATA sections
+      my $data_template = $renderer->get_data_template($options);
+
+=end original
+
+      # DATAセクションに適切なテンプレートがあるかをチェック
+      my $data_template = $renderer->get_data_template($options);
+
+=begin original
+
+      # This part is up to you and your template system :)
+      ...
+
+=end original
+
+      # この部分はあなたのテンプレートシステムに応じて変わります :)
+      ...
+
+=begin original
+
+      # Pass the rendered result back to the renderer
+      $$output = 'Hello World!';
+
+=end original
+
+      # 描画された結果をレンダラに渡す
+      $$output = 'Hello World!';
+
+=begin original
+
+      # Or just die if an error occurs
+      die 'Something went wrong with the template';
+    });
+  }
+
+=end original
+
+      # またはエラーが起きたら終了する
+      die 'Something went wrong with the template';
+    });
+  }
+
+  1;
+
+=begin original
+
+An C<inline> template, if provided by the user, will be passed along with the
+options. You can use L<Mojolicious::Renderer/"template_path"> to search the
+C<templates> directories of the application, and
+L<Mojolicious::Renderer/"get_data_template"> to search the C<DATA> sections.
+
+=end original
+
+C<inline>テンプレートは、ユーザーによって提供されると、オプションとともに渡されます。アプリケーションのC<templates>ディレクトリを検索するにはL<Mojolicious::Renderer/"template_path">が、C<DATA>セクションを検索するにはL<Mojolicious::Renderer/"get_data_template">が使えます。
+
+  use Mojolicious::Lite;
+
+  plugin 'MyRenderer';
+
+=begin original
+
+  # Render an inline template
+  get '/inline' => {inline => '...', handler => 'mine'};
+
+=end original
+
+  # インラインテンプレートの描画
+  get '/inline' => {inline => '...', handler => 'mine'};
+
+=begin original
+
+  # Render a template from the DATA section
+  get '/data' => {template => 'test'};
+
+=end original
+
+  # DATAセクションのテンプレートを描画
+  get '/data' => {template => 'test'};
+
+  app->start;
+  __DATA__
+
+  @@ test.html.mine
+  ...
+
+=head2 Adding a handler to generate binary data
+
+(バイナリデータを生成するためのハンドラを追加する)
+
+=begin original
+
+By default the renderer assumes that every C<handler> generates characters that
+need to be automatically encoded, but this can be easily disabled if you're
+generating bytes instead.
+
+=end original
+
+デフォルトでは、レンダラはすべてのC<handler>が自動的にエンコードされる必要がある文字を生成しますが、代わりにバイトを生成することで簡単に無効にできます。
+
+  use Mojolicious::Lite;
+  use Storable 'nfreeze';
+
+=begin original
+
+  # Add "storable" handler
+  app->renderer->add_handler(storable => sub {
+    my ($renderer, $c, $output, $options) = @_;
+
+=end original
+
+  # "storable"ハンドラを追加
+  app->renderer->add_handler(storable => sub {
+    my ($renderer, $c, $output, $options) = @_;
+
+=begin original
+
+    # Disable automatic encoding
+    delete $options->{encoding};
+
+=end original
+
+    # 自動的なエンコーディングを削除
+    delete $options->{encoding};
+
+=begin original
+
+    # Encode data from stash value
+    $$output = nfreeze delete $c->stash->{storable};
+  });
+
+=end original
+
+    # スタッシュのデータをエンコード
+    $$output = nfreeze delete $c->stash->{storable};
+  });
+
+=begin original
+
+  # Set "handler" value automatically if "storable" value is set already
+  app->hook(before_render => sub {
+    my ($c, $args) = @_;
+    $args->{handler} = 'storable'
+      if exists $args->{storable} || exists $c->stash->{storable};
+  });
+
+=end original
+
+  # "storable" 値がすでにセットされている場合に"ハンドラ" 値を自動的にセットする
+  app->hook(before_render => sub {
+    my ($c, $args) = @_;
+    $args->{handler} = 'storable'
+      if exists $args->{storable} || exists $c->stash->{storable};
+  });
+
+  get '/' => {storable => {i => '♥ mojolicious'}};
+
+  app->start;
+
+=begin original
+
+The hook L<Mojolicious/"before_render"> can be used to make stash values like
+C<storable> special, so that they no longer require a C<handler> value to be set
+explicitly.
+
+=end original
+
+L<Mojolicious/"before_render">フックは、C<storable>のようなスタッシュ値のためにC<handler>値を明示的にセットしなくて済むようにするなど、個別に対応するために使用できます。
+
+=begin original
+
+  # Explicit "handler" value
+  $c->render(storable => {i => '♥ mojolicious'}, handler => 'storable');
+
+=end original
+
+  # 明示的な"handler" 値
+  $c->render(storable => {i => '♥ mojolicious'}, handler => 'storable');
+
+=begin original
+
+  # Implicit "handler" value (with "before_render" hook)
+  $c->render(storable => {i => '♥ mojolicious'});
+
+=end original
+
+  # 暗黙的な "handler" 値（"before_render" フックを使用）
+  $c->render(storable => {i => '♥ mojolicious'});
+
+=head1 MORE
+
+(もっと学ぶには)
+
+=begin original
+
+You can continue with L<Mojolicious::Guides> now or take a look at the
+L<Mojolicious wiki|http://github.com/mojolicious/mojo/wiki>, which contains a
+lot more documentation and examples by many different authors.
+
+=end original
+
+さあ、L<Mojolicious::Guides> を続けるか、L<Mojolicious wiki|http://github.com/mojolicious/mojo/wiki>を見てみましょう。多くの著者がドキュメントやサンプルをたくさん書いています。
+
+=head1 SUPPORT
+
+(サポート)
+
+=begin original
+
+If you have any questions the documentation might not yet answer, don't
+hesitate to ask on the
+L<mailing list|http://groups.google.com/group/mojolicious> or the official IRC
+channel C<#mojo> on C<irc.freenode.net> (L<chat
+now!|https://kiwiirc.com/nextclient/#irc://irc.freenode.net/mojo?nick=guest-?>).
+
+=end original
+
+このドキュメントでわからない部分があれば、 L<mailing list|http://groups.google.com/group/mojolicious> かC<irc.freenode.net> (L<chat
+now!|https://kiwiirc.com/nextclient/#irc://irc.freenode.net/mojo?nick=guest-?>)の公式IRCチャンネル C<#mojo> まで気軽に質問してください。
+
+=begin meta
+
+Translate: 木本裕紀
+Translate: 前山将人
+Update: SHIRAKATA Kentaro <argrath@ub32.org> (8.12)
+
+=end meta
+
+=cut
+
