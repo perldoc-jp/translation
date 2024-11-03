@@ -1,0 +1,1422 @@
+
+=encoding utf8
+
+=head1 NAME
+
+=begin original
+
+Mojolicious::Guides::Testing - Web Application Testing Made Easy
+
+=end original
+
+Mojolicious::Guides::Testing - Webアプリケーションのテストを簡単に
+
+(訳注: (TBR)がついている段落は「みんなの自動翻訳＠TexTra」による
+機械翻訳です。)
+
+=head1 OVERVIEW
+
+=begin original
+
+This document is an introduction to testing web applications with L<Test::Mojo>.
+L<Test::Mojo> can be thought of as a module that provides all of the tools and
+testing assertions needed to test web applications in a Perl-ish way.
+
+=end original
+
+この文書では、L<Test::Mojo>を使用してWebアプリケーションをテストする方法を
+紹介します。
+L<Test::Mojo>は、Perl風の方法でWebアプリケーションをテストするために必要な
+すべてのツールとテストアサーションを提供するモジュールと考えることができます。
+
+=begin original
+
+While L<Test::Mojo> can be used to test any web application, it has shortcuts
+designed to make testing L<Mojolicious> web applications easy and pain-free.
+
+=end original
+
+L<Test::Mojo>はあらゆるウェブアプリケーションのテストに使えますが、
+L<Mojolicious>ウェブアプリケーションのテストを簡単かつ苦痛なく行うための
+ショートカットが用意されています。
+
+=begin original
+
+Please refer to the L<Test::Mojo> documentation for a complete reference to many
+of the ideas and syntax introduced in this document.
+
+=end original
+
+この文書で紹介されている多くのアイデアと構文の完全な参照については、
+L<Test::Mojo>の文書を参照してください。
+
+=begin original
+
+A test file for a simple web application might look like:
+
+=end original
+
+単純なWebアプリケーションのテストファイルは、次のようになります:
+
+  use Mojo::Base -strict;
+
+  use Test::Mojo;
+  use Test::More;
+
+  # Start a Mojolicious app named "Celestial"
+  my $t = Test::Mojo->new('Celestial');
+
+  # Post a JSON document
+  $t->post_ok('/notifications' => json => {event => 'full moon'})
+    ->status_is(201)
+    ->json_is('/message' => 'notification created');
+
+  # Perform GET requests and look at the responses
+  $t->get_ok('/sunrise')
+    ->status_is(200)
+    ->content_like(qr/ am$/);
+  $t->get_ok('/sunset')
+    ->status_is(200)
+    ->content_like(qr/ pm$/);
+
+  # Post a URL-encoded form
+  $t->post_ok('/insurance' => form => {name => 'Jimmy', amount => '€3.000.000'})
+    ->status_is(200);
+
+  # Use Test::More's like() to check the response
+  like $t->tx->res->dom->at('div#thanks')->text, qr/thank you/, 'thanks';
+
+  done_testing();
+
+=begin original
+
+In the rest of this document we'll explore these concepts and others related to
+L<Test::Mojo>.
+
+=end original
+
+この文書の残りの部分では、これらの概念とL<Test::Mojo>に関連する
+その他の概念について説明します。
+
+=head1 CONCEPTS
+
+=begin original
+
+Essentials every L<Mojolicious> developer should know.
+
+=end original
+
+すべてのL<Mojolicious>開発者が知っておくべき重要なこと。
+
+=head2 L<Test::Mojo> at a glance
+
+(L<Test::Mojo> の概要)
+
+=begin original
+
+The L<Test::More> module bundled with Perl includes several primitive test
+assertions, such as C<ok>, C<is>, C<isnt>, C<like>, C<unlike>, C<cmp_ok>, etc.
+An assertion "passes" if its expression returns a true value. The assertion
+method prints "ok" or "not ok" if an assertion passes or fails (respectively).
+
+=end original
+
+Perlに同梱されているL<Test::More>モジュールには、C<ok>、C<is>、C<isnt>、
+C<like>、C<unlike>、C<cmp_ok>など、いくつかの基本的な
+テストアサーションが含まれています。
+アサーションは、その式が真の値を返した場合に「合格」します。
+アサーションメソッドは、アサーションが合格した場合は「ok」、
+不合格の場合は「not ok」を出力します。
+
+=begin original
+
+L<Test::Mojo> supplies additional test assertions organized around the web
+application request/response transaction (transport, response headers, response
+bodies, etc.), and WebSocket communications.
+
+=end original
+
+L<Test::Mojo>は、Webアプリケーションの要求/応答トランザクション
+(トランスポート、応答ヘッダー、応答ボディなど)とWebSocket通信を中心に
+構成された追加のテストアサーションを提供します。
+
+=begin original
+
+One interesting thing of note: the return value of L<Test::Mojo> object
+assertions is always the test object itself, allowing us to "chain" test
+assertion methods. So rather than grouping related test statements like this:
+
+=end original
+
+注目すべき興味深い点は、L<Test::Mojo>オブジェクトアサーションの戻り値は
+常にテストオブジェクト自体であり、テストアサーションメソッドを
+「チェーン」できることです;
+したがって、次のように関連するテストステートメントを
+グループ化するのではなく:
+
+  $t->get_ok('/frogs');
+  $t->status_is(200);
+  $t->content_like(qr/bullfrog/);
+  $t->content_like(qr/hypnotoad/);
+
+=begin original
+
+Method chaining allows us to connect test assertions that belong together:
+
+=end original
+
+メソッドチェーンを使用すると、互いに属するテストアサーションを接続できます:
+
+  $t->get_ok('/frogs')
+    ->status_is(200)
+    ->content_like(qr/bullfrog/)
+    ->content_like(qr/hypnotoad/);
+
+=begin original
+
+This makes for a much more I<concise> and I<coherent> testing experience:
+concise because we are not repeating the invocant for each test, and coherent
+because assertions that belong to the same request are syntactically bound in
+the same method chain.
+
+=end original
+
+これにより、テストエクスペリエンスのI<簡潔性>とI<凝集性>が大幅に向上します。
+テストごとに呼び出しを繰り返さないため簡潔であり、
+同じリクエストに属するアサーションが同じメソッドチェーン内で
+構文的にバインドされるため凝集性があります。
+
+=begin original
+
+Occasionally it makes sense to break up a test to perform more complex
+assertions on a response. L<Test::Mojo> exposes the entire transaction object so
+you can get all the data you need from a response:
+
+=end original
+
+場合によっては、テストを分割して、応答に対してより複雑なアサーションを
+実行することが理にかなっています。
+L<Test::Mojo>はトランザクションオブジェクト全体を公開するため、
+応答から必要なすべてのデータを取得できます:
+
+  $t->put_ok('/bees' => json => {type => 'worker', name => 'Karl'})
+    ->status_is(202)
+    ->json_has('/id');
+
+  # Pull out the id from the response
+  my $newbee = $t->tx->res->json('/id');
+
+  # Make a new request with data from the previous response
+  $t->get_ok("/bees/$newbee")
+    ->status_is(200)
+    ->json_is('/name' => 'Karl');
+
+=begin original
+
+The L<Test::Mojo> object is I<stateful>. As long as we haven't started a new
+transaction by invoking one of the C<*_ok> methods, the request and response
+objects from the previous transaction are available in the L<Test::Mojo>
+object:
+
+=end original
+
+L<Test::Mojo>オブジェクトはI<ステートフル>です。
+C<*_ok>メソッドの1つを呼び出して新しいトランザクションを開始していない限り、
+前のトランザクションの要求オブジェクトと応答オブジェクトは
+L<Test::Mojo>オブジェクトで使用できます:
+
+  # First transaction
+  $t->get_ok('/frogs?q=bullfrog' => {'Content-Type' => 'application/json'})
+    ->status_is(200)
+    ->json_like('/0/species' => qr/catesbeianus/i);
+
+  # Still first transaction
+  $t->content_type_is('application/json');
+
+  # Second transaction
+  $t->get_ok('/frogs?q=banjo' => {'Content-Type' => 'text/html'})
+    ->status_is(200)
+    ->content_like(qr/interioris/i);
+
+  # Still second transaction
+  $t->content_type_is('text/html');
+
+=begin original
+
+This statefulness also enables L<Test::Mojo> to handle sessions, follow
+redirects, and inspect past responses during a redirect.
+
+=end original
+
+このステートフルさにより、L<Test::Mojo>はセッションを処理し、
+リダイレクトに従い、リダイレクト中に過去の応答を検査することもできます。
+
+=head2 The L<Test::Mojo> object
+
+(L<Test::Mojo> オブジェクト)
+
+=begin original
+
+The L<Test::Mojo> object manages the Mojolicious application lifecycle (if a
+Mojolicious application class is supplied) as well as exposes the built-in
+L<Mojo::UserAgent> object. To create a bare L<Test::Mojo> object:
+
+=end original
+
+L<Test::Mojo>オブジェクトは、Mojoliciousアプリケーションのライフサイクルを管理し(Mojoliciousアプリケーションクラスが提供されている場合)、
+組み込みのL<Mojo::UserAgent>オブジェクトを公開します。
+ベアL<Test::Mojo>オブジェクトを作成するには、次の手順に従います。
+(TBR)
+
+  my $t = Test::Mojo->new;
+
+=begin original
+
+This object initializes a L<Mojo::UserAgent> object and provides a variety of
+test assertion methods for accessing a web application. For example, with this
+object, we could test any running web application:
+
+=end original
+
+このオブジェクトは、L<Mojo::UserAgent>オブジェクトを初期化し、Webアプリケーションにアクセスするための様々なテストアサーションメソッドを提供します。
+たとえば、このオブジェクトを使用して、実行中のWebアプリケーションをテストできます:
+(TBR)
+
+  $t->get_ok('https://www.google.com/')
+    ->status_is(200)
+    ->content_like(qr/search/i);
+
+=begin original
+
+You can access the user agent directly if you want to make web requests without
+triggering test assertions:
+
+=end original
+
+テストアサーションをトリガせずにWeb要求を行う場合は、ユーザエージェントに直接アクセスできます。
+(TBR)
+
+  my $tx = $t->ua->post(
+    'https://duckduckgo.com/html' => form => {q => 'hypnotoad'});
+  $tx->result->dom->find('a.result__a')->each(sub { say $_->text });
+
+=begin original
+
+See L<Mojo::UserAgent> for the complete API and return values.
+
+=end original
+
+完全なAPIと戻り値については、L<Mojo::UserAgent>を参照してください。
+(TBR)
+
+=head2 Testing Mojolicious applications
+
+(Mojoliciousアプリケーションのテスト)
+
+=begin original
+
+If you pass the name of a L<Mojolicious> application class (e.g., 'MyApp') to
+the L<Test::Mojo> constructor, L<Test::Mojo> will instantiate the class and
+start it, and cause it to listen on a random (unused) port number. Testing a
+Mojolicious application using L<Test::Mojo> will never conflict with running
+applications, including the application you're testing.
+
+=end original
+
+L<Mojolicious>アプリケーションクラスの名前(例:'MyApp')をL<Test::Mojo>コンストラクタに渡すと、L<Test::Mojo>はクラスをインスタンス化して起動し、ランダムな(未使用の)ポート番号をリッスンするようにします。
+L<Test::Mojo>を使用してMojoliciousアプリケーションをテストしても、テストしているアプリケーションを含めて、実行中のアプリケーションと競合することはありません。
+(TBR)
+
+=begin original
+
+The L<Mojo::UserAgent> object in L<Test::Mojo> will know where the application
+is running and make requests to it. Once the tests have completed, the
+L<Mojolicious> application will be torn down.
+
+=end original
+
+L<Test::Mojo>内のL<Mojo::UserAgent>オブジェクトは、アプリケーションが実行されている場所を認識し、それに対して要求を行います。
+テストが完了すると、L<Mojolicious>アプリケーションは破棄されます。
+(TBR)
+
+  # Listens on localhost:32114 (some unused TCP port)
+  my $t = Test::Mojo->new('Frogs');
+
+=begin original
+
+This object initializes a L<Mojo::UserAgent> object, loads the Mojolicious
+application C<Frogs>, binds and listens on a free TCP port (e.g., 32114), and
+starts the application event loop. When the L<Test::Mojo> object (C<$t>) goes
+out of scope, the application is stopped.
+
+=end original
+
+このオブジェクトは、L<Mojo::UserAgent>オブジェクトを初期化し、MojoliciousアプリケーションC<Frogs>をロードし、空きTCPポート(例:32114)にバインドしてリッスンし、アプリケーションイベントループを開始します。
+L<Test::Mojo>オブジェクト(C<$t>)が範囲外になると、アプリケーションは停止します。
+(TBR)
+
+=begin original
+
+Relative URLs in the test object method assertions (C<get_ok>, C<post_ok>, etc.)
+will be sent to the Mojolicious application started by L<Test::Mojo>:
+
+=end original
+
+テストオブジェクトメソッドアサーション内の相対URL(C<get_ok>、C<post_ok>など)は、L<Test::Mojo>によって起動されるMojoliciousアプリケーションに送信されます。
+(TBR)
+
+  # Rewritten to "http://localhost:32114/frogs"
+  $t->get_ok('/frogs');
+
+=begin original
+
+L<Test::Mojo> has a lot of handy shortcuts built into it to make testing
+L<Mojolicious> or L<Mojolicious::Lite> applications enjoyable.
+
+=end original
+
+L<Test::Mojo>には、L<Mojolicious>またはL<Mojolicious::Lite>アプリケーションのテストを楽しくするための便利なショートカットがたくさん組み込まれています。
+(TBR)
+
+=head3 An example
+
+(例)
+
+=begin original
+
+Let's spin up a Mojolicious application using C<mojo generate app MyApp>. The
+C<mojo> utility will create a working application and a C<t> directory with a
+working test file:
+
+=end original
+
+C<mojo generate app MyApp>を使用してMojoliciousアプリケーションを起動してみましょう。
+C<mojo>ユーティリティは、動作するアプリケーションと、動作するテストファイルを含むC<t>ディレクトリを作成します。
+(TBR)
+
+  $ mojo generate app MyApp
+  [mkdir] /my_app/script
+  [write] /my_app/script/my_app
+  [chmod] /my_app/script/my_app 744
+  ...
+  [mkdir] /my_app/t
+  [write] /my_app/t/basic.t
+  ...
+
+=begin original
+
+Let's run the tests (we'll create the C<log> directory to quiet the application
+output):
+
+=end original
+
+テストを実行してみましょう(C<log>ディレクトリを作成して、アプリケーションの出力を抑制します)。
+(TBR)
+
+  $ cd my_app
+  $ mkdir log
+  $ prove -lv t
+  t/basic.t ..
+  ok 1 - GET /
+  ok 2 - 200 OK
+  ok 3 - content is similar
+  1..3
+  ok
+  All tests successful.
+  Files=1, Tests=3,  0 wallclock secs ( 0.03 usr  0.01 sys +  0.33 cusr  0.07
+   csys =  0.44 CPU)
+  Result: PASS
+
+=begin original
+
+The boilerplate test file looks like this:
+
+=end original
+
+ボイラープレートテストファイルは次のようになります。
+(TBR)
+
+  use Mojo::Base -strict;
+
+  use Test::More;
+  use Test::Mojo;
+
+  my $t = Test::Mojo->new('MyApp');
+  $t->get_ok('/')->status_is(200)->content_like(qr/Mojolicious/i);
+
+  done_testing();
+
+=begin original
+
+Here we can see our application class name C<MyApp> is passed to the
+L<Test::Mojo> constructor. Under the hood, L<Test::Mojo> creates a new
+L<Mojo::Server> instance, loads C<MyApp> (which we just created), and runs the
+application. We write our tests with relative URLs because L<Test::Mojo> takes
+care of getting the request to the running test application (since its port may
+change between runs).
+
+=end original
+
+ここでは、アプリケーションクラス名C<MyApp>がL<Test::Mojo>コンストラクタに渡されていることがわかります。
+内部では、L<Test::Mojo>が新しいL<Mojo::Server>インスタンスを作成し、C<MyApp>(先ほど作成したもの)をロードしてアプリケーションを実行します。
+L<Test::Mojo>が実行中のテストアプリケーションへの要求の取得を処理するため(実行の間にポートが変更される可能性があるため)、テストは相対URLで記述します。
+(TBR)
+
+=head3 Testing with configuration data
+
+(設定データのテスト)
+
+=begin original
+
+We can alter the behavior of our application using environment variables (such
+as C<MOJO_MODE>) and through configuration values. One nice feature of
+L<Test::Mojo> is its ability to pass configuration values directly from its
+constructor.
+
+=end original
+
+環境変数(C<MOJO_MODE>など)と構成値を使用して、アプリケーションの動作を変更できます。
+L<Test::Mojo>の優れた機能の1つは、構成値をコンストラクタから直接渡す機能です。
+(TBR)
+
+=begin original
+
+Let's modify our application and add a "feature flag" to enable a new feature
+when the C<enable_weather> configuration value is set:
+
+=end original
+
+アプリケーションを変更し、C<enable_weather>構成値が設定されたときに新しい機能を有効にする「機能フラグ」を追加しましょう。
+(TBR)
+
+  # Load configuration from hash returned by "my_app.conf"
+  my $config = $self->plugin('Config');
+
+  # Normal route to controller
+  $r->get('/')->to('example#welcome');
+
+  # NEW: this route only exists if "enable_weather" is set in the configuration
+  if ($config->{enable_weather}) {
+    $r->get('/weather' => sub { shift->render(text => "It's hot! 🔥") }
+  }
+
+=begin original
+
+To test this new feature, we don't even need to create a configuration file—we
+can simply pass the configuration data to the application directly via
+L<Test::Mojo>'s constructor:
+
+=end original
+
+この新機能をテストするには、構成ファイルを作成する必要さえなく、L<Test::Mojo>のコンストラクタを介して構成データをアプリケーションに直接渡すだけでよい。
+(TBR)
+
+  my $t = Test::Mojo->new(MyApp => {enable_weather => 1});
+  $t->get_ok('/')->status_is(200)->content_like(qr/Mojolicious/i);
+  $t->get_ok('/weather')->status_is(200)->content_like(qr/🔥/);
+
+=begin original
+
+When we run these tests, L<Test::Mojo> will pass this configuration data to the
+application, which will cause it to create a special C</weather> route that we
+can access in our tests. Unless C<enable_weather> is set in a configuration
+file, this route will not exist when the application runs. Feature flags like
+this allow us to do soft rollouts of features, targeting a small audience for a
+period of time. Once the feature has been proven, we can refactor the
+conditional and make it a full release.
+
+=end original
+
+これらのテストを実行すると、L<Test::Mojo>はこの構成データをアプリケーションに渡し、テストでアクセスできる特別なC</weather>ルートを作成します。
+構成ファイルにC<enable_weather>が設定されていない限り、このルートはアプリケーションの実行時には存在しません。
+このような機能フラグを使用すると、一定期間、少数のオーディエンスをターゲットにして、機能のソフトロールアウトを行うことができます。
+機能が証明されたら、条件をリファクタリングして完全なリリースにすることができます。
+(TBR)
+
+=begin original
+
+This example shows how easy it is to start testing a Mojolicious application and
+how to set specific application configuration directives from a test file.
+
+=end original
+
+この例では、Mojoliciousアプリケーションのテストを簡単に開始する方法と、テストファイルから特定のアプリケーション構成ディレクティブを設定する方法を示しています。
+(TBR)
+
+=head3 Testing application helpers
+
+(アプリケーションヘルパーのテスト)
+
+=begin original
+
+Let's say we register a helper in our application to generate an HTTP Basic
+Authorization header:
+
+=end original
+
+HTTP Basic Authorizationヘッダーを生成するヘルパーをアプリケーションに登録したとします。
+(TBR)
+
+  use Mojo::Util 'b64_encode';
+
+  app->helper(basic_auth => sub {
+    my ($c, @values) = @_;
+    return {Authorization => 'Basic ' . b64_encode join(':' => @values), ''};
+  });
+
+=begin original
+
+How do we test application helpers like this? L<Test::Mojo> has access to the
+application object, which allows us to invoke helpers from our test file:
+
+=end original
+
+このようなアプリケーションヘルパーをテストするにはどうすればよいでしょうか?L<Test::Mojo>はアプリケーションオブジェクトにアクセスできるため、テストファイルからヘルパーを呼び出すことができます。
+(TBR)
+
+  my $t = Test::Mojo->new('MyApp');
+
+  is_deeply $t->app->basic_auth(bif => "Bif's Passwerdd"),
+    {Authorization => 'Basic YmlmOkJpZidzIFBhc3N3ZXJkZA=='},
+    'correct header value';
+
+=begin original
+
+Any aspect of the application (helpers, plugins, routes, etc.) can be
+introspected from L<Test::Mojo> through the application object. This enables us
+to get deep test coverage of L<Mojolicious>-based applications.
+
+=end original
+
+アプリケーションのあらゆる側面(ヘルパー、プラグイン、ルートなど)は、L<Test::Mojo>からアプリケーションオブジェクトを通じて紹介することができる。
+これにより、L<Mojolicious>ベースのアプリケーションの深いテストカバレッジを得ることができる。
+(TBR)
+
+=head1 ASSERTIONS
+
+(アサーション)
+
+=begin original
+
+This section describes the basic test assertions supplied by L<Test::Mojo>.
+There are four broad categories of assertions for HTTP requests:
+
+=end original
+
+この項では、L<Test::Mojo>によって提供される基本的なテストアサーションについて説明します。
+HTTPリクエストのアサーションには、次の4つの大きなカテゴリがあります。
+(TBR)
+
+=over 2
+
+=item * HTTP requests
+
+=item * HTTP response status
+
+=item * HTTP response headers
+
+=item * HTTP response content/body
+
+=back
+
+=begin original
+
+WebSocket test assertions are covered in L</Testing WebSocket web services>.
+
+=end original
+
+WebSocketテストのアサーションについては、L</Testing WebSocket Web Services>を参照してください。
+(TBR)
+
+=head2 HTTP request assertions
+
+(HTTPリクエストのアサーション)
+
+=begin original
+
+L<Test::Mojo> has a L<Mojo::UserAgent> object that allows it to make HTTP
+requests and check for HTTP transport errors. HTTP request assertions include
+C<get_ok>, C<post_ok>, etc. These assertions do not test whether the request
+was handled I<successfully>, only that the web application handled the request
+in an HTTP compliant way.
+
+=end original
+
+L<Test::Mojo>には、HTTPリクエストの作成とHTTPトランスポートエラーのチェックを可能にするL<Mojo::UserAgent>オブジェクトがあります。
+HTTPリクエストアサーションには、C<get_ok>、C<post_ok>などが含まれます。
+これらのアサーションは、リクエストが<正常に>処理されたかどうかをテストするのではなく、WebアプリケーションがHTTP準拠の方法でリクエストを処理したかどうかをテストするだけです。
+(TBR)
+
+=begin original
+
+You may also make HTTP requests using custom verbs (beyond C<GET>, C<POST>,
+C<PUT>, etc.) by building your own transaction object. See
+L</"Custom transactions"> below.
+
+=end original
+
+独自のトランザクションオブジェクトを構築することで、カスタム動詞(C<GET>、C<POST>、C<PUT>など以外)を使用してHTTPリクエストを作成することもできます。
+以下のL</"Custom transactions">を参照してください。
+(TBR)
+
+=head3 Using HTTP request assertions
+
+(HTTP リクエストのアサーションを使う)
+
+=begin original
+
+To post a URL-encoded form to the C</calls> endpoint of an application, we
+simply use the C<form> content type shortcut:
+
+=end original
+
+URLエンコードされたフォームをアプリケーションのC</calls>エンドポイントに送信するには、C<form>コンテンツタイプのショートカットを使用するだけです。
+(TBR)
+
+  $t->post_ok('/calls' => form => {to => '+43.55.555.5555'});
+
+=begin original
+
+Which will create the following HTTP request:
+
+=end original
+
+これにより、次のHTTP要求が作成されます。
+(TBR)
+
+  POST /calls HTTP/1.1
+  Content-Length: 20
+  Content-Type: application/x-www-form-urlencoded
+
+  to=%2B43.55.555.5555
+
+=begin original
+
+The C<*_ok> HTTP request assertion methods accept the same arguments as their
+corresponding L<Mojo::UserAgent> methods (except for the callback argument).
+This allows us to set headers and build query strings for authentic test
+situations:
+
+=end original
+
+C<*_ok>HTTPリクエストアサーションメソッドは、対応するL<Mojo::UserAgent>メソッドと同じ引数を受け入れます(コールバック引数を除く)。
+これにより、ヘッダーを設定し、信頼できるテスト状況のためのクエリ文字列を構築できます。
+(TBR)
+
+  $t->get_ok('/internal/personnel' => {Authorization => 'Token secret-password'}
+    => form => {q => 'Professor Plum'});
+
+=begin original
+
+which generates the following request:
+
+=end original
+
+これにより、次の要求が生成されます。
+(TBR)
+
+  GET /internal/personnel?q=Professor+Plum HTTP/1.1
+  Content-Length: 0
+  Authorization: Token secret-password
+
+=begin original
+
+The C<form> content generator (see L<Mojo::UserAgent::Transactor>) will generate
+a query string for C<GET> requests and C<application/x-www-form-urlencoded> or
+C<multipart/form-data> for POST requests.
+
+=end original
+
+C<form>コンテンツジェネレーター(L<Mojo::UserAgent::Transactor>を参照)は、C<GET>要求に対しては照会ストリングを生成し、POST要求に対してはC<application/x-www-form-urlencoded>またはC<multipart/form-data>を生成します。
+(TBR)
+
+=begin original
+
+While these C<*_ok> assertions make the HTTP I<requests> we expect, they tell us
+little about I<how well> the application handled the request. The application
+we're testing might have returned any content-type, body, or HTTP status code
+(200, 302, 400, 404, 500, etc.) and we wouldn't know it.
+
+=end original
+
+これらのC<*_ok>アサーションは、私たちが期待するHTTP I<リクエスト>を作成しますが、アプリケーションがリクエストを<どれだけうまく>処理したかについてはほとんど教えてくれません。
+私たちがテストしているアプリケーションは、任意のコンテンツタイプ、ボディ、またはHTTPステータスコード(200、302、400、404、500など)を返した可能性があり、私たちはそれを知ることができません。
+(TBR)
+
+=begin original
+
+L<Test::Mojo> provides assertions to test almost every aspect of the HTTP
+response, including the HTTP response status code, the value of the
+C<Content-Type> header, and other arbitrary HTTP header information.
+
+=end original
+
+L<Test::Mojo>は、HTTPレスポンスのステータスコード、C<Content-Type>ヘッダーの値、その他の任意のHTTPヘッダー情報など、HTTPレスポンスのほぼすべての側面をテストするためのアサーションを提供する。
+(TBR)
+
+=head2 HTTP response status code
+
+(HTTPレスポンスステータスコード)
+
+=begin original
+
+While not technically an HTTP header, the status line is the first line in an
+HTTP response and is followed by the response headers. Testing the response
+status code is common in REST-based and other web applications that use the HTTP
+status codes to broadly indicate the type of response the server is returning.
+
+=end original
+
+技術的にはHTTPヘッダーではありませんが、ステータス行はHTTPレスポンスの最初の行であり、その後にレスポンスヘッダーが続きます。
+レスポンスステータスコードのテストは、HTTPステータスコードを使用してサーバーが返すレスポンスのタイプを広く示すRESTベースやその他のWebアプリケーションで一般的です。
+(TBR)
+
+=begin original
+
+Testing the status code is as simple as adding the C<status_is> assertion:
+
+=end original
+
+ステータスコードのテストは、Cの<status_is>アサーションを追加するだけの簡単なものです。
+(TBR)
+
+  $t->post_ok('/doorbell' => form => {action => 'ring once'})
+    ->status_is(200);
+
+=begin original
+
+Along with C<status_isnt>, this will cover most needs. For more elaborate status
+code testing, you can access the response internals directly:
+
+=end original
+
+C<status_isnt>とともに、これはほとんどのニーズをカバーします。
+より詳細なステータスコードテストのために、応答内部に直接アクセスできます。
+(TBR)
+
+  $t->post_ok('/doorbell' => form => {action => 'ring once'});
+  is $t->tx->res->message, 'Moved Permanently', 'try next door';
+
+=head2 HTTP response headers
+
+(HTTPレスポンスヘッダ)
+
+=begin original
+
+L<Test::Mojo> allows us to inspect and make assertions about HTTP response
+headers. The C<Content-Type> header is commonly tested and has its own
+assertion:
+
+=end original
+
+L<Test::Mojo>を使用すると、HTTPレスポンスヘッダーを検査してアサーションを作成できます。
+C<Content-Type>ヘッダーは一般的にテストされ、独自のアサーションがあります:
+(TBR)
+
+  $t->get_ok('/map-of-the-world.pdf')
+    ->content_type_is('application/pdf');
+
+=begin original
+
+This is equivalent to the more verbose:
+
+=end original
+
+これは、より冗長な次のものと等価です:
+
+  $t->get_ok('/map-of-the-world.pdf')
+    ->header_is('Content-Type' => 'application/pdf');
+
+=begin original
+
+We can test for multiple headers in a single response using method chains:
+
+=end original
+
+メソッドチェーンを使用して、1つの応答で複数のヘッダーをテストできます。
+(TBR)
+
+  $t->get_ok('/map-of-the-world.pdf')
+    ->content_type_is('application/pdf')
+    ->header_isnt('Compression' => 'gzip')
+    ->header_unlike('Server' => qr/IIS/i);
+
+=head2 HTTP response content assertions
+
+(HTTPレスポンスの内容のアサーション)
+
+=begin original
+
+L<Test::Mojo> also exposes a rich set of assertions for testing the body of a
+response, whether that body be HTML, plain-text, or JSON. The C<content_*>
+methods look at the body of the response as plain text (as defined by the
+response's character set):
+
+=end original
+
+L<Test::Mojo>は、応答の本文がHTML、プレーンテキスト、JSONのいずれであっても、その本文をテストするための豊富なアサーションのセットも公開している。
+C<content_*>メソッドは、応答の本文をプレーンテキスト(応答の文字セットで定義されている)として見る。
+(TBR)
+
+  $t->get_ok('/scary-things/spiders.json')
+    ->content_is('{"arachnid":"brown recluse"}');
+
+=begin original
+
+Although this is a JSON document, C<content_is> treats it as if it were a text
+document. This may be useful for situations where we're looking for a particular
+string and not concerned with the structure of the document. For example, we can
+do the same thing with an HTML document:
+
+=end original
+
+これはJSON文書ですが、C<content_is>はそれをテキスト文書のように扱います。
+これは、特定の文字列を探していて、文書の構造に関係しない状況で役立つ場合があります。
+たとえば、HTML文書で同じことを行うことができます。
+(TBR)
+
+  $t->get_ok('/scary-things/spiders.html')
+    ->content_like(qr{<title>All The Spiders</title>});
+
+=begin original
+
+But because L<Test::Mojo> has access to everything that L<Mojo::UserAgent> does,
+we can introspect JSON documents as well as DOM-based documents (HTML, XML) with
+assertions that allow us to check for the existence of elements as well as
+inspect the content of text nodes.
+
+=end original
+
+しかし、L<Test::Mojo>はL<Mojo::UserAgent>が行うすべてのことにアクセスできるため、要素の存在をチェックし、テキストノードの内容を検査することを可能にするアサーションを使用して、DOMベースの文書(HTML、XML)だけでなくJSON文書もイントロスペクションすることができる。
+(TBR)
+
+=head3 JSON response assertions
+
+(JSONレスポンスのアサーション)
+
+=begin original
+
+L<Test::Mojo>'s L<Mojo::UserAgent> has access to a JSON parser, which allows us
+to test to see if a JSON response contains a value at a location in the document
+using JSON pointer syntax:
+
+=end original
+
+L<Test::Mojo>のL<Mojo::UserAgent>はJSONパーサにアクセスできるため、JSONポインタ構文を使用して、JSON応答に文書内の場所の値が含まれているかどうかをテストすることができる。
+(TBR)
+
+  $t->get_ok('/animals/friendly.json')
+    ->json_has('/beings/jeremiah/age');
+
+=begin original
+
+This assertion tells us that the C<friendly.json> document contains a value at
+the C</beings/jeremiah/age> JSON pointer location. We can also inspect the value
+at JSON pointer locations:
+
+=end original
+
+このアサーションは、C<friendly.json>文書にC</exists/jeremiah/age>JSONポインタの場所に値が含まれていることを示します。
+JSONポインタの場所で値を検査することもできます。
+(TBR)
+
+  $t->get_ok('/animals/friendly.json')
+    ->json_has('/beings/jeremiah/age')
+    ->json_is('/beings/jeremiah/age' => 42)
+    ->json_like('/beings/jeremiah/species' => qr/bullfrog/i);
+
+=begin original
+
+JSON pointer syntax makes testing JSON responses simple and readable.
+
+=end original
+
+JSONポインター構文を使用すると、JSONレスポンスのテストが簡単で読みやすくなります。
+(TBR)
+
+=head3 DOM response assertions
+
+(DOMレスポンスのアサーション)
+
+=begin original
+
+We can also inspect HTML and XML responses using the L<Mojo::DOM> parser in the
+user agent. Here are a few examples from the L<Test::Mojo> documentation:
+
+=end original
+
+また、ユーザーエージェントのL<Mojo::DOM>パーサーを使用して、HTMLおよびXMLの応答を検査することもできます。
+L<Test::Mojo>の文書からいくつかの例を示します。
+(TBR)
+
+  $t->text_is('div.foo[x=y]' => 'Hello!');
+  $t->text_is('html head title' => 'Hello!', 'right title');
+
+=begin original
+
+The L<Mojo::DOM> parser uses the CSS selector syntax described in
+L<Mojo::DOM::CSS>, allowing us to test for values in HTML and XML documents
+without resorting to typically verbose and inflexible DOM traversal methods.
+
+=end original
+
+L<Mojo::DOM>パーサーは、L<Mojo::DOM::CSS>で説明されているCSSセレクタ構文を使用します。
+(TBR)
+
+=head1 ADVANCED TOPICS
+
+=begin original
+
+This section describes some complex (but common) testing situations that
+L<Test::Mojo> excels in making simple.
+
+=end original
+
+このセクションでは、L<Test::Mojo>がシンプルにするのに優れている、複雑な(しかし一般的な)テスト状況について説明する。
+(TBR)
+
+=head2 Redirects
+
+(リダイレクト)
+
+=begin original
+
+The L<Mojo::UserAgent> object in L<Test::Mojo> can handle HTTP redirections
+internally to whatever level you need. Let's say we have a web service that
+redirects C</1> to C</2>, C</2> redirects to C</3>, C</3> redirects to C</4>,
+and C</4> redirects to C</5>:
+
+=end original
+
+L<Test::Mojo>のL<Mojo::UserAgent>オブジェクトは、必要なレベルまで内部的にHTTPリダイレクションを処理できます。
+C</1>をC</2>にリダイレクトし、C</2>をC</3>にリダイレクトし、C</3>をC</4>にリダイレクトし、C</4>をC</5>にリダイレクトするWebサービスがあるとします。
+(TBR)
+
+  GET /1
+
+=begin original
+
+returns:
+
+=end original
+
+これは次を返し:
+
+  302 Found
+  Location: /2
+
+=begin original
+
+and:
+
+=end original
+
+そして:
+
+  GET /2
+
+=begin original
+
+returns:
+
+=end original
+
+これは次を返し:
+
+  302 Found
+  Location: /3
+
+=begin original
+
+and so forth, up to C</5>:
+
+=end original
+
+以下、C</5>まで:
+
+  GET /5
+
+=begin original
+
+which returns the data we wanted:
+
+=end original
+
+必要なデータが返されます。
+(TBR)
+
+  200 OK
+
+  {"message":"this is five"}
+
+=begin original
+
+We can tell the user agent in L<Test::Mojo> how to deal with redirects. Each
+test is making a request to C<GET /1>, but we vary the number of redirects the
+user agent should follow with each test:
+
+=end original
+
+L<Test::Mojo>のユーザーエージェントにリダイレクトの処理方法を伝えることができます。
+各テストはC<GET /1>に要求を行いますが、ユーザーエージェントが各テストで従うべきリダイレクトの数は異なります。
+(TBR)
+
+  my $t = Test::Mojo->new;
+
+  $t->get_ok('/1')
+    ->header_is(location => '/2');
+
+  $t->ua->max_redirects(1);
+  $t->get_ok('/1')
+    ->header_is(location => '/3');
+
+  $t->ua->max_redirects(2);
+  $t->get_ok('/1')
+    ->header_is(location => '/4');
+
+  # Look at the previous hop
+  is $t->tx->previous->res->headers->location, '/3', 'previous redirect';
+
+  $t->ua->max_redirects(3);
+  $t->get_ok('/1')
+    ->header_is(location => '/5');
+
+  $t->ua->max_redirects(4);
+  $t->get_ok('/1')
+    ->json_is('/message' => 'this is five');
+
+=begin original
+
+When we set C<max_redirects>, it stays set for the life of the test object until
+we change it.
+
+=end original
+
+C<max_redirects>を設定すると、変更するまでテストオブジェクトの存続期間中、設定されたままになります。
+(TBR)
+
+=begin original
+
+L<Test::Mojo>'s handling of HTTP redirects eliminates the need for making many,
+sometimes an unknown number, of redirections to keep testing precise and easy to
+follow (ahem).
+
+=end original
+
+L<Test::Mojo>のHTTPリダイレクトの処理により、テストを正確かつ容易に実行し続けるために、多くの(時には未知の数の)リダイレクションを行う必要がなくなります。
+(TBR)
+
+=head2 Cookies and session management
+
+(クッキーとセッション管理)
+
+=begin original
+
+We can use L<Test::Mojo> to test applications that keep session state in
+cookies. By default, the L<Mojo::UserAgent> object in L<Test::Mojo> will manage
+session for us by saving and sending cookies automatically, just like common web
+browsers:
+
+=end original
+
+L<Test::Mojo>を使用して、セッションステートをCookieに保持するアプリケーションをテストできます。
+デフォルトでは、L<Test::Mojo>のL<Mojo::UserAgent>オブジェクトは、一般的なWebブラウザと同様に、Cookieを自動的に保存および送信することによってセッションを管理します。
+(TBR)
+
+  use Mojo::Base -strict;
+
+  use Test::More;
+  use Test::Mojo;
+
+  my $t = Test::Mojo->new('MyApp');
+
+  # No authorization cookie
+  $t->get_ok('/')
+    ->status_is(401)
+    ->content_is('Please log in');
+
+  # Application sets an authorization cookie
+  $t->post_ok('/login' => form => {password => 'let me in'})
+    ->status_is(200)
+    ->content_is('You are logged in');
+
+  # Sends the cookie from the previous transaction
+  $t->get_ok('/')
+    ->status_is(200)
+    ->content_like(qr/You logged in at \d+/);
+
+  # Clear the cookies
+  $t->reset_session;
+
+  # No authorization cookie again
+  $t->get_ok('/')
+    ->status_is(401)
+    ->content_is('Please log in');
+
+=begin original
+
+We can also inspect cookies in responses for special values through the
+transaction's response (L<Mojo::Message::Response>) object:
+
+=end original
+
+また、トランザクションの応答(L<Mojo::Message::Response>)オブジェクトを使用して、応答内のクッキーに特別な値があるかどうかを検査することもできます。
+(TBR)
+
+  $t->get_ok('/');
+  like $t->tx->res->cookie('smarty'), qr/smarty=pants/, 'cookie found';
+
+=head2 Custom transactions
+
+(カスタムトランザクション)
+
+=begin original
+
+Let's say we have an application that responds to a new HTTP verb C<RING> and to
+use it we must also pass in a secret cookie value. This is not a problem. We can
+test the application by creating a L<Mojo::Transaction> object, setting the
+cookie (see L<Mojo::Message::Request>), then passing the transaction object to
+C<request_ok>:
+
+=end original
+
+新しいHTTP動詞C<RING>に応答するアプリケーションがあり、それを使用するために秘密のクッキー値も渡す必要があるとします。
+これは問題ではありません。
+アプリケーションをテストするには、L<Mojo::Transaction>オブジェクトを作成し、クッキーを設定し(L<Mojo::Message::Request>を参照)、トランザクションオブジェクトをC<request_ok>に渡します。
+(TBR)
+
+  # Use custom "RING" verb
+  my $tx = $t->ua->build_tx(RING => '/doorbell');
+
+  # Set a special cookie
+  $tx->req->cookies({name => 'Secret', value => "don't tell anybody"});
+
+  # Make the request
+  $t->request_ok($tx)
+    ->status_is(200)
+    ->json_is('/status' => 'ding dong');
+
+=head2 Testing WebSocket web services
+
+(WebSocket web サービスのテスト)
+
+=begin original
+
+While the message flow on WebSocket connections can be rather dynamic, it more
+often than not is quite predictable, which allows this rather pleasant
+L<Test::Mojo> WebSocket API to be used:
+
+=end original
+
+WebSocket接続上のメッセージフローはかなり動的であるが、多くの場合、かなり予測可能であるため、このかなり快適なL<Test::Mojo>WebSocket APIを使用できる。
+(TBR)
+
+  use Mojo::Base -strict;
+
+  use Test::More;
+  use Test::Mojo;
+
+  # Test echo web service
+  my $t = Test::Mojo->new('EchoService');
+  $t->websocket_ok('/echo')
+    ->send_ok('Hello Mojo!')
+    ->message_ok
+    ->message_is('echo: Hello Mojo!')
+    ->finish_ok;
+
+  # Test JSON web service
+  $t->websocket_ok('/echo.json')
+    ->send_ok({json => {test => [1, 2, 3]}})
+    ->message_ok
+    ->json_message_is('/test' => [1, 2, 3])
+    ->finish_ok;
+
+  done_testing();
+
+=begin original
+
+Because of their inherent asynchronous nature, testing WebSocket communications
+can be tricky. The L<Test::Mojo> WebSocket assertions serialize messages via
+event loop primitives. This enables us to treat WebSocket messages as if they
+were using the same request-response communication pattern we're accustomed to
+with HTTP.
+
+=end original
+
+L<Test::Mojo>WebSocketアサーションは、イベントループプリミティブを介してメッセージをシリアライズします。
+これにより、WebSocketメッセージを、HTTPで慣れ親しんだ同じ要求-応答コミュニケーションパターンを使用しているかのように扱うことができます。
+(TBR)
+
+=begin original
+
+To illustrate, let's walk through these tests. In the first test, we use the
+C<websocket_ok> assertion to ensure that we can connect to our application's
+WebSocket route at C</echo> and that it's "speaking" WebSocket protocol to us.
+The next C<send_ok> assertion tests the connection again (in case it closed, for
+example) and attempts to send the message C<Hello Mojo!>. The next assertion,
+C<message_ok>, blocks (using the L<Mojo::IOLoop> singleton in the application)
+and waits for a response from the server. The response is then compared with
+C<'echo: Hello Mojo!'> in the C<message_is> assertion, and finally we close and
+test our connection status again with C<finish_ok>.
+
+=end original
+
+説明のために、これらのテストを見てみましょう。
+最初のテストでは、C<WebSocket_ok>アサーションを使用して、アプリケーションのWebSocketルートにC</echo>で接続できること、およびWebSocketプロトコルを「話している」ことを確認します。
+次のC<send_ok>アサーションは、接続を再度テストし(たとえば、接続が閉じた場合)、メッセージC<Hello Mojo!>を送信しようとします。
+次のアサーションであるC<message_ok>は、(アプリケーション内のL<Mojo::IOLoop>シングルトンを使用して)ブロックし、サーバからの応答を待ちます。
+次に、応答はC<message_is>アサーション内のC<'echo: Hello Mojo!'>と比較され、最後に、C<finish_ok>で接続ステータスを再度テストします。
+(TBR)
+
+=begin original
+
+The second test is like the first, but now we're sending and expecting JSON
+documents at C</echo.json>. In the C<send_ok> assertion we take advantage of
+L<Mojo::UserAgent>'s JSON content generator (see L<Mojo::UserAgent::Transactor>)
+to marshal hash and array references into JSON documents, and then send them as
+a WebSocket message. We wait (block) for a response from the server with
+C<message_ok>. Then because we're expecting a JSON document back, we can
+leverage C<json_message_ok> which parses the WebSocket response body and returns
+an object we can access through L<Mojo::JSON::Pointer> syntax. Then we close
+(and test) our WebSocket connection.
+
+=end original
+
+2番目のテストは最初のテストと似ていますが、現在はC</echo.json>でJSON文書を送信して期待しています。
+C<send_ok>アサーションでは、L<Mojo::UserAgent>のJSONコンテンツジェネレータ(L<Mojo::UserAgent::Transactor>を参照)を利用して、ハッシュと配列参照をJSON文書にマーシャリングし、WebSocketメッセージとして送信します。
+C<message_ok>でサーバからの応答を待ちます(ブロックします)。
+次に、JSON文書が返されることを期待しているため、WebSocket応答本体を解析し、L<Mojo::JSON::Pointer>構文を通じてアクセスできるオブジェクトを返すC<json_message_ok>を活用できます。
+次に、WebSocket接続を閉じます(そしてテストします)。
+(TBR)
+
+=begin original
+
+Testing WebSocket servers does not get any simpler than with L<Test::Mojo>.
+
+=end original
+
+WebSocketサーバのテストは、L<Test::Mojo>よりも簡単にはなりません。
+
+=head2 Extending L<Test::Mojo>
+
+(L<Test::Mojo> の拡張)
+
+=begin original
+
+If you see that you're writing a lot of test assertions that aren't chainable,
+you may benefit from writing your own test assertions. Let's say we want to test
+the C<Location> header after a redirect. We'll create a new class with
+L<Role::Tiny> that implements a test assertion named C<location_is>:
+
+=end original
+
+チェーン化できないテストアサーションを大量に作成している場合は、独自のテストアサーションを作成すると便利です。
+リダイレクト後にC<Location>ヘッダーをテストするとします。
+C<location_is>という名前のテストアサーションを実装するL<Role::Tiny>を持つ新しいクラスを作成します。
+(TBR)
+
+  package Test::Mojo::Role::Location;
+  use Mojo::Base -role;
+
+  use Test::More;
+
+  sub location_is {
+    my ($t, $value, $desc) = @_;
+    $desc ||= "Location: $value";
+    local $Test::Builder::Level = $Test::Builder::Level + 1;
+    return $t->success(is($t->tx->res->headers->location, $value, $desc));
+  }
+
+  1;
+
+=begin original
+
+When we make new test assertions using roles, we want to use method signatures
+that match other C<*_is> methods in L<Test::Mojo>, so here we accept the test
+object, the value to compare, and an optional description.
+
+=end original
+
+ロールを使用して新しいテストアサーションを作成する場合、L<Test::Mojo>内の他のC<*_is>メソッドと一致するメソッドシグネチャを使用する必要があるため、ここではテストオブジェクト、比較する値、およびオプションの説明を受け入れる。
+(TBR)
+
+=begin original
+
+We assign a default description value (C<$desc>), set the L<Test::Builder>
+C<Level> global variable one level higher (which tells L<Test::Builder> how far
+up the call stack to look when something fails), then we use L<Test::More>'s
+C<is> function to compare the location header with the expected header value. We
+wrap that in the C<success> attribute, which records the boolean test result and
+propagates the L<Test::Mojo> object for method chaining.
+
+=end original
+
+デフォルトの記述値(C<$desc>)を割り当て、L<Test::Builder>C<Level>グローバル変数を1レベル上に設定し(これにより、L<Test::Builder>は、何かが失敗したときに呼び出しスタックのどこまで調べるかを指定します)、L<Test::More>のC<is>関数を使用して、ロケーションヘッダーを予想されるヘッダー値と比較します。
+これをC<success>属性にラップします。
+この属性は、ブールテスト結果を記録し、メソッドチェーン用のL<Test::Mojo>オブジェクトを伝播します。
+(TBR)
+
+=begin original
+
+With this new package, we're ready to compose a new test object that uses the
+role:
+
+=end original
+
+この新しいパッケージを使用して、ロールを使用する新しいテストオブジェクトを作成する準備が整いました。
+(TBR)
+
+  my $t = Test::Mojo->with_roles('+Location')->new('MyApp');
+
+  $t->post_ok('/redirect/mojo' => json => {message => 'Mojo, here I come!'})
+    ->status_is(302)
+    ->location_is('http://mojolicious.org')
+    ->or(sub { diag 'I miss tempire.' });
+
+=begin original
+
+In this section we've covered how to add custom test assertions to L<Test::Mojo>
+with roles and how to use those roles to simplify testing.
+
+=end original
+
+このセクションでは、ロールを使用してL<Test::Mojo>にカスタムテストアサーションを追加する方法と、それらのロールを使用してテストを簡素化する方法について説明しました。
+(TBR)
+
+=head1 MORE
+
+=begin original
+
+You can continue with L<Mojolicious::Guides> now or take a look at the
+L<Mojolicious wiki|http://github.com/mojolicious/mojo/wiki>, which contains a
+lot more documentation and examples by many different authors.
+
+=end original
+
+L<Mojolicious::Guides>を今すぐ続けることも、L<Mojolicious wiki|http://github.com/mogoliement/mojo/wiki>を見ることもできます。
+このL<Mojolicious wiki|http://github.com/mogoliement/mojo/wiki>には、さまざまな著者による多くの文書と例が含まれています。
+(TBR)
+
+=head1 SUPPORT
+
+=begin original
+
+If you have any questions the documentation might not yet answer, don't
+hesitate to ask on the
+L<mailing list|http://groups.google.com/group/mojolicious> or the official IRC
+channel C<#mojo> on C<irc.freenode.net> (L<chat
+now!|https://kiwiirc.com/nextclient/#irc://irc.freenode.net/mojo?nick=guest-?>).
+
+=end original
+
+文書でまだ回答されていない質問がある場合は、L<mailing list|http://groups.google.com/group/mojolicious>またはC<irc.freenode.net>の公式IRCチャネルC<#mojo>(L<chat now!|https://kiwiirc.com/nextclient/#irc://irc.freenode.net/mojo?nick=guest-?>)で遠慮なく質問してください。
+
+=begin meta
+
+Translate: SHIRAKATA Kentaro <argrath@ub32.org> (8.12)
+Status: in progress
+
+=end meta
+
+=cut
+
