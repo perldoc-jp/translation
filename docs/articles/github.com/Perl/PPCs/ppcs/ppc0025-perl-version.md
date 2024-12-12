@@ -71,7 +71,7 @@ Perl&#160;5はそれを変えました。
 In 2000, some 6 years later – almost as long as it had taken to reach 5.0 –, the need for rejuvenation led to [the inception](https://www.nntp.perl.org/group/perl.packrats/;msgid=20020729060339.GF11511%40chaos.wustl.edu) of Perl&#160;6. It is easy to see how it would have seemed obvious that Perl&#160;6 would repeat the precedent set by Perl&#160;5, just on a larger scale. Under that understanding, Perl&#160;5 was the maintenance track, the stable version, while Perl&#160;6 was the version under development. That was the future of Perl.
 -->
 
-約6年後の2000年(5.0年に到達するまでにかかった期間とほぼ同じ)、若返りの必要性がPerl&#160;6の[始まり](https://www.nntp.perl.org/group/perl.packrats/;msgid=20020729060339.GF11511%40 chaos.wustl.edu)につながりました。
+約6年後の2000年(5.0年に到達するまでにかかった期間とほぼ同じ)、若返りの必要性がPerl&#160;6の[始まり](https://www.nntp.perl.org/group/perl.packrats/;msgid=20020729060339.GF11511%40chaos.wustl.edu)につながりました。
 Perl&#160;6がPerl&#160;5によって設定された先例を、より大きな規模で繰り返すことが明らかであったことは容易に理解できます。
 その理解の下では、Perl&#160;5はメンテナンストラックであり、安定したバージョンであり、Perl&#160;6は開発中のバージョンでした。
 それがPerlの未来でした。
@@ -134,7 +134,7 @@ The community too, mirroring the versions-then-languages themselves, bifurcated,
 And then, in October 2019, [Perl&#160;6 changed names](https://github.com/Raku/problem-solving/pull/89#pullrequestreview-300789072). Suddenly, it was no longer the future of Perl, in any shape, not even as the more advanced flavor.
 -->
 
-そして2019年10月、[Perl&#160;6名前変更](https://github.com/Raku/problem-solving/pull/89#pullrequestreview-300789072)。
+そして2019年10月、[Perl&#160;6は名前を変更しました](https://github.com/Raku/problem-solving/pull/89#pullrequestreview-300789072)。
 突然、それはもはやPerlの未来ではなく、いかなる形であっても、より高度なフレーバーとしてでさえもそうではなかった。
 (TBR)
 
@@ -308,7 +308,11 @@ A number of new environment variables are introduced which supersede existing en
 * `PERL5SHELL` → `PERL_SHELL`
 -->
 
-*`PERL5LIB`→`PERL_LIB`(ただし、これに関しては[Open Issues](#open-issues)を参照)*`PERL5OPT`→`PERL_OPT`*`PERL5DB`→`PERL_DB`*`PERL5DB_THREADED`→`PERL_DB_THREADED`*`PERL5SHELL`→`PERL_SHELL`
+* `PERL5LIB` → `PERL_LIB`(ただし、これに関しては[Open Issues](#open-issues)を参照)
+* `PERL5OPT` → `PERL_OPT`
+* `PERL5DB` → `PERL_DB`
+* `PERL5DB_THREADED` → `PERL_DB_THREADED`
+* `PERL5SHELL` → `PERL_SHELL`
 (TBR)
 
 <!-- original
@@ -508,7 +512,7 @@ XSレベルではオプション1と本質的に区別できないため、オ�
 1. The environment variable superseding leaves us with an awkward priority cascade for `PERL_LIB` > `PERL5LIB` > `PERLLIB`. However, the last one of these is already mainly historical.
 -->
 
-1. 環境変数の置き換えにより、`PERL_LIB`>`PERL5LIB`>`PERLLIB`に対する厄介な優先度カスケードが残ります。
+1. 環境変数の置き換えにより、`PERL_LIB` > `PERL5LIB` > `PERLLIB`に対する厄介な優先度カスケードが残ります。
 しかし、これらのうち最後のものはすでに主に歴史的なものである。
 (TBR)
 
@@ -583,5 +587,5 @@ This document and code and documentation within it may be used, redistributed an
 
 <!--meta
 Translate: SHIRAKATA Kentaro <argrath@ub32.org>
-Status: in progres
+Status: in progress
 -->
