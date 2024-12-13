@@ -28,9 +28,8 @@ Perlの初期のバージョンもありましたが、それらは古代の歴�
 The interpreter already identifies itself as “perl 5, version 40, subversion 0”. We should just drop the 5 and make it official.
 -->
 
-インタプリタはすでに「perl 5, version 40, subversion 0」として識別されています。
+インタプリタはすでに自身を"perl 5, version 40, subversion 0"として識別しています。
 5を削除して正式なものにすべきです。
-(TBR)
 
 ## Motivation
 
@@ -39,14 +38,12 @@ Perl is in need of a future.
 -->
 
 Perlには未来が必要です。
-(TBR)
 
 <!-- original
 30 years ago on October 17, 1994, it turned 5.0.
 -->
 
-30年前の1994年10月17日に5.0人になりました。
-(TBR)
+30年前の1994年10月17日に5.0になりました。
 
 <!-- original
 In its early years Perl went through versions rapidly. 1.0 came out in December 1987, less than 7 years earlier. Up to Perl&#160;4 (itself just a release of Perl&#160;3 re-badged for the convenience of the first Camel book), Perl had been a different, distinct, earlier language, in the sense that code written in it would be structured differently. This early Perl was not well suited to programming in the large.
@@ -64,14 +61,13 @@ Perl&#160;5 changed that. It expanded the power of the language drastically and 
 
 Perl&#160;5はそれを変えました。
 それは言語の力を劇的に拡大し、CPANの作成を可能にしました。
-そうすることで、いくつかの小さな点で互換性を破壊し、いくつかの古いPerlの詩を破ったことで有名です。
-(TBR)
+そうすることで、いくつかの小さな点で互換性を破壊し、いくつかの古いPerlの詩を壊したことで有名です。
 
 <!-- original
 In 2000, some 6 years later – almost as long as it had taken to reach 5.0 –, the need for rejuvenation led to [the inception](https://www.nntp.perl.org/group/perl.packrats/;msgid=20020729060339.GF11511%40chaos.wustl.edu) of Perl&#160;6. It is easy to see how it would have seemed obvious that Perl&#160;6 would repeat the precedent set by Perl&#160;5, just on a larger scale. Under that understanding, Perl&#160;5 was the maintenance track, the stable version, while Perl&#160;6 was the version under development. That was the future of Perl.
 -->
 
-約6年後の2000年(5.0年に到達するまでにかかった期間とほぼ同じ)、若返りの必要性がPerl&#160;6の[始まり](https://www.nntp.perl.org/group/perl.packrats/;msgid=20020729060339.GF11511%40chaos.wustl.edu)につながりました。
+約6年後の2000年(5.0に到達するまでにかかった期間とほぼ同じ)、若返りの必要性がPerl&#160;6の[始まり](https://www.nntp.perl.org/group/perl.packrats/;msgid=20020729060339.GF11511%40chaos.wustl.edu)につながりました。
 Perl&#160;6がPerl&#160;5によって設定された先例を、より大きな規模で繰り返すことが明らかであったことは容易に理解できます。
 その理解の下では、Perl&#160;5はメンテナンストラックであり、安定したバージョンであり、Perl&#160;6は開発中のバージョンでした。
 それがPerlの未来でした。
@@ -127,15 +123,14 @@ Perlの将来についての両方の概念は、Perl&#160;5の外部認識に�
 The community too, mirroring the versions-then-languages themselves, bifurcated, then separated, becoming two somewhat overlapping but distinct communities.
 -->
 
-コミュニティもまた、バージョンと言語そのものを反映して、分岐し、その後分離し、やや重複しているが異なる2つのコミュニティになった。
-(TBR)
+コミュニティもまた、バージョンと言語そのものを反映して、分岐し、その後分離し、やや重複しているが異なる2つのコミュニティになりました。
 
 <!-- original
 And then, in October 2019, [Perl&#160;6 changed names](https://github.com/Raku/problem-solving/pull/89#pullrequestreview-300789072). Suddenly, it was no longer the future of Perl, in any shape, not even as the more advanced flavor.
 -->
 
 そして2019年10月、[Perl&#160;6は名前を変更しました](https://github.com/Raku/problem-solving/pull/89#pullrequestreview-300789072)。
-突然、それはもはやPerlの未来ではなく、いかなる形であっても、より高度なフレーバーとしてでさえもそうではなかった。
+突然、それはもはやPerlの未来ではなく、いかなる形であっても、より高度なフレーバーとしてでさえもそうではなくなりました。
 (TBR)
 
 <!-- original
@@ -143,7 +138,7 @@ But Perl&#160;5 is bound to being Perl. It has a present, and a 30-year-long pas
 -->
 
 しかし、Perl&#160;5はPerlであることに縛られています。
-Perl&#160;5には現在と30年の長い歴史がありますが、今は再び未来がなく、外部の認識を大きく修正する必要があります。
+Perl&#160;5には現在と30年の長い歴史がありますが、今は再び未来が必要で、外部の認識を大きく修正する必要があります。
 (TBR)
 
 <!-- original
@@ -207,12 +202,11 @@ Perl&#160;5は、Perl&#160;6が実装されるのに長い時間がかかり、�
 That is the future. Perl will not have a successor. It will not break with its past. It will keep moving forward the same way it always has: sometimes with substantial changes; often with minor ones; occasionally with breaking changes, but always deliberately and circumspectly.
 -->
 
-それが未来です。
-Perlには後継者がいません。
+これが未来です。
+Perlには後継者はいません。
 過去と決別することはありません。
 これまでと同じように前進し続けます。
-時には大幅な変更を加え、時には小さな変更を加え、時には破壊的な変更を加えますが、常に意図的かつ慎重に行います。
-(TBR)
+時には大幅な変更を加え、時には小さな変更を加え、時には破壊的な変更を加えますが、常に慎重に注意深く行います。
 
 <!-- original
 Relations between Perl and Raku may (and should, and hopefully will) adjust to each other’s new self-understanding. In time, the family should rebalance into a new equilibrium, as family systems do. Perl and Raku can and should stay in touch and take inspiration from each other, even if each needs its features designed for cohesion with its own overall design.
@@ -221,14 +215,12 @@ Relations between Perl and Raku may (and should, and hopefully will) adjust to e
 PerlとRakuの関係は、お互いの新しい自己理解に合わせて調整される可能性があります(また、調整されるべきであり、願わくば調整されるでしょう)。
 やがて、家族は、家族システムがそうであるように、新しい均衡に再調整されるべきです。
 PerlとRakuは、それぞれが独自の全体的な設計との結合のために設計された機能を必要とする場合でも、連絡を取り合い、お互いからインスピレーションを得ることができ、またそうすべきです。
-(TBR)
 
 <!-- original
 This type of re-versioning has some precedents:
 -->
 
-このタイプの再バージョン管理には、いくつかの先例があります。
-(TBR)
+この種の再バージョン管理には、いくつかの先例があります。
 
 <!-- original
 * Java&#160;1.4 was followed by Java&#160;5. The technical details of that transition differ from what is proposed here, but even there we have a parallel between how Java&#160;5 was mostly still 1.5 internally and how this proposal deals with XS code. Lessons can be had from the unlikeliest of sources.
@@ -239,9 +231,9 @@ This type of re-versioning has some precedents:
 * Java&#160;1.4の後にJava&#160;5が続きました。
 この移行の技術的な詳細はここで提案されているものとは異なりますが、Java&#160;5が内部的にまだ1.5であった方法と、この提案がXSコードを処理する方法との間には類似点があります。
 教訓は、最もありそうもない情報源から得ることができます。
-* 一部の読者にとっては、Solaris&#160;7とSunOS&#160;5. 7以降との関係が思い浮かぶかもしれません(ただし、以前のバージョンでのSolarisとSunOSの関係はより複雑です)。
-* この変更を受けて、私たちのバージョン管理ケイデンスはNode.jsに続くものと一致し、毎年新しい奇数バージョンと偶数バージョンがあり、新しい開発と安定したリリースを示しています。
-JavascriptはPerlの影響を少なからず受けているので、これは今日考えられているほどありそうもない会社ではありません。
+* 一部の読者にとっては、Solaris&#160;7とSunOS&#160;5.7以降との関係が思い浮かぶかもしれません(ただし、以前のバージョンでのSolarisとSunOSの関係はより複雑です)。
+* この変更を受けて、私たちのバージョン管理のテンポはNode.jsに続くものと一致し、毎年新しい奇数バージョンと偶数バージョンがあり、新しい開発と安定したリリースを示しています。
+JavascriptはPerlの影響を少なからず受けているので、これは今日考えられているほどありそうもない組み合わせではありません。
 (TBR)
 
 <!-- original
@@ -252,7 +244,7 @@ Version 42 specifically is a particularly compelling point in time at which to d
 Perl文化の中にも、特にバージョンに関しては、さらに重要なポイントがあります。
 42はたまたま6&times;7;ASCII文字42(したがってv文字列`v42`)はたまたま`*`です。
 技術的な観点からは、バージョン48よりもかなり前にこの移行を行うのも適切です。
-バージョン48の時点では、`v48 eq'0'`(および`v50 eq'2'`)が予期しない胸やけを引き起こす可能性があるため、そのかなり前に潜在的な影響を整理する時間を持つことが有用です。
+バージョン48の時点では、`v48 eq '0'`(および`v50 eq '2'` など)が予期しない胸やけを引き起こす可能性があるため、そのかなり前に潜在的な影響を整理する時間を持つことが有用です。
 (TBR)
 
 <!-- original
@@ -273,7 +265,6 @@ In the next release of Perl, `perl -v` will not say “Perl 5 version 42 subvers
 -->
 
 Perlの次のリリースでは、`perl-v`は"Perl 5 version 42 subversion 0"ではなく、単に"Perl version 42.0"と表示します。
-(TBR)
 
 <!-- original
 The value of `$]` will be simply 42 and `$^V` will be equal to `v42.0`. In future, the version of Perl will only have a major and minor component. 42.1 will have `$]` as 42.001 and `$^V` as `v42.1`.
@@ -282,7 +273,6 @@ The value of `$]` will be simply 42 and `$^V` will be equal to `v42.0`. In futur
 `$]`の値は42となり、`$^V`は`v42.0`と等しくなります。
 将来的には、Perlのバージョンにはメジャーとマイナーのコンポーネントしかありません。
 42.1では、`$]`は42.001、`$^V`は`v42.1`となります。
-(TBR)
 
 <!-- original
 For XS code, nothing changes at all. `PERL_REVISION` continues to exist and its value continues to be 5, forever. Only `PERL_VERSION` and `PERL_SUBVERSION` are relevant going forward.
@@ -291,14 +281,12 @@ For XS code, nothing changes at all. `PERL_REVISION` continues to exist and its 
 XSコードでは何も変わりません。
 `PERL_REVISION`は存在し続け、その値は永遠に5のままです。
 今後は`PERL_VERSION`と`PERL_SUBVERSION`のみが関連します。
-(TBR)
 
 <!-- original
 A number of new environment variables are introduced which supersede existing environment variables if present:
 -->
 
-いくつかの新しい環境変数が導入され、既存の環境変数が存在する場合はそれに取って代わります。
-(TBR)
+いくつかの新しい環境変数が導入され、既存の環境変数が存在する場合はそれに取って代わります:
 
 <!-- original
 * `PERL5LIB` → `PERL_LIB` (but cf. [Open Issues](#open-issues) regarding this one)
@@ -313,28 +301,24 @@ A number of new environment variables are introduced which supersede existing en
 * `PERL5DB` → `PERL_DB`
 * `PERL5DB_THREADED` → `PERL_DB_THREADED`
 * `PERL5SHELL` → `PERL_SHELL`
-(TBR)
 
 <!-- original
 As a result, all Perl environment variables except `PERLIO` now follow the pattern `PERL_*`.
 -->
 
-その結果、`PERLIO`を除くすべてのPerl環境変数は、パターン`PERL_*`に従うようになりました。
-(TBR)
+その結果、`PERLIO`を除くすべてのPerl環境変数は、パターン`PERL_*`に従うようになります。
 
 <!-- original
 Finally, we edit the documentation to no longer advertise the use of a v-string on the `use VERSION` line. (Cf. [Examples](#examples))
 -->
 
-最後に、文書を編集して、`use VERSION`行でv-stringの使用をアドバタイズしないようにします([Examples](#examples)を参照)。
-(TBR)
+最後に、文書を編集して、`use VERSION`行でv-stringの使用を宣伝しないようにします([Examples](#examples)を参照)。
 
 <!-- original
 PAUSE and MetaCPAN must be made aware of the new versioning cadence.
 -->
 
-PAUSEとMetaCPANは、新しいバージョン管理ケイデンスを認識する必要があります。
-(TBR)
+PAUSEとMetaCPANは、新しいバージョン管理のテンポを認識する必要があります。
 
 <!-- original
 At some point, `INSTALL_BASE` should be discouraged (though remain supported indefinitely) and supplanted by a new option which does not contain the hard-coded `perl5` segment. It should then also be made to install to a path containing the full perl version, to solve problems with switching between versions. Ideally this will be in 42.0 but it can follow later.
@@ -403,12 +387,12 @@ Note that a v-string is not used. A v-string is how you can write `use v5.40` ra
 -->
 
 v-stringが使用されていないことに注意してください。
-v-stringは、読みにくい`use 5. 40`ではなく`use v5.040`を記述する方法です。
+v-stringは、読みにくい`use 5.040`ではなく`use v5.40`を記述する方法です。
 ここでは、重要な部分はノイズが多く、つまり、より顕著なリビジョンである5ではなく、バージョン40です。
 リビジョンがない場合、バージョンは整数部分になるため、パディングは必要ありません。
 サブバージョンは最初のドットの後ろの小数部分になり、2番目のドットは必要ありません。
-しかし、`use VERSION`行でサブバージョンを指定することは、もはや表示されません。
-なぜなら、機能バンドルはサブバージョン固有ではなく、Perlのポイントリリースは5. 6/5. 8/5. 10時代のような寿命と知名度を失って久しいからです。
+しかし、`use VERSION`行でサブバージョンを指定することは、もはや起きません。
+なぜなら、機能バンドルはサブバージョン固有ではなく、Perlのポイントリリースは5.6/5.8/5.10時代のような寿命と知名度を失って久しいからです。
 (サブバージョンを指定する必要がある場合、v-stringがなくても、例えば`use 42.001`と記述する必要があります。
 これは`use v42.1`ほど良くありませんが、これは今では学術的です。
 )したがって、v-stringの必要性は実際にはなくなります。
@@ -422,7 +406,6 @@ None.
 -->
 
 ありません。
-(TBR)
 
 ## Future Scope
 
@@ -441,15 +424,13 @@ Perlは、言語が成長し、時代とともに変化しても、Perlであり
 There are some alternative approaches we could take:
 -->
 
-他にもいくつかの方法があります。
-(TBR)
+他にも取ることのできるいくつかの選択肢があります。
 
 <!-- original
 1. Continue with Perl&#160;5.x indefinitely
 -->
 
 1. Perl&#160;5.xを無期限に使い続ける
-(TBR)
 
    <!-- original
    We might decide on this option because we aren't going to change the language substantially, and there are technical complications in changing the version. But this would not address the perception issue, and the non-change nature of this approach leaves the version number issue open to renewed future challenge.
@@ -464,7 +445,6 @@ There are some alternative approaches we could take:
 -->
 
 2. すぐにPerl&#160;7に移行する
-(TBR)
 
    <!-- original
    We might decide on this option because we are continuing to evolve the language anyway, so now that Perl&#160;6 is no longer in play, we are free to just bump the major version, and there are plenty of differences to Perl&#160;5.0 to justify a new major version. This is a viable option, but the technical costs (mainly due to XS version checking) are somewhat significant, and we take them on in exchange for nothing in particular. The outside-world optics of this would be odd, with the version finally moving beyond 5 after almost 30 years, but for no apparent reason. (Even when Perl&#160;3 was rebadged as Perl&#160;4, it was because of the Camel book.) And internally, this lack of apparent reason also leaves us with an entirely open question regarding how we should decide when to bump the version again, to 8 and beyond, putting us back in the same position regarding the version some time down the line as we are today.
@@ -481,8 +461,7 @@ There are some alternative approaches we could take:
 3. Move to Perl&#160;7 based on some headline feature (such as a new object system)
 -->
 
-3. 見出しの機能(新しいオブジェクトシステムなど)に基づいてPerl&#160;7に移行する
-(TBR)
+3. 目玉機能(新しいオブジェクトシステムなど)に基づいてPerl&#160;7に移行する
 
    <!-- original
    This has the same technical costs as moving to Perl&#160;7 generally, but the outside-world optics of the move are less strange. However, the feature then needs to be big enough to justify a bump in this way, lest it be perceived as a PR stunt for repackaging mostly-same-old as a major new version. And it does not set a precedent for when the version is to be bumped, opening up a future debate about whether changes are big enough to warrant a bump, and creating indirect pressure to introduce big headlining features every so often in order to justify a bump to avoid a renewed perception of stagnation. In the same vein, as already experienced before, with this type of version bump, there will be strong temptation to include breaking changes within its scope, every single time a new one happens – not just because of the seeming opportunity to clean house, but partly also because a perceived need to break certain things more easily makes the case for bumping the version.
@@ -512,9 +491,8 @@ XSレベルではオプション1と本質的に区別できないため、オ�
 1. The environment variable superseding leaves us with an awkward priority cascade for `PERL_LIB` > `PERL5LIB` > `PERLLIB`. However, the last one of these is already mainly historical.
 -->
 
-1. 環境変数の置き換えにより、`PERL_LIB` > `PERL5LIB` > `PERLLIB`に対する厄介な優先度カスケードが残ります。
-しかし、これらのうち最後のものはすでに主に歴史的なものである。
-(TBR)
+1. 環境変数の置き換えにより、`PERL_LIB` > `PERL5LIB` > `PERLLIB`という不格好な優先度の流れが残ります。
+しかし、これらのうち最後のものはすでに主に歴史的なものです。
 
    <!-- original
    Maybe we want to reuse `PERLLIB` by flipping the priorities instead of introducing `PERL_LIB`. In that case maybe the counterpart to `PERL5OPT` should be named `PERLOPT`, not `PERL_OPT`, given that these two variables are somewhat complementary. But this would miss the opportunity to tidy things up into “everything is named `PERL_*` (except `PERLIO`)”.
@@ -530,22 +508,19 @@ XSレベルではオプション1と本質的に区別できないため、オ�
    Maybe we want to just remove `PERLLIB`.
    -->
 
-   単に`PERLLIB`を削除したいだけかもしれません。
-   (TBR)
+   単に`PERLLIB`を削除したいかもしれません。
 
    <!-- original
    Maybe we just shrug and accept the awkwardness.
    -->
 
-   私たちは肩をすくめて気まずさを受け入れるだけかもしれません。
-   (TBR)
+   私たちは肩をすくめて不格好さを受け入れるだけかもしれません。
 
 <!-- original
 1. Something needs to be done about version.pm presuming three components to a version number:
 -->
 
-1. バージョン番号に3つのコンポーネントを仮定して、version.pmに対して何かを行う必要があります:
-(TBR)
+1. バージョン番号に3つのコンポーネントを仮定しているversion.pmに対して何かを行う必要があります:
 
    ````
    perl -E 'say version->parse( 42.0 )->normal'
@@ -556,14 +531,13 @@ XSレベルではオプション1と本質的に区別できないため、オ�
 1. What do we do about the [perl5.git](https://github.com/Perl/perl5) repository name?
 -->
 
-1. [perl5.git](https://github.com/Perl/perl5)リポジトリ名についてはどうすればよいですか?
-(TBR)
+1. [perl5.git](https://github.com/Perl/perl5)リポジトリ名についてはどうすればよいでしょう?
 
 <!-- original
 1. What do we do with the [perl5-porters@](mailto:perl5-porters@perl.org) list name? (Probably make it an alias and switch to a new primary list name?) The same question applies to a handful of other lists ([perl5-changes@](mailto:perl5-changes@perl.org) et al). This is anything but urgent.
 -->
 
-1. [perl5-porters@](mailto:perl5-porters@perl.org)リスト名をどうするか?(おそらくエイリアスにして、新しいプライマリリスト名に切り替えるのでしょうか?)同じ質問は、他のいくつかのリスト([perl5-changes@](mailto:perl5-changes@perl.org)など)にも当てはまります。
+1. [perl5-porters@](mailto:perl5-porters@perl.org)リスト名をどうしましょう?(おそらくエイリアスにして、新しいプライマリリスト名に切り替えるのでしょうか?)同じ質問は、他のいくつかのリスト([perl5-changes@](mailto:perl5-changes@perl.org)など)にも当てはまります。
 これは決して緊急ではありません。
 (TBR)
 
@@ -573,10 +547,10 @@ XSレベルではオプション1と本質的に区別できないため、オ�
 It all began as [a tongue-in-cheek remark on Reddit](https://www.reddit.com/r/perl/comments/1f9bbhy/other_than_raku_are_there_any_serious_plans_for_a/llvsfjc/?context=3). The details of the [Specification](#specification) owe much to Graham Knop and the [Rationale](#rationale) to Philippe Bruhat, who as co-members of the PSC both contributed to thoughts across the entire document and eventually proofread it. After weeks of deliberation, the Motivation section finally crystallized during a cold early morning walk on Nov 13, 2024 and turned into writing on a riverside bench overlooking the Rhine.
 -->
 
-すべては[Redditでの皮肉な発言](https://www.reddit.com/r/perl/comments/1f9bbhy/other_than_raku_are_there_any_serious_plans_for_a/llvsfjc/?context=3)として始まった。
-[Specification](#specification)の詳細はGraham Knopに、[Rationale](#rationale)はフィリップBruhatに負うところが大きい。
-彼はPSCの共同メンバーとして、文書全体の考え方に貢献し、最終的には文書を校正した。
-数週間の審議の後、2024年11月13日の早朝の冷たい散歩の間に、動機のセクションは最終的に具体化し、ライン川を見下ろす川沿いのベンチで書くようになった。
+すべては[Redditでの皮肉な発言](https://www.reddit.com/r/perl/comments/1f9bbhy/other_than_raku_are_there_any_serious_plans_for_a/llvsfjc/?context=3)として始まりました。
+[Specification](#specification)の詳細はGraham Knopに、[Rationale](#rationale)はフィリップBruhatに負うところが大きいです。
+彼はPSCの共同メンバーとして、文書全体の考え方に貢献し、最終的には文書を校正しました。
+数週間の審議の後、2024年11月13日の冷たい早朝の散歩の間に、動機のセクションは最終的に具体化し、ライン川を見下ろす川沿いのベンチで文章になりました。
 (TBR)
 
 ## Copyright
