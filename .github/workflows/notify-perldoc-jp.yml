@@ -1,0 +1,37 @@
+name: Notify perldoc.jp
+
+on:
+  push:
+    branches:
+      - master
+
+# 組み込み GITHUB_TOKEN は使わないので全権限を落とす
+permissions: {}
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: perldoc-jp-notify
+
+    steps:
+      - name: Create installation token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.PERLDOC_JP_APP_CLIENT_ID }}
+          private-key: ${{ secrets.PERLDOC_JP_APP_PRIVATE_KEY }}
+          owner: perldoc-jp
+          repositories: perldoc.jp
+          permission-actions: write
+
+      # token は 1 時間で失効し、ジョブ終了時に action が revoke する。
+      # payload は渡さない (perldoc.jp 側は translation の HEAD を git ls-remote で
+      # 自分で解決するため、通知の中身を信用する必要がない)
+      - name: Dispatch perldoc.jp deployment
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh api --method POST \
+            repos/perldoc-jp/perldoc.jp/actions/workflows/deploy.yml/dispatches \
+            -f ref=master
